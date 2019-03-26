@@ -3,6 +3,7 @@
 
 #include "core/framework/custom_ops_author.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
@@ -10,6 +11,71 @@
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
+
+struct PyEnvInit
+{
+    PyEnvInit() {
+        Py_Initialize();
+        _import_array();
+    }
+
+    ~PyEnvInit()
+    {
+        Py_Finalize();
+    }
+
+} pyEnvInit;
+
+PyObject* ToPyObj(const ::onnxruntime::MLValue* mlValue)
+{
+    PyObject* pyObj = nullptr;
+    auto type = mlValue->Type();
+    if (mlValue->IsTensor()) {
+        const Tensor* tensor = &mlValue->Get<Tensor>();
+        std::vector<npy_intp> dims(tensor->Shape().GetDims());
+        if (tensor->DataType() == DataTypeImpl::GetType<int32_t>()) {
+            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_INT32, 0);
+        } else if (tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
+            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_INT64, 0);
+        } else if (tensor->DataType() == DataTypeImpl::GetType<float>()) {
+            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_FLOAT, 0);
+        } else if (tensor->DataType() == DataTypeImpl::GetType<double>()) {
+            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_DOUBLE, 0);
+        } else ORT_ENFORCE(false, "input not supported");
+        auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
+        memcpy(PyArray_DATA(np_array), tensor->DataRaw(), tensor->Size());
+        pyObj = PyArray_Return(np_array);
+    } else {
+        if (type == DataTypeImpl::GetType<int32_t>()) {
+           pyObj = Py_BuildValue("i", mlValue->Get<int32_t>());
+        } else if (type == DataTypeImpl::GetType<int64_t>()) {
+           pyObj = Py_BuildValue("l", mlValue->Get<int64_t>());
+        } else if (type == DataTypeImpl::GetType<float>()) {
+           pyObj = Py_BuildValue("f", mlValue->Get<float>());
+        } else if (type == DataTypeImpl::GetType<double>()) {
+           pyObj = Py_BuildValue("d", mlValue->Get<double>());
+        } else ORT_ENFORCE(false, "input not supported");
+    }
+    return pyObj;
+}
+
+ORT_EXPORT void CallPythonFuntion (const char* module,
+                                   const char* function,
+                                   OrtValue**  input,
+                                   int32_t     input_len)//, OrtValue**, size_t) {
+{
+    auto pyModule_ = PyImport_ImportModule(module);
+    ORT_ENFORCE(nullptr != pyModule_, "import python module failed");
+    auto pyFunc_ = PyObject_GetAttrString(pyModule_, function);
+    ORT_ENFORCE(nullptr != pyFunc_ && PyCallable_Check(pyFunc_), "function not callable");
+    auto pyArgs = PyTuple_New(input_len);
+    for (int32_t i = 0; i < input_len; ++i) {
+        auto mlValue = reinterpret_cast<const ::onnxruntime::MLValue*>(input[i]);
+        PyTuple_SetItem(pyArgs, i, ToPyObj(mlValue));
+    }
+    Py_XDECREF(pyModule_);
+    Py_XDECREF(pyFunc_);
+}
 
 class PyOp final: public OpKernel {
 public:
@@ -57,8 +123,8 @@ public:
         }
         Py_Finalize();
     }
-private:
 
+private:
     PyObject* FromTensor(const Tensor* tensor) const
     {
         ORT_ENFORCE(tensor->DataType() == DataTypeImpl::GetType<int32_t>(), "input type not int32_t");
@@ -92,21 +158,6 @@ ORT_EXPORT SchemasContainer* GetAllSchemas() {
   sc->baseline_opset_version = 5;
   sc->opset_version = 7;
   ONNX_NAMESPACE::OpSchema schema("PyOp", "unknown", 0);
-  schema.Input(0,
-               "A",
-               "First operand, should share the type with the second operand.",
-               "T");
-  schema.Input(
-      1,
-      "B",
-      "Second operand. With broadcasting can be of smaller size than A. "
-      "If broadcasting is disabled it should be of the same size.",
-      "T");
-  schema.Output(0, "C", "Result, has same dimensions and type as A", "T");
-  schema.TypeConstraint(
-      "T",
-      OpSchema::numeric_types_for_math_reduction(),
-      "Constrain input and output types to high-precision numeric tensors.");
   schema.SinceVersion(7);
   sc->schemas_list.push_back(schema);
   return sc;
