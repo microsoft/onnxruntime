@@ -59,20 +59,53 @@ PyObject* ToPyObj(const ::onnxruntime::MLValue* mlValue)
     return pyObj;
 }
 
+template<typename T>
+void deleter (void* data) { delete (T*)data; }
+
 ORT_EXPORT void CallPythonFuntion (const char* module,
                                    const char* function,
                                    OrtValue**  input,
-                                   int32_t     input_len)//, OrtValue**, size_t) {
-{
+                                   int32_t     input_len,
+                                   OrtValue**  output,
+                                   int32_t&    output_len) {
+
     auto pyModule_ = PyImport_ImportModule(module);
     ORT_ENFORCE(nullptr != pyModule_, "import python module failed");
     auto pyFunc_ = PyObject_GetAttrString(pyModule_, function);
     ORT_ENFORCE(nullptr != pyFunc_ && PyCallable_Check(pyFunc_), "function not callable");
+
     auto pyArgs = PyTuple_New(input_len);
     for (int32_t i = 0; i < input_len; ++i) {
         auto mlValue = reinterpret_cast<const ::onnxruntime::MLValue*>(input[i]);
         PyTuple_SetItem(pyArgs, i, ToPyObj(mlValue));
     }
+
+    auto pyResult = PyEval_CallObject(pyFunc_, pyArgs);
+    if (Py_TYPE(pyResult) == &PyLong_Type) {
+        *output = reinterpret_cast<OrtValue*>(new MLValue(new int64_t(PyLong_AsLong(pyResult)), DataTypeImpl::GetType<int64_t>(), deleter<int64_t>));
+        output_len = 1;
+    } else if (Py_TYPE(pyResult) == &PyFloat_Type) {
+        *output = reinterpret_cast<OrtValue*>(new MLValue(new double(PyFloat_AsDouble(pyResult)), DataTypeImpl::GetType<double>(), deleter<double>));
+        output_len = 1;
+    } else if (Py_TYPE(pyResult) == &PyArray_Type) {
+        auto np_array = reinterpret_cast<PyArrayObject*>(pyResult);
+        size_t element_count = 1;
+        std::vector<size_t> shape;
+        for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
+            shape.push_back(PyArray_SHAPE(np_array)[i]);
+            element_count *= shape.back();
+        }
+        OrtAllocatorInfo* info;
+        ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+        if (PyLong_Check(np_array)) {
+            *output = OrtCreateTensorWithDataAsOrtValue(info, PyArray_DATA(np_array), element_count*sizeof(int64_t), shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+        } else if (PyFloat_Check(np_array)) {
+            *output = OrtCreateTensorWithDataAsOrtValue(info, PyArray_DATA(np_array), element_count*sizeof(float), shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+        }
+        output_len = 1;
+    } else ORT_ENFORCE(false, "output type not supported");
+
+    Py_DECREF(pyArgs);
     Py_XDECREF(pyModule_);
     Py_XDECREF(pyFunc_);
 }
