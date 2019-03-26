@@ -38,30 +38,30 @@ GradOpSchema& GradOpSchema::NumOutputs(const std::set<int>& num_outputs_allowed)
 }
 
 GradOpSchema& GradOpSchema::Input(
-    int n,
-    std::string name,
-    std::string description,
-    std::string type_str,
-    ParameterOption param_option,
+    const int n,
+    const std::string& name,
+    const std::string& description,
+    const std::string& type_str,
+    const ParameterOption& param_option,
     bool is_homogeneous) {
   op_schema_->Input(n, name, description, type_str, param_option, is_homogeneous);
   return *this;
 }
 
 GradOpSchema& GradOpSchema::Output(
-    int n,
-    std::string name,
-    std::string description,
-    std::string type_str,
-    ParameterOption param_option,
+    const int n,
+    const std::string& name,
+    const std::string& description,
+    const std::string& type_str,
+    const ParameterOption& param_option,
     bool is_homogeneous) {
-  op_schema_->Input(n, name, description, type_str, param_option, is_homogeneous);
+  op_schema_->Output(n, name, description, type_str, param_option, is_homogeneous);
   return *this;
 }
 
-GradOpSchema& GradOpSchema::TypeConstraint(std::string type_str,
-                                           std::vector<std::string> constraints,
-                                           std::string description) {
+GradOpSchema& GradOpSchema::TypeConstraint(const std::string& type_str,
+                                           const std::vector<std::string>& constraints,
+                                           const std::string& description) {
   op_schema_->TypeConstraint(type_str, constraints, description);
   return *this;
 }
@@ -80,6 +80,11 @@ using namespace ONNX_NAMESPACE;
 
 GradOpSchema& GradOpSchema::Reference(const std::string& fw_op_schema_name, const int sinceVersion) {
   op_schema_->FillUsing(GenGradientSchema(schema_registry_->GetSchema(fw_op_schema_name, sinceVersion)));
+  return *this;
+}
+
+GradOpSchema& GradOpSchema::ReferenceAttributes(const std::string& fw_op_schema_name, const int sinceVersion) {
+  op_schema_->FillUsing(CopyAttributes(schema_registry_->GetSchema(fw_op_schema_name, sinceVersion)));
   return *this;
 }
 
@@ -141,15 +146,21 @@ std::function<void(ONNX_NAMESPACE::OpSchema&)> GradOpSchema::GenGradientSchema(c
             true);
       }
 
-      // copy over all the attributes schema
-      if (base_op != nullptr) {
-        auto attributes = base_op->attributes();
-        for (auto pair : attributes) {
-          grad_op_schema.Attr(pair.second);
-        }
-      }
+      grad_op_schema.FillUsing(CopyAttributes(base_op));
     };
   }
+}
+
+std::function<void(ONNX_NAMESPACE::OpSchema&)> GradOpSchema::CopyAttributes(const OpSchema* base_op) {
+  return [=](OpSchema& grad_op_schema) {
+    // copy over all the attributes schema
+    if (base_op != nullptr) {
+      auto attributes = base_op->attributes();
+      for (auto pair : attributes) {
+        grad_op_schema.Attr(pair.second);
+      }
+    }
+  };
 }
 
 }  // namespace training

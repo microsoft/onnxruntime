@@ -66,25 +66,25 @@ class GradOpSchema {
   GradOpSchema& NumOutputs(const std::set<int>& allowed_output_nums);
 
   GradOpSchema& Input(
-      int n,
-      std::string name,
-      std::string description,
-      std::string type_str,
-      ParameterOption param_option = ParameterOption::Single,
+      const int n,
+      const std::string& name,
+      const std::string& description,
+      const std::string& type_str,
+      const ParameterOption& param_option = ParameterOption::Single,
       bool is_homogeneous = true);
 
   GradOpSchema& Output(
-      int n,
-      std::string name,
-      std::string description,
-      std::string type_str,
-      ParameterOption param_option = ParameterOption::Single,
+      const int n,
+      const std::string& name,
+      const std::string& description,
+      const std::string& type_str,
+      const ParameterOption& param_option = ParameterOption::Single,
       bool is_homogeneous = true);
 
   GradOpSchema& TypeConstraint(
-      std::string type_str,
-      std::vector<std::string> constraints,
-      std::string description);
+      const std::string& type_str,
+      const std::vector<std::string>& constraints,
+      const std::string& description);
 
   /**
    * @brief Last Input is variadic
@@ -98,6 +98,9 @@ class GradOpSchema {
 
   // Fills the gradient schema op using the parameter schema name provided
   GradOpSchema& Reference(const std::string& fw_op_schema_name, const int sinceVersion = GRADIENT_OP_VERSION);
+
+  // Fills the gradient schema op using the parameter schema name provided
+  GradOpSchema& ReferenceAttributes(const std::string& fw_op_schema_name, const int sinceVersion = GRADIENT_OP_VERSION);
 
   ONNX_NAMESPACE::OpSchema& GetOpSchema() { return *op_schema_; }
 
@@ -114,6 +117,7 @@ class GradOpSchema {
   bool variadic_output_;
 
   std::function<void(ONNX_NAMESPACE::OpSchema&)> GenGradientSchema(const ONNX_NAMESPACE::OpSchema* base_op);
+  std::function<void(ONNX_NAMESPACE::OpSchema&)> CopyAttributes(const ONNX_NAMESPACE::OpSchema* base_op);
   ParameterOption GetInputParameterType(const int arg_index);
   ParameterOption GetOutputParameterType(const int arg_index);
   ParameterOption GetParameterType(const int arg_index, const int max, const bool variadic);

@@ -10,7 +10,7 @@ namespace onnxruntime {
 class InsertOutputTransformer : public GraphTransformer {
  public:
   InsertOutputTransformer(const std::string& name)
-      : onnxruntime::GraphTransformer(name, "Transformer to insert addtional outputs to some node to facilate training") {
+      : onnxruntime::GraphTransformer(name, "Transformer to insert addtional outputs to some node to facilitate training") {
   }
 
  private:

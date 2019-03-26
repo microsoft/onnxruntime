@@ -26,7 +26,7 @@ Status Dropout::Compute(OpKernelContext* context) const {
   const float* X_data = X->template Data<float>();
   float* Y_data = Y->template MutableData<float>();
 
-  if (is_test_) {
+  if (!is_train_) {
     //If source and target pointers are not equal, we need to copy the data.
     if (Y_data != X_data) {
       memcpy(Y_data, X_data, shape.Size() * sizeof(float));
@@ -68,7 +68,7 @@ Status DropoutGrad::Compute(OpKernelContext* context) const {
   const float* dY_data = dY->template Data<float>();
   float* dX_data = dX->template MutableData<float>();
 
-  if (is_test_) {
+  if (!is_train_) {
     //If source and target pointers are not equal, we need to copy the data.
     if (dY_data != dX_data) {
       memcpy(dX_data, dY_data, shape.Size() * sizeof(float));

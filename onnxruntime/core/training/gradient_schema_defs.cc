@@ -74,12 +74,9 @@ void RegisterGradientSchemas() {
       .Reference("AveragePool");
 
   ONNX_GRADIENT_OPERATOR_SCHEMA(MaxPoolGrad)
-      .NumInputs(2)
-      .NumOutputs(1)
-      .Reference("MaxPool")
-      .Input(0, "dY", "", "T")
-      .Input(1, "Indices", "", "I")
-      .Output(0, "dX", "", "T")
+      .Input(0, "dY", "Gradient of output, Y", "T")
+      .Input(1, "Indices", "Indices tensor from max pooling across the input tensor.", "I")
+      .Output(0, "dX", "Gradient of input, X", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -87,7 +84,8 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "I",
           {"tensor(int64)"},
-          "Constrain index tensor to int64");
+          "Constrain index tensor to int64")
+      .ReferenceAttributes("MaxPool");
 
   ONNX_GRADIENT_OPERATOR_SCHEMA(ConvGrad)
       .NumInputs(2, 3)
