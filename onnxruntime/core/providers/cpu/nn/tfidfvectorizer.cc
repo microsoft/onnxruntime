@@ -453,7 +453,6 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
   } else if (input_dims.size() == 1) {
     b_dim = 1;
     C = input_dims[0];
-    if (C < 1) {
   } else if (input_dims.size() == 2) {
     B = input_dims[0];
     C = input_dims[1];
