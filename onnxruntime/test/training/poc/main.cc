@@ -4,15 +4,14 @@
 // onnxruntime dependencies
 #include "core/graph/model.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/environment.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/environment.h"
 #include "core/training/training_optimizer.h"
 #include "core/training/training_session.h"
 #include "core/training/weight_updater.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
-//#include "core/graph/constants.h"
-
 #include <random>
 
 using namespace onnxruntime;

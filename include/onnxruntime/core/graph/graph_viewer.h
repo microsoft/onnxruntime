@@ -97,6 +97,11 @@ class GraphViewer {
   */
   const NodeArg* GetNodeArg(const std::string& name) const;
 
+  /** Gets the map of operator domains to their opset versions. */
+  const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
+    return graph_->DomainToVersionMap();
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
 

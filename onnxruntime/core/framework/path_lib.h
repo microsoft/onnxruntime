@@ -96,7 +96,14 @@ inline int CompareCString<wchar_t>(const wchar_t* s1, const wchar_t* s2) {
   return wcscmp(s1, s2);
 }
 
-enum class OrtFileType { TYPE_BLK, TYPE_CHR, TYPE_DIR, TYPE_FIFO, TYPE_LNK, TYPE_REG, TYPE_SOCK, TYPE_UNKNOWN };
+enum class OrtFileType { TYPE_BLK,
+                         TYPE_CHR,
+                         TYPE_DIR,
+                         TYPE_FIFO,
+                         TYPE_LNK,
+                         TYPE_REG,
+                         TYPE_SOCK,
+                         TYPE_UNKNOWN };
 
 template <typename PATH_CHAR_TYPE>
 PATH_CHAR_TYPE GetPathSep();
@@ -236,7 +243,7 @@ void LoopDir(const std::string& dir_name, T func) {
     auto e = errno;
     char buf[1024];
     char* msg;
-#ifdef _GNU_SOURCE
+#if defined(_GNU_SOURCE) && !defined(__APPLE__)
     msg = strerror_r(e, buf, sizeof(buf));
 #else
     // for Mac OS X
