@@ -217,8 +217,10 @@ const TensorShape& shape, const std::vector<int64_t>& reverse_axes) {
   } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
     ProcessType(uint64_t, dtype, rank, dims)
   } else if (dtype == DataTypeImpl::GetType<std::string>()) {
-    const ConstEigenTensorMap<std::string, rank> input = buffer_as_const_eigen_tensor<std::string, rank>(static_cast<const std::string*>(input_tensor->template Data<std::string>()), dims);
-    EigenTensorMap<std::string, rank> output = buffer_as_eigen_tensor<std::string, rank>(static_cast<std::string*>(output_tensor->template MutableData<std::string>()), dims);
+    const ConstEigenTensorMap<std::string, rank> input = 
+    buffer_as_const_eigen_tensor<std::string, rank>(static_cast<const std::string*>(input_tensor->template Data<std::string>()), dims);
+    EigenTensorMap<std::string, rank> output = 
+	buffer_as_eigen_tensor<std::string, rank>(static_cast<std::string*>(output_tensor->template MutableData<std::string>()), dims);
     output = input.reverse(eigen_reverse_axes);
   } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
     ReverseImplMLFloat16Type<rank>(ctx, input_tensor, output_tensor, shape, reverse_axes);
