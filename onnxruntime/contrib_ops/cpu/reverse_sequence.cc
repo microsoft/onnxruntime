@@ -44,85 +44,6 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   return status;
 }
 
-// reverse a sequence which has shape {seq_length, batch_size, input_size}
-template <typename T>
-void ReverseSequenceImplTimeMajor(gsl::span<const T> inputs,
-                                  gsl::span<T> inputs_reverse,
-                                  gsl::span<const int> sequence_lengths,
-                                  const int64_t max_sequence_length,
-                                  const int64_t batch_size,
-                                  const int64_t input_size) {
-  for (int i = 0; i < batch_size; i++) {
-    int seq_len = sequence_lengths[i];
-
-    if (seq_len == 0)
-      continue;
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
-
-    for (int j = 0; j < seq_len; j++) {
-      gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan((seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
-
-      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest);
-    }
-
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
-    for (int j = seq_len; j < max_sequence_length; j++) {
-      gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(j * batch_size * input_size + i * input_size, input_size);
-
-      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest);
-    }
-  }
-}
-
-//template <typename T>
-//void ReverseSequenceImplBatchMajor(gsl::span<const T> inputs,
-//                                   gsl::span<T> inputs_reverse,
-//                                   gsl::span<const int> sequence_lengths,
-//                                   const int64_t max_seq_len,
-//                                   const int64_t batch_size,
-//                                   const int64_t input_size) {
-//  for (int i = 0; i < batch_size; i++) {
-//    int seq_len = sequence_lengths[i];
-//
-//    if (seq_len == 0)
-//      continue;
-//
-//#ifdef USE_OPENMP
-//// Parallel execute the loop.
-//#pragma omp parallel for
-//#endif
-//    for (int j = 0; j < seq_len; j++) {
-//      gsl::span<const T> src = inputs.subspan(i * max_seq_len * input_size + j * input_size, input_size);
-//      gsl::span<T> dest = inputs_reverse.subspan(i * max_seq_len * input_size + (seq_len - j - 1) * input_size, input_size);
-//
-//      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-//      gsl::copy(src, dest);
-//    }
-//
-//#ifdef USE_OPENMP
-//// Parallel execute the loop.
-//#pragma omp parallel for
-//#endif
-//    for (int j = seq_len; j < max_seq_len; j++) {
-//      gsl::span<const T> src = inputs.subspan(i * max_seq_len * input_size + j * input_size, input_size);
-//      gsl::span<T> dest = inputs_reverse.subspan(i * max_seq_len * input_size + j * input_size, input_size);
-//
-//      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-//      gsl::copy(src, dest);
-//    }
-//  }
-//}
-
 static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
                                     const int64_t batch_size,
                                     const int64_t input_size,
@@ -181,7 +102,8 @@ void ReverseSequenceImpl(gsl::span<const T> inputs,
 #endif
     for (int j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
+      gsl::span<T> dest = inputs_reverse.subspan(
+          reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
 
       // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
       gsl::copy(src, dest);
@@ -223,14 +145,6 @@ static Status ReverseSequence(OpKernelContext& context, bool time_major) {
 
   ReverseSequenceImpl(X.DataAsSpan<T>(), Y.MutableDataAsSpan<T>(), seq_lengths.DataAsSpan<int>(),
                       max_seq_len, batch_size, input_size, time_major);
-
-  //if (time_major) {
-  //  ReverseSequenceImplTimeMajor(X.DataAsSpan<T>(), Y.MutableDataAsSpan<T>(), seq_lengths.DataAsSpan<int>(),
-  //                               max_seq_len, batch_size, input_size);
-  //} else {
-  //  ReverseSequenceImplBatchMajor(X.DataAsSpan<T>(), Y.MutableDataAsSpan<T>(), seq_lengths.DataAsSpan<int>(),
-  //                                max_seq_len, batch_size, input_size);
-  //}
 
   return Status::OK();
 }

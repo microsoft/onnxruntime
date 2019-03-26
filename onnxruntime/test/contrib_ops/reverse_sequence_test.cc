@@ -15,7 +15,6 @@ TEST(ReverseSequenceTest, BatchMajor) {
   std::vector<int64_t> expected_output = {3, 2, 1, 0,
                                           6, 5, 4, 7};
 
-  // test.AddAttribute("data_format", "batch_major");
   test.AddAttribute("batch_axis", int64_t(0));
   test.AddAttribute("seq_axis", int64_t(1));
 
@@ -38,7 +37,6 @@ TEST(ReverseSequenceTest, TimeMajor) {
                                           1, 4,
                                           0, 7};
 
-  // test.AddAttribute("data_format", "time_major");
   test.AddAttribute("batch_axis", int64_t(1));
   test.AddAttribute("seq_axis", int64_t(0));
 
@@ -61,7 +59,6 @@ TEST(ReverseSequenceTest, Strings) {
                                               "1", "4 string longer than 16 chars that requires its own buffer",
                                               "0", "7"};
 
-  // test.AddAttribute("data_format", "time_major");
   test.AddAttribute("batch_axis", int64_t(1));
   test.AddAttribute("seq_axis", int64_t(0));
 
@@ -75,7 +72,7 @@ TEST(ReverseSequenceTest, InvalidInput) {
   {
     int64_t batch_size = 2, seq_size = 4;
 
-    // Bad axis valus
+    // Bad axis values
     auto check_bad_axis = [&](int64_t batch_dim, int64_t seq_dim,
                               const std::vector<int64_t>& input_shape,
                               const std::string err_msg) {
@@ -109,7 +106,6 @@ TEST(ReverseSequenceTest, InvalidInput) {
     std::vector<int64_t> expected_output = {3, 2, 1, 0,
                                             6, 5, 4, 7};
 
-    // test.AddAttribute("data_format", "batch_major");
     test.AddAttribute("batch_axis", int64_t(0));
     test.AddAttribute("seq_axis", int64_t(1));
 

@@ -13,17 +13,6 @@ namespace contrib {
 class ReverseSequenceOp : public OpKernel {
  public:
   explicit ReverseSequenceOp(const OpKernelInfo& info) : OpKernel(info) {
-    //std::string data_format;
-    //ORT_ENFORCE(info.GetAttr<std::string>("data_format", &data_format).IsOK());
-
-    //if (data_format == "time_major")
-    //  time_major_ = true;
-    //else if (data_format == "batch_major")
-    //  time_major_ = false;
-    //else
-    //  ORT_THROW("Invalid 'data_format' argument of '", data_format,
-    //            "'. Must be one of 'time_major' or 'batch_major'.");
-
     int64_t batch_axis, seq_axis;
     ORT_ENFORCE(info.GetAttr<int64_t>("batch_axis", &batch_axis).IsOK());
     ORT_ENFORCE(info.GetAttr<int64_t>("seq_axis", &seq_axis).IsOK());

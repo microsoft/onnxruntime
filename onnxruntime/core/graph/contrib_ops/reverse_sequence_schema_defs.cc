@@ -31,7 +31,8 @@ Example 1:
            [2.0, 6.0, 10.0, 14.0],
            [3.0, 7.0, 11.0, 15.0]]
   sequence_lens = [4, 3, 2, 1]
-  data_format = "time_major"
+  seq_axis = 0
+  batch_axis = 1
 
   output = [[3.0, 6.0, 9.0,  12.0],
             [2.0, 5.0, 8.0,  13.0],
@@ -44,17 +45,13 @@ Example 2:
            [8.0,  9.0,  10.0, 11.0],
            [12.0, 13.0, 14.0, 15.0]]
   sequence_lens = [1, 2, 3, 4]
-  data_format = "batch_major"
+  batch_axis = 0
+  seq_axis = 1
 
   output = [[0.0,  1.0,  2.0,  3.0 ],
             [5.0,  4.0,  6.0,  7.0 ],
             [10.0, 9.0,  8.0,  11.0],
             [15.0, 14.0, 13.0, 12.0]]
-)DOC";
-
-static const char* Input_Data_Format_ver1_doc = R"DOC(
-(Optional) Specify if the input data format is time major (e.g. [seq_length, batch_size, ...]),
-or batch major (e.g. [batch_size, seq_length, ...]). Must be one of time_major (default), or batch_major.
 )DOC";
 
 void ReverseSequenceShapeInference(InferenceContext& ctx) {
@@ -69,7 +66,6 @@ void ReverseSequenceShapeInference(InferenceContext& ctx) {
     fail_shape_inference("First input tensor must have rank >= 2");
   }
 
-  // auto data_format = getAttribute(ctx, "data_format", "time_major");
   int seq_axis = static_cast<int>(getAttribute(ctx, "seq_axis", 0));
   int batch_axis = static_cast<int>(getAttribute(ctx, "batch_axis", 1));
 
@@ -82,12 +78,6 @@ void ReverseSequenceShapeInference(InferenceContext& ctx) {
   if (seq_axis == batch_axis)
     fail_shape_inference("seq_axis and batch_axis must have different values but both are ", seq_axis);
 
-  // TensorShapeProto::Dimension batch_size;
-  //if (data_format == "time_major") {
-  //  batch_size = first_input_shape.dim(1);
-  //} else {
-  //  batch_size = first_input_shape.dim(0);
-  //}
   TensorShapeProto::Dimension batch_dim = first_input_shape.dim(batch_axis);
 
   if (batch_dim.has_dim_value()) {
@@ -119,14 +109,12 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
           "T1", {"tensor(int32)"}, "Constrain sequence_lens to integer tensor.")
       .Attr(
           "seq_axis",
-          "The axis containing the sequence dimension. Can be 0 or 1.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+          "The axis containing the sequence dimension.",
+          AttributeProto::INT)
       .Attr(
           "batch_axis",
-          "The axis containing the batch dimension. Can be 0 or 1.",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
+          "The axis containing the batch dimension.",
+          AttributeProto::INT)
       .Input(
           0,
           "input",
