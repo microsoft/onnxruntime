@@ -68,13 +68,12 @@ ConstEigenTensorMap<T, rank> buffer_as_const_eigen_tensor(const T* buffer, const
 
 Status handle_scalar_tensor(const Tensor* input_tensor, Tensor* output_tensor, const MLDataType& dtype) {
   // for scalar tensors, "reversing" is just copying the input buffer to the output buffer
- 
+
   // string scalar
   if (dtype == DataTypeImpl::GetType<std::string>()) {
     const std::string* src = input_tensor->template Data<std::string>();
     std::string* dst = output_tensor->template MutableData<std::string>();
-    if (src != dst)
-      std::copy(src, src + 1, dst);
+    dst[0] = src[0];
     return Status::OK();
   }
 
@@ -82,7 +81,7 @@ Status handle_scalar_tensor(const Tensor* input_tensor, Tensor* output_tensor, c
   if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
     const auto* src = input_tensor->Data<MLFloat16>();
     auto* dst = output_tensor->template MutableData<MLFloat16>();
-    dst[0] = MLFloat16(math::floatToHalf(math::halfToFloat(src[0].val)));
+    dst[0] = src[0];
     return Status::OK();
   }
 
@@ -90,7 +89,7 @@ Status handle_scalar_tensor(const Tensor* input_tensor, Tensor* output_tensor, c
   if (dtype == DataTypeImpl::GetType<BFloat16>()) {
     const auto* src = input_tensor->Data<BFloat16>();
     auto* dst = output_tensor->template MutableData<BFloat16>();
-    dst[0] = BFloat16(src[0].ToFloat());
+    dst[0] = src[0];
     return Status::OK();
   }
 
