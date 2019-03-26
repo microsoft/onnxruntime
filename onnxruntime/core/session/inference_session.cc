@@ -1010,7 +1010,7 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
+                                                 std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
