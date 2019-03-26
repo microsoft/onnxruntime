@@ -74,30 +74,30 @@ Status handle_scalar_tensor(const Tensor* input_tensor, Tensor* output_tensor, c
     const std::string* src = input_tensor->template Data<std::string>();
     std::string* dst = output_tensor->template MutableData<std::string>();
     dst[0] = src[0];
-    return Status::OK();
   }
 
   // MLFLoat16 scalar
-  if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
+  else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
     const auto* src = input_tensor->Data<MLFloat16>();
     auto* dst = output_tensor->template MutableData<MLFloat16>();
     dst[0] = src[0];
-    return Status::OK();
   }
 
   // BFLoat16 scalar
-  if (dtype == DataTypeImpl::GetType<BFloat16>()) {
+  else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
     const auto* src = input_tensor->Data<BFloat16>();
     auto* dst = output_tensor->template MutableData<BFloat16>();
     dst[0] = src[0];
-    return Status::OK();
   }
 
   // non-string and non-float16 scalars - just copy the raw bytes
-  const void* src = input_tensor->DataRaw(dtype);
-  void* dst = output_tensor->MutableDataRaw(dtype);
-  if (src != dst)
-    memcpy(dst, src, 1 * dtype->Size());
+  else
+  {
+    const void* src = input_tensor->DataRaw(dtype);
+    void* dst = output_tensor->MutableDataRaw(dtype);
+    if (src != dst)
+      memcpy(dst, src, dtype->Size());
+  }
 
   return Status::OK();
 }
