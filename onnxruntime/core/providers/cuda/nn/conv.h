@@ -31,7 +31,7 @@ class CudnnConvolutionDescriptor final {
 };
 
 // cached cudnn descriptors
-template <typename AlgoType>
+template <typename AlgoPerfType>
 struct CudnnConvState {
   // if x/w dims changed, update algo and cudnnTensors
   std::vector<int64_t> last_x_dims;
@@ -40,12 +40,15 @@ struct CudnnConvState {
   // these would be recomputed if x/w dims change
   std::vector<int64_t> y_dims;
   size_t workspace_bytes;
-  AlgoType algo;
+  decltype(AlgoPerfType().algo) algo;
   CudnnTensor x_tensor;
   CudnnFilterDescriptor filter_desc;
   CudnnTensor b_tensor;
   CudnnTensor y_tensor;
   CudnnConvolutionDescriptor conv_desc;
+
+  using input_shapes = std::pair<std::vector<int64_t>, std::vector<int64_t>>;
+  std::map<input_shapes, AlgoPerfType> cached_benchmark_results;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
@@ -70,7 +73,7 @@ class Conv : public CudaKernel, public ConvBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  mutable CudnnConvState<cudnnConvolutionFwdAlgo_t> s_;
+  mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
 };
 
 }  // namespace cuda

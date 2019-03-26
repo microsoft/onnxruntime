@@ -67,8 +67,6 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
 
-      IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
-
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
         ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
@@ -83,26 +81,35 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
 
       y_data = reinterpret_cast<CudaT*>(p.Y->template MutableData<T>());
 
-      // set math type to tensor core before algorithm search
-      if (std::is_same<T, MLFloat16>::value)
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+      auto input_shapes = std::make_pair(x_dims, w_dims);
+      auto it = s_.cached_benchmark_results.find(input_shapes);
+      if (it == s_.cached_benchmark_results.end()) {
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
 
-      cudnnConvolutionBwdDataAlgoPerf_t perf;
-      int algo_count = 1;
-      CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
-          CudnnHandle(),
-          s_.filter_desc,
-          w_data,
-          s_.x_tensor,
-          x_data,
-          s_.conv_desc,
-          s_.y_tensor,
-          y_data,
-          1,
-          &algo_count,
-          &perf,
-          algo_search_workspace.get(),
-          AlgoSearchWorkspaceSize));
+        // set math type to tensor core before algorithm search
+        if (std::is_same<T, MLFloat16>::value)
+          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+
+        cudnnConvolutionBwdDataAlgoPerf_t perf;
+        int algo_count = 1;
+        CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
+            CudnnHandle(),
+            s_.filter_desc,
+            w_data,
+            s_.x_tensor,
+            x_data,
+            s_.conv_desc,
+            s_.y_tensor,
+            y_data,
+            1,
+            &algo_count,
+            &perf,
+            algo_search_workspace.get(),
+            AlgoSearchWorkspaceSize));
+        it = s_.cached_benchmark_results.insert({input_shapes, perf}).first;
+      }
+
+      const auto& perf = it->second;
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
