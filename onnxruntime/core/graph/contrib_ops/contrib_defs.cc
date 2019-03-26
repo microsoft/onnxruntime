@@ -1160,9 +1160,14 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
           static_cast<int64_t>(0))
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        propagateShapeFromInputToOutput(ctx, 0, 0);
+        if (hasInputShape(ctx, 0)) {
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
+
         propagateElemTypeFromInputToOutput(ctx, 1, 1);
-        propagateShapeFromInputToOutput(ctx, 1, 1);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 1);
+        }
 
         if (ctx.getNumOutputs() > 2) {
           auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
