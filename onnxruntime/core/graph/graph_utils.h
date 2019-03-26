@@ -14,7 +14,9 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain = kOnnxDomainAlias);
 
-/* Checks whether execution provider assigned to current node is present in the compatible providers list*/
+/* Returns true if the execution provider assigned to current node is present in the compatible providers list
+ * or if the compatible_providers list is empty
+ */
 bool IsSupportedProvider(const Node& node,
                          const std::vector<std::string>& compatible_providers);
 
