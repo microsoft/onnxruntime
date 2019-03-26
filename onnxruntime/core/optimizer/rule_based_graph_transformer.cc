@@ -26,9 +26,7 @@ Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
   return Status::OK();
 }
 
-Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified,
-                                              const std::vector<std::string>& compatible_provider_types, 
-                                              int graph_level) const {
+Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -38,7 +36,7 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified,
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
 
-    if (!graph_utils::IsSupportedProvider(*node, compatible_provider_types)) {
+    if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
@@ -48,7 +46,7 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified,
     ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, GetRewriteRules(), modified, deleted));
 
     if (!deleted) {
-      ORT_RETURN_IF_ERROR(Recurse(*node, modified, compatible_provider_types, graph_level));
+      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
     }
   }
 

@@ -54,7 +54,7 @@ class TransformerMemcpyImpl {
 
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
-common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, const std::vector<std::string>& compatible_provider_types, int graph_level) const {
+common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   for (auto& provider : provider_types_) {
     if (provider != onnxruntime::kCpuExecutionProvider &&
         provider != onnxruntime::kMklDnnExecutionProvider &&
@@ -74,7 +74,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, const 
 
   // handle any subgraphs in nodes
   for (auto& node : graph.Nodes()) {
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
   }
 
   return Status::OK();

@@ -43,10 +43,9 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 }
 
 bool IsSupportedProvider(const Node& node,
-                         const std::vector<std::string>& compatible_providers) {
+                         const std::unordered_set<std::string>& compatible_providers) {
   if (!compatible_providers.empty() && 
-      std::find(compatible_providers.cbegin(), compatible_providers.cend(), 
-          node.GetExecutionProviderType()) == compatible_providers.cend()) {
+      compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end()) {
     return false;
   }
   

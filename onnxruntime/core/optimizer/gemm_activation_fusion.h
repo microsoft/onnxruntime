@@ -12,8 +12,7 @@ class GemmActivationFusion : public onnxruntime::GraphTransformer {
   GemmActivationFusion() noexcept
       : onnxruntime::GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm") {}
 
-  Status ApplyImpl(Graph& graph, bool& modified, 
-                   const std::vector<std::string>& compatible_provider_types, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

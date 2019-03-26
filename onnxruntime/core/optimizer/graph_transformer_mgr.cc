@@ -18,8 +18,7 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
     bool graph_changed = false;
     for (const auto& transformer : transformers->second) {
       bool modified = false;
-      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, 
-                                             GetProvidersForTransformer(transformer->Name())));
+      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified));
       graph_changed = graph_changed || modified;
     }
     if (!graph_changed) {
@@ -30,18 +29,15 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   return Status::OK();
 }
 
-common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, 
-                                                 TransformerLevel level, 
-                                                 const std::vector<std::string>& providers) {
+common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,
+                                                 TransformerLevel level, const std::vector<std::string>& provider){ 
   const auto& name = transformer->Name();
   if (transformers_info_.find(name) != transformers_info_.end()) {
     return Status(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
   }
 
-  TransformerInfo transformer_info{level, providers, transformer.get()};
-  transformers_info_[name] = std::move(transformer_info);
+  transformers_info_[name] = transformer.get();
   level_to_transformer_map_[level].push_back(std::move(transformer));
   return Status::OK();
 }
-
 }  // namespace onnxruntime

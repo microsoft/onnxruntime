@@ -37,20 +37,18 @@ void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_gemm) {
 
 }  // namespace
 
-Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, 
-                                       const std::vector<std::string>& compatible_provider_types, 
-                                       int graph_level) const {
+Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto& node = *graph.GetNode(index);
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 7) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 9)) ||
-        !graph_utils::IsSupportedProvider(node, compatible_provider_types) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
     }

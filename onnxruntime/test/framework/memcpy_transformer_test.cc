@@ -102,7 +102,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, {onnxruntime::kCudaExecutionProvider});
+  status = transformer.Apply(graph, modified);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -148,7 +148,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, {onnxruntime::kCudaExecutionProvider});
+  status = transformer.Apply(graph, modified);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 

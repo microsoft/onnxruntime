@@ -9,19 +9,17 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status UnsqueezeElimination::ApplyImpl(Graph& graph, bool& modified, 
-                                       const std::vector<std::string>& compatible_provider_types, 
-                                       int graph_level) const {
+Status UnsqueezeElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
 
   std::vector<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto& node : graph.Nodes()) {
     // recurse first as there are early exits in the processing here
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (node.OpType() != "Unsqueeze" || 
         node.GetInputEdgesCount() != 0 || 
-        !graph_utils::IsSupportedProvider(node, compatible_provider_types) || 
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || 
         graph.IsNodeOutputsInGraphOutputs(node)) {
       continue;
     }

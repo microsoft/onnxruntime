@@ -18,7 +18,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
  * or if the compatible_providers list is empty
  */
 bool IsSupportedProvider(const Node& node,
-                         const std::vector<std::string>& compatible_providers);
+                         const std::unordered_set<std::string>& compatible_providers);
 
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);

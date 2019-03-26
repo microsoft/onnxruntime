@@ -20,9 +20,7 @@ class DummyGraphTransformer : public GraphTransformer {
  private:
   mutable bool transformer_invoked_;
 
-  Status ApplyImpl(Graph& /*graph*/, bool& /*modified*/,
-                   const std::vector<std::string>& /*complatible_provider_types*/,
-                   int /*graph_level*/) const override {
+  Status ApplyImpl(Graph& /*graph*/, bool& /*modified*/, int /*graph_level*/) const override {
     transformer_invoked_ = true;
     return Status::OK();
   }  

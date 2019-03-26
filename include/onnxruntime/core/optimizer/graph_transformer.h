@@ -32,22 +32,24 @@ class GraphTransformer {
     return desc_;
   }
 
+  const std::unordered_set<std::string>& GetCompatibleExecutionProviders() const noexcept {
+    return compatible_provider_types_;
+  }
+
   /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
   @param[in] compatible_provider_types Optional - providers this transformer can be applied to
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  common::Status Apply(Graph& graph, bool& modified,
-                       const std::vector<std::string>& compatible_provider_types = {}) const;
+  common::Status Apply(Graph& graph, bool& modified) const;
 
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
-  common::Status Recurse(Node& node, bool& modified,
-                         const std::vector<std::string>& compatible_provider_types, int graph_level) const {
+  common::Status Recurse(Node& node, bool& modified, int graph_level) const {
     int subgraph_level = ++graph_level;
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& subgraph = *entry.second;
-      ORT_RETURN_IF_ERROR(ApplyImpl(subgraph, modified, compatible_provider_types, subgraph_level));
+      ORT_RETURN_IF_ERROR(ApplyImpl(subgraph, modified, subgraph_level));
     }
 
     return Status::OK();
@@ -64,11 +66,10 @@ class GraphTransformer {
   // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases
   // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
   // completes (if 'modified' is true) should suffice.
-  virtual common::Status ApplyImpl(Graph& graph, bool& modified,
-                                   const std::vector<std::string>& complatible_provider_types,
-                                   int graph_level = 0) const = 0;
+  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level = 0) const = 0;
 
   const std::string name_;
   const std::string desc_;
+  const std::unordered_set<std::string> compatible_provider_types_;
 };
 }  // namespace onnxruntime

@@ -10,20 +10,18 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, 
-                                  const std::vector<std::string>& compatible_provider_types, 
-                                  int graph_level) const {
+Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 1) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 9)) ||
-        !graph_utils::IsSupportedProvider(node, compatible_provider_types) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
     }

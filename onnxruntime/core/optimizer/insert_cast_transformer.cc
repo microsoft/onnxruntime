@@ -98,9 +98,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, 
-                   const std::vector<std::string>& compatible_provider_types, 
-                   int graph_level) const override {
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
 
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     std::vector<onnxruntime::NodeIndex> removed_nodes;
@@ -145,7 +143,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         }
       }
 
-      ORT_RETURN_IF_ERROR(Recurse(node, modified, compatible_provider_types, graph_level));
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
     }
 
     for (auto i : removed_nodes) {
@@ -157,9 +155,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 };
 
-Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, 
-                                        const std::vector<std::string>& compatible_provider_types, 
-                                        int graph_level) const {
+Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const {
 
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
@@ -231,7 +227,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     node->ReplaceDefs(replacement_defs);
     modified = modified || casted;
 
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, compatible_provider_types, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
   }
 
   auto status = Status::OK();

@@ -11,8 +11,7 @@ class ConvMulFusion : public onnxruntime::GraphTransformer {
   ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion", "Fusing Mul into Conv") {}
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, 
-                   const std::vector<std::string>& provider_types, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime
