@@ -48,11 +48,13 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 7) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 9)) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
     const Node& next_node = *(node.OutputNodesBegin());
-    if (!IsFusableActivation(next_node)) {
+    if (!IsFusableActivation(next_node) ||
+        next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
 
@@ -70,6 +72,9 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     //Add a new attribute to specify the activation type
     fused_gemm.AddAttribute("activation", act_node.OpType());
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    fused_gemm.SetExecutionProviderType(gemm_node.GetExecutionProviderType());
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {

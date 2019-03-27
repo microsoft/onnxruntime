@@ -31,6 +31,8 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/optimizer/dummy_graph_transformer.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 #include "gtest/gtest.h"
 
@@ -1346,66 +1348,50 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   run_test(run_number++);
 }
 
-TEST(InferenceSessionTests, TestL1Transformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";  
+// This test validates the RegisterTransformer API
+// It creates and registers a dummy transformer and after session initialize
+// validates that this transformer was called regardless of the graph optimization level set.
+TEST(InferenceSessionTests, TestRegisterTransformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1Transformers";
-  so.graph_optimization_level = TransformerLevel::Level1;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = static_cast<TransformerLevel>(i);
+    InferenceSession session_object{so, &DefaultLoggingManager()};
 
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+    // Create and register dummy graph transformer
+    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
+    session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
 
-  Status st = session_object.Initialize();
-  ASSERT_TRUE(st.IsOK()) << st;
+    session_object.Load(model_uri);
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+
+    // Validate transformer was called after Session.Initialize
+    ASSERT_TRUE(dummy_transformer->IsTransformerInvoked());
+  }
 }
 
+// This test validates session initialize is successful when all the pre-defined
+// L1 and L2 transformers are enabled.
 TEST(InferenceSessionTests, TestL1AndL2Transformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  // Models which cover all transformers.
+  std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
+                                              "testdata/transform/abs-id-max.onnx",
+                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/matmul_add_fusion/2Input/model.onnx",
+                                              "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
+                                              "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
 
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = TransformerLevel::Level2;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());  
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-}
-
-TEST(InferenceSessionTests, TestCustomTransformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = TransformerLevel::Level2;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"});
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-}
-
-TEST(InferenceSessionTests, DisableAllTransformers) {  
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.DisableAllTransformers";
-  so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  for (const auto& model_uri : test_model_uris) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = TransformerLevel::Level2;
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+    ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+  }
 }
 
 }  // namespace test

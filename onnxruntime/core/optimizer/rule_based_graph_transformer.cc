@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ::onnxruntime::common;
 
@@ -33,6 +34,10 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     auto* node = graph.GetNode(i);
     if (!node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+    }
+
+    if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
+      continue;
     }
 
     // Apply rewrite rules on current node, then recursively apply rules to subgraphs (if any).
