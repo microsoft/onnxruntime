@@ -5,6 +5,7 @@
 #include "core/platform/env.h"
 #include "onnx_protobuf.h"
 #include <google/protobuf/text_format.h>
+#include <fstream>
 #include "test_fixture.h"
 #include "file_util.h"
 namespace onnxruntime {
@@ -167,6 +168,27 @@ TEST_F(CApiTest, model_with_external_data) {
   std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
   OrtSession* session;
   auto st = ::OrtCreateSession(env, model_url.c_str(), so.get(), &session);
+  ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
+  OrtReleaseStatus(st);
+  ::OrtReleaseSession(session);
+}
+
+TEST_F(CApiTest, model_from_array) {
+  const char* model_path = "testdata/matmul_1.pb";
+  std::vector<char> buffer;
+  {
+      std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+      if (!file)
+          throw std::runtime_error("Error reading model");
+      buffer.resize(file.tellg());
+      file.seekg(0, std::ios::beg);
+      if (!file.read(buffer.data(), buffer.size()))
+          throw std::runtime_error("Error reading model");
+  }
+
+  std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
+  OrtSession* session;
+  auto st = ::OrtCreateSessionFromArray(env, buffer.data(), static_cast<int>(buffer.size()), so.get(), &session);
   ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
   OrtReleaseStatus(st);
   ::OrtReleaseSession(session);

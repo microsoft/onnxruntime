@@ -364,34 +364,55 @@ ORT_API_STATUS_IMPL(OrtAddCustomOpDomain, _In_ OrtSessionOptions* options, OrtCu
   API_IMPL_END
 }
 
+namespace {
+  template <typename Loader>
+  OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+                               Loader loader, _Out_ OrtSession** out) {
+    auto sess = std::make_unique<::onnxruntime::InferenceSession>(
+        options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
+    Status status;
+    if (options != nullptr) {
+      if (!options->custom_op_domains_.empty()) {
+        status = sess->AddCustomOpDomains(options->custom_op_domains_);
+        if (!status.IsOK())
+          return ToOrtStatus(status);
+      }
+    }
+
+    if (options != nullptr)
+      for (auto& factory : options->provider_factories) {
+        auto provider = factory->CreateProvider();
+        if (provider)
+          sess->RegisterExecutionProvider(std::move(provider));
+      }
+    status = loader(*sess);
+    if (!status.IsOK())
+      return ToOrtStatus(status);
+    status = sess->Initialize();
+    if (!status.IsOK())
+      return ToOrtStatus(status);
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+    return nullptr;
+  }
+}
+
 ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  auto sess = std::make_unique<::onnxruntime::InferenceSession>(
-      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
-  Status status;
-  if (options != nullptr) {
-    if (!options->custom_op_domains_.empty()) {
-      status = sess->AddCustomOpDomains(options->custom_op_domains_);
-      if (!status.IsOK())
-        return ToOrtStatus(status);
-    }
-  }
+  const auto loader = [model_path](InferenceSession& sess) {
+    return sess.Load(model_path);
+  };
+  return CreateSessionImpl(env, options, loader, out);
+  API_IMPL_END
+}
 
-  if (options != nullptr)
-    for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
-      if (provider)
-        sess->RegisterExecutionProvider(std::move(provider));
-    }
-  status = sess->Load(model_path);
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-  status = sess->Initialize();
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-  *out = reinterpret_cast<OrtSession*>(sess.release());
-  return nullptr;
+ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
+                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
+  API_IMPL_BEGIN
+  const auto loader = [model_data, model_data_len](InferenceSession& sess) {
+    return sess.Load(model_data, model_data_len);
+  };
+  return CreateSessionImpl(env, options, loader, out);
   API_IMPL_END
 }
 

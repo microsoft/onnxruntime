@@ -17,6 +17,7 @@ OrtCreateEnv
 OrtCreateEnvWithCustomLogger
 OrtCreateRunOptions
 OrtCreateSession
+OrtCreateSessionFromArray
 OrtCreateSessionOptions
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo

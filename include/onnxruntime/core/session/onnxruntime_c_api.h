@@ -185,8 +185,10 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory
 // and continue to access throughout the OrtSession lifetime?
 //  What sort of access is needed to model_path : read or read/write?
-// TODO:  allow loading from an in-memory byte-array
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
+
+ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
