@@ -23,6 +23,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
+      rules.push_back(std::make_unique<ConstantFolding>());
       break;
 
     case TransformerLevel::Level2:
@@ -56,7 +57,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
       std::make_unique<RuleBasedGraphTransformer>(transformer_utils::GenerateRuleBasedTransformerName(level),
-                                                  "Apply rewrite rules for Level" +
+                                                  "Apply rewrite rules for Level" + 
                                                       std::to_string(static_cast<uint32_t>(level)),
                                                   compatible_execution_providers);
   for (auto& entry : rewrite_rules_to_register) {
@@ -67,11 +68,11 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
-                                                         std::vector<std::string>* transformers_and_rules_to_enable) {
-  std::vector<std::unique_ptr<GraphTransformer>> transformers;  
+                                                                    std::vector<std::string>* transformers_and_rules_to_enable) {
+  std::vector<std::unique_ptr<GraphTransformer>> transformers;
 
   // Generate rule-based transformer.
-  bool non_empty_rule_transformer = false;  
+  bool non_empty_rule_transformer = false;
 
   switch (level) {
     case TransformerLevel::Level1: {
@@ -93,7 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       if (rule_transformer) {
         transformers.emplace_back(std::move(rule_transformer));
         non_empty_rule_transformer = true;
-      }      
+      }
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvAddFusion>());

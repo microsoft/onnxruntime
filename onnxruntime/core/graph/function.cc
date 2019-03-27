@@ -7,20 +7,16 @@
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
-void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
+// Auto inferred and generate an opschema for stand-alone functions
+// TODO: revisit to see if we can eliminate typeconstraint step
+void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
                           std::unique_ptr<ONNX_NAMESPACE::OpSchema>& op_schema_,
-                          /*out*/
-                          std::unordered_map<std::string, int>& input_name_idx_map,
-                          std::unordered_map<std::string, int>& output_name_idx_map) {
+                          const std::unordered_map<std::string, int>& input_name_idx_map,
+                          const std::unordered_map<std::string, int>& output_name_idx_map) {
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto_->input_size());
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto_->output_size());
   std::unordered_map<std::string, std::vector<std::string>> type_constraint_map;
-  for (int i = 0; i < onnx_func_proto_->input_size(); ++i) {
-    input_name_idx_map[onnx_func_proto_->input().Get(i)] = i;
-  }
-  for (int i = 0; i < onnx_func_proto_->output_size(); ++i) {
-    output_name_idx_map[onnx_func_proto_->output().Get(i)] = i;
-  }
+  std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   for (auto& node : onnx_func_proto_->node()) {
     const auto node_op_schema = schema_registry->GetSchema(node.op_type(), (int)onnx_func_proto_->since_version(), node.domain());
@@ -54,6 +50,14 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
         }
       }
     }
+
+    // If an subgraph node attribute has a specified
+    // type attribute, we add its referenced attribute
+    // into the op's schema
+    for (auto& attr : node.attribute()) {
+      if (attr.has_ref_attr_name() && attr.has_type())
+        attribute_type_map[attr.ref_attr_name()] = attr.type();
+    }
   }
 
   int i = 0;
@@ -66,9 +70,14 @@ void TypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
     op_schema_->Output(i, output.first, "", output.second);
     ++i;
   }
-
+  
   for (auto& tc : type_constraint_map) {
     op_schema_->TypeConstraint(tc.first, tc.second, "");
+  }
+
+  for (auto& attribute_name : onnx_func_proto_->attribute()) {
+    if (attribute_type_map.count(attribute_name))
+      op_schema_->Attr(attribute_name, "", attribute_type_map[attribute_name], false);
   }
 }
 
@@ -142,16 +151,52 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->SinceVersion((ONNX_NAMESPACE::OperatorSetVersion)onnx_func_proto_->since_version());
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
-  TypeConstraintHelper(onnx_func_proto_, this->op_schema_, input_name_idx_map, output_name_idx_map);
+  for (int i = 0; i < onnx_func_proto_->input_size(); ++i) {
+    input_name_idx_map[onnx_func_proto_->input().Get(i)] = i;
+  }
+  for (int i = 0; i < onnx_func_proto_->output_size(); ++i) {
+    output_name_idx_map[onnx_func_proto_->output().Get(i)] = i;
+  }
 
-  op_schema_->TypeAndShapeInferenceFunction(
+  auto cached_op_schema = node_in_parent_graph->Op();
+  if (!cached_op_schema) {
+    // Infer a op_schema for stand-alone functions.
+    IOTypeConstraintHelper(onnx_func_proto_, this->op_schema_, input_name_idx_map, output_name_idx_map);
+  } else {
+    auto type_constraint_params = cached_op_schema->typeConstraintParams();
+    for (auto& type_constraint_param : type_constraint_params) {
+      op_schema_->TypeConstraint(
+        type_constraint_param.type_param_str, 
+        type_constraint_param.allowed_type_strs, 
+        type_constraint_param.description);
+    }
+    int i = 0;
+    for (auto& input : cached_op_schema->inputs()) {
+      op_schema_->Input(i, input.GetName(), input.GetDescription(), input.GetTypeStr());
+      ++i;
+    }
+    i = 0;
+    for (auto& output : cached_op_schema->outputs()) {
+      op_schema_->Output(i, output.GetName(), output.GetDescription(), output.GetTypeStr());
+      ++i;
+    }
+    for (auto& attribute : cached_op_schema->attributes()) {
+      op_schema_->Attr(attribute.second);
+    }
+  }
+
+  if (!cached_op_schema || !cached_op_schema->has_type_and_shape_inference_function()) {
+    op_schema_->TypeAndShapeInferenceFunction(
       [this](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-        const ONNX_NAMESPACE::FunctionProto* func_ptr = this->GetFuncProto();
-        if (nullptr != func_ptr) {
-          ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*func_ptr, schema_registry, ctx);
-        }
-      });
+      auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+      const ONNX_NAMESPACE::FunctionProto* func_ptr = this->GetFuncProto();
+      if (nullptr != func_ptr) {
+        ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(func_ptr, schema_registry, ctx);
+      }
+    });
+  } else {
+    op_schema_->TypeAndShapeInferenceFunction(cached_op_schema->GetTypeAndShapeInferenceFunction());
+  }
 
   op_schema_->Finalize();
   //construct body
