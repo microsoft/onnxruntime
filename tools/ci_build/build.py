@@ -740,7 +740,7 @@ def main():
         if args.build_wheel:
             build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt)
     
-    if args.gen_doc:
+    if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
 
     log.info("Build complete")
