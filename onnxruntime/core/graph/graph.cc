@@ -870,7 +870,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   if (nullptr == dst_arg) {
     ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
-  
+
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
   nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
@@ -1981,7 +1981,7 @@ Node& Graph::AddNode(const Node& other) {
 
 Node& Graph::AddNode(const NodeProto& node_proto,
                      const ArgNameToTypeMap& name_to_type_map,
-	                 TypeToCountMap& type_to_count_map) {
+                     TypeToCountMap& type_to_count_map) {
   auto input_defs = CreateNodeArgs(node_proto.input(), name_to_type_map);
   auto output_defs = CreateNodeArgs(node_proto.output(), name_to_type_map);
 
@@ -2003,8 +2003,8 @@ Node& Graph::AddNode(const NodeProto& node_proto,
 
   std::string node_name = node_proto.name();
   if (node_name.empty())
-    node_name = GenerateNodeName("unnamed_" + op_type + "_" + 
-		                         std::to_string(current_op_type_count));
+    node_name = GenerateNodeName("unnamed_" + op_type + "_" +
+                                 std::to_string(current_op_type_count));
 
   return AddNode(node_name,
                  node_proto.op_type(),
