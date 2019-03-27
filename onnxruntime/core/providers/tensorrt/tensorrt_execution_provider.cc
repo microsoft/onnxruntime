@@ -52,10 +52,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  for (const auto& index : node_index) {
-    const Node* node = graph.GetNode(index);
-    graph_build.AddNode(*node);
-  }
+  for (const auto& node : graph.Nodes()) {
+    graph_build.AddNode(node);
+  }  
   ORT_ENFORCE(graph_build.Resolve().IsOK());
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -78,7 +77,10 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
-      std::set<size_t> node_set(group.begin(), group.end());
+      std::set<size_t> node_set;
+      for (const auto& index : group) {
+        node_set.insert(node_index[index]);
+      }      
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -87,9 +89,9 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       int output_order = 0;
 
       for (const auto& index : group) {
-        supported_nodes_set.insert(index);
-        sub_graph->nodes.push_back(index);
-        const auto& node = graph.GetNode(index);
+        supported_nodes_set.insert(node_index[index]);
+        sub_graph->nodes.push_back(node_index[index]);
+        const auto& node = graph.GetNode(node_index[index]);
 
         for (const auto& input : node->InputDefs()) {
           const auto& it = fused_outputs.find(input);
@@ -110,10 +112,10 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         // to the output list
         if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
           for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-            const auto& node_index = it->GetNode().Index();
+            const auto& node_idx = it->GetNode().Index();
             const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
 
-            if (node_set.find(node_index) != node_set.end()) {
+            if (node_set.find(node_idx) != node_set.end()) {
               const auto& iter = fused_inputs.find(output);
 
               if (iter != fused_inputs.end()) {
