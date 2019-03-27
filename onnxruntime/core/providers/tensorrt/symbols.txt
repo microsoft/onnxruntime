@@ -1,1 +1,1 @@
-OrtCreateTensorrtExecutionProviderFactory
+OrtSessionOptionsAppendExecutionProvider_Tensorrt

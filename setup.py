@@ -52,11 +52,14 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
+version_number = ''
+with open('VERSION_NUMBER') as f:
+    version_number = f.readline().strip()
 
 # Setup
 setup(
     name=package_name,
-    version='0.3.0',
+    version=version_number,
     description='ONNX Runtime Python bindings',
     long_description=long_description,
     author='Microsoft Corporation',

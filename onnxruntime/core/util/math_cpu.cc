@@ -780,6 +780,26 @@ SPECIALIZED_REDUCEMAX(int64_t)
 
 #undef SPECIALIZED_REDUCEMAX
 
+#define SPECIALIZED_ROWWISESUM(T)                                 \
+  template <>                                                     \
+  void RowwiseSum<T, CPUMathUtil>(                                \
+      const int N, const int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, N) =                                     \
+        ConstEigenMatrixMap<T>(x, D, N).colwise().sum();          \
+  }
+SPECIALIZED_ROWWISESUM(float)
+#undef SPECIALIZED_ROWWISESUM
+
+#define SPECIALIZED_COLWISESUM(T)                                 \
+  template <>                                                     \
+  void ColwiseSum<T, CPUMathUtil>(                                \
+      const int N, const int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, D) =                                     \
+        ConstEigenMatrixMap<T>(x, D, N).rowwise().sum();          \
+  }
+SPECIALIZED_COLWISESUM(float)
+#undef SPECIALIZED_COLWISESUM
+
 #define SPECIALIZED_ROWWISEMAX(T)                                 \
   template <>                                                     \
   void RowwiseMax<T, CPUMathUtil>(                                \
