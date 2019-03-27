@@ -780,7 +780,8 @@ class Graph {
 
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
-                const ArgNameToTypeMap& name_to_type);
+                const ArgNameToTypeMap& name_to_type,
+	            TypeToCountMap& type_to_count_map);
 
   Version IrVersion() const noexcept {
     return ir_version_;

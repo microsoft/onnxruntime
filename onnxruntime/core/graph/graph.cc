@@ -618,6 +618,7 @@ Graph::Graph(GraphProto* graph_proto,
       parent_graph_{parent_graph} {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
+  TypeToCountMap type_to_count_map;
 
   // these are all empty unless we received a graph_proto as input
   if (graph_proto != nullptr) {
@@ -687,7 +688,7 @@ Graph::Graph(GraphProto* graph_proto,
     }
 
     for (auto node_proto : graph_proto_->node()) {
-      AddNode(node_proto, name_to_type_map);
+      AddNode(node_proto, name_to_type_map, type_to_count_map);
     }
   }
 }
@@ -1979,7 +1980,8 @@ Node& Graph::AddNode(const Node& other) {
 }
 
 Node& Graph::AddNode(const NodeProto& node_proto,
-                     const ArgNameToTypeMap& name_to_type_map) {
+                     const ArgNameToTypeMap& name_to_type_map,
+	                 TypeToCountMap& type_to_count_map) {
   auto input_defs = CreateNodeArgs(node_proto.input(), name_to_type_map);
   auto output_defs = CreateNodeArgs(node_proto.output(), name_to_type_map);
 
@@ -1992,7 +1994,19 @@ Node& Graph::AddNode(const NodeProto& node_proto,
     attributes[attr.name()] = attr;
   }
 
-  return AddNode(node_proto.name(),
+  size_t current_op_type_count;
+  const auto op_type = node_proto.op_type();
+  if (type_to_count_map.find(op_type) == type_to_count_map.end())
+    current_op_type_count = type_to_count_map[op_type] = 1;
+  else
+    current_op_type_count = ++type_to_count_map[op_type];
+
+  std::string node_name = node_proto.name();
+  if (node_name.empty())
+    node_name = GenerateNodeName("unnamed_" + op_type + "_" + 
+		                         std::to_string(current_op_type_count));
+
+  return AddNode(node_name,
                  node_proto.op_type(),
                  node_proto.doc_string(),
                  input_defs,
