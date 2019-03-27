@@ -13,7 +13,7 @@ Status InsertOutputTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modif
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     // TODO: refactor this as an registry style, when we have more pre-training transformation
-    if (!utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 8)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 8)) {
       continue;
     }
 
