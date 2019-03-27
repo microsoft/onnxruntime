@@ -9,6 +9,7 @@
 * Running a model with inputs. These inputs must be in CPU memory, not GPU. If the model has multiple outputs, user can specify which outputs they want.
 * Converting an in-memory ONNX Tensor encoded in protobuf format, to a pointer that can be used as model input.
 * Setting the thread pool size for each session.
+* Setting graph optimization level for each session.
 * Dynamically loading custom ops. [Instructions](/docs/AddingCustomOp.md)
 
 ## Usage Overview

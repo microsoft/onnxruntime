@@ -32,6 +32,13 @@ int main(int argc, char* argv[]) {
   OrtSessionOptions* session_option = OrtCreateSessionOptions();
   OrtSetSessionThreadPoolSize(session_option, 1);
 
+  // Sets graph optimization level
+  // Available levels are 
+  // 0 -> To disable all optimizations
+  // 1 -> To enable basic optimizations (Such as redundant node removals)
+  // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
+  OrtSetSessionGraphOptimizationLevel(session_option, 1);
+
   //*************************************************************************
   // create session and load model into memory
   // using squeezenet version 1.3

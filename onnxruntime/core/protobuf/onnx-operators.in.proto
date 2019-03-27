@@ -4,6 +4,7 @@
 syntax = "proto2";
 
 package {PACKAGE_NAME};
+
 // #if ONNX-ML
 import "onnx/onnx-ml.proto";
 // #else
@@ -44,7 +45,7 @@ import "onnx/onnx.proto";
 //   *since_version* is the version of the operator set that
 //      this operator was initially declared in.
 //
-message OperatorProto {  
+message OperatorProto {
 
   // The name of the operator within a domain.
   // This field MUST be present in this version of the IR.
@@ -124,7 +125,7 @@ message OperatorSetProto {
   // The operators specified by this operator set.
   // The (name, version) MUST be unique across all OperatorProtos in operator
   repeated OperatorProto operator = 8;
-  
+
   // The functions specified by this operator set.
   // The (name, version) MUST be unique across all OperatorProtos/FunctionProtos in operator/functions
   repeated FunctionProto functions = 9;

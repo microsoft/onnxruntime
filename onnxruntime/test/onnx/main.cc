@@ -32,7 +32,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda' or 'mkldnn'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'tensorrt'. Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -81,7 +81,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   bool enable_cuda = false;
   bool enable_mkl = false;
   bool enable_nuphar = false;
-  bool enable_trt = false;
+  bool enable_tensorrt = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
@@ -131,8 +131,8 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
             enable_mkl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("trt"))) {
-            enable_trt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+            enable_tensorrt = true;
           } else {
             usage();
             return -1;
@@ -188,6 +188,15 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
+    if (enable_tensorrt) {
+#ifdef USE_TENSORRT
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+#else
+      fprintf(stderr, "TensorRT is not supported in this build");
+      return -1;
+#endif
+    }
     if (enable_cuda) {
 #ifdef USE_CUDA
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
@@ -209,14 +218,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
-      return -1;
-#endif
-    }
-    if (enable_trt) {
-#ifdef USE_TRT
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_TRT(sf));
-#else
-      fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
 #endif
     }
@@ -249,7 +250,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
       {"constantofshape_float_ones", "test data bug"},
-      {"constantofshape_int_zeros", "test data bug"},      
+      {"constantofshape_int_zeros", "test data bug"},
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
       {"Linear", "disable reason"},
