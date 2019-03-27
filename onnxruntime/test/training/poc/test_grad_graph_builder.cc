@@ -11,7 +11,6 @@
 #include "core/training/training_optimizer.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
-#include "core/optimizer/insert_output_transformer.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
@@ -67,7 +66,6 @@ int main(int /*argc*/, char* /*args*/[]) {
   // Step 1: Load the model and generate gradient graph in a training session.
   SessionOptions so;
   TrainingSession training_session{so};
-  training_session.RegisterGraphTransformer(std::make_unique<InsertOutputTransformer>("insert_outputs"));
 
   // TODO: TERMINATE_IF_FAILED swallows some errors and messes up the call stack. Perhaps, find an alternative for debug mode ?
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));

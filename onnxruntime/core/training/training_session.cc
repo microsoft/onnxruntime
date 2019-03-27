@@ -18,7 +18,13 @@ static Status AddLossFuncionInternal(Graph& graph,
 
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
-                                         const std::vector<std::string>& node_arg_names_to_train) {
+                                         const std::vector<std::string>& node_arg_names_to_train,
+                                         const GraphTransformer* graph_transformer) {
+  if (graph_transformer) {
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(graph_transformer->Apply(graph, modified));
+  }
+
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
@@ -42,18 +48,13 @@ Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
 }
 
 Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
-  // TODO: maybe use a light weigth graph_transformation_mgr_ for just the pre-train
-  // transofomration
-  // Initialize also re-apply the transformation
-  //ORT_RETURN_IF_ERROR(
-  //pre_training_graph_transformation_mgr_.ApplyTransformers(model_->MainGraph(), TransformerLevel::Default);
-
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
-                                                 weights_to_train_));
+                                                 weights_to_train_,
+                                                 &pre_training_graph_transformer_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -90,7 +91,8 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    loss_func_info_.loss_name_,
-                                                   weights_to_train_));
+                                                   weights_to_train_,
+                                                   &pre_training_graph_transformer_));
   }
 
   return Model::Save(*new_model, model_uri);
