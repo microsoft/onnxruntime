@@ -65,11 +65,22 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
   }
   input_def->SetShape(shape);
 
-  // Replace the input of the nodes following the Unsqueeze node.
-  const NodeArg* output_def = node.OutputDefs()[0];
+  // Temporarily store Unsqueeze's output nodes, so that we can access them to update their input after we have
+  // removed the edges from unsqueeze to them.
+  std::vector<NodeIndex> output_nodes_idx;
   for (auto it = node.OutputNodesBegin(), end = node.OutputNodesEnd(); it != end; ++it) {
     auto output_node_idx = (*it).Index();
-    auto output_node = graph.GetNode(output_node_idx);
+    output_nodes_idx.push_back(output_node_idx);
+  }
+
+  // Remove output edges of the Unsqueeze node.
+  graph_utils::RemoveNodeOutputEdges(graph, node);
+
+  // Update the input of the nodes following the Unsqueeze node to point to Unsqueeze's initializer input.
+  const NodeArg* output_def = node.OutputDefs()[0];
+  for (auto idx : output_nodes_idx) {
+    auto output_node = graph.GetNode(idx);
+
     if (!output_node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
     }
@@ -80,9 +91,6 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
       }
     }
   }
-
-  // Remove output edges of the Unsqueeze node.
-  graph_utils::RemoveNodeOutputEdges(graph, node);
 
   // Remove the Unsqueeze node.
   graph.RemoveNode(node.Index());
