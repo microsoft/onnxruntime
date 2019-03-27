@@ -110,9 +110,9 @@ void TestInference(OrtEnv* env, T model_uri,
   std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> value_y(nullptr, OrtReleaseValue);
   {
     std::vector<OrtValue*> allocated_outputs(1);
-    std::vector<size_t> dims_y(expected_dims_y.size());
+    std::vector<int64_t> dims_y(expected_dims_y.size());
     for (size_t i = 0; i != expected_dims_y.size(); ++i) {
-      dims_y[i] = static_cast<size_t>(expected_dims_y[i]);
+      dims_y[i] = expected_dims_y[i];
     }
 
     allocated_outputs[0] =
@@ -227,7 +227,7 @@ struct MyCustomOp : OrtCustomOp {
 
 TEST_F(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
-  std::vector<size_t> dims_x = {3, 2};
+  std::vector<int64_t> dims_x = {3, 2};
   std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   // prepare expected inputs and outputs

@@ -796,7 +796,7 @@ OrtStatus* OrtGetValueImplSeqOfPrimitives(const MLValue* p_ml_value, int index, 
   using ElemType = typename T::value_type;
   auto& data = p_ml_value->Get<T>();
   auto& data_elem = data.at(index);
-  std::vector<size_t> dims = {1};
+  std::vector<int64_t> dims = {1};
   OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                             GetONNXTensorElementDataType<ElemType>(), out);
   return st ? st : PopulateTensorWithData<ElemType>(*out, &data_elem, 1);
@@ -830,7 +830,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
   using TKey = typename T::key_type;
   using TVal = typename T::mapped_type;
   auto& data = p_ml_value->Get<T>();
-  size_t num_kv_pairs = data.size();
+  int64_t num_kv_pairs = data.size();
   switch (index) {
     case 0: {  // user is requesting keys
       std::vector<TKey> vec;
@@ -838,7 +838,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       for (const auto& kv : data) {
         vec.push_back(kv.first);
       }
-      std::vector<size_t> dims{num_kv_pairs};
+      std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TKey>(), out);
       return st ? st : PopulateTensorWithData<TKey>(*out, vec.data(), num_kv_pairs);
@@ -849,7 +849,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       for (const auto& kv : data) {
         vec.push_back(kv.second);
       }
-      std::vector<size_t> dims{num_kv_pairs};
+      std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TVal>(), out);
       return st ? st : PopulateTensorWithData<TVal>(*out, vec.data(), num_kv_pairs);
