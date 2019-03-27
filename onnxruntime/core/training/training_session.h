@@ -16,8 +16,8 @@ class TrainingSession : public InferenceSession {
  public:
   explicit TrainingSession(const SessionOptions& session_options,
                            logging::LoggingManager* logging_manager = nullptr)
-      : pre_training_graph_transformer_("pre_training_graph_transformer", ""),
-        InferenceSession(session_options, logging_manager) {
+      : InferenceSession(session_options, logging_manager),
+        pre_training_graph_transformer_{"pre_training_graph_transformer", ""} {
     pre_training_graph_transformer_.Register(std::make_unique<InsertMaxPoolOutput>());
   }
 

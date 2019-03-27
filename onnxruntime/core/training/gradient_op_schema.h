@@ -31,6 +31,10 @@ class GradOpSchema {
 
   ~GradOpSchema() = default;
 
+  GradOpSchema& SinceVersion(ONNX_NAMESPACE::OperatorSetVersion v);
+
+  GradOpSchema& SetSupportLevel(ONNX_NAMESPACE::OpSchema::SupportType supportType);
+
   /**
    * @brief A single input.
    */
@@ -136,7 +140,9 @@ class GradOpSchemaRegisterOnce final {
   ONNX_GRADIENT_OPERATOR_SCHEMA_UNIQ(Counter, name)
 #define ONNX_GRADIENT_OPERATOR_SCHEMA_UNIQ(Counter, name)                               \
   static GradOpSchemaRegisterOnce(op_schema_register_once##name##Counter) ONNX_UNUSED = \
-      GradOpSchema(#name, __FILE__, __LINE__)
+      GradOpSchema(#name, __FILE__, __LINE__)                                           \
+          .SinceVersion(GRADIENT_OP_VERSION)                                            \
+          .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
 
 }  // namespace training
 }  // namespace onnxruntime

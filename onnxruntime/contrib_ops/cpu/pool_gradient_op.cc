@@ -2,14 +2,8 @@
 // Licensed under the MIT License.
 
 #include "pool_gradient_op.h"
-#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
-#include <unsupported/Eigen/SpecialFunctions>
-#include "core/util/math.h"
-#include "core/providers/cpu/math/matmul_helper.h"
-#include "gsl/gsl_algorithm"
-#include "gsl/gsl_util"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,8 +18,7 @@ template <typename T>
 Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
   const Tensor* dY = context->Input<Tensor>(0);
   const Tensor* indices = context->Input<Tensor>(1);
-
-  const TensorShape& dY_shape = dY->Shape();
+  ORT_ENFORCE(dY->Shape() == indices->Shape(), "The shape of dY and indices does not match in MaxPoolGrad.");
 
   const TensorShape& dX_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
   Tensor* dX = context->Output(0, dX_shape);
@@ -36,7 +29,7 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
 
   EigenVectorMap<T>(dX_data, dX_shape.Size()).setZero();
 
-  for (int64_t i = 0; i < dY_shape.Size(); ++i) {
+  for (int64_t i = 0; i < dY->Shape().Size(); ++i) {
     float* p_dX_data = dX_data + indices_data[i];
     *p_dX_data += dY_data[i];
   }

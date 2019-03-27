@@ -4,7 +4,6 @@
 #pragma once
 #include "op_gradients.h"
 #include "core/framework/op_kernel.h"
-#include <cctype>
 
 namespace onnxruntime {
 namespace contrib {
