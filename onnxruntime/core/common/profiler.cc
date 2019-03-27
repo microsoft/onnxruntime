@@ -9,6 +9,10 @@ using namespace std::chrono;
 
 Profiler* Profiler::instance_ = nullptr;
 
+profiling::Profiler::~Profiler() {
+  instance_ = nullptr;
+}
+
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   return std::chrono::high_resolution_clock::now();
 }

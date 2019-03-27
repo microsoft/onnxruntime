@@ -23,6 +23,8 @@ class Profiler {
   /// Even this function is marked as noexcept, the code inside it may throw exceptions
   Profiler() noexcept {};  //NOLINT
 
+  ~Profiler();
+
   /*
   Initializes Profiler with the session logger to log framework specific messages
   */
