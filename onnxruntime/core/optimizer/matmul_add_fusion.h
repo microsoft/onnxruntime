@@ -7,10 +7,12 @@
 
 namespace onnxruntime {
 
-class MatMulAddFusion : public onnxruntime::GraphTransformer {
+class MatMulAddFusion : public GraphTransformer {
  public:
-  MatMulAddFusion() noexcept : onnxruntime::GraphTransformer("MatMulAddFusion", "Fusing MatMul and Add into Gemm") {}
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  MatMulAddFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept 
+      : GraphTransformer("MatMulAddFusion", "Fusing MatMul and Add into Gemm", compatible_execution_providers) {}
+
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime
