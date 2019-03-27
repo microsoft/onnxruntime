@@ -60,15 +60,15 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status Gather::ComputeInternal(OpKernelContext* context) const {
   Prepare p;
+  //  cudaDeviceSynchronize();
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
 
   const TensorShape& input_shape = p.input_tensor->Shape();
-
-  if (OpKernel::Node().Name().compare("Gather__633") == 0 || OpKernel::Node().Name().compare("Gather__285") == 0 || OpKernel::Node().Name().compare("Gather__639") == 0 || OpKernel::Node().Name().compare("Gather__287") == 0 || OpKernel::Node().Name().compare("Gather__642") == 0) {
-    int64_t buffer[40];
-    PrintData(buffer, p.input_tensor->DataRaw(), 8, OpKernel::Node().Name());
-    PrintData(buffer, p.indices_tensor->DataRaw(), 8, OpKernel::Node().Name());
-  }
+  /*if (OpKernel::Node().Name().compare("Gather__633") == 0 || OpKernel::Node().Name().compare("Gather__285") == 0 || OpKernel::Node().Name().compare("Gather__639") == 0 || OpKernel::Node().Name().compare("Gather__287") == 0 || OpKernel::Node().Name().compare("Gather__642") == 0 || OpKernel::Node().Name().compare("Gather__304") == 0 || OpKernel::Node().Name().compare("Gather__645") == 0 || OpKernel::Node().Name().compare("Gather__306") == 0 || OpKernel::Node().Name().compare("Gather__636") == 0 || OpKernel::Node().Name().compare("Gather__237") == 0 || OpKernel::Node().Name().compare("Gather__648") == 0 || OpKernel::Node().Name().compare("Gather__239") == 0) {
+  int64_t buffer[40];
+  PrintData(buffer, p.input_tensor->DataRaw(), 8, OpKernel::Node().Name());
+  PrintData(buffer, p.indices_tensor->DataRaw(), 8, OpKernel::Node().Name());
+  }*/
 
   const int64_t block_size = input_shape.SizeFromDimension(p.axis + 1);
   size_t N = p.indices_tensor->Shape().Size();
@@ -101,7 +101,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   TYPED_FUNCTION_CALL(bool)
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
-}
+}  // namespace cuda
 
 }  // namespace cuda
 }  // namespace onnxruntime
