@@ -25,7 +25,7 @@ Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, bool& modified, bool
   return Status::OK();
 }
 
-bool InsertMaxPoolOutput::SatisfyCondition(const Graph& graph, const Node& node) {
+bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 8) &&
       node.OutputDefs().size() == 1) {
     return true;
