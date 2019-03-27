@@ -49,6 +49,9 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#endif
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
@@ -59,6 +62,7 @@
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(int ip, int, int, bool, const char*, const char*, const char*);
@@ -193,6 +197,12 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 void InitializeSession(InferenceSession* sess) {
   onnxruntime::common::Status status;
 
+#ifdef USE_TENSORRT
+  {
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt());
+  }
+#endif
+
 #ifdef USE_CUDA
   {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
@@ -222,7 +232,107 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  m.def(
+      "get_all_operator_schema", 
+      []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
+        return ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
+      },
+      "Return a vector of OpSchema all registed operators"
+  );
+#endif  
 }
+
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+
+void addOpSchemaSubmodule(py::module& m){
+  auto schemadef = m.def_submodule("schemadef");
+  schemadef.doc() = "Schema submodule";
+
+  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema");
+  op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
+      .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
+      .def_property_readonly("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
+      .def_property_readonly(
+          "doc", &ONNX_NAMESPACE::OpSchema::doc, py::return_value_policy::reference)
+      .def_property_readonly("since_version", &ONNX_NAMESPACE::OpSchema::since_version)
+      .def_property_readonly("deprecated", &ONNX_NAMESPACE::OpSchema::deprecated)
+      .def_property_readonly("domain", &ONNX_NAMESPACE::OpSchema::domain)
+      .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::Name)
+      .def_property_readonly("min_input", &ONNX_NAMESPACE::OpSchema::min_input)
+      .def_property_readonly("max_input", &ONNX_NAMESPACE::OpSchema::max_input)
+      .def_property_readonly("min_output", &ONNX_NAMESPACE::OpSchema::min_output)
+      .def_property_readonly("max_output", &ONNX_NAMESPACE::OpSchema::max_output)
+      .def_property_readonly("attributes", &ONNX_NAMESPACE::OpSchema::attributes)
+      .def_property_readonly("inputs", &ONNX_NAMESPACE::OpSchema::inputs)
+      .def_property_readonly("outputs", &ONNX_NAMESPACE::OpSchema::outputs)
+      .def_property_readonly(
+          "has_type_and_shape_inference_function",
+          &ONNX_NAMESPACE::OpSchema::has_type_and_shape_inference_function)
+      .def_property_readonly(
+          "type_constraints", &ONNX_NAMESPACE::OpSchema::typeConstraintParams)
+      .def_static("is_infinite", [](int v) {
+        return v == std::numeric_limits<int>::max();
+      });
+
+  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute")
+      .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
+      .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
+      .def_readonly("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
+      .def_property_readonly(
+          "_default_value",
+          [](ONNX_NAMESPACE::OpSchema::Attribute* attr) -> py::bytes {
+            std::string out;
+            attr->default_value.SerializeToString(&out);
+            return out;
+          })
+      .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
+
+  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam")
+      .def_readonly(
+          "type_param_str", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::type_param_str)
+      .def_readonly("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
+      .def_readonly(
+          "allowed_type_strs",
+          &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::allowed_type_strs);
+
+  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption")
+      .value("Single", ONNX_NAMESPACE::OpSchema::Single)
+      .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
+      .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
+
+  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter")
+      .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
+      .def_property_readonly("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
+      .def_property_readonly("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
+      .def_property_readonly(
+          "description", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetDescription)
+      .def_property_readonly("option", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetOption)
+      .def_property_readonly(
+          "isHomogeneous", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetIsHomogeneous);
+
+  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType")
+      .value("FLOAT", ONNX_NAMESPACE::AttributeProto::FLOAT)
+      .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
+      .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
+      .value("TENSOR", ONNX_NAMESPACE::AttributeProto::TENSOR)
+      .value("GRAPH", ONNX_NAMESPACE::AttributeProto::GRAPH)
+      .value("FLOATS", ONNX_NAMESPACE::AttributeProto::FLOATS)
+      .value("INTS", ONNX_NAMESPACE::AttributeProto::INTS)
+      .value("STRINGS", ONNX_NAMESPACE::AttributeProto::STRINGS)
+      .value("TENSORS", ONNX_NAMESPACE::AttributeProto::TENSORS)
+      .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
+
+  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType")
+      .value("COMMON", ONNX_NAMESPACE::OpSchema::SupportType::COMMON)
+      .value("EXPERIMENTAL", ONNX_NAMESPACE::OpSchema::SupportType::EXPERIMENTAL);
+
+
+}
+
+#endif //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 void addObjectMethods(py::module& m) {
   // allow unit tests to redirect std::cout and std::cerr to sys.stdout and sys.stderr
@@ -445,6 +555,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   addGlobalMethods(m);
   addObjectMethods(m);
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  addOpSchemaSubmodule(m);
+#endif
+  
 }
 
 }  // namespace python

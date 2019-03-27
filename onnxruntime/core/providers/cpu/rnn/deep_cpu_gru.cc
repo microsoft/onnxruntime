@@ -383,81 +383,43 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
-#if defined(USE_MLAS) && !defined(USE_OPENMP)
-#ifdef USE_EIGEN_THREADPOOL
-    auto fn =
-#else
-    std::packaged_task<void()> task_fw{
-#endif
-        [&]() {
-#endif  // USE_MLAS && ! USE_OPENMP
-          std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
-              alloc, logger,
-              seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
-              bias_1, initial_hidden_1,
-              activation_funcs_.Entries()[0],
-              activation_funcs_.Entries()[1],
-              clip_, ttp_);
-          fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
+        alloc, logger,
+        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
+        bias_1, initial_hidden_1,
+        activation_funcs_.Entries()[0],
+        activation_funcs_.Entries()[1],
+        clip_, ttp_);
+    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 
-#if defined(USE_MLAS) && !defined(USE_OPENMP)
-#ifndef USE_EIGEN_THREADPOOL
-        }
-  };
-  auto task_results_fw = task_fw.get_future();
-  ttp_.RunTask(std::move(task_fw));
-#else
-        };
-    OrtCondVar cv;
-    OrtMutex lock;
-    bool done = false;
+    std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
+        alloc, logger,
+        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+        bias_2, initial_hidden_2,
+        activation_funcs_.Entries()[2],
+        activation_funcs_.Entries()[3],
+        clip_, ttp_);
+    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
 
-    ttp_.Schedule([&]() {
-      fn();
-      auto ul = std::unique_lock<OrtMutex>(lock);
-      done = true;
-      cv.notify_one();
-    });
-#endif  // USE_EIGEN_THREADPOOL
-#endif  // USE_MLAS && ! USE_OPENMP
+  } else {
+    std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
+        alloc, logger,
+        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
+        bias_1, initial_hidden_1,
+        activation_funcs_.Entries()[0],
+        activation_funcs_.Entries()[1],
+        clip_, ttp_);
 
-  std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
-      alloc, logger,
-      seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
-      bias_2, initial_hidden_2,
-      activation_funcs_.Entries()[2],
-      activation_funcs_.Entries()[3],
-      clip_, ttp_);
-  bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+  }
 
-#if defined(USE_MLAS) && !defined(USE_OPENMP)
-#ifdef USE_EIGEN_THREADPOOL
-  auto ul = std::unique_lock<OrtMutex>(lock);
-  if (!done) cv.wait(ul);
-#else
-    task_results_fw.get();
-#endif
-#endif  // USE_MLAS && ! USE_OPENMP
-}  // namespace onnxruntime
-else {
-  std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
-      alloc, logger,
-      seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
-      bias_1, initial_hidden_1,
-      activation_funcs_.Entries()[0],
-      activation_funcs_.Entries()[1],
-      clip_, ttp_);
+  if (!output.empty())
+    DumpMatrix("Y", output.data(), seq_length * num_directions_ * batch_size, hidden_size_);
 
-  gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+  DumpMatrix("Y_h", hidden_output.data(), num_directions_ * batch_size, hidden_size_);
+
+  return Status::OK();
 }
-
-if (!output.empty())
-  DumpMatrix("Y", output.data(), seq_length* num_directions_* batch_size, hidden_size_);
-
-DumpMatrix("Y_h", hidden_output.data(), num_directions_* batch_size, hidden_size_);
-
-return Status::OK();
-}  // namespace onnxruntime
 
 //
 // Implementation of internal helper code

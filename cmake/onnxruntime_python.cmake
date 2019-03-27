@@ -29,6 +29,7 @@ if(NOT NUMPY_INCLUDE_DIR)
   endif(${NUMPY_NOT_FOUND})
 endif(NOT NUMPY_INCLUDE_DIR)
 
+
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.cc"
@@ -42,6 +43,11 @@ add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
+
+if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+endif()   
+
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
@@ -58,6 +64,7 @@ set(onnxruntime_pybind11_state_libs
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -162,13 +169,15 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/VERSION_NUMBER
+      $<TARGET_FILE_DIR:${test_data_target}>
 )
 
 if (onnxruntime_USE_MKLDNN)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB}
+    COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

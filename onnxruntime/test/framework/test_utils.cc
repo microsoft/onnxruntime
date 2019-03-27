@@ -18,9 +18,9 @@ IExecutionProvider* TestCudaExecutionProvider() {
 }
 #endif
 
-#ifdef USE_TRT
-IExecutionProvider* TestTRTExecutionProvider() {
-  static TRTExecutionProvider trt_provider;
+#ifdef USE_TENSORRT
+IExecutionProvider* TestTensorrtExecutionProvider() {
+  static TensorrtExecutionProvider trt_provider;
   return &trt_provider;
 }
 #endif
