@@ -141,7 +141,6 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          const std::vector<std::string>& providers = {},
                                           TransformerLevel level = TransformerLevel::Level2);
 
   /**

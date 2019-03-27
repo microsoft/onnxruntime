@@ -16,8 +16,8 @@ The interface for in-place transformation of a Graph.
 */
 class GraphTransformer {
  public:
-  GraphTransformer(const std::string& name, const std::string& desc)
-      : name_(name), desc_(desc) {
+  GraphTransformer(const std::string& name, const std::string& desc, const std::unordered_set<std::string>& compatible_execution_providers = {})
+      : name_(name), desc_(desc), compatible_provider_types_(compatible_execution_providers) {
   }
 
   virtual ~GraphTransformer() = default;
@@ -37,7 +37,6 @@ class GraphTransformer {
   }
 
   /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
-  @param[in] compatible_provider_types Optional - providers this transformer can be applied to
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
@@ -60,7 +59,6 @@ class GraphTransformer {
 
   // Apply the transform to the graph.
   // graph_level is 0 for the main graph, and is incremented when descending into the subgraph of a node.
-  // complatible_provider_types contains a list of provider types for which transformer can be applied.
   // You MUST call Recurse for all valid Nodes in the graph to ensure any subgraphs in control flow nodes
   // (Scan/If/Loop) are processed as well.
   // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases

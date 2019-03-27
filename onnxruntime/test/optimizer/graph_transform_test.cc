@@ -52,11 +52,10 @@ TEST(GraphTransformationTests, IdentityElimination) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
   rule_transformer->Register(std::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {});
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
@@ -75,7 +74,7 @@ TEST(GraphTransformationTests, SliceElimination) {
       std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
   rule_transformer->Register(std::make_unique<EliminateSlice>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {});
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
@@ -96,7 +95,7 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   rule_transformer->Register(std::make_unique<ConstantFolding>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1, {});
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
@@ -300,9 +299,9 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
   std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
   std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
-  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer), {onnxruntime::kCpuExecutionProvider});
-  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer), {onnxruntime::kCpuExecutionProvider});
+  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer));
+  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer));
+  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer));
 
   ASSERT_TRUE(session_object.Initialize().IsOK());
 

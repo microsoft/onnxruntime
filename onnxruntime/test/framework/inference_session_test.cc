@@ -31,7 +31,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
-#include "dummy_graph_transformer.h"
+#include "test/optimizer/dummy_graph_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 
 #include "gtest/gtest.h"
@@ -1392,58 +1392,6 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
     ASSERT_TRUE(session_object.Load(model_uri).IsOK());
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
-}
-
-// This test validates AddCustomTransformerList api.
-TEST(InferenceSessionTests, TestCustomTransformers) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = TransformerLevel::Level2;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.AddCustomTransformerList({"EliminateIdentity", "ConvAddFusion", "EliminateUnsqueeze"}).IsOK());
-
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-}
-
-// Tests a rewrite rule is applied only when the provider assigned to the node
-// is present in the compatible provider list.
-TEST(InferenceSessionTests, TestCompatibleProviders) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
-  so.graph_optimization_level = TransformerLevel::Level2;
-
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-
-  // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider
-  auto dummy_rule = std::make_unique<DummyRewriteRule>("DummyRule");
-  const auto* dummy_rule_ptr = dummy_rule.get();
-
-  auto graph_transformer = std::make_unique<RuleBasedGraphTransformer>("CUDATopDownTransformer",
-                                                                         "Registered for CUDA");
-  graph_transformer->Register(std::move(dummy_rule));
-  session_object.RegisterGraphTransformer(std::move(graph_transformer), {onnxruntime::kCudaExecutionProvider});
-
-  // Create rule based transformer with a dummy rewrite rule and register it with CPU as compatible provider
-  auto dummy_rule1 = std::make_unique<DummyRewriteRule>("DummyRule1");
-  const auto* dummy_rule1_ptr = dummy_rule1.get();
-
-  auto graph_transformer1 = std::make_unique<RuleBasedGraphTransformer>("CPUTopDownTransformer", "Registered for CPU");
-  graph_transformer1->Register(std::move(dummy_rule1));
-  session_object.RegisterGraphTransformer(std::move(graph_transformer1), {onnxruntime::kCpuExecutionProvider});
-
-  session_object.Load(model_uri);
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-
-  // Validate transformer registered with CUDA as compatible provider is not called.
-  ASSERT_FALSE(dummy_rule_ptr->IsRewriteRuleInvoked());
-
-  // Validate transformer registered with CPU as compatible provider is called.
-  ASSERT_TRUE(dummy_rule1_ptr->IsRewriteRuleInvoked());
 }
 
 }  // namespace test

@@ -23,8 +23,6 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
-      // rules.push_back(std::make_unique<UnsqueezeElimination>());
-      // rules.push_back(std::make_unique<ConstantFolding>());
       break;
 
     case TransformerLevel::Level2:
@@ -49,7 +47,8 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
 }
 
 std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(TransformerLevel level,
-                                                                             const std::vector<std::string>* rules_to_enable) {
+                                                                             const std::vector<std::string>* rules_to_enable,
+                                                                             const std::unordered_set<std::string>& compatible_execution_providers) {
   auto rewrite_rules_to_register = transformer_utils::GenerateRewriteRules(level, rules_to_enable);
   if (rewrite_rules_to_register.empty()) {
     return std::unique_ptr<RuleBasedGraphTransformer>{};
@@ -58,7 +57,8 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
       std::make_unique<RuleBasedGraphTransformer>(transformer_utils::GenerateRuleBasedTransformerName(level),
                                                   "Apply rewrite rules for Level" +
-                                                      std::to_string(static_cast<uint32_t>(level)));
+                                                      std::to_string(static_cast<uint32_t>(level)),
+                                                  compatible_execution_providers);
   for (auto& entry : rewrite_rules_to_register) {
     rule_transformer->Register(std::move(entry));
   }
@@ -66,20 +66,20 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
   return rule_transformer;
 }
 
-std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
+std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
                                                          std::vector<std::string>* transformers_and_rules_to_enable) {
-  std::vector<TransformerProviderSet> transformers;
+  std::vector<std::unique_ptr<GraphTransformer>> transformers;  
 
   // Generate rule-based transformer.
-  bool non_empty_rule_transformer = false;
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      transformer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable);
+  bool non_empty_rule_transformer = false;  
 
   switch (level) {
     case TransformerLevel::Level1: {
-      std::vector<std::string> l1_execution_providers = {};
+      std::unordered_set<std::string> l1_execution_providers = {};
+      std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+          transformer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
       if (rule_transformer) {
-        transformers.emplace_back(std::move(rule_transformer), l1_execution_providers);
+        transformers.emplace_back(std::move(rule_transformer));
         non_empty_rule_transformer = true;
       }
 
@@ -87,17 +87,18 @@ std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
     } break;
 
     case TransformerLevel::Level2: {
-      std::vector<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
-      std::vector<std::string> l2_global = {};
+      std::unordered_set<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
+      std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+          transformer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l2_execution_providers);
       if (rule_transformer) {
-        transformers.emplace_back(std::move(rule_transformer), l2_execution_providers);
+        transformers.emplace_back(std::move(rule_transformer));
         non_empty_rule_transformer = true;
-      }
-      transformers.emplace_back(std::make_unique<ConvBNFusion>(), l2_execution_providers);
-      transformers.emplace_back(std::make_unique<GemmActivationFusion>(), l2_execution_providers);
-      transformers.emplace_back(std::make_unique<MatMulAddFusion>(), l2_execution_providers);
-      transformers.emplace_back(std::make_unique<ConvAddFusion>(), l2_global);
-      transformers.emplace_back(std::make_unique<ConvMulFusion>(), l2_global);
+      }      
+      transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
+      transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
+      transformers.emplace_back(std::make_unique<ConvAddFusion>());
+      transformers.emplace_back(std::make_unique<ConvMulFusion>());
+      transformers.emplace_back(std::make_unique<ConvBNFusion>());
     } break;
 
     default:
@@ -111,11 +112,11 @@ std::vector<TransformerProviderSet> GenerateTransformers(TransformerLevel level,
   }
   if (transformers_and_rules_to_enable != nullptr && !transformers_and_rules_to_enable->empty()) {
     // pick custom transformers enabled for this session
-    std::vector<TransformerProviderSet> filtered_list;
+    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
     for (const auto& t_name : *transformers_and_rules_to_enable) {
       std::for_each(transformers.begin(), transformers.end(),
-                    [&](TransformerProviderSet& item) {
-                      if ((item.first != nullptr) && (item.first->Name() == t_name)) {
+                    [&](std::unique_ptr<GraphTransformer>& item) {
+                      if ((item != nullptr) && (item->Name() == t_name)) {
                         filtered_list.push_back(std::move(item));
                       }
                     });

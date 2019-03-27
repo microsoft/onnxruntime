@@ -18,8 +18,7 @@ class GraphTransformerManager {
   }
 
   // Register a transformer with a level and compatible providers list
-  common::Status Register(std::unique_ptr<GraphTransformer> transformer,
-                           TransformerLevel level, const std::vector<std::string>& provider = {});  
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
 
   // Apply all transformers registered for the given level on the given graph
   common::Status ApplyTransformers(Graph& graph, TransformerLevel level) const;
