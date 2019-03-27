@@ -129,7 +129,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
     }
 
     //no copy for TRT
-    if (required_provider_type == onnxruntime::kTRTExecutionProvider) {
+    if (required_provider_type == onnxruntime::kTensorrtExecutionProvider) {
       new_mlvalue = orig_mlvalue;
       break;
     }

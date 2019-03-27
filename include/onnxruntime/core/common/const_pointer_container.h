@@ -20,17 +20,41 @@ class ConstPointerContainer {
   class ConstIterator {
    public:
     using const_iterator = typename Container::const_iterator;
+    using iterator_category = std::input_iterator_tag;
+    using value_type = T*;
+    using difference_type = std::ptrdiff_t;
+    using pointer = T**;
+    using reference = T*&;
 
     /** Construct iterator for container that will return const T* entries.*/
-    explicit ConstIterator(const_iterator position) noexcept : current_(position) {}
+    explicit ConstIterator(const_iterator position) noexcept : current_{position}, item_{nullptr} {}
+    ConstIterator(const ConstIterator& other) = default;
+    ConstIterator& operator=(const ConstIterator& other) = default;
 
     bool operator==(const ConstIterator& other) const noexcept { return current_ == other.current_; }
     bool operator!=(const ConstIterator& other) const noexcept { return current_ != other.current_; }
-    void operator++() { ++current_; }
-    const T* operator*() { return *current_; }
+
+    ConstIterator& operator++() {
+      ++current_;
+      return *this;
+    }
+
+    ConstIterator operator++(int) {
+      ConstIterator tmp{*this};
+      ++(*this);
+      return tmp;
+    }
+
+    const T*& operator*() const {
+      item_ = *current_;
+      return item_;
+    }
+
+    const T** operator->() const { return &(operator*()); };
 
    private:
     const_iterator current_;
+    mutable const T* item_;
   };
 
   /**
