@@ -31,7 +31,8 @@ Example 1:
            [2.0, 6.0, 10.0, 14.0],
            [3.0, 7.0, 11.0, 15.0]]
   sequence_lens = [4, 3, 2, 1]
-  data_format = "time_major"
+  time_axis = 0
+  batch_axis = 1
 
   output = [[3.0, 6.0, 9.0,  12.0],
             [2.0, 5.0, 8.0,  13.0],
@@ -44,17 +45,13 @@ Example 2:
            [8.0,  9.0,  10.0, 11.0],
            [12.0, 13.0, 14.0, 15.0]]
   sequence_lens = [1, 2, 3, 4]
-  data_format = "batch_major"
+  time_axis = 1
+  batch_axis = 0
 
   output = [[0.0,  1.0,  2.0,  3.0 ],
             [5.0,  4.0,  6.0,  7.0 ],
             [10.0, 9.0,  8.0,  11.0],
             [15.0, 14.0, 13.0, 12.0]]
-)DOC";
-
-static const char* Input_Data_Format_ver1_doc = R"DOC(
-(Optional) Specify if the input data format is time major (e.g. [seq_length, batch_size, ...]),
-or batch major (e.g. [batch_size, seq_length, ...]). Must be one of time_major (default), or batch_major.
 )DOC";
 
 void ReverseSequenceShapeInference(InferenceContext& ctx) {
@@ -63,29 +60,26 @@ void ReverseSequenceShapeInference(InferenceContext& ctx) {
     return;
   }
 
-  auto data_format = getAttribute(ctx, "data_format", "time_major");
   auto& first_input_shape = getInputShape(ctx, 0);
   if (first_input_shape.dim_size() < 2) {
     fail_shape_inference("First input tensor must have rank >= 2");
   }
 
   TensorShapeProto::Dimension batch_size;
-  if (data_format == "time_major") {
-    batch_size = first_input_shape.dim(1);
-  } else {
-    batch_size = first_input_shape.dim(0);
-  }
+  auto batch_axis = getAttribute(ctx, "batch_axis", 1);
+  batch_size = first_input_shape.dim(batch_axis);
 
   if (batch_size.has_dim_value()) {
     auto& seq_len_input_shape = getInputShape(ctx, 1);
+    if (seq_len_input_shape.dim_size() != 1 ) {
+      fail_shape_inference("Second input tensor must have rank == 1");
+    }
     auto batch_dim = seq_len_input_shape.dim(0);
     if (batch_dim.has_dim_value()) {
       if (static_cast<int64_t>(batch_dim.dim_value()) != static_cast<int64_t>(batch_size.dim_value())) {
         fail_shape_inference("Batch size mismatch for input and sequence_lens.")
       }
     }
-
-    fail_shape_inference("Batch size must match for the first two inputs")
   }
 
   propagateShapeFromInputToOutput(ctx, 0, 0);
@@ -96,20 +90,25 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
     .SetDomain(kMSDomain)
     .SinceVersion(1)
     .TypeConstraint(
-      "T",
-      OpSchema::all_tensor_types(),
-      "Input and output types can be of any tensor type.")
+        "T",
+        OpSchema::all_tensor_types(),
+        "Input and output types can be of any tensor type.")
     .TypeConstraint(
-      "T1", {"tensor(int32)"}, "Constrain sequence_lens to integer tensor.")
+        "T1", {"tensor(int32)"}, "Constrain sequence_lens to integer tensor.")
     .Attr(
-      "data_format",
-      Input_Data_Format_ver1_doc,
-      AttributeProto::STRING,
-      std::string("time_major"))
+        "time_axis",
+        "(Optional) Specify which axis is time axis. Must be one of 0 (default), or 1.",
+        AttributeProto::INT,
+        static_cast<int64_t>(0))
+    .Attr(
+        "batch_axis",
+        "(Optional) Specify which axis is batch axis. Must be one of 1 (default), or 0.",
+        AttributeProto::INT,
+        static_cast<int64_t>(1))
     .Input(
         0,
         "input",
-        "Tensor of rank r >= 2, with the shape of `[seq_length, batch_size, ...]` or `[batch_size, seq_length, ...]`",
+        "Tensor of rank r >= 2.",
         "T")
     .Input(
         1,
@@ -121,8 +120,8 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
         "Y",
         "Tensor with same shape of input.",
         "T")
-      .SetDoc(ReverseSequence_ver1_doc)
-      .TypeAndShapeInferenceFunction(ReverseSequenceShapeInference);
+    .SetDoc(ReverseSequence_ver1_doc)
+    .TypeAndShapeInferenceFunction(ReverseSequenceShapeInference);
 }
 
 }  // namespace contrib
