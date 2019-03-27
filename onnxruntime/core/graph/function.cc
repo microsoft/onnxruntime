@@ -7,9 +7,10 @@
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
+// Auto inferred and generate an opschema for stand-alone functions
+// TODO: revisit to see if we can eliminate typeconstraint step
 void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
                           std::unique_ptr<ONNX_NAMESPACE::OpSchema>& op_schema_,
-                          /*out*/
                           const std::unordered_map<std::string, int>& input_name_idx_map,
                           const std::unordered_map<std::string, int>& output_name_idx_map) {
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto_->input_size());
@@ -69,7 +70,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
     op_schema_->Output(i, output.first, "", output.second);
     ++i;
   }
-
+  
   for (auto& tc : type_constraint_map) {
     op_schema_->TypeConstraint(tc.first, tc.second, "");
   }
@@ -159,6 +160,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
   auto cached_op_schema = node_in_parent_graph->Op();
   if (!cached_op_schema) {
+    // Infer a op_schema for stand-alone functions.
     IOTypeConstraintHelper(onnx_func_proto_, this->op_schema_, input_name_idx_map, output_name_idx_map);
   } else {
     auto type_constraint_params = cached_op_schema->typeConstraintParams();
