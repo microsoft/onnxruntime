@@ -110,11 +110,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.True(
-            !string.IsNullOrEmpty(ex.Message) && 
-            ex.Message.StartsWith("[ErrorCode:InvalidArgument]") &&
-            ex.Message.Contains("Missing required input: data_0")
-            );
+            Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
             session.Dispose();
         }
 
@@ -131,10 +127,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
             var msg = ex.ToString().Substring(0, 101);
-            Assert.True(!string.IsNullOrEmpty(msg) &&
-            msg.StartsWith("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument]") &&
-            msg.Contains("Unexpected input data type")
-            );
+            // TODO: message is diff in LInux. Use substring match
+            Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
             session.Dispose();
         }
 
@@ -171,11 +165,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.True(
-            !string.IsNullOrEmpty(ex.Message) &&
-            ex.Message.StartsWith("[ErrorCode:InvalidArgument]") &&
-            ex.Message.Contains("Invalid Feed Input Names")
-            );
+            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Names", ex.Message);
             session.Dispose();
         }
 
@@ -655,11 +645,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var container = new List<NamedOnnxValue>();
                 container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-                Assert.True(
-                !string.IsNullOrEmpty(ex.Message) &&
-                ex.Message.StartsWith("[ErrorCode:InvalidArgument]") &&
-                ex.Message.Contains("Missing required input: data_0")
-                );
+                Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
             }
         }
 
