@@ -131,6 +131,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
+    parser.add_argument("--disable_msvc_static_runtime", action='store_true', help="Disable static linking of MSVC runtimes.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -318,6 +319,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
+                 "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("OFF" if args.disable_msvc_static_runtime else "ON"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
