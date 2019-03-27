@@ -115,10 +115,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
     const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
     if (!compute_status.IsOK()) {
-      LOGS(logger, ERROR) << "Non-zero status code returned while running Node: ",
-                             p_op_kernel->Node().Name(), " Status Message: ", compute_status.ErrorMessage();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-zero status code returned while running Node: ",
-                             p_op_kernel->Node().Name(), " Status Message: ", compute_status.ErrorMessage());
+      std::string msg_string =
+          "Non-zero status code returned while running Node: " +
+          p_op_kernel->Node().Name() +
+          " Status Message: " +
+          compute_status.ErrorMessage();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
     if (f_profiler_enabled) {
