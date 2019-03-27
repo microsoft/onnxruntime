@@ -13,13 +13,13 @@ Status ConvMulFusion::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int g
   std::vector<onnxruntime::NodeIndex> removed_nodes;
   for (auto& node : graph.Nodes()) {
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
-
-    if (!utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
+    
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) || node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const Node& next_node = *node.OutputNodesBegin();
-    if (!utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", 7) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", 7) ||
         next_node.GetInputEdgesCount() != 1 ||
         graph.IsNodeOutputsInGraphOutputs(next_node)) {
       continue;
