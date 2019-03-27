@@ -43,7 +43,7 @@ void GatherImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _GatherKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _GatherKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       input_block_size, indices_max, indices_data, div_strides, input_data, output_data, (CUDA_LONG)N);
 }
 

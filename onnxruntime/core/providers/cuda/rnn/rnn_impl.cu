@@ -32,7 +32,7 @@ void ReverseBySequence(const int32_t seq_length,
   int32_t block_size = batch_size * input_or_hidden_size;
   fast_divmod div_batch_block(block_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _ReverseBySequenceKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _ReverseBySequenceKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       seq_length, block_size, div_batch_block, data, reversed_data, (CUDA_LONG)N);
 }
 
@@ -74,7 +74,7 @@ void ReorderBidirectionalDataInSequence(const int32_t seq_length,
   fast_divmod div_output_block(hidden_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
-  _BidirectionalDataKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _BidirectionalDataKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       seq_length, batch_size, hidden_size, seq_block_size,
       div_seq_block, div_output_block,
       data, reordered_data, (CUDA_LONG)N);
@@ -124,7 +124,7 @@ void RnnMaskImpl(const int32_t num_directions,
   fast_divmod div_seq_block(batch_size * hidden_size * num_directions);
   fast_divmod div_batch_block(hidden_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _RnnMaskKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _RnnMaskKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       seq_length, batch_size, hidden_size, sequence_lens,
       div_seq_block, div_batch_block, y_output_data, y_h_output_data, (CUDA_LONG)N);
 }

@@ -83,17 +83,17 @@ void PadImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (pad_mode) {
     case 0:
-      _PadKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _PadKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           shape_rank, input_dims, input_strides, lower_pads, upper_pads,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 1:
-      _PadKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _PadKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           shape_rank, input_dims, input_strides, lower_pads, upper_pads,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 2:
-      _PadKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _PadKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           shape_rank, input_dims, input_strides, lower_pads, upper_pads,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;

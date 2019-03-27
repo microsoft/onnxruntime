@@ -59,7 +59,7 @@ Status CompressImpl(const size_t element_bytes,
 
   switch (element_bytes) {
     case sizeof(int8_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -71,7 +71,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -83,7 +83,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -95,7 +95,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,

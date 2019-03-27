@@ -43,7 +43,7 @@ void InstanceNormImpl(
     T* output_data,
     size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _InstanceNormKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _InstanceNormKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       input_data, scale, bias, mean, variance, variance_correction, epsilon, fdm_HW, fdm_C, output_data, (CUDA_LONG)N);
 }
 

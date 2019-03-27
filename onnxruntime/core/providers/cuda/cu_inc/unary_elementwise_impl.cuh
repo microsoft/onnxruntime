@@ -27,7 +27,7 @@ void UnaryElementWiseImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _UnaryElementWise<InT, OutT, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _UnaryElementWise<InT, OutT, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       input_data,
       output_data,
       func,

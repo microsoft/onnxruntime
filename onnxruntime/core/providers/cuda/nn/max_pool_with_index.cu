@@ -122,7 +122,7 @@ void MaxPoolWithIndex(
   fast_divmod fdm_d(static_cast<int>(pooled_depth));
 
   int blocksPerGrid = (int)((output_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
-  MaxPoolWithIndexKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(
+  MaxPoolWithIndexKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       batchs,
       channels,
       height,

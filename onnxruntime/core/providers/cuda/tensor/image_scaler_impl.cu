@@ -37,11 +37,11 @@ void ImageScalerImpl(
   fast_divmod fdm_HW((int)(dims[2] * dims[3]));
   fast_divmod fdm_C;
   if (dims[0] == 1) {
-    _ImageScalerKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ImageScalerKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
         input_data, scale, bias_data, fdm_C, fdm_HW, output_data, N);
   } else {
     fdm_C = fast_divmod((int)dims[1]);
-    _ImageScalerKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ImageScalerKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
         input_data, scale, bias_data, fdm_C, fdm_HW, output_data, N);
   }
 }

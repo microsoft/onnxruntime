@@ -39,7 +39,7 @@ void TransposeImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       shape_rank, input_strides, perm, input_data,
       fdm_output_strides, output_data, N);
 }

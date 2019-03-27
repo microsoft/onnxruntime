@@ -40,7 +40,7 @@ void TileImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       shape_rank, fdm_input_shape, input_stride, input_data,
       fdm_output_strides, output_data, (CUDA_LONG)N);
 }

@@ -38,7 +38,7 @@ void CropImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _CropKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _CropKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, 0>>>(
       input_data, src_start_x, src_start_y, src_w, src_hw, fdm_dst_w, fdm_dst_hw, output_data, (CUDA_LONG)N);
 }
 
