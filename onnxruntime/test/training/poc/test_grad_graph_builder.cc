@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // onnxruntime dependencies
+#include <random>
 #include "core/graph/model.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/environment.h"
@@ -10,7 +11,6 @@
 #include "core/training/training_optimizer.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
-#include <random>
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
@@ -41,6 +41,7 @@ const std::vector<std::string> EXCLUDE_WEIGHTS = {};
 
 const std::string SHARED_PATH = "test_models/";
 const std::string ORIGINAL_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model.onnx";
+const std::string TRANSFORMED_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_transformed.onnx";
 const std::string GENERATED_MODEL_WITH_COST_PATH = SHARED_PATH + MODEL_NAME + "/model_with_cost.onnx";
 const std::string BACKWARD_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_bw.onnx";
 
@@ -52,7 +53,7 @@ const std::string BACKWARD_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model_bw.on
     }                                                                  \
   }
 
-int build_grad_graph(int /*argc*/, char* /*args*/[]) {
+int main(int /*argc*/, char* /*args*/[]) {
   std::string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING, false,
@@ -70,6 +71,7 @@ int build_grad_graph(int /*argc*/, char* /*args*/[]) {
   TERMINATE_IF_FAILED(training_session.Load(ORIGINAL_MODEL_PATH));
 
   TERMINATE_IF_FAILED(training_session.AddLossFuncion({"SoftmaxCrossEntropy", PREDICTION_NAME, "labels", "loss", kMSDomain}));
+
   TERMINATE_IF_FAILED(training_session.Save(GENERATED_MODEL_WITH_COST_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
 
@@ -84,8 +86,12 @@ int build_grad_graph(int /*argc*/, char* /*args*/[]) {
     return -1;
   }
 
+  //TERMINATE_IF_FAILED(training_session.Save(TRANSFORMED_MODEL_PATH,
+  //                                          TrainingSession::SaveOption::NO_RELOAD));
+
   TERMINATE_IF_FAILED(training_session.Save(BACKWARD_MODEL_PATH,
                                             TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
-  //TERMINATE_IF_FAILED(training_session.Initialize());
+
+  TERMINATE_IF_FAILED(training_session.Initialize());
   return 0;
 }

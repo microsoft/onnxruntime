@@ -18,7 +18,13 @@ static Status AddLossFuncionInternal(Graph& graph,
 
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
-                                         const std::vector<std::string>& node_arg_names_to_train) {
+                                         const std::vector<std::string>& node_arg_names_to_train,
+                                         const GraphTransformer* graph_transformer) {
+  if (graph_transformer) {
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(graph_transformer->Apply(graph, modified));
+  }
+
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
@@ -47,7 +53,8 @@ Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_trai
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
-                                                 weights_to_train_));
+                                                 weights_to_train_,
+                                                 &pre_training_graph_transformer_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -66,6 +73,10 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   // Delete the old file before saving.
   std::remove(model_uri.c_str());
 
+  if (opt == TrainingSession::SaveOption::NO_RELOAD) {
+    return Model::Save(*model_, model_uri);
+  }
+
   // Have to load the original model again.
   // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
   shared_ptr<Model> new_model;
@@ -80,7 +91,8 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    loss_func_info_.loss_name_,
-                                                   weights_to_train_));
+                                                   weights_to_train_,
+                                                   &pre_training_graph_transformer_));
   }
 
   return Model::Save(*new_model, model_uri);

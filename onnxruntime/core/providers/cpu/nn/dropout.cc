@@ -26,7 +26,7 @@ Status Dropout::Compute(OpKernelContext* context) const {
   const float* X_data = X->template Data<float>();
   float* Y_data = Y->template MutableData<float>();
 
-  if (is_test_) {
+  if (!is_train_) {
     //If source and target pointers are not equal, we need to copy the data.
     if (Y_data != X_data) {
       memcpy(Y_data, X_data, shape.Size() * sizeof(float));
@@ -50,13 +50,17 @@ Status Dropout::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+}  // namespace onnxruntime
+
+namespace onnxruntime {
+namespace contrib {
 ONNX_CPU_OPERATOR_KERNEL(
-    DrouputGrad,
+    DropoutGrad,
     9,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
-    DrouputGrad);
+    DropoutGrad);
 
-Status DrouputGrad::Compute(OpKernelContext* context) const {
+Status DropoutGrad::Compute(OpKernelContext* context) const {
   const Tensor* dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
   Tensor* dX = context->Output(0, shape);
@@ -64,7 +68,7 @@ Status DrouputGrad::Compute(OpKernelContext* context) const {
   const float* dY_data = dY->template Data<float>();
   float* dX_data = dX->template MutableData<float>();
 
-  if (is_test_) {
+  if (!is_train_) {
     //If source and target pointers are not equal, we need to copy the data.
     if (dY_data != dX_data) {
       memcpy(dX_data, dY_data, shape.Size() * sizeof(float));
@@ -82,4 +86,5 @@ Status DrouputGrad::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+}  // namespace contrib
 }  // namespace onnxruntime

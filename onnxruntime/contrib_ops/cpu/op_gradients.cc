@@ -14,6 +14,26 @@
 namespace onnxruntime {
 namespace contrib {
 
+std::vector<VectorInt64> InferOutputShapes(OpKernelInfo info) {
+  std::vector<VectorInt64> output_tensor_shapes = {};
+
+  auto& node = info.node();
+  auto output_defs = node.OutputDefs();
+  auto outputCount = output_defs.size();
+
+  for (int outputIndex = 0; outputIndex < outputCount; outputIndex++) {
+    output_tensor_shapes.push_back({});
+    if (!output_defs[outputIndex]->Exists())
+      continue;
+
+    auto shape = output_defs[outputIndex]->Shape();
+    for (auto dim : shape->dim()) {
+      output_tensor_shapes[outputIndex].push_back(dim.dim_value());
+    }
+  }
+  return output_tensor_shapes;
+}
+
 template <typename T>
 auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>

@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
 #include "core/session/inference_session.h"
 #include "core/training/loss_func/loss_func_common.h"
 #include "core/training/loss_function_registry.h"
+#include "core/optimizer/insert_output_rewriter.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -13,7 +16,10 @@ class TrainingSession : public InferenceSession {
  public:
   explicit TrainingSession(const SessionOptions& session_options,
                            logging::LoggingManager* logging_manager = nullptr)
-      : InferenceSession(session_options, logging_manager) {}
+      : InferenceSession(session_options, logging_manager),
+        pre_training_graph_transformer_{"pre_training_graph_transformer", ""} {
+    pre_training_graph_transformer_.Register(std::make_unique<InsertMaxPoolOutput>());
+  }
 
   /** Add a system provided or an op as loss function to the model.
   After the call, the model have one more input named as label_name and one more output named as loss_func_output_name.
@@ -50,6 +56,7 @@ class TrainingSession : public InferenceSession {
   3. save with updated weights, loss function and gradients
   */
   enum class SaveOption {
+    NO_RELOAD,
     WITH_UPDATED_WEIGHTS,
     WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC,
     WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS
@@ -69,6 +76,8 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> GetModelInitializers() const;
 
  private:
+  RuleBasedGraphTransformer pre_training_graph_transformer_;
+
   std::vector<std::string> weights_to_train_;
   LossFunctionInfo loss_func_info_;
 };
