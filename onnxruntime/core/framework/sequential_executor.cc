@@ -112,8 +112,15 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
       kernel_begin_time = session_state.Profiler().StartTime();
     }
-    ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
 
+    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
+    if (!compute_status.IsOK()) {
+      LOGS(logger, ERROR) << "Non-zero status code returned while running Node: ",
+                             p_op_kernel->Node().Name(), " Status Message: ", compute_status.ErrorMessage();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-zero status code returned while running Node: ", 
+		                     p_op_kernel->Node().Name(), " Status Message: ", compute_status.ErrorMessage());    
+	}
+	
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
