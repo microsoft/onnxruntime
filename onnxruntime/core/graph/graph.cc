@@ -1994,12 +1994,13 @@ Node& Graph::AddNode(const NodeProto& node_proto,
     attributes[attr.name()] = attr;
   }
 
-  size_t current_op_type_count;
+  size_t current_op_type_count = 1;
   const auto op_type = node_proto.op_type();
-  if (type_to_count_map.find(op_type) == type_to_count_map.end())
-    current_op_type_count = type_to_count_map[op_type] = 1;
+  auto iter = type_to_count_map.find(op_type);
+  if (iter == type_to_count_map.end())
+    type_to_count_map.insert({op_type, 1});
   else
-    current_op_type_count = ++type_to_count_map[op_type];
+    current_op_type_count = ++iter->second;
 
   std::string node_name = node_proto.name();
   if (node_name.empty())
