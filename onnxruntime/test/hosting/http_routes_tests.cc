@@ -10,7 +10,6 @@ namespace onnxruntime {
 namespace hosting {
 namespace test {
 
-using handler_fn = std::function<void(std::string, std::string, std::string, HttpContext&)>;
 using test_data = std::tuple<http::verb, std::string, std::string, std::string, std::string, http::status>;
 
 void do_something(const std::string& name, const std::string& version,
@@ -88,7 +87,7 @@ void run_route(const std::string& pattern, http::verb method, const std::vector<
     std::string name;
     std::string version;
     std::string action;
-    handler_fn fn;
+    HandlerFn fn;
 
     std::string expected_name;
     std::string expected_version;

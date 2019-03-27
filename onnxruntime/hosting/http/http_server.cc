@@ -22,8 +22,6 @@ using tcp = boost::asio::ip::tcp;     // from <boost/asio/ip/tcp.hpp>
 namespace onnxruntime {
 namespace hosting {
 
-using handler_fn = std::function<void(std::string, std::string, std::string, HttpContext&)>;
-
 App::App() {
   http_details.address = boost::asio::ip::make_address_v4("0.0.0.0");
   http_details.port = 8001;
@@ -41,13 +39,18 @@ App& App::NumThreads(int threads) {
   return *this;
 }
 
-App& App::RegisterStartup(const start_fn& on_start) {
+App& App::RegisterStartup(const StartFn& on_start) {
   on_start_ = on_start;
   return *this;
 }
 
-App& App::RegisterPost(const std::string& route, const handler_fn& fn) {
+App& App::RegisterPost(const std::string& route, const HandlerFn& fn) {
   routes_->RegisterController(http::verb::post, route, fn);
+  return *this;
+}
+
+App& App::RegisterError(const ErrorFn& fn) {
+  routes_->RegisterErrorCallback(fn);
   return *this;
 }
 

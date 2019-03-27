@@ -12,9 +12,11 @@ namespace hosting {
 
 namespace http = boost::beast::http;  // from <boost/beast/http.hpp>
 
-using handler_fn = std::function<void(std::string, std::string, std::string, HttpContext&)>;
+bool Routes::RegisterController(http::verb method, const std::string& url_pattern, const HandlerFn& controller) {
+  if (controller == nullptr) {
+    return false;
+  }
 
-bool Routes::RegisterController(http::verb method, const std::string& url_pattern, const handler_fn& controller) {
   switch (method) {
     case http::verb::get:
       this->get_fn_table.emplace_back(url_pattern, controller);
@@ -27,13 +29,22 @@ bool Routes::RegisterController(http::verb method, const std::string& url_patter
   }
 }
 
+bool Routes::RegisterErrorCallback(const ErrorFn& controller) {
+  if (controller == nullptr) {
+    return false;
+  }
+
+  on_error = controller;
+  return true;
+}
+
 http::status Routes::ParseUrl(http::verb method,
                               const std::string& url,
                               /* out */ std::string& model_name,
                               /* out */ std::string& model_version,
                               /* out */ std::string& action,
-                              /* out */ handler_fn& func) {
-  std::vector<std::pair<std::string, handler_fn>> func_table;
+                              /* out */ HandlerFn& func) {
+  std::vector<std::pair<std::string, HandlerFn>> func_table;
   switch (method) {
     case http::verb::get:
       func_table = this->get_fn_table;
@@ -42,7 +53,6 @@ http::status Routes::ParseUrl(http::verb method,
       func_table = this->post_fn_table;
       break;
     default:
-      std::cout << "Unsupported method: [" << method << "]" << std::endl;
       return http::status::method_not_allowed;
   }
 

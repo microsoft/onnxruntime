@@ -19,7 +19,12 @@ class HttpContext {
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   http::response<http::string_body> response{};
 
+  std::string error_message = "An unknown server error has occurred";
+  http::status error_code = http::status::internal_server_error;
+
   HttpContext() = default;
+  ~HttpContext() = default;
+  HttpContext(const HttpContext&) = delete;
 };
 
 }  // namespace hosting
