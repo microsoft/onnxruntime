@@ -1119,8 +1119,8 @@ It means with same boxes it has scores calculated for different classes.)DOC")
           "tensor(float)")
       .Input(
           2,
-          "max_output_boxes_per_batch",
-          "Integer representing the maximum number of boxes to be selected per batch. It is a scalar. Value should be greater than 0",
+          "max_output_boxes_per_class",
+          "Integer representing the maximum number of boxes to be selected per batch per class. It is a scalar. Value should be greater than 0",
           "tensor(int32)",
           OpSchema::Optional)
       .Input(

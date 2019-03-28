@@ -88,7 +88,7 @@ bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index
 }
 
 Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShape& boxes_shape, const TensorShape& scores_shape,
-                                          int32_t& max_output_boxes_per_batch, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const {
+                                          int32_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const {
   ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 4, "boxes must be a 4D tensor.");
   ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 3, "scores must be a 3D tensor.");
 
@@ -107,10 +107,10 @@ Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShap
     const_cast<int64_t&>(num_classes_) = scores_dims[1];
   }
 
-  const Tensor* max_output_boxes_per_batch_tensor = ctx->Input<Tensor>(2);
-  if (max_output_boxes_per_batch_tensor != nullptr) {
-    max_output_boxes_per_batch = *(max_output_boxes_per_batch_tensor->Data<int32_t>());
-    ORT_RETURN_IF_NOT(max_output_boxes_per_batch > 0, "max_output_boxes_per_batch should be greater than 0.");
+  const Tensor* max_output_boxes_per_class_tensor = ctx->Input<Tensor>(2);
+  if (max_output_boxes_per_class_tensor != nullptr) {
+    max_output_boxes_per_class = *(max_output_boxes_per_class_tensor->Data<int32_t>());
+    ORT_RETURN_IF_NOT(max_output_boxes_per_class > 0, "max_output_boxes_per_class should be greater than 0.");
   }
 
   const Tensor* iou_threshold_tensor = ctx->Input<Tensor>(3);
@@ -137,13 +137,13 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   auto& boxes_shape = boxes->Shape();
   auto& scores_shape = scores->Shape();
 
-  int32_t max_output_boxes_per_batch = 0;
+  int32_t max_output_boxes_per_class = 0;
   float iou_threshold = 0;
   // Not so sure for the value range of score_threshold, so set a bool to indicate whether it has this input
   bool has_score_threshold = false;
   float score_threshold = 0;
 
-  auto ret = ParepareCompute(ctx, boxes_shape, scores_shape, max_output_boxes_per_batch,
+  auto ret = ParepareCompute(ctx, boxes_shape, scores_shape, max_output_boxes_per_class,
                              iou_threshold, score_threshold, has_score_threshold);
   ORT_RETURN_IF_NOT(ret.IsOK(), ret.ErrorMessage());
 
@@ -160,9 +160,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   };
 
   std::vector<selected_index> tmp_selected_indices;
-  int num_selected = 0;
   for (int64_t batch_index = 0; batch_index < num_batches_; ++batch_index) {
-    int per_batch_count = 0;
     for (int64_t class_index = 0; class_index < num_classes_; ++class_index) {
       int64_t box_score_offset = (batch_index * num_classes_ + class_index) * num_boxes_;
       int64_t box_offset = box_score_offset * 4;
@@ -177,7 +175,6 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         }
       }
 
-      int num_of_selected_per_class = 0;
       ScoreIndexPair next_top_score;
       std::vector<int32_t> selected_indicies_inside_class;
       // Get the next box with top score, filter by iou_threshold_
@@ -187,7 +184,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
         bool selected = true;
         // Check with existing selected boxes for this class, suppress if exceed the IOU (Intersection Over Union) threshold
-        for (int i = 0; i < num_of_selected_per_class; ++i) {
+        for (int i = 0; i < selected_indicies_inside_class.size(); ++i) {
           if (SuppressByIOU(boxes_data + box_offset, selected_indicies_inside_class[i], next_top_score.index, iou_threshold)) {
             selected = false;
             break;
@@ -195,19 +192,17 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         }
 
         if (selected) {
-          if (max_output_boxes_per_batch > 0 && per_batch_count >= max_output_boxes_per_batch) {
+          if (max_output_boxes_per_class > 0 && selected_indicies_inside_class.size() >= max_output_boxes_per_class) {
             break;
           }
           selected_indicies_inside_class.push_back(next_top_score.index);
           tmp_selected_indices.push_back(selected_index(static_cast<int32_t>(batch_index), static_cast<int32_t>(class_index), next_top_score.index));
-          ++num_of_selected_per_class;
-          ++per_batch_count;
-          ++num_selected;
         }
       }  //while
     }    //for class_index
   }      //for batch_index
 
+  int32_t num_selected = static_cast<int32_t>(tmp_selected_indices.size());
   Tensor* selected_indices = ctx->Output(0, {num_selected, 3});
   ORT_ENFORCE(selected_indices);
   memcpy(selected_indices->MutableData<int32_t>(), tmp_selected_indices.data(), num_selected * sizeof(selected_index));
