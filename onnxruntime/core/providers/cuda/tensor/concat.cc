@@ -29,7 +29,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
     // No data in this tensor - so skip it
-    if (prep.input->DataRaw() == nullptr)
+    if (prep.tensor->DataRaw() == nullptr)
         continue;
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
     CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
