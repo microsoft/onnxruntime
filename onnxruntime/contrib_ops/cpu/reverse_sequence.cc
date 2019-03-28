@@ -48,7 +48,7 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto data_type = X.DataType();
   const auto& dims = X.Shape();
-  
+
   const auto batch_size = time_major_ ? dims[1] : dims[0];
   const auto max_seq_len = time_major_ ? dims[0] : dims[1];
   const auto input_size = dims.SizeFromDimension(2);
@@ -74,6 +74,7 @@ static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
                                     const int64_t input_size,
                                     const int64_t batch_num,
                                     const int64_t seq_num) {
+  ORT_UNUSED_PARAMETER(max_seq_len);
   return seq_num * batch_size * input_size + batch_num * input_size;
 }
 
@@ -82,6 +83,7 @@ static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
                                      const int64_t input_size,
                                      const int64_t batch_num,
                                      const int64_t seq_num) {
+  ORT_UNUSED_PARAMETER(batch_size);
   return batch_num * max_seq_len * input_size + seq_num * input_size;
 }
 
@@ -91,6 +93,7 @@ static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
                                      const int64_t batch_num,
                                      const int64_t seq_num,
                                      const int64_t seq_len) {
+  ORT_UNUSED_PARAMETER(max_seq_len);
   return (seq_len - seq_num - 1) * batch_size * input_size + batch_num * input_size;
 }
 
@@ -100,6 +103,7 @@ static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
                                       const int64_t batch_num,
                                       const int64_t seq_num,
                                       const int64_t seq_len) {
+  ORT_UNUSED_PARAMETER(batch_size);
   return batch_num * max_seq_len * input_size + (seq_len - seq_num - 1) * input_size;
 }
 
