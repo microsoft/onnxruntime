@@ -46,6 +46,33 @@ TEST(ReverseSequenceTest, TimeMajor) {
   test.Run();
 }
 
+TEST(ReverseSequenceTest, LargerDim2) {
+  OpTester test("ReverseSequence", 1, onnxruntime::kMSDomain);
+  std::vector<float> input = {0.f, 1.f,
+                              2.f, 3.f,
+                              4.f, 5.f,
+
+                              6.f, 7.f,
+                              8.f, 9.f,
+                              10.f, 11.f};
+  std::vector<int32_t> sequence_lens = {2, 3};
+  std::vector<float> expected_output = {2.f, 3.f,
+                                        0.f, 1.f,
+                                        4.f, 5.f,
+
+                                        10.f, 11.f,
+                                        8.f, 9.f,
+                                        6.f, 7.f};
+
+  test.AddAttribute("batch_axis", int64_t(0));
+  test.AddAttribute("time_axis", int64_t(1));
+
+  test.AddInput<float>("input", {2, 3, 2}, input);
+  test.AddInput<int32_t>("sequence_lens", {2}, sequence_lens);
+  test.AddOutput<float>("Y", {2, 3, 2}, expected_output);
+  test.Run();
+}
+
 TEST(ReverseSequenceTest, Strings) {
   OpTester test("ReverseSequence", 1, onnxruntime::kMSDomain);
   std::vector<std::string> input = {"0", "4 string longer than 16 chars that requires its own buffer",

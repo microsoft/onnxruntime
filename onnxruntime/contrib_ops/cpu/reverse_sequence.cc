@@ -46,8 +46,9 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   Status status = Status::OK();
 
   const auto& X = *context->Input<Tensor>(0);
-
+  const auto data_type = X.DataType();
   const auto& dims = X.Shape();
+  
   const auto batch_size = time_major_ ? dims[1] : dims[0];
   const auto max_seq_len = time_major_ ? dims[0] : dims[1];
   const auto input_size = dims.SizeFromDimension(2);
@@ -60,11 +61,11 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
                            seq_len_shape, ". batch_size=", batch_size);
   }
 
-  const auto data_type = context->Input<Tensor>(0)->DataType();
   auto& Y = *context->Output(0, dims);
 
   DispatchOnTensorType(data_type, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int>(),
                        max_seq_len, batch_size, input_size, time_major_);
+
   return status;
 }
 
