@@ -352,7 +352,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(), engines_[context->node_name].get(), contexts_[context->node_name].get(),
-            input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name]};
+            input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_};
       *state = p.release();
       return 0;
     };
@@ -403,6 +403,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
 
       // Run TRT inference
+      std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       trt_state->context->enqueue(batch_size, &buffers[0], stream, nullptr);
 
       // Copy TRT outputs to output tensors
