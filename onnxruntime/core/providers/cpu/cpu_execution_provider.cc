@@ -4,7 +4,11 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
+
+#ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/contrib_kernels.h"
+#endif
+
 #include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
@@ -605,7 +609,9 @@ void RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 static void RegisterCPUKernels(KernelRegistry& kernel_registry) {
   RegisterOnnxOperatorKernels(kernel_registry);
   ::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry);
+#ifndef DISABLE_CONTRIB_OPS
   ::onnxruntime::contrib::RegisterContribKernels(kernel_registry);
+#endif
 }
 
 std::shared_ptr<KernelRegistry> GetCpuKernelRegistry() {

@@ -42,7 +42,7 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
-2. Install cmake-3.11 or better from https://cmake.org/download/.
+2. Install cmake-3.13 or better from https://cmake.org/download/.
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
 4. (optional) Install onnx from source code (cmake/external/onnx)
     ```
@@ -55,6 +55,10 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
+
+## Build x86 
+1. For Windows, just add --x86 argument when launching build.bat
+2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
 ## Build/Test Flavors for CI
 
