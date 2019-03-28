@@ -52,6 +52,7 @@ struct TensorrtFuncState {
   std::vector<std::vector<int>> input_info;
   std::vector<std::vector<int>> output_info;
   std::vector<std::vector<int64_t>> output_shapes;
+  OrtMutex* tensorrt_mu_ptr = nullptr;
 };
 
 // Logical device representation.
@@ -88,7 +89,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   template <typename T>
   using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
-  OrtMutex tensorrt_mu;
+  OrtMutex tensorrt_mu_;
   int device_id_;
   std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;
