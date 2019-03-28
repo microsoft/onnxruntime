@@ -4,10 +4,12 @@
 #include "core/framework/environment.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
-#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
+#ifndef DISABLE_CONTRIB_OPS
+#include "core/graph/contrib_ops/contrib_defs.h"
+#endif
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -32,10 +34,11 @@ Status Environment::Initialize() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       // Register contributed schemas.
       // The corresponding kernels are registered inside the appropriate execution provider.
+#ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
+#endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
-      RegisterOnnxFunctionBuilder();
     });
     //TODO:put all of the following things into call_once
     // Register MVN operator for backward compatibility.
@@ -44,20 +47,6 @@ Status Environment::Initialize() {
     // MVN op was removed. The history has to be kept locally as below.
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
         .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
-        .Attr("across_channels", "If 1, mean and variance are computed across channels. Default is 0.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("normalize_variance", "If 0, normalize the mean only.  Default is 1.", AttributeProto::INT, static_cast<int64_t>(1))
-        .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
-        .Output(0, "output", "Result, has same shape and type as input", "T")
-        .TypeConstraint(
-            "T",
-            {"tensor(float16)", "tensor(float)", "tensor(double)"},
-            "Constrain input and output types to float tensors.")
-        .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
-    // MVN operator is deprecated since operator set 9 (replaced with MVN function).
-    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
-        .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
-        .SinceVersion(9)
-        .Deprecate()
         .Attr("across_channels", "If 1, mean and variance are computed across channels. Default is 0.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("normalize_variance", "If 0, normalize the mean only.  Default is 1.", AttributeProto::INT, static_cast<int64_t>(1))
         .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
