@@ -14,6 +14,7 @@
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
 
+#include "converter.h"
 #include "executor.h"
 
 namespace onnxruntime {
@@ -99,7 +100,7 @@ protobufutil::Status Executor::predict(const std::string& name, const std::strin
   // Build the response
   for (size_t i = 0; i < outputs.size(); ++i) {
     onnx::TensorProto output_tensor;
-    status = MLValue2TensorProto(outputs[i], using_raw_data, output_tensor);
+    status = MLValue2TensorProto(outputs[i], using_raw_data, logger, output_tensor);
     if (!status.IsOK()) {
       LOGS(logger, ERROR) << "MLValue2TensorProto() FAILED! Output name: " << output_names[i]
                           << ". Error code: " << status.Code()
@@ -111,159 +112,6 @@ protobufutil::Status Executor::predict(const std::string& name, const std::strin
   }
 
   return google::protobuf::util::Status::OK;
-}
-
-onnx::TensorProto_DataType Executor::MLDataTypeToTensorProtoDataType(const onnxruntime::DataTypeImpl* cpp_type) {
-  onnx::TensorProto_DataType type;
-  if (cpp_type == onnxruntime::DataTypeImpl::GetType<float>()) {
-    type = onnx::TensorProto_DataType_FLOAT;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint8_t>()) {
-    type = onnx::TensorProto_DataType_UINT8;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int8_t>()) {
-    type = onnx::TensorProto_DataType_INT8;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint16_t>()) {
-    type = onnx::TensorProto_DataType_UINT16;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int16_t>()) {
-    type = onnx::TensorProto_DataType_INT16;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int32_t>()) {
-    type = onnx::TensorProto_DataType_INT32;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int64_t>()) {
-    type = onnx::TensorProto_DataType_INT64;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<std::string>()) {
-    type = onnx::TensorProto_DataType_STRING;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<bool>()) {
-    type = onnx::TensorProto_DataType_BOOL;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
-    type = onnx::TensorProto_DataType_FLOAT16;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>()) {
-    type = onnx::TensorProto_DataType_BFLOAT16;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<double>()) {
-    type = onnx::TensorProto_DataType_DOUBLE;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint32_t>()) {
-    type = onnx::TensorProto_DataType_UINT32;
-  } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint64_t>()) {
-    type = onnx::TensorProto_DataType_UINT64;
-  } else {
-    type = onnx::TensorProto_DataType_UNDEFINED;
-  }
-
-  // One time of data type mapping activity usage has limit information to us.
-  // But the collection of this information will let us know the frequency of data types.
-  // Above if-statement order could be optimized with the statistic.
-  LOGS(env_->GetLogger(), VERBOSE) << "Converted TensorProto_DataType: " << type;
-  return type;
-}
-
-common::Status Executor::MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data, /* out */
-                                             onnx::TensorProto& tensor_proto) {
-  // Tensor in MLValue
-  auto* tensor = ml_value.GetMutable<onnxruntime::Tensor>();
-
-  // dims field
-  const onnxruntime::TensorShape& tensor_shape = tensor->Shape();
-  for (auto dim : tensor_shape.GetDims()) {
-    tensor_proto.add_dims(dim);
-  }
-
-  // data_type field
-  onnx::TensorProto_DataType data_type = MLDataTypeToTensorProtoDataType(tensor->DataType());
-  tensor_proto.set_data_type(data_type);
-
-  // data_location field: Data is stored in raw_data (if set) otherwise in type-specified field.
-  if (using_raw_data) {
-    tensor_proto.set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
-  }
-
-  // *_data field
-  // According to onnx_ml.proto, depending on the data_type field,
-  // exactly one of the *_data fields is used to store the elements of the tensor.
-  switch (data_type) {
-    case onnx::TensorProto_DataType_FLOAT: {
-      auto data = tensor->Data<float>();
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(data, tensor->Size());
-      } else {
-        size_t data_length = tensor->Size() / sizeof(float);
-        for (size_t i = 0; i < data_length; ++i) {
-          tensor_proto.add_float_data(data[i]);
-        }
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_INT32:
-    case onnx::TensorProto_DataType_UINT8:
-    case onnx::TensorProto_DataType_INT8:
-    case onnx::TensorProto_DataType_UINT16:
-    case onnx::TensorProto_DataType_INT16:
-    case onnx::TensorProto_DataType_BOOL:
-    case onnx::TensorProto_DataType_FLOAT16:
-    case onnx::TensorProto_DataType_BFLOAT16: {
-      // TODO: special handle FLOAT16 and BFLOAT16?
-      auto data = tensor->Data<int32_t>();
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(data, tensor->Size());
-      } else {
-        size_t data_length = tensor->Size() / sizeof(int32_t);
-        for (size_t i = 0; i < data_length; ++i) {
-          tensor_proto.add_int32_data(data[i]);
-        }
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_STRING: {
-      // string could not be written into "raw_data"
-      auto data = tensor->Data<int32_t>();
-      size_t data_length = tensor->Size() / sizeof(int32_t);
-      for (size_t i = 0; i < data_length; ++i) {
-        tensor_proto.add_int32_data(data[i]);
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_INT64: {
-      auto data = tensor->Data<int64_t>();
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(data, tensor->Size());
-      } else {
-        size_t data_length = tensor->Size() / sizeof(int64_t);
-        for (size_t i = 0; i < data_length; ++i) {
-          tensor_proto.add_int64_data(data[i]);
-        }
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_UINT64: {
-      auto data = tensor->Data<uint64_t>();
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(data, tensor->Size());
-      } else {
-        size_t data_length = tensor->Size() / sizeof(uint64_t);
-        for (size_t i = 0; i < data_length; ++i) {
-          tensor_proto.add_uint64_data(data[i]);
-        }
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_DOUBLE: {
-      auto data = tensor->Data<double>();
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(data, tensor->Size());
-      } else {
-        size_t data_length = tensor->Size() / sizeof(double);
-        for (size_t i = 0; i < data_length; ++i) {
-          tensor_proto.add_double_data(data[i]);
-        }
-      }
-      break;
-    }
-    default: {
-      LOGS(env_->GetLogger(), ERROR) << "Unsupported TensorProto DataType: " << data_type;
-      return common::Status(common::StatusCategory::ONNXRUNTIME,
-                            common::StatusCode::NOT_IMPLEMENTED,
-                            "Unsupported TensorProto DataType: " + std::to_string(data_type));
-    }
-  }
-
-  return common::Status::OK();
 }
 
 }  // namespace hosting

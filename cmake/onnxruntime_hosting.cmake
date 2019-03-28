@@ -31,12 +31,14 @@ file(GLOB_RECURSE onnxruntime_hosting_lib_srcs
   "${ONNXRUNTIME_ROOT}/hosting/http/*.cc"
   "${ONNXRUNTIME_ROOT}/hosting/environment.cc"
   "${ONNXRUNTIME_ROOT}/hosting/executor.cc"
+  "${ONNXRUNTIME_ROOT}/hosting/converter.cc"
 )
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
     set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/http/json_handling.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/http/predict_request_handler.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/executor.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${ONNXRUNTIME_ROOT}/hosting/converter.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
 
