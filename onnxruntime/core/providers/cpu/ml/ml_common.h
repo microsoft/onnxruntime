@@ -286,22 +286,25 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
 
 static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z, int add_second_class) {
   if (scores.size() >= 2) {  //multiclass
-    switch ((unsigned char)post_transform) {
-      case (unsigned char)POST_EVAL_TRANSFORM::LOGISTIC:
+    switch (post_transform) {
+      case POST_EVAL_TRANSFORM::PROBIT:
+        for (float& score : scores)
+          score = ComputeProbit(score);
+        break;
+      case POST_EVAL_TRANSFORM::LOGISTIC:
         for (float& score : scores)
           score = ComputeLogistic(score);
         break;
-      case (unsigned char)POST_EVAL_TRANSFORM::SOFTMAX:
+      case POST_EVAL_TRANSFORM::SOFTMAX:
         ComputeSoftmax(scores);
         break;
-      case (unsigned char)POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
         break;
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
       scores[0] = ComputeProbit(scores[0]);
-      //Z->template MutableData<float>()[write_index] = scores[0];
     } else {
       switch (add_second_class) {
         case 0:  //0=all positive weights, winning class is positive
