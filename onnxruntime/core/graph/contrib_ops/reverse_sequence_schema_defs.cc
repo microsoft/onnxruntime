@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 #include "reverse_sequence_schema_defs.h"
-#include "core/graph/constants.h"
 #include "core/graph/op.h"
-#include <cmath>
-#include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
@@ -64,22 +61,9 @@ void ReverseSequenceShapeInference(InferenceContext& ctx) {
   if (first_input_shape.dim_size() < 2) {
     fail_shape_inference("First input tensor must have rank >= 2");
   }
-
-  TensorShapeProto::Dimension batch_size;
-  auto batch_axis = getAttribute(ctx, "batch_axis", 1);
-  batch_size = first_input_shape.dim(batch_axis);
-
-  if (batch_size.has_dim_value()) {
-    auto& seq_len_input_shape = getInputShape(ctx, 1);
-    if (seq_len_input_shape.dim_size() != 1 ) {
-      fail_shape_inference("Second input tensor must have rank == 1");
-    }
-    auto batch_dim = seq_len_input_shape.dim(0);
-    if (batch_dim.has_dim_value()) {
-      if (static_cast<int64_t>(batch_dim.dim_value()) != static_cast<int64_t>(batch_size.dim_value())) {
-        fail_shape_inference("Batch size mismatch for input and sequence_lens.")
-      }
-    }
+  auto& seq_len_input_shape = getInputShape(ctx, 1);
+  if (seq_len_input_shape.dim_size() != 1) {
+    fail_shape_inference("Second input tensor must have rank == 1");
   }
 
   propagateShapeFromInputToOutput(ctx, 0, 0);
@@ -93,8 +77,6 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
         "T",
         OpSchema::all_tensor_types(),
         "Input and output types can be of any tensor type.")
-    .TypeConstraint(
-        "T1", {"tensor(int32)"}, "Constrain sequence_lens to integer tensor.")
     .Attr(
         "time_axis",
         "(Optional) Specify which axis is time axis. Must be one of 0 (default), or 1.",
@@ -114,7 +96,7 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
         1,
         "sequence_lens",
         "Tensor specifying lengths of the sequences in a batch. It has shape `[batch_size]`.",
-        "T1")
+        "tensor(int32)")
     .Output(
         0,
         "Y",
