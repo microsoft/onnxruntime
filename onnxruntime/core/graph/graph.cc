@@ -2005,7 +2005,7 @@ Node& Graph::AddNode(const NodeProto& node_proto,
   const auto& node_name = node_proto.name();
 
   return AddNode(!node_name.empty() ? node_name : 
-	             GenerateNodeName("unnamed_" + op_type + "_" + std::to_string(current_op_type_count)),
+                 GenerateNodeName("unnamed_" + op_type + "_" + std::to_string(current_op_type_count)),
                  node_proto.op_type(),
                  node_proto.doc_string(),
                  input_defs,
