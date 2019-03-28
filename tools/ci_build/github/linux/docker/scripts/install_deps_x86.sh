@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
-aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.12.4/cmake-3.12.4.tar.gz
-tar -xf /tmp/src/cmake-3.12.4.tar.gz -C /tmp/src
-cd /tmp/src/cmake-3.12.4
+aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2.tar.gz
+tar -xf /tmp/src/cmake-3.13.2.tar.gz -C /tmp/src
+cd /tmp/src/cmake-3.13.2
 ./configure
 make
 make install

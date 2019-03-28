@@ -236,7 +236,7 @@ void LoopDir(const std::string& dir_name, T func) {
     auto e = errno;
     char buf[1024];
     char* msg;
-#ifdef _GNU_SOURCE
+#if defined(_GNU_SOURCE) && !defined(__APPLE__)
     msg = strerror_r(e, buf, sizeof(buf));
 #else
     // for Mac OS X

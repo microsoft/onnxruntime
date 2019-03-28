@@ -14,7 +14,6 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
-#include "core/framework/path_lib.h"
 #include "core/framework/session_state.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -68,7 +67,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
   // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Default;
+  TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
@@ -142,7 +141,6 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          const std::vector<std::string>& providers = {},
                                           TransformerLevel level = TransformerLevel::Level2);
 
   /**
@@ -313,7 +311,7 @@ class InferenceSession {
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
-  std::basic_string<PATH_CHAR_TYPE> model_location_;
+  std::basic_string<ORTCHAR_T> model_location_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -347,7 +345,7 @@ class InferenceSession {
 
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                  TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list);
+                                 std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 

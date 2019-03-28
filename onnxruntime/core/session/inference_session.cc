@@ -205,13 +205,12 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return Status::OK();
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                                          const std::vector<std::string>& providers,
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
                                                           TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
-  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level, providers);
+  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
 common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
@@ -1010,35 +1009,25 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
-    // Generate and register rewrite rules for level
-    auto rewrite_rules_to_register =
-        transformer_utils::GenerateRewriteRules(level, &custom_list);
-    if (!rewrite_rules_to_register.empty()) {
-      std::unique_ptr<RuleBasedGraphTransformer> graph_rewrite_rules =
-          std::make_unique<TopDownRuleBasedTransformer>(t_name + "_RuleBasedTransformer",
-                                                        "Apply rewrite rules for " + t_name);
-      for (auto& entry : rewrite_rules_to_register) {
-        graph_rewrite_rules->Register(std::move(entry));
-      }
-      transformer_manager.Register(std::move(graph_rewrite_rules), level,
-                                   std::move(providers));
-    }
-
+                                                 std::vector<std::string>& custom_list) {
+  auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
     for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry.first), level, std::move(entry.second));
+      transformer_manager.Register(std::move(entry), level);
     }
   };
 
+  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
+              "Allowed values are 1 and 2. Current level is set to " +
+                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+
   if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1, {}, "Level1");
+    add_transformers(TransformerLevel::Level1);
   }
 
   if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2, {onnxruntime::kCpuExecutionProvider}, "Level2");
+    add_transformers(TransformerLevel::Level2);
   }
 }
 
