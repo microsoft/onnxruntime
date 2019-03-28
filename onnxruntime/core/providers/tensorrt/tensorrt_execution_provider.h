@@ -12,8 +12,7 @@
 namespace onnxruntime {
 
 static const int kMaxBatchSize = 1;
-static const int kMaxWorkSpaceSize = 1 << 30;    
-static OrtMutex tensorrt_mu;
+static const int kMaxWorkSpaceSize = 1 << 30;
     
 class TensorrtLogger : public nvinfer1::ILogger {
     nvinfer1::ILogger::Severity verbosity_;
@@ -89,6 +88,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   template <typename T>
   using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
+  OrtMutex tensorrt_mu;
   int device_id_;
   std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;
