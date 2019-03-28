@@ -97,7 +97,7 @@ Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_def
   //GraphAugmenter::GraphDefs gradient_graph_defs;
 
   // add "gradient of the loss" node, always 1.
-  {
+  if (loss_node_arg_name_ != "") {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.add_dims(1);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);

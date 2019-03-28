@@ -100,6 +100,10 @@ set(onnxruntime_test_framework_src_patterns
   "${TEST_SRC_DIR}/platform/*.cc"
   )
 
+file(GLOB onnxruntime_test_training_src
+  "${TEST_SRC_DIR}/training_test/*.cc"
+  )
+
 if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
@@ -245,7 +249,7 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 
 if (SingleUnitTestProject)
-  set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
+  set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_training_src})
   set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   if (onnxruntime_USE_TVM)
@@ -310,6 +314,13 @@ else()
     TARGET onnxruntime_test_providers
     SOURCES ${onnxruntime_test_providers_src}
     LIBS ${onnxruntime_test_providers_libs}
+    DEPENDS ${onnxruntime_test_providers_dependencies}
+  )
+
+ AddTest(
+    TARGET onnxruntime_test_training
+    SOURCES ${onnxruntime_test_training_src}
+    LIBS ${onnxruntime_test_training_libs}
     DEPENDS ${onnxruntime_test_providers_dependencies}
   )
 

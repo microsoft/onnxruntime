@@ -149,8 +149,8 @@ const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
 // See current usage for an example, should be self explanatory
 class OpTester {
  public:
-  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
-      : op_(op), domain_(domain), opset_version_(opset_version) {}
+  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
+      : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {}
 
   ~OpTester();
 
@@ -245,6 +245,8 @@ class OpTester {
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
+  std::vector<MLValue> GetFetches() { return fetches_; }
+
   struct Data {
     onnxruntime::NodeArg def_;
     MLValue data_;
@@ -265,13 +267,26 @@ class OpTester {
 
   std::unique_ptr<onnxruntime::Model> BuildGraph();
 
+  template <class SessionType>
+  std::vector<MLValue> ExecuteModel(Model& model,
+                                    SessionType& session_object,
+                                    ExpectResult expect_result,
+                                    const std::string& expected_failure_string,
+                                    const RunOptions* run_options,
+                                    std::unordered_map<std::string, MLValue> feeds,
+                                    std::vector<std::string> output_names,
+                                    const std::string& provider_type);
+
   const char* op_;
+  std::vector<Data> input_data_;
+  std::vector<Data> output_data_;
+  std::vector<MLValue> fetches_;
 
 #ifndef NDEBUG
   bool run_called_{};
 #endif
 
- private:
+ protected:
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name,
                const std::vector<int64_t>& dims, const T* values,
@@ -309,26 +324,18 @@ class OpTester {
     }
   }
 
-  void ExecuteModel(Model& model,
-                    InferenceSession& session_object,
-                    ExpectResult expect_result,
-                    const std::string& expected_failure_string,
-                    const RunOptions* run_options,
-                    std::unordered_map<std::string, MLValue> feeds,
-                    std::vector<std::string> output_names,
-                    const std::string& provider_type);
-
+ private:
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
   int add_symbolic_dim_to_tensor_data_ = -1;
-  std::vector<Data> input_data_;
-  std::vector<Data> output_data_;
   std::vector<size_t> initializer_index_;
   std::vector<std::function<void(onnxruntime::Node& node)>> add_attribute_funcs_;
 
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_;
   std::vector<std::shared_ptr<CustomRegistry>> custom_session_registries_;
+
+  bool verify_output_;
 };
 
 template <typename TException>
