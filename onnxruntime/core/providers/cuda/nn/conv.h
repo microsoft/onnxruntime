@@ -8,6 +8,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_base.h"
+#include <list>
 
 namespace onnxruntime {
 namespace cuda {
@@ -30,6 +31,53 @@ class CudnnConvolutionDescriptor final {
   cudnnConvolutionDescriptor_t desc_;
 };
 
+template <typename Key, typename T>
+class lru_map {
+ public:
+  lru_map(size_t max_size) : max_size_(max_size) {}
+
+  void insert(const Key& key, const T& value) {
+    auto it = handles_.find(key);
+    if (it != handles_.end()) {
+      items_.erase(it->second);
+      handles_.erase(it);
+    }
+
+    items_.emplace_front(key, value);
+    handles_.emplace(key, items_.begin());
+
+    while (size() > max_size_) {
+      handles_.erase(items_.back().first);
+      items_.pop_back();
+    }
+  }
+
+  T& at(const Key& key) {
+    auto it = handles_.find(key);
+    if (it == handles_.end()) {
+      throw std::out_of_range("There is no such key in cache");
+    }
+    items_.splice(items_.begin(), items_, it->second);
+    return it->second->second;
+  }
+
+  bool contains(const Key& key) const {
+    return handles_.find(key) != handles_.end();
+  }
+
+  size_t size() const {
+    return handles_.size();
+  }
+
+private:
+  using value_type = std::pair<Key, T>;
+  using iterator_type = typename std::list<value_type>::iterator;
+
+  size_t max_size_;
+  std::list<value_type> items_;
+  std::map<Key, iterator_type> handles_;
+};
+
 // cached cudnn descriptors
 template <typename AlgoPerfType>
 struct CudnnConvState {
@@ -48,7 +96,7 @@ struct CudnnConvState {
   CudnnConvolutionDescriptor conv_desc;
 
   using input_shapes = std::pair<std::vector<int64_t>, std::vector<int64_t>>;
-  std::map<input_shapes, AlgoPerfType> cached_benchmark_results;
+  lru_map<input_shapes, AlgoPerfType> cached_benchmark_results { 10000 };
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
