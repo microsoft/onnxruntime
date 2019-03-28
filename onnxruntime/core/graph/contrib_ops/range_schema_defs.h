@@ -16,7 +16,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_NAMESPACE::OpSchema& RegisterRangeOpSchema(::ONNX_NAMESPACE::OpSchema&& op_schema);
+::ONNX_NAMESPACE::OpSchema& RegisterRangeOpSchema(::ONNX_NAMESPACE::OpSchema&& op_schema);
 
 }  // namespace contrib
 }  // namespace onnxruntime
