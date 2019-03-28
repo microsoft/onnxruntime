@@ -107,7 +107,7 @@ TEST(PositiveTests, MLValue2TensorProtoTestsFloat2Raw) {
   auto raw = tp.raw_data().data();
   auto raw_len = tp.raw_data().size();
   float* tensor_data = (float*)raw;
-  for (int j = 0; j < raw_len / sizeof(float); ++j) {
+  for (size_t j = 0; j < raw_len / sizeof(float); ++j) {
     EXPECT_FLOAT_EQ(tensor_data[j], values_mul_x[j]);
   }
 }
@@ -135,7 +135,7 @@ TEST(PositiveTests, MLValue2TensorProtoTestsInt322Raw) {
   auto raw = tp.raw_data().data();
   auto raw_len = tp.raw_data().size();
   int32_t* tensor_data = (int32_t*)raw;
-  for (int j = 0; j < raw_len / sizeof(int32_t); ++j) {
+  for (size_t j = 0; j < raw_len / sizeof(int32_t); ++j) {
     EXPECT_EQ(tensor_data[j], values_mul_x[j]);
   }
 }
@@ -163,7 +163,7 @@ TEST(PositiveTests, MLValue2TensorProtoTestsUInt322Raw) {
   auto raw = tp.raw_data().data();
   auto raw_len = tp.raw_data().size();
   uint64_t* tensor_data = (uint64_t*)raw;
-  for (int j = 0; j < raw_len / sizeof(uint64_t); ++j) {
+  for (size_t j = 0; j < raw_len / sizeof(uint64_t); ++j) {
     EXPECT_EQ(tensor_data[j] >> 32, values_mul_x[j * 2 + 1]);
     EXPECT_EQ(tensor_data[j] & 0xFFFFFFFF, values_mul_x[j * 2]);
   }
