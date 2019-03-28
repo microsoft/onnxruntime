@@ -32,7 +32,7 @@ class SVMCommon {
   float kernel_dot(const T* A, int64_t a, const std::vector<float>& B, int64_t b, int64_t len, KERNEL k) const {
     double sum = 0;
     const T* pA = A + a;
-    const float* pB = &B[b];
+    const float* pB = B.data() + b;
     if (k == KERNEL::POLY) {
       for (int64_t i = len; i > 0; --i, ++pA, ++pB)
         sum += *pA * *pB;
