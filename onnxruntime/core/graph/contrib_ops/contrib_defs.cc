@@ -1104,8 +1104,9 @@ Note that this algorithm is agnostic to where the origin is in the coordinate sy
 orthogonal transformations and translations of the coordinate system; thus translating or reflections of the coordinate system
 result in the same boxes being selected by the algorithm.
 The selected_indices output is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
-The bounding box coordinates corresponding to the selected indices can then be obtained using the gather operation. This is mostly used in TF models.
-The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0, 0]. This is mostly used in Pytoch models.)DOC")
+The bounding box coordinates corresponding to the selected indices can then be obtained using the Gather or GatherND operation.
+Note: Normally, boxes and scores should have same num_classes. But for some cases, if the boxes has num_classes=1 which is different with scores.
+It means with same boxes it has scores calculated for different classes.)DOC")
       .Input(
           0,
           "boxes",
@@ -1136,20 +1137,9 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
           OpSchema::Optional)
       .Output(
           0,
-          "output_boxes",
-          "Filtered boxes, has same shape with input boxes. Filtered boexes are set to [0, 0, 0, 0]. Used by Pytoch models",
-          "tensor(float)")
-      .Output(
-          1,
-          "output_scores",
-          "Filtered scores, has same shape with input scores. Filtered scores are set to 0. Used by Pytoch models",
-          "tensor(float)")
-      .Output(
-          2,
           "selected_indices",
-          "selected indices from the boxes tensor. Mostly used for TensorFlow models",
-          "tensor(int32)",
-          OpSchema::Optional)
+          "selected indices from the boxes tensor. [num_selected_indices, 3], the selected indices format is [batch_index, class_index, box_index].",
+          "tensor(int32)")
       .Attr(
           "center_point_box",
           "Integer indicate the format of the box data. The default is 0."
@@ -1159,20 +1149,8 @@ The boxes output is the filtered boxes which set the filtered boxes to [0, 0, 0,
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (hasInputShape(ctx, 0)) {
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        }
-
-        propagateElemTypeFromInputToOutput(ctx, 1, 1);
-        if (hasInputShape(ctx, 1)) {
-          propagateShapeFromInputToOutput(ctx, 1, 1);
-        }
-
-        if (ctx.getNumOutputs() > 2) {
-          auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
-          selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
-        }
+        auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
+        selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)

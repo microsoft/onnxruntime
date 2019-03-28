@@ -20,15 +20,10 @@ TEST(NonMaxSuppressionOpTest, WithIOUThreshold) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 100.0f, 1.0f, 101.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f});
-  test.AddOutput<int32_t>("selected_indices", {3}, {3L, 0L, 5L});
+  test.AddOutput<int32_t>("selected_indices", {3, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L});
   test.Run();
 }
 
@@ -45,15 +40,10 @@ TEST(NonMaxSuppressionOpTest, CenterPointBoxFormat) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.5f, 0.5f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.5f, 10.5f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.5f, 100.5f, 1.0f, 1.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f});
-  test.AddOutput<int32_t>("selected_indices", {3}, {3L, 0L, 5L});
+  test.AddOutput<int32_t>("selected_indices", {3, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L});
   test.AddAttribute<int64_t>("center_point_box", 1LL);
   test.Run();
 }
@@ -67,6 +57,7 @@ TEST(NonMaxSuppressionOpTest, TwoClasses) {
                         0.0f, 10.0f, 1.0f, 11.0f,
                         0.0f, 10.1f, 1.0f, 11.1f,
                         0.0f, 100.0f, 1.0f, 101.0f,
+
                         0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -79,24 +70,38 @@ TEST(NonMaxSuppressionOpTest, TwoClasses) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {6L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 2, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 100.0f, 1.0f, 101.0f,
+  test.AddOutput<int32_t>("selected_indices", {6, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L,
+                           0L, 1L, 3L,
+                           0L, 1L, 0L,
+                           0L, 1L, 5L});
+  test.Run();
+}
 
-                         0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 100.0f, 1.0f, 101.0f});
-  test.AddOutput<float>("output_scores", {1, 2, 6},
-                        {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f,
-                         0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f});
-  test.AddOutput<int32_t>("selected_indices", {6}, {3L, 0L, 5L, 9L, 6L, 11L});
+TEST(NonMaxSuppressionOpTest, ClassBroadcase) {
+  OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("boxes", {1, 1, 6, 4},
+                       {0.0f, 0.0f, 1.0f, 1.0f,
+                        0.0f, 0.1f, 1.0f, 1.1f,
+                        0.0f, -0.1f, 1.0f, 0.9f,
+                        0.0f, 10.0f, 1.0f, 11.0f,
+                        0.0f, 10.1f, 1.0f, 11.1f,
+                        0.0f, 100.0f, 1.0f, 101.0f});
+  test.AddInput<float>("scores", {1, 2, 6},
+                       {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f,
+                        0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
+  test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {6L});
+  test.AddInput<float>("iou_threshold", {}, {0.5f});
+  test.AddInput<float>("score_threshold", {}, {0.0f});
+  test.AddOutput<int32_t>("selected_indices", {6, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L,
+                           0L, 1L, 3L,
+                           0L, 1L, 0L,
+                           0L, 1L, 5L});
   test.Run();
 }
 
@@ -109,6 +114,7 @@ TEST(NonMaxSuppressionOpTest, TwoBathes) {
                         0.0f, 10.0f, 1.0f, 11.0f,
                         0.0f, 10.1f, 1.0f, 11.1f,
                         0.0f, 100.0f, 1.0f, 101.0f,
+
                         0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -121,24 +127,11 @@ TEST(NonMaxSuppressionOpTest, TwoBathes) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {2L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {2, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-
-                         0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<float>("output_scores", {2, 1, 6},
-                        {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.0f,
-                         0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.0f});
-  test.AddOutput<int32_t>("selected_indices", {4}, {3L, 0L, 9L, 6L});
+  test.AddOutput<int32_t>("selected_indices", {4, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           1L, 0L, 3L,
+                           1L, 0L, 0L});
   test.Run();
 }
 
@@ -155,15 +148,9 @@ TEST(NonMaxSuppressionOpTest, WithScoreThreshold) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.4f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.0f});
-  test.AddOutput<int32_t>("selected_indices", {2}, {3L, 0L});
+  test.AddOutput<int32_t>("selected_indices", {2, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L});
   test.Run();
 }
 
@@ -179,15 +166,10 @@ TEST(NonMaxSuppressionOpTest, WithoutScoreThreshold) {
   test.AddInput<float>("scores", {1, 1, 6}, {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 100.0f, 1.0f, 101.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f});
-  test.AddOutput<int32_t>("selected_indices", {3}, {3L, 0L, 5L});
+  test.AddOutput<int32_t>("selected_indices", {3, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L});
   test.Run();
 }
 
@@ -204,15 +186,9 @@ TEST(NonMaxSuppressionOpTest, WithScoreThresholdZeroScores) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {6L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {-3.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.1f, 0.0f, 0.0f, 0.3f, 0.0f, 0.0f});
-  test.AddOutput<int32_t>("selected_indices", {2}, {3L, 0L});
+  test.AddOutput<int32_t>("selected_indices", {2, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L});
   test.Run();
 }
 
@@ -229,15 +205,10 @@ TEST(NonMaxSuppressionOpTest, FlippedCoordinates) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {1.0f, 1.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         1.0f, 101.0f, 0.0f, 100.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f});
-  test.AddOutput<int32_t>("selected_indices", {3}, {3L, 0L, 5L});
+  test.AddOutput<int32_t>("selected_indices", {3, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L});
   test.Run();
 }
 
@@ -254,15 +225,9 @@ TEST(NonMaxSuppressionOpTest, SelectTwo) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {2L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.0f});
-  test.AddOutput<int32_t>("selected_indices", {2}, {3L, 0L});
+  test.AddOutput<int32_t>("selected_indices", {2, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L});
   test.Run();
 }
 
@@ -279,15 +244,10 @@ TEST(NonMaxSuppressionOpTest, SelectThirty) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {30L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 100.0f, 1.0f, 101.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 6}, {0.9f, 0.0f, 0.0f, 0.95f, 0.0f, 0.3f});
-  test.AddOutput<int32_t>("selected_indices", {3}, {3L, 0L, 5L});
+  test.AddOutput<int32_t>("selected_indices", {3, 3},
+                          {0L, 0L, 3L,
+                           0L, 0L, 0L,
+                           0L, 0L, 5L});
   test.Run();
 }
 
@@ -299,10 +259,7 @@ TEST(NonMaxSuppressionOpTest, SelectSingleBox) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 1, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 1}, {0.9f});
-  test.AddOutput<int32_t>("selected_indices", {1}, {0L});
+  test.AddOutput<int32_t>("selected_indices", {1, 3}, {0L, 0L, 0L});
   test.Run();
 }
 
@@ -324,20 +281,7 @@ TEST(NonMaxSuppressionOpTest, SelectFromIdenticalBoxes) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 10, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f,
-                         0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 10}, {0.9f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  test.AddOutput<int32_t>("selected_indices", {1}, {0L});
+  test.AddOutput<int32_t>("selected_indices", {1, 3}, {0L, 0L, 0L});
   test.Run();
 }
 
@@ -354,14 +298,6 @@ TEST(NonMaxSuppressionOpTest, InconsistentBoxAndScoreShapes) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {30L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 6, 4},
-                        {0.0f, 0.0f, 1.0f, 1.0f,
-                         0.0f, 0.1f, 1.0f, 1.1f,
-                         0.0f, -0.1f, 1.0f, 0.9f,
-                         0.0f, 10.0f, 1.0f, 11.0f,
-                         0.0f, 10.1f, 1.0f, 11.1f,
-                         0.0f, 100.0f, 1.0f, 101.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 5}, {0.9f, 0.75f, 0.6f, 0.95f, 0.5f});
   test.AddOutput<int32_t>("selected_indices", {0}, {});
   test.Run(OpTester::ExpectResult::kExpectFailure, "boxes and scores should have same spatial_dimention.");
 }
@@ -373,8 +309,6 @@ TEST(NonMaxSuppressionOpTest, InvalidIOUThreshold) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {1.2f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
-  test.AddOutput<float>("output_scores", {1, 1, 1}, {0.9f});
   test.AddOutput<int32_t>("selected_indices", {0}, {});
   test.Run(OpTester::ExpectResult::kExpectFailure, "iou_threshold must be in range [0, 1]");
 }
@@ -386,9 +320,7 @@ TEST(NonMaxSuppressionOpTest, EmptyInput) {
   test.AddInput<int32_t>("max_output_boxes_per_batch", {}, {30L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<float>("output_boxes", {1, 1, 0, 4}, {});
-  test.AddOutput<float>("output_scores", {1, 1, 0}, {});
-  test.AddOutput<int32_t>("selected_indices", {0}, {});
+  test.AddOutput<int32_t>("selected_indices", {0, 3}, {});
   test.Run();
 }
 

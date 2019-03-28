@@ -22,7 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).MayInplace(1, 1),
+    KernelDefBuilder(),
     NonMaxSuppression);
 
 void NonMaxSuppression::MaxMin(const float& lhs, const float& rhs, float& min, float& max) const {
@@ -59,7 +59,7 @@ bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index
     x2_min = boxes_data[4 * box_index2 + 0] - box2_width_half;
     x2_max = boxes_data[4 * box_index2 + 0] + box2_width_half;
     y2_min = boxes_data[4 * box_index2 + 1] - box2_height_half;
-    y2_max = boxes_data[4 * box_index2 + 1] + box2_height_half;  
+    y2_max = boxes_data[4 * box_index2 + 1] + box2_height_half;
   }
 
   const float intersection_x_min = std::max(x1_min, x2_min);
@@ -95,13 +95,17 @@ Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShap
   auto boxes_dims = boxes_shape.GetDims();
   auto scores_dims = scores_shape.GetDims();
   ORT_RETURN_IF_NOT(boxes_dims[0] == scores_dims[0], "boxes and scores should have same num_batches.");
-  ORT_RETURN_IF_NOT(boxes_dims[1] == scores_dims[1], "boxes and scores should have same num_classes.");
+  ORT_RETURN_IF_NOT(boxes_dims[1] == scores_dims[1] || boxes_dims[1] == 1, "boxes and scores should have same num_classes or boxes has num_classes = 1 for broadcast.");
   ORT_RETURN_IF_NOT(boxes_dims[2] == scores_dims[2], "boxes and scores should have same spatial_dimention.");
   ORT_RETURN_IF_NOT(boxes_dims[3] == 4, "The most inner dimension in boxes must have 4 data.");
 
   const_cast<int64_t&>(num_batches_) = boxes_dims[0];
   const_cast<int64_t&>(num_classes_) = boxes_dims[1];
   const_cast<int64_t&>(num_boxes_) = boxes_dims[2];
+  if (boxes_dims[1] == 1 && boxes_dims[1] != scores_dims[1]) {
+    const_cast<bool&>(class_broadcast_) = true;
+    const_cast<int64_t&>(num_classes_) = scores_dims[1];
+  }
 
   const Tensor* max_output_boxes_per_batch_tensor = ctx->Input<Tensor>(2);
   if (max_output_boxes_per_batch_tensor != nullptr) {
@@ -155,39 +159,27 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     return lhs.score < rhs.score;
   };
 
-  Tensor* boxes_output = ctx->Output(0, boxes_shape);
-  Tensor* scores_output = ctx->Output(1, scores_shape);
-  ORT_ENFORCE(boxes_output);
-  ORT_ENFORCE(scores_output);
-  float* output_boxes_data = boxes_output->MutableData<float>();
-  float* output_scores_data = scores_output->MutableData<float>();
-
-  if (output_boxes_data != boxes_data) {
-    memcpy(output_boxes_data, boxes_data, boxes_shape.Size() * sizeof(float));
-  }
-  if (output_scores_data != scores_data) {
-    memcpy(output_scores_data, scores_data, scores_shape.Size() * sizeof(float));
-  }
-
-  int64_t num_scores = scores_shape.Size();
-  std::vector<int32_t> selected_index(num_scores, 0);
-
-  int box_block_size = 4 * sizeof(float);
+  std::vector<selected_index> tmp_selected_indices;
   int num_selected = 0;
   for (int64_t batch_index = 0; batch_index < num_batches_; ++batch_index) {
     int per_batch_count = 0;
     for (int64_t class_index = 0; class_index < num_classes_; ++class_index) {
-      int64_t pos = (batch_index * num_classes_ + class_index) * num_boxes_;
+      int64_t box_score_offset = (batch_index * num_classes_ + class_index) * num_boxes_;
+      int64_t box_offset = box_score_offset * 4;
+      if (class_broadcast_) {
+        box_offset = batch_index * num_classes_ * num_boxes_ * 4;
+      }
       // Filter by score_threshold_
       std::priority_queue<ScoreIndexPair, std::deque<ScoreIndexPair>, decltype(LessCompare)> sorted_scores_with_index(LessCompare);
-      for (int64_t i = 0; i < num_boxes_; ++i) {
-        if (!has_score_threshold || (has_score_threshold && scores_data[pos + i] > score_threshold)) {
-          sorted_scores_with_index.emplace(ScoreIndexPair({scores_data[pos + i], static_cast<int32_t>(pos + i)}));
+      for (int64_t box_index = 0; box_index < num_boxes_; ++box_index) {
+        if (!has_score_threshold || (has_score_threshold && scores_data[box_score_offset + box_index] > score_threshold)) {
+          sorted_scores_with_index.emplace(ScoreIndexPair({scores_data[box_score_offset + box_index], static_cast<int32_t>(box_index)}));
         }
       }
 
       int num_of_selected_per_class = 0;
       ScoreIndexPair next_top_score;
+      std::vector<int32_t> selected_indicies_inside_class;
       // Get the next box with top score, filter by iou_threshold_
       while (!sorted_scores_with_index.empty()) {
         next_top_score = sorted_scores_with_index.top();
@@ -196,7 +188,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         bool selected = true;
         // Check with existing selected boxes for this class, suppress if exceed the IOU (Intersection Over Union) threshold
         for (int i = 0; i < num_of_selected_per_class; ++i) {
-          if (SuppressByIOU(boxes_data, selected_index[num_selected - i - 1], next_top_score.index, iou_threshold)) {
+          if (SuppressByIOU(boxes_data + box_offset, selected_indicies_inside_class[i], next_top_score.index, iou_threshold)) {
             selected = false;
             break;
           }
@@ -206,44 +198,19 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
           if (max_output_boxes_per_batch > 0 && per_batch_count >= max_output_boxes_per_batch) {
             break;
           }
-          selected_index[num_selected] = next_top_score.index;
+          selected_indicies_inside_class.push_back(next_top_score.index);
+          tmp_selected_indices.push_back(selected_index(static_cast<int32_t>(batch_index), static_cast<int32_t>(class_index), next_top_score.index));
           ++num_of_selected_per_class;
           ++per_batch_count;
           ++num_selected;
         }
-      } //while
-    } //for class_index
-  } // for batch_index
+      }  //while
+    }    //for class_index
+  }      //for batch_index
 
-  // Set filtered boxes and scores to 0
-  // Sort the selected_indices with ascending order, so that we can set the whole memory block if there sit together
-  // e.g, selected_indices are [5, 10], we can set the memory blocks [0, 4], [6, 9], [11, ~] to 0.
-  std::priority_queue<int32_t, std::vector<int32_t>, std::greater<int32_t>> selected_indices_ordered;
-  for (int32_t index = 0; index < num_selected; ++index) {
-    selected_indices_ordered.push(selected_index[index]);
-  }
-
-  int32_t start_pos = 0;
-  while (!selected_indices_ordered.empty()) {
-    int32_t end_pos = selected_indices_ordered.top();
-    selected_indices_ordered.pop();
-    if (end_pos != start_pos) {
-      memset(output_boxes_data + start_pos * 4, 0, (end_pos - start_pos) * box_block_size);
-      memset(output_scores_data + start_pos, 0, (end_pos - start_pos) * sizeof(float));
-    }
-    start_pos = end_pos + 1;
-  }
-
-  if (num_scores != start_pos) {
-    memset(output_boxes_data + start_pos * 4, 0, (num_scores - start_pos) * box_block_size);
-    memset(output_scores_data + start_pos, 0, (num_scores - start_pos) * sizeof(float));
-  }
-
-  if (ctx->OutputCount() > 2) {
-    Tensor* selected_indices = ctx->Output(2, {num_selected});
-    ORT_ENFORCE(selected_indices);
-    memcpy(selected_indices->MutableData<int32_t>(), selected_index.data(), num_selected * sizeof(int32_t));
-  }
+  Tensor* selected_indices = ctx->Output(0, {num_selected, 3});
+  ORT_ENFORCE(selected_indices);
+  memcpy(selected_indices->MutableData<int32_t>(), tmp_selected_indices.data(), num_selected * sizeof(selected_index));
 
   return Status::OK();
 }
