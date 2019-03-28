@@ -59,11 +59,11 @@ void ReverseSequenceShapeInference(InferenceContext& ctx) {
 
   auto& first_input_shape = getInputShape(ctx, 0);
   if (first_input_shape.dim_size() < 2) {
-    fail_shape_inference("First input tensor must have rank >= 2");
+    fail_shape_inference("'input' must have rank >= 2");
   }
   auto& seq_len_input_shape = getInputShape(ctx, 1);
   if (seq_len_input_shape.dim_size() != 1) {
-    fail_shape_inference("Second input tensor must have rank == 1");
+    fail_shape_inference("'sequence_lens' must have rank of 1");
   }
 
   propagateShapeFromInputToOutput(ctx, 0, 0);
