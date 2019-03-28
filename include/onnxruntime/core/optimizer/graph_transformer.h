@@ -5,17 +5,9 @@
 
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/graph_transformer_level.h"
 
 namespace onnxruntime {
-
-enum class TransformerLevel : uint32_t {
-  Default = 0,
-  Level1,
-  Level2,
-  // Convenience enum to always get the max available value. 
-  // This way when we add more levels code which iterates over this enum does not need to change.
-  MaxTransformerLevel
-};
 
 /**
 @class GraphTransformer
@@ -24,8 +16,8 @@ The interface for in-place transformation of a Graph.
 */
 class GraphTransformer {
  public:
-  GraphTransformer(const std::string& name, const std::string& desc)
-      : name_(name), desc_(desc) {
+  GraphTransformer(const std::string& name, const std::string& desc, const std::unordered_set<std::string>& compatible_execution_providers = {})
+      : name_(name), desc_(desc), compatible_provider_types_(compatible_execution_providers) {
   }
 
   virtual ~GraphTransformer() = default;
@@ -40,12 +32,15 @@ class GraphTransformer {
     return desc_;
   }
 
+  const std::unordered_set<std::string>& GetCompatibleExecutionProviders() const noexcept {
+    return compatible_provider_types_;
+  }
+
   /** Apply the in-place transformation defined by this transformer to the provided Graph instance.
-  @param[in] providers Optional - providers this transformer can be applied to
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  common::Status Apply(Graph& graph, bool& modified, const std::vector<std::string>& providers = {}) const;
+  common::Status Apply(Graph& graph, bool& modified) const;
 
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
@@ -57,7 +52,7 @@ class GraphTransformer {
     }
 
     return Status::OK();
-  }
+  }  
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformer);
@@ -73,5 +68,6 @@ class GraphTransformer {
 
   const std::string name_;
   const std::string desc_;
+  const std::unordered_set<std::string> compatible_provider_types_;
 };
 }  // namespace onnxruntime

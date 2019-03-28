@@ -12,12 +12,24 @@ namespace onnxruntime {
 @class RewriteRule 
 
 The base class for a rewrite rule. A rewrite rule represents a semantics-preserving
-transformation of a computation-graph. It can be used to represent, for example,
-the elimination of operators that serve as no-ops (for example, dropout during
+transformation of a computation graph. It can be used to represent, for example,
+the elimination of operators that serve as no-ops (e.g., dropout during
 inference), as well as inlining of "function" definitions or the dual (replacing
 a complex expression by an equivalent function-call). Unlike the more general
-IGraphTransformer, a rewrite-rule is applied at a single node, representing the
+IGraphTransformer, a rewrite rule is applied at a single node, representing the
 root of an expression that is rewritten.
+
+When creating a new rewrite rule, two main function have to be implemented: SatisfyCondition and Apply.
+- SatisfyCondition determines whether the rule will be triggered, and can include multiple condition checks.
+It is advisable to add the more selective checks first, because those will lead to discarding fast rules that 
+cannot be applied on a node.
+- Apply is the actual body of the rule that will be executed if the checks in SatisfyCondition are passed
+successfully. Note that additional, more complex checks can be included in the Apply if putting them in the
+SatisfyCondition would lead to duplicate work (e.g., when we make a check on a Node attribute but we need
+that attribute to execute the rule too).
+
+In general, simple fast checks are a better fit for SatisfyCondition, whereas more complex ones can be 
+added in the Apply.
 */
 class RewriteRule {
  public:
@@ -58,9 +70,6 @@ class RewriteRule {
   a more complex pattern matching (conditions on the ascending or descending nodes of the
   node for which this rule was triggered) or some other properties of the nodes. */
   virtual bool SatisfyCondition(const Graph& graph, const Node& node) = 0;
-
-  /** Returns true if the op type of the node is compatible with this rewrite rule. */
-  virtual bool OpTypeCondition(const Node& node) = 0;
 
   /**
   Apply the rewrite rule to a specific node.
