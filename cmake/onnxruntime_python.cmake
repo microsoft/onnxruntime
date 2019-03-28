@@ -48,6 +48,10 @@ if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()   
 
+if (onnxruntime_USE_MKLDNN)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_MKLDNN=1)
+endif()
+
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
