@@ -184,45 +184,45 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (3 - 14)
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>X</tt> : T</dt>
+<dd>The input sequences packed (and potentially padded) into one 3-D tensor with the shape of `[seq_length, batch_size, input_size]`</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>The weight tensor for the gates. Concatenation of `W[iofc]` and `WB[iofc]` (if bidirectional) along dimension 0. The tensor has shape `[num_directions, 4*hidden_size, input_size]`.</dd>
+<dt><tt>R</tt> : T</dt>
+<dd>The recurrence weight tensor. Concatenation of `R[iofc]` and `RB[iofc]` (if bidirectional) along dimension 0. This tensor has shape `[num_directions, 4*hidden_size, hidden_size]`.</dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd>The bias tensor for input gate. Concatenation of `[Wb[iofc], Rb[iofc]]`, and `[WBb[iofc], RBb[iofc]]` (if bidirectional) along dimension 0. This tensor has shape `[num_directions, 8*hidden_size]`. Optional: If not specified - assumed to be 0.</dd>
+<dt><tt>sequence_lens</tt> (optional) : T1</dt>
+<dd>Optional tensor specifying lengths of the sequences in a batch. If not specified - assumed all sequences in the batch to have length `seq_length`. It has shape `[batch_size]` </dd>
+<dt><tt>initial_h</tt> (optional) : T</dt>
+<dd>Optional initial value of the hidden. If not specified - assumed to be 0. It has shape `[num_directions, batch_size, hidden_size]`.</dd>
+<dt><tt>initial_c</tt> (optional) : T</dt>
+<dd>Optional initial value of the cell. If not specified - assumed to be 0. It has shape `[num_directions, batch_size, hidden_size]`.</dd>
+<dt><tt>P</tt> (optional) : T</dt>
+<dd>The weight tensor for peepholes. Concatenation of `P[iof]` and `PB[iof]` (if bidirectional) along dimension 0. It has shape `[num_directions, 3*hidde_size]`. Optional: If not specified - assumed to be 0.</dd>
+<dt><tt>QW</tt> (optional) : T</dt>
+<dd>The weight tensor of the query layer in the attention mechanism. Should be of shape `[num_directions, am_query_depth(hidden_size of lstm), am_attn_size]` </dd>
+<dt><tt>MW</tt> (optional) : T</dt>
+<dd>The weight tensor of the memory layer in the attention mechanism. Should be of shape `[num_directions, memory_depth, am_attn_size]` </dd>
+<dt><tt>V</tt> (optional) : T</dt>
+<dd>The attention_v tensor in the attention mechanism. Should be of shape `[num_directions, am_attn_size]` </dd>
+<dt><tt>M</tt> (optional) : T</dt>
+<dd>The sequence of the memory (input) for attention mechanism. Should be of `[batch_size, max_memory_step, memory_depth]` </dd>
+<dt><tt>memory_seq_lens</tt> (optional) : T1</dt>
+<dd>The sequence length of the input memory for the attention mechanism. Should be of `[batch_size]` </dd>
+<dt><tt>AW</tt> (optional) : T</dt>
+<dd>The weights of attention layer in the attention wrapper. If exists, should be of shape `[num_directions, memory_depth+hidden_size, aw_attn_size]. Please note that attention mechanism context depth is also memory_depth in the attention mechanism.` </dd>
 </dl>
 
 #### Outputs (0 - 3)
 
 <dl>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>Y</tt> (optional) : T</dt>
+<dd>A tensor that concats all the intermediate output values of the hidden. It has shape `[seq_length, num_directions, batch_size, hidden_size]`</dd>
+<dt><tt>Y_h</tt> (optional) : T</dt>
+<dd>The last output value of the hidden. It has shape `[num_directions, batch_size, hidden_size]`. </dd>
+<dt><tt>Y_c</tt> (optional) : T</dt>
+<dd>The last output value of the cell. It has shape `[num_directions, batch_size, hidden_size]`.</dd>
 </dl>
 
 #### Type Constraints
@@ -265,21 +265,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (2 - 4)
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>x</tt> : T1</dt>
+<dd>Input data tensor from previous layer; has size (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and width. Note that this is for the 2D image. Otherwise the size is (N x C x D1 x D2 ... x Dn). Optionally, if dimension denotation is in effect, the operation expects input data tensor to arrive with the dimension denotation of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].</dd>
+<dt><tt>w</tt> : T2</dt>
+<dd>The weight tensor that will be used in the convolutions; has size (M x C/group x kH x kW), where C is the number of channels, and kH and kW are the height and width of the kernel, and M is the number of feature maps. For more than 2 dimensions, the kernel shape will be (M x C/group x k1 x k2 x ... x kn), where (k1 x k2 x ... kn) is the dimension of the kernel. Optionally, if dimension denotation is in effect, the operation expects the weight tensor to arrive with the dimension denotation of [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. X.shape[1] == (W.shape[1] * group) == C (assuming zero based indices for the shape array). Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. </dd>
+<dt><tt>x_zero_point</tt> (optional) : T1</dt>
+<dd>Zero point tensor for input 'x'. It's optional and default value is 0. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.</dd>
+<dt><tt>w_zero_point</tt> (optional) : T2</dt>
+<dd>Scale tensor for input 'w'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>y</tt> : T3</dt>
+<dd>Output data tensor that contains the result of the convolution. The output dimensions are functions of the kernel size, stride size, and pad lengths.</dd>
 </dl>
 
 #### Type Constraints
@@ -314,19 +314,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>x</tt> : T2</dt>
+<dd>N-D quantized Input tensor to be de-quantized.</dd>
+<dt><tt>x_scale</tt> : T1</dt>
+<dd>Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dt><tt>x_zero_point</tt> : T2</dt>
+<dd>Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>y</tt> : T1</dt>
+<dd>N-D full precision output tensor. It has same shape as input 'x'.</dd>
 </dl>
 
 #### Type Constraints
@@ -350,17 +350,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>X</tt> : T</dt>
+<dd>input</dd>
+<dt><tt>axis</tt> : tensor(int32)</dt>
+<dd>Specified axis to insert a dimension</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>output</dd>
 </dl>
 
 #### Type Constraints
@@ -404,18 +404,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (2 - 3)
 
 <dl>
-<dt><tt></tt> : </dt>
+<dt><tt>X</tt> : T</dt>
 <dd></dd>
-<dt><tt></tt> : </dt>
+<dt><tt>W</tt> : T</dt>
 <dd></dd>
-<dt><tt></tt> (optional) : </dt>
+<dt><tt>B</tt> (optional) : T</dt>
 <dd></dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
+<dt><tt>Y</tt> : T</dt>
 <dd></dd>
 </dl>
 
@@ -456,19 +456,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>A</tt> : T</dt>
+<dd>Input tensor A. The shape of A should be (M, K) if transA is 0, or (K, M) if transA is non-zero.</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>Input tensor B. The shape of B should be (K, N) if transB is 0, or (N, K) if transB is non-zero.</dd>
+<dt><tt>C</tt> : T</dt>
+<dd>Input tensor C. The shape of C should be unidirectional broadcastable to (M, N).</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor of shape (M, N).</dd>
 </dl>
 
 #### Type Constraints
@@ -507,17 +507,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>data</tt> : T</dt>
+<dd>Tensor of rank r >= 1.</dd>
+<dt><tt>indices</tt> : Tind</dt>
+<dd>Tensor of rank q >= 1.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>output</tt> : T</dt>
+<dd>Tensor of rank q-1+r-indices[-1].</dd>
 </dl>
 
 #### Type Constraints
@@ -542,21 +542,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (2 - 4)
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>A</tt> : T1</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>N-dimensional matrix B</dd>
+<dt><tt>a_zero_point</tt> (optional) : T1</dt>
+<dd>Zero point tensor for input 'A'. It's optional and default value is 0. It could be a scalar or a 1-D tensor, which means a per-tensor or per-row quantization. If it's a 1-D tensor, its number of elements should be equal to the number of rows of input 'A'.</dd>
+<dt><tt>b_zero_point</tt> (optional) : T2</dt>
+<dd>Scale tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T3</dt>
+<dd>Matrix multiply results from A * B</dd>
 </dl>
 
 #### Type Constraints
@@ -597,16 +597,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
+<dt><tt>X</tt> : T</dt>
 <dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>mask</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
+<dt><tt>Y</tt> : T</dt>
 <dd></dd>
 </dl>
 
@@ -638,15 +638,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>X</tt> : T1</dt>
+<dd>An input tensor to hash.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T2</dt>
+<dd>32-bit hash value.</dd>
 </dl>
 
 #### Type Constraints
@@ -691,19 +691,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>boxes</tt> : T1</dt>
+<dd>An input tensor. 2D tensor with shape [num_boxes, 4]</dd>
+<dt><tt>scores</tt> : T1</dt>
+<dd>An input tensor. 1D tensor with shape [num_boxes]</dd>
 </dl>
 
 #### Outputs (1 - 2)
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>selected_indices</tt> : T2</dt>
+<dd>selected indices from the boxes tensor.</dd>
+<dt><tt>valid_outputs</tt> (optional) : T2</dt>
+<dd>Optional. A 0-D integer tensor representing the number of valid elements in selected_indices, with the valid elements appearing first.</dd>
 </dl>
 
 #### Type Constraints
@@ -749,31 +749,31 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (8 - 9)
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>x</tt> : T1</dt>
+<dd>Input data tensor from previous layer; has size (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and width. Note that this is for the 2D image. Otherwise the size is (N x C x D1 x D2 ... x Dn). Optionally, if dimension denotation is in effect, the operation expects input data tensor to arrive with the dimension denotation of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].</dd>
+<dt><tt>x_scale</tt> : tensor(float)</dt>
+<dd>Scale tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.</dd>
+<dt><tt>x_zero_point</tt> : T1</dt>
+<dd>Zero point tensor for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'x'.</dd>
+<dt><tt>w</tt> : T2</dt>
+<dd>The weight tensor that will be used in the convolutions; has size (M x C/group x kH x kW), where C is the number of channels, and kH and kW are the height and width of the kernel, and M is the number of feature maps. For more than 2 dimensions, the kernel shape will be (M x C/group x k1 x k2 x ... x kn), where (k1 x k2 x ... kn) is the dimension of the kernel. Optionally, if dimension denotation is in effect, the operation expects the weight tensor to arrive with the dimension denotation of [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. X.shape[1] == (W.shape[1] * group) == C (assuming zero based indices for the shape array). Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. </dd>
+<dt><tt>w_scale</tt> : tensor(float)</dt>
+<dd>Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.</dd>
+<dt><tt>w_zero_point</tt> : T2</dt>
+<dd>Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'w'.</dd>
+<dt><tt>y_scale</tt> : tensor(float)</dt>
+<dd>Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.</dd>
+<dt><tt>y_zero_point</tt> : T3</dt>
+<dd>Scale tensor for output 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of channels of input 'y'.</dd>
+<dt><tt>B</tt> (optional) : T4</dt>
+<dd>Optional 1D bias to be added to the convolution, has size of M.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>y</tt> : T3</dt>
+<dd>Output data tensor that contains the result of the convolution. The output dimensions are functions of the kernel size, stride size, and pad lengths.</dd>
 </dl>
 
 #### Type Constraints
@@ -809,29 +809,29 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>a</tt> : T1</dt>
+<dd>N-dimensional quantized matrix a</dd>
+<dt><tt>a_scale</tt> : tensor(float)</dt>
+<dd>scale of quantized input a</dd>
+<dt><tt>a_zero_point</tt> : T1</dt>
+<dd>zero point of quantized input a</dd>
+<dt><tt>b</tt> : T2</dt>
+<dd>N-dimensional quantized matrix b</dd>
+<dt><tt>b_scale</tt> : tensor(float)</dt>
+<dd>scale of quantized input b</dd>
+<dt><tt>b_zero_point</tt> : T2</dt>
+<dd>zero point of quantized input b</dd>
+<dt><tt>y_scale</tt> : tensor(float)</dt>
+<dd>scale of quantized output y</dd>
+<dt><tt>y_zero_point</tt> : T3</dt>
+<dd>zero point of quantized output y</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>y</tt> : T3</dt>
+<dd>Quantized matrix multiply results from a * b</dd>
 </dl>
 
 #### Type Constraints
@@ -866,19 +866,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>x</tt> : T1</dt>
+<dd>N-D full precision Input tensor to be quantized.</dd>
+<dt><tt>y_scale</tt> : T1</dt>
+<dd>Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dt><tt>y_zero_point</tt> : T2</dt>
+<dd>Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>y</tt> : T2</dt>
+<dd>N-D quantized output tensor. It has same shape as input 'x'.</dd>
 </dl>
 
 #### Type Constraints
@@ -927,17 +927,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor from the previous operator; 4-D feature map of shape (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and the width of the data.</dd>
+<dt><tt>rois</tt> : T</dt>
+<dd>RoIs (Regions of Interest2) to pool over; rois is 2-D input of shape (num_rois, 5) given as [[batch_id, x1, y1, x2, y2], ...]. The RoIs' coordinates are in the coordinate system of the input image.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>RoI pooled output, 4-D tesnor of shape (num_rois, C, pooled_h, pooled_w). The r-th batch element Y[r-1] is a pooled feature map corresponding to the r-th RoI X[r-1].</dd>
 </dl>
 
 #### Type Constraints
@@ -960,19 +960,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (2 - 3)
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> (optional) : </dt>
-<dd></dd>
+<dt><tt>start</tt> : T</dt>
+<dd>Tensor(scalar, or dims=[1]). First entry in the range.</dd>
+<dt><tt>limit</tt> : T</dt>
+<dd>Tensor(scalar, or dims=[1]). Upper limit of sequence, exclusive.</dd>
+<dt><tt>delta</tt> (optional) : T</dt>
+<dd>Tensor(scalar, or dims=[1]). Number that increments start. Defaults to 1.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>1-D Tensor of the range.</dd>
 </dl>
 
 #### Type Constraints
@@ -1006,15 +1006,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>data</tt> : T1</dt>
+<dd>An input tensor.</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>reduced</tt> : T2</dt>
+<dd>Reduced output tensor.</dd>
 </dl>
 
 #### Type Constraints
@@ -1038,15 +1038,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>X</tt> : T</dt>
+<dd>input</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>output</dd>
 </dl>
 
 #### Type Constraints
@@ -1112,15 +1112,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>X</tt> : T</dt>
+<dd>Strings to tokenize</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T</dt>
+<dd>Tokenized strings</dd>
 </dl>
 
 #### Type Constraints
@@ -1153,21 +1153,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Sequence</tt> : T</dt>
+<dd>Specify batchs of sequence words to embedding</dd>
+<dt><tt>W</tt> : T1</dt>
+<dd>Specify weights of conv</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Specify bias of conv</dd>
+<dt><tt>C</tt> : T1</dt>
+<dd>Specify embedding vector of char</dd>
 </dl>
 
 #### Outputs
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>Y</tt> : T1</dt>
+<dd>output</dd>
 </dl>
 
 #### Type Constraints

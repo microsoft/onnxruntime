@@ -175,20 +175,22 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
         s += ' ({} - {})'.format(display_number(schema.min_input),
                                  display_number(schema.max_input))
     s += '\n\n'
-    if schema.inputs:
-        s += '<dl>\n'
-        for input in schema.inputs:
-            option_str = ""
-            if OpSchema.FormalParameterOption.Optional == input.option:
-                option_str = " (optional)"
-            elif OpSchema.FormalParameterOption.Variadic == input.option:
-                if input.isHomogeneous:
-                    option_str = " (variadic)"
-                else:
-                    option_str = " (variadic, heterogeneous)"
-            s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(input.name, option_str, input.typeStr)
-            s += '<dd>{}</dd>\n'.format(input.description)
-        s += '</dl>\n'
+
+#    if schema.inputs:
+    s += '<dl>\n'
+    for inp in schema.inputs:
+        option_str = ""
+        if OpSchema.FormalParameterOption.Optional == inp.option:
+            option_str = " (optional)"
+        elif OpSchema.FormalParameterOption.Variadic == inp.option:
+            if inp.isHomogeneous:
+                option_str = " (variadic)"
+            else:
+                option_str = " (variadic, heterogeneous)"
+        s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(inp.name, option_str, inp.typeStr)
+        s += '<dd>{}</dd>\n'.format(inp.description)
+
+    s += '</dl>\n'
 
     # outputs
     s += '\n#### Outputs'
@@ -197,20 +199,20 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                                  display_number(schema.max_output))
     s += '\n\n'
 
-    if schema.outputs:
-        s += '<dl>\n'
-        for output in schema.outputs:
-            option_str = ""
-            if OpSchema.FormalParameterOption.Optional == output.option:
-                option_str = " (optional)"
-            elif OpSchema.FormalParameterOption.Variadic == output.option:
-                if output.isHomogeneous:
-                    option_str = " (variadic)"
-                else:
-                    option_str = " (variadic, heterogeneous)"
-            s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(output.name, option_str, output.typeStr)
-            s += '<dd>{}</dd>\n'.format(output.description)
-        s += '</dl>\n'
+#    if schema.outputs:
+    s += '<dl>\n'
+    for output in schema.outputs:
+        option_str = ""
+        if OpSchema.FormalParameterOption.Optional == output.option:
+            option_str = " (optional)"
+        elif OpSchema.FormalParameterOption.Variadic == output.option:
+            if output.isHomogeneous:
+                option_str = " (variadic)"
+            else:
+                option_str = " (variadic, heterogeneous)"
+        s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(output.name, option_str, output.typeStr)
+        s += '<dd>{}</dd>\n'.format(output.description)
+    s += '</dl>\n'
 
     # type constraints
     s += '\n#### Type Constraints'
