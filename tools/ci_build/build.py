@@ -607,8 +607,13 @@ def generate_documentation(source_dir, build_dir, configs):
                         '--output_path', operator_doc_path
                     ], 
                     cwd = os.path.join(build_dir,config, config))
-        
-    docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+    docdiff = ''
+    try:    
+        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    
+
     if len(docdiff) > 0:
         raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in.\n diff:\n"+docdiff)
 
