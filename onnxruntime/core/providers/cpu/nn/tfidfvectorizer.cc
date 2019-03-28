@@ -474,7 +474,9 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
   if (input_shape.Size() == 0) {
     // TfidfVectorizer may receive an empty input when it follows a Tokenizer
     // (for example for a string containing only stopwords).
-    // The operator returns an empty output as well.
+    // The operator returns an output with null values of shape
+    // {b_dim, output_size} when b_dim is the number of received observations
+    // and output_size the number of distinct tokens.
     OutputResult(ctx, B, frequencies);
     return Status::OK();
   }
