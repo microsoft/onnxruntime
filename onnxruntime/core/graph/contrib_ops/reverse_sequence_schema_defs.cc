@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 #include "reverse_sequence_schema_defs.h"
-#include "core/graph/constants.h"
 #include "core/graph/op.h"
-#include <cmath>
-#include <type_traits>
 
 namespace onnxruntime {
 namespace contrib {
@@ -31,7 +28,7 @@ Example 1:
            [2.0, 6.0, 10.0, 14.0],
            [3.0, 7.0, 11.0, 15.0]]
   sequence_lens = [4, 3, 2, 1]
-  seq_axis = 0
+  time_axis = 0
   batch_axis = 1
 
   output = [[3.0, 6.0, 9.0,  12.0],
@@ -45,8 +42,8 @@ Example 2:
            [8.0,  9.0,  10.0, 11.0],
            [12.0, 13.0, 14.0, 15.0]]
   sequence_lens = [1, 2, 3, 4]
+  time_axis = 1
   batch_axis = 0
-  seq_axis = 1
 
   output = [[0.0,  1.0,  2.0,  3.0 ],
             [5.0,  4.0,  6.0,  7.0 ],
@@ -61,37 +58,12 @@ void ReverseSequenceShapeInference(InferenceContext& ctx) {
   }
 
   auto& first_input_shape = getInputShape(ctx, 0);
-  auto rank = first_input_shape.dim_size();
-  if (rank < 2) {
-    fail_shape_inference("First input tensor must have rank >= 2");
+  if (first_input_shape.dim_size() < 2) {
+    fail_shape_inference("'input' must have rank >= 2");
   }
-
-  int seq_axis = static_cast<int>(getAttribute(ctx, "seq_axis", 0));
-  int batch_axis = static_cast<int>(getAttribute(ctx, "batch_axis", 1));
-
-  if (seq_axis >= rank)
-    fail_shape_inference("Invalid seq_axis of ", seq_axis, ". Must be smaller than input rank of ", rank);
-
-  if (batch_axis >= rank)
-    fail_shape_inference("Invalid batch_axis of ", batch_axis, ". Must be smaller than input rank of ", rank);
-
-  if (seq_axis == batch_axis)
-    fail_shape_inference("seq_axis and batch_axis must have different values but both are ", seq_axis);
-
-  TensorShapeProto::Dimension batch_dim = first_input_shape.dim(batch_axis);
-
-  if (batch_dim.has_dim_value()) {
-    auto& seq_len_input_shape = getInputShape(ctx, 1);
-    if (seq_len_input_shape.dim_size() != 1)
-      fail_shape_inference("Invalid sequence_lens input. Rank should be 1. Got:", seq_len_input_shape.dim_size());
-
-    auto seq_len_dim0 = seq_len_input_shape.dim(0);
-    if (seq_len_dim0.has_dim_value()) {
-      if (static_cast<int64_t>(batch_dim.dim_value()) != static_cast<int64_t>(seq_len_dim0.dim_value())) {
-        fail_shape_inference("Batch size mismatch for input and sequence_lens. ",
-                             batch_dim.dim_value(), " != ", seq_len_dim0.dim_value());
-      }
-    }
+  auto& seq_len_input_shape = getInputShape(ctx, 1);
+  if (seq_len_input_shape.dim_size() != 1) {
+    fail_shape_inference("'sequence_lens' must have rank of 1");
   }
 
   propagateShapeFromInputToOutput(ctx, 0, 0);
@@ -105,26 +77,26 @@ OpSchema& RegisterReverseSequenceOpSchema(OpSchema&& op_schema) {
           "T",
           OpSchema::all_tensor_types(),
           "Input and output types can be of any tensor type.")
-      .TypeConstraint(
-          "T1", {"tensor(int32)"}, "Constrain sequence_lens to integer tensor.")
       .Attr(
-          "seq_axis",
-          "The axis containing the sequence dimension.",
-          AttributeProto::INT)
+          "time_axis",
+          "(Optional) Specify which axis is time axis. Must be one of 0 (default), or 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .Attr(
           "batch_axis",
-          "The axis containing the batch dimension.",
-          AttributeProto::INT)
+          "(Optional) Specify which axis is batch axis. Must be one of 1 (default), or 0.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .Input(
           0,
           "input",
-          "Tensor of rank r >= 2, with the shape of `[seq_length, batch_size, ...]` or `[batch_size, seq_length, ...]`",
+          "Tensor of rank r >= 2.",
           "T")
       .Input(
           1,
           "sequence_lens",
           "Tensor specifying lengths of the sequences in a batch. It has shape `[batch_size]`.",
-          "T1")
+          "tensor(int32)")
       .Output(
           0,
           "Y",

@@ -16,7 +16,7 @@ TEST(ReverseSequenceTest, BatchMajor) {
                                           6, 5, 4, 7};
 
   test.AddAttribute("batch_axis", int64_t(0));
-  test.AddAttribute("seq_axis", int64_t(1));
+  test.AddAttribute("time_axis", int64_t(1));
 
   test.AddInput<int64_t>("input", {2, 4, 1}, input);
   test.AddInput<int32_t>("sequence_lens", {2}, sequence_lens);
@@ -38,7 +38,7 @@ TEST(ReverseSequenceTest, TimeMajor) {
                                           0, 7};
 
   test.AddAttribute("batch_axis", int64_t(1));
-  test.AddAttribute("seq_axis", int64_t(0));
+  test.AddAttribute("time_axis", int64_t(0));
 
   test.AddInput<int64_t>("input", {4, 2, 1}, input);
   test.AddInput<int32_t>("sequence_lens", {2}, sequence_lens);
@@ -60,7 +60,7 @@ TEST(ReverseSequenceTest, Strings) {
                                               "0", "7"};
 
   test.AddAttribute("batch_axis", int64_t(1));
-  test.AddAttribute("seq_axis", int64_t(0));
+  test.AddAttribute("time_axis", int64_t(0));
 
   test.AddInput<std::string>("input", {4, 2, 1}, input);
   test.AddInput<int32_t>("sequence_lens", {2}, sequence_lens);
@@ -82,7 +82,7 @@ TEST(ReverseSequenceTest, InvalidInput) {
       std::vector<int64_t> expected_output = input;
 
       test.AddAttribute("batch_axis", batch_dim);
-      test.AddAttribute("seq_axis", seq_dim);
+      test.AddAttribute("time_axis", seq_dim);
 
       test.AddInput<int64_t>("input", input_shape, input);
       test.AddInput<int32_t>("sequence_lens", {batch_size}, sequence_lens);
@@ -90,9 +90,9 @@ TEST(ReverseSequenceTest, InvalidInput) {
       test.Run(test::OpTester::ExpectResult::kExpectFailure, err_msg);
     };
 
-    check_bad_axis(2, 1, {1, seq_size, batch_size}, "batch_axis must be 0 or 1. Got:2");
-    check_bad_axis(0, 2, {batch_size, 1, seq_size}, "seq_axis must be 0 or 1. Got:2");
-    check_bad_axis(1, 1, {batch_size, seq_size, 1}, "seq_axis and batch_axis must have different values but both are 1");
+    check_bad_axis(2, 1, {1, seq_size, batch_size}, "Invalid batch_axis of 2. Must be 0 or 1");
+    check_bad_axis(0, 2, {batch_size, 1, seq_size}, "Invalid time_axis of 2. Must be 0 or 1");
+    check_bad_axis(1, 1, {batch_size, seq_size, 1}, "time_axis and batch_axis must have different values but both are 1");
   }
 
   // invalid sequence_lens size
@@ -107,12 +107,13 @@ TEST(ReverseSequenceTest, InvalidInput) {
                                             6, 5, 4, 7};
 
     test.AddAttribute("batch_axis", int64_t(0));
-    test.AddAttribute("seq_axis", int64_t(1));
+    test.AddAttribute("time_axis", int64_t(1));
 
     test.AddInput<int64_t>("input", {2, 4, 1}, input);
     test.AddInput<int32_t>("sequence_lens", {3}, sequence_lens);
     test.AddOutput<int64_t>("Y", {2, 4, 1}, expected_output);
-    test.Run(test::OpTester::ExpectResult::kExpectFailure, "Batch size mismatch for input and sequence_lens. 2 != 3");
+    test.Run(test::OpTester::ExpectResult::kExpectFailure,
+             "sequence_lens shape must be {batch_size}. Got:{3}. batch_size=2");
   }
 }
 

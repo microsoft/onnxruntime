@@ -35,12 +35,36 @@ ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
                         ReverseSequenceOp);
 
 template <typename T>
-static Status ReverseSequence(OpKernelContext& context, bool time_major);
+static void ReverseSequenceImpl(const Tensor& X, Tensor& Y,
+                                gsl::span<const int> sequence_lengths,
+                                const int64_t max_seq_len,
+                                const int64_t batch_size,
+                                const int64_t input_size,
+                                bool time_major);
 
 Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   Status status = Status::OK();
+
+  const auto& X = *context->Input<Tensor>(0);
+
+  const auto& dims = X.Shape();
+  const auto batch_size = time_major_ ? dims[1] : dims[0];
+  const auto max_seq_len = time_major_ ? dims[0] : dims[1];
+  const auto input_size = dims.SizeFromDimension(2);
+
+  const auto& seq_lengths = *context->Input<Tensor>(1);
+  const auto& seq_len_shape = seq_lengths.Shape();
+
+  if (seq_len_shape.NumDimensions() != 1 || seq_len_shape[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:",
+                           seq_len_shape, ". batch_size=", batch_size);
+  }
+
   const auto data_type = context->Input<Tensor>(0)->DataType();
-  DispatchOnTensorTypeWithReturn(data_type, status, ReverseSequence, *context, time_major_);
+  auto& Y = *context->Output(0, dims);
+
+  DispatchOnTensorType(data_type, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int>(),
+                       max_seq_len, batch_size, input_size, time_major_);
   return status;
 }
 
@@ -79,13 +103,16 @@ static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
 }
 
 template <typename T>
-void ReverseSequenceImpl(gsl::span<const T> inputs,
-                         gsl::span<T> inputs_reverse,
-                         gsl::span<const int> sequence_lengths,
-                         const int64_t max_seq_len,
-                         const int64_t batch_size,
-                         const int64_t input_size,
-                         bool time_major) {
+static void ReverseSequenceImpl(const Tensor& X,
+                                Tensor& Y,
+                                gsl::span<const int> sequence_lengths,
+                                const int64_t max_seq_len,
+                                const int64_t batch_size,
+                                const int64_t input_size,
+                                bool time_major) {
+  gsl::span<const T> inputs = X.DataAsSpan<T>();
+  gsl::span<T> inputs_reverse = Y.MutableDataAsSpan<T>();
+
   auto input_offset = time_major ? TimeMajorInputOffset : BatchMajorInputOffset;
 
   auto reversed_output_offset = time_major ? TimeMajorOutputOffset : BatchMajorOutputOffset;
@@ -124,29 +151,5 @@ void ReverseSequenceImpl(gsl::span<const T> inputs,
   }
 }
 
-template <typename T>
-static Status ReverseSequence(OpKernelContext& context, bool time_major) {
-  const auto& X = *context.Input<Tensor>(0);
-
-  const auto& dims = X.Shape();
-  const auto batch_size = time_major ? dims[1] : dims[0];
-  const auto max_seq_len = time_major ? dims[0] : dims[1];
-  const auto input_size = dims.SizeFromDimension(2);
-
-  const auto& seq_lengths = *context.Input<Tensor>(1);
-  const auto& seq_len_shape = seq_lengths.Shape();
-
-  if (seq_len_shape.NumDimensions() != 1 || seq_len_shape[0] != batch_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:",
-                           seq_len_shape, ". batch_size=", batch_size);
-  }
-
-  auto& Y = *context.Output(0, dims);
-
-  ReverseSequenceImpl(X.DataAsSpan<T>(), Y.MutableDataAsSpan<T>(), seq_lengths.DataAsSpan<int>(),
-                      max_seq_len, batch_size, input_size, time_major);
-
-  return Status::OK();
-}
 }  // namespace contrib
 }  // namespace onnxruntime
