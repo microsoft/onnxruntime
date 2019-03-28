@@ -1995,14 +1995,14 @@ Node& Graph::AddNode(const NodeProto& node_proto,
   }
 
   size_t current_op_type_count = 1;
-  const auto op_type = node_proto.op_type();
+  const auto& op_type = node_proto.op_type();
   auto iter = type_to_count_map.find(op_type);
   if (iter == type_to_count_map.end())
     type_to_count_map.insert({op_type, 1});
   else
     current_op_type_count = ++iter->second;
 
-  std::string node_name = node_proto.name();
+  std::string& node_name = node_proto.name();
   if (node_name.empty())
     node_name = GenerateNodeName("unnamed_" + op_type + "_" +
                                  std::to_string(current_op_type_count));
