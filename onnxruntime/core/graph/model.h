@@ -117,6 +117,9 @@ class Model {
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
+   static common::Status LoadProto(const std::string& p_file_path,
+                                   /*out*/ std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_modelProto);
+
  private:
   // Model data.
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;

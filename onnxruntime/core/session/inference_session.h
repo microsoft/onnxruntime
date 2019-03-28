@@ -275,7 +275,6 @@ class InferenceSession {
     */
   std::string EndProfiling();
 
- protected:
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
@@ -283,6 +282,7 @@ class InferenceSession {
     */
   common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto);
 
+ protected:
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. This is primarily to support large models.

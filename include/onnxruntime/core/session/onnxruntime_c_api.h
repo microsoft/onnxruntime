@@ -152,6 +152,7 @@ ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
 ORT_RUNTIME_CLASS(Callback);
 ORT_RUNTIME_CLASS(CustomOpDomain);
+ORT_RUNTIME_CLASS(Model);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -180,6 +181,12 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
                _In_ const char* logid,
                _Out_ OrtEnv** out);
 
+
+/**
+ * \load a model from disk and return an opaque handle for it.
+ */
+ORT_API_STATUS(OrtLoadModel, _In_ const char* model_path, _Out_ OrtModel** model_handle);
+
 // TODO: document the path separator convention? '/' vs '\'
 // TODO: should specify the access characteristics of model_path. Is this read only during the
 // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory
@@ -187,6 +194,12 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 //  What sort of access is needed to model_path : read or read/write?
 // TODO:  allow loading from an in-memory byte-array
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
+
+/**
+ * \create a session from opaque model handle.
+ */
+ORT_API_STATUS(OrtCreateSessionFromHandle, _In_ OrtEnv* env, _In_ OrtModel* model_handle,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,

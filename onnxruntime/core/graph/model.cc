@@ -346,6 +346,68 @@ using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
 
+Status OpenFileHandle(const std::string& p_model_path, int* p_fd) {
+  int fd;
+  Status status = Env::Default().FileOpenRd(p_model_path, fd);
+  if (!status.IsOK()) {
+    if (status.Category() == common::SYSTEM) {
+      switch (status.Code()) {
+        case ENOENT:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model failed. File doesn't exist");
+        case EINVAL:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT);
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
+      }
+    }
+  }
+
+  *p_fd = fd;
+  return Status::OK();
+}
+
+Status Model::LoadProto(const std::string& p_model_path, /*out*/ std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_modelProto) {
+  // Open the file for read
+  int fd;
+  auto status = OpenFileHandle(p_model_path, &fd);
+  if (!status.IsOK())
+    return status;
+  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+
+  try {
+    auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));
+    auto coded_input = std::make_unique<CodedInputStream>(raw_input.get());
+
+    // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
+    coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
+
+    const bool result = model_proto->ParseFromCodedStream(coded_input.get());
+    coded_input.reset();
+    raw_input.reset();
+
+    if (!result) {
+      status = Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+    }
+  } catch (std::exception& ex) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return Status(ONNXRUNTIME, FAIL, ex.what());
+  }
+
+  if (!status.IsOK()) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return status;
+  }
+
+  status = Env::Default().FileClose(fd);
+  if (status.IsOK()) {
+    p_modelProto = std::move(model_proto);
+  }
+
+  return status;
+}
+
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");

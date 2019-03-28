@@ -81,3 +81,6 @@ OrtSetSessionGraphOptimizationLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue
+OrtLoadModel
+OrtReleaseModel
+OrtCreateSessionFromHandle
