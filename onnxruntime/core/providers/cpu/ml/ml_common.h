@@ -301,6 +301,9 @@ static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM 
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
         break;
+      default:
+      case POST_EVAL_TRANSFORM::NONE:
+        break;
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
