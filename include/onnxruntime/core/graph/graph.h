@@ -503,7 +503,7 @@ class Graph {
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
   /** Returns true if a Node output is a Graph output. */
-  bool IsNodeOutputsInGraphOutputs(const Node& node) {
+  bool IsNodeOutputsInGraphOutputs(const Node& node) const {
     for (auto output_def : node.OutputDefs()) {
       if (std::find(GetOutputs().cbegin(), GetOutputs().cend(), output_def) != GetOutputs().cend()) {
         return true;

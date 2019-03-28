@@ -7,11 +7,12 @@
 
 namespace onnxruntime {
 
-class GemmActivationFusion : public onnxruntime::GraphTransformer {
+class GemmActivationFusion : public GraphTransformer {
  public:
-  GemmActivationFusion() noexcept
-      : onnxruntime::GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm") {}
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  GemmActivationFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("GemmActivationFusion", "Fusing Activation into Gemm", compatible_execution_providers) {}
+
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

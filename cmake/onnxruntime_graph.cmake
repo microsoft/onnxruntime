@@ -2,10 +2,17 @@
 # Licensed under the MIT License.
 
 file(GLOB_RECURSE onnxruntime_graph_src
-    "${ONNXRUNTIME_INCLUDE_DIR}/core/graph/*.h"
-    "${ONNXRUNTIME_ROOT}/core/graph/*.h"
-    "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
-)
+  "${ONNXRUNTIME_INCLUDE_DIR}/core/graph/*.h"
+  "${ONNXRUNTIME_ROOT}/core/graph/*.h"
+  "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
+  )
+
+if (onnxruntime_DISABLE_CONTRIB_OPS)
+  list(REMOVE_ITEM onnxruntime_graph_src
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.cc"
+    )
+endif()
 
 file(GLOB_RECURSE onnxruntime_ir_defs_src
     "${ONNXRUNTIME_ROOT}/core/defs/*.cc"

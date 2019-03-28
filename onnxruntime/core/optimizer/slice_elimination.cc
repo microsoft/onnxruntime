@@ -17,7 +17,7 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 }
 
 bool EliminateSlice::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
-  if (!OpTypeCondition(node)) {
+  if (node.OpType() != included_op_type_) {
     return false;
   }
 
@@ -52,10 +52,6 @@ bool EliminateSlice::SatisfyCondition(const Graph& /*graph*/, const Node& node) 
   }
 
   return true;
-}
-
-bool EliminateSlice::OpTypeCondition(const Node& node) {
-  return node.OpType() == included_op_type_;
 }
 
 }  // namespace onnxruntime
