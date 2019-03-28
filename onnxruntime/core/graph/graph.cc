@@ -2002,12 +2002,13 @@ Node& Graph::AddNode(const NodeProto& node_proto,
   else
     current_op_type_count = ++iter->second;
 
-  std::string node_name = node_proto.name();
+  std::string generated_name;
+  const auto& node_name = node_proto.name();
   if (node_name.empty())
-    node_name = GenerateNodeName("unnamed_" + op_type + "_" +
+    generated_name = GenerateNodeName("unnamed_" + op_type + "_" +
                                  std::to_string(current_op_type_count));
 
-  return AddNode(node_name,
+  return AddNode(!node_name.empty() ? node_name : generated_name,
                  node_proto.op_type(),
                  node_proto.doc_string(),
                  input_defs,
