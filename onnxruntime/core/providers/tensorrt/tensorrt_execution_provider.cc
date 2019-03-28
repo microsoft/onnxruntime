@@ -277,8 +277,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     string string_buf;
     model_proto.SerializeToString(&string_buf);
-
-    std::lock_guard<OrtMutex> glock(tensorrt_mu);
+    
     TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
@@ -367,7 +366,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
       ORT_UNUSED_PARAMETER(num_inputs);
       ORT_UNUSED_PARAMETER(num_outputs);
-      std::lock_guard<OrtMutex> glock(tensorrt_mu);
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& input_dim_sizes = (trt_state->input_info)[1];
