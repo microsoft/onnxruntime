@@ -760,6 +760,7 @@ TEST(MathOpTest, Mean_8) {
   test.Run();
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(MathOpTest, AffineDefaultAttributes) {
   OpTester test("Affine");
   std::vector<int64_t> dims{2, 2};
@@ -777,6 +778,7 @@ TEST(MathOpTest, Affine) {
   test.AddOutput<float>("B", dims, {1.0f, 3.0f, 5.0f, 7.0f});
   test.Run();
 }
+#endif
 
 template <float (&op)(float value)>
 void TrigTest(OpTester& test, std::initializer_list<float> input) {

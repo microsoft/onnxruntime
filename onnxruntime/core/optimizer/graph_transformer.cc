@@ -7,7 +7,7 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status GraphTransformer::Apply(Graph& graph, bool& modified, const std::vector<std::string>& ) const {
+Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
   // the Graph should be in a good state prior this being called, so there should be no need to call Resolve here
   // ORT_RETURN_IF_ERROR(graph.Resolve());
 

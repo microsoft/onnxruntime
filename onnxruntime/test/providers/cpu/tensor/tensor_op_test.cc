@@ -302,6 +302,7 @@ TEST(TensorOpTest, CastToString) {
   TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING);
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(TensorOpTest, CropBorderOnly) {
   const int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
@@ -352,6 +353,7 @@ TEST(TensorOpTest, CropBorderAndScale) {
   test.AddOutput<float>("output", {N, C, scale[0], scale[1]}, output);
   test.Run();
 }
+#endif
 
 std::pair<float, float> MeanStdev(std::vector<float>& v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
@@ -579,6 +581,7 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
   MeanVarianceNormalizationFunctionDefaultPerChannel();
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(TensorOpTest, ImageScalerTest) {
   const int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {
@@ -605,6 +608,6 @@ TEST(TensorOpTest, ImageScalerTest) {
   test.AddOutput<float>("output", {N, C, H, W}, result);
   test.Run();
 }
-
+#endif
 }  // namespace test
 }  // namespace onnxruntime
