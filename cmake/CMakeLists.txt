@@ -460,7 +460,6 @@ if (onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_MKLDNN)
-  add_definitions(-DUSE_MKLDNN=1)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
