@@ -50,7 +50,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   // Calculate the shape of the output tensor
   std::vector<int64_t> dims(inputs_0_rank);
   for (int dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++)
-    dims[dimension_index] = (inputs_0_dims[dimension_index]);
+    dims[dimension_index] = inputs_0_dims[dimension_index];
   dims[axis] = concat_axis_size;
   TensorShape outputShape(dims);
  
@@ -104,8 +104,8 @@ Status Concat::Compute(OpKernelContext* ctx) const {
     auto input_axis_pitch = prep.axis_pitch;
     const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
     // no data in this tensor - so skip it
-	if (input == nullptr)
-      continue;
+    if (input == nullptr)
+     continue;
     auto input_size = prep.tensor->Shape().Size();
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
