@@ -36,6 +36,7 @@ void Quantize(float scale, uint8_t zero_point,
   }
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(ConvTest, QLinearConv2DTest) {
   OpTester test("QLinearConv", 1, onnxruntime::kMSDomain);
 
@@ -173,8 +174,9 @@ TEST(ConvTest, QLinearConv3DTest) {
 
   test.AddOutput<uint8_t>("y", Y_shape, result_quantized);
 
-  test.Run();      
+  test.Run();
 }
+#endif
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime

@@ -29,8 +29,8 @@ each with different trade offs. At the moment, we define one that performs top-d
 */
 class RuleBasedGraphTransformer : public GraphTransformer {
  public:
-  RuleBasedGraphTransformer(const std::string& name, const std::string& desc)
-      : GraphTransformer(name, desc) {}
+  RuleBasedGraphTransformer(const std::string& name, const std::string& desc, const std::unordered_set<std::string>& compatible_execution_providers = {})
+      : GraphTransformer(name, desc, compatible_execution_providers) {}
 
   /**
   Register a rewrite rule in this transformer.
@@ -59,19 +59,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
 
  private:
   std::vector<std::unique_ptr<RewriteRule>> rules_;
-};
 
-/**
-@class TopDownRuleBasedTransformer
-
-This is a rule-based Graph transformer that applies rules by performing top-down passes of the Graph.
-*/
-class TopDownRuleBasedTransformer : public RuleBasedGraphTransformer {
- public:
-  TopDownRuleBasedTransformer(const std::string& name, const std::string& desc)
-      : RuleBasedGraphTransformer(name, desc) {}
-
- private:
   // Performs a single top-down traversal of the graph and applies all registered rules.
   common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
