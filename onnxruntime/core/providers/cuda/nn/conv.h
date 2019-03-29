@@ -84,6 +84,8 @@ private:
 };
 
 // cached cudnn descriptors
+constexpr size_t MAX_CACHED_ALGO_PERF_RESULTS = 10000;
+
 template <typename AlgoPerfType>
 struct CudnnConvState {
   // if x/w dims changed, update algo and cudnnTensors
@@ -100,7 +102,7 @@ struct CudnnConvState {
   CudnnTensor y_tensor;
   CudnnConvolutionDescriptor conv_desc;
 
-  lru_map<std::vector<int64_t>, AlgoPerfType> cached_benchmark_results { 10000 };
+  lru_map<std::vector<int64_t>, AlgoPerfType> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
