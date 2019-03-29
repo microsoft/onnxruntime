@@ -36,7 +36,7 @@ class TransposeBase {
     }
   }
 
-  void ComputeOutputShape(const Tensor& X, std::vector<int64_t>& output_dims,
+  Status ComputeOutputShape(const Tensor& X, std::vector<int64_t>& output_dims,
                           std::vector<int64_t>& default_perm, const std::vector<int64_t>*& p_perm) const {
     size_t rank = X.Shape().NumDimensions();
     const auto& input_dims = X.Shape().GetDims();
@@ -57,8 +57,12 @@ class TransposeBase {
     output_dims.resize(rank);
     for (int i = 0; i < rank; i++) {
       size_t inpdim = (*p_perm)[i];
+      if (inpdim >= rank)
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, 
+			                   "Rank of input data does not align with the specified 'perm' in Transpose op");
       output_dims[i] = input_dims[inpdim];
     }
+    return Status::OK();
   }
 
   bool perm_specified_ = false;
