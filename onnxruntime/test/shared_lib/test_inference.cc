@@ -15,7 +15,7 @@ using namespace onnxruntime;
 
 struct Input {
   const char* name;
-  std::vector<size_t> dims;
+  std::vector<int64_t> dims;
   std::vector<float> values;
 };
 
@@ -117,9 +117,9 @@ void TestInference(OrtEnv* env, T model_uri,
   std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> value_y(nullptr, OrtReleaseValue);
   {
     std::vector<OrtValue*> allocated_outputs(1);
-    std::vector<size_t> dims_y(expected_dims_y.size());
+    std::vector<int64_t> dims_y(expected_dims_y.size());
     for (size_t i = 0; i != expected_dims_y.size(); ++i) {
-      dims_y[i] = static_cast<size_t>(expected_dims_y[i]);
+      dims_y[i] = expected_dims_y[i];
     }
 
     allocated_outputs[0] =
@@ -357,7 +357,7 @@ TEST_F(CApiTest, create_session_without_session_option) {
 
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
-  size_t expected_len = 2;
+  int64_t expected_len = 2;
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   {
     std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
@@ -370,7 +370,7 @@ TEST_F(CApiTest, create_tensor) {
       ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(tensor.get(), &shape_info_ptr));
       shape_info.reset(shape_info_ptr);
     }
-    size_t len = static_cast<size_t>(OrtGetTensorShapeElementCount(shape_info.get()));
+    int64_t len = OrtGetTensorShapeElementCount(shape_info.get());
     ASSERT_EQ(len, expected_len);
     std::vector<int64_t> shape_array(len);
 
@@ -388,7 +388,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
   OrtAllocatorInfo* info;
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
-  std::vector<size_t> dims = {4};
+  std::vector<int64_t> dims = {4};
   std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> tensor(
       OrtCreateTensorWithDataAsOrtValue(info, values, values_length * sizeof(float), dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT), OrtReleaseValue);
   OrtReleaseAllocatorInfo(info);

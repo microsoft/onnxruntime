@@ -42,7 +42,7 @@ ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
-2. Install cmake-3.11 or better from https://cmake.org/download/.
+2. Install cmake-3.13 or better from https://cmake.org/download/.
 3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
 4. (optional) Install onnx from source code (cmake/external/onnx)
     ```
@@ -116,8 +116,8 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 ### MKL-DNN
 To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn --use_mklml`
 
-### Tensor RT
-ONNX Runtime supports the Tensort RT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
+### TensorRT
+ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
 
 The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6. 
 

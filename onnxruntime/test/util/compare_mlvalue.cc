@@ -355,7 +355,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //}
     std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
     {
-      OrtTensorTypeAndShapeInfo* t1;
+      OrtTensorTypeAndShapeInfo* t1 = nullptr;
       ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(o, &t1));
       info.reset(t1);
     }

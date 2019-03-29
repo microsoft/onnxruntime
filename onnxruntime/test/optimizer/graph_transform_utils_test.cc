@@ -43,7 +43,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   ASSERT_TRUE(transformers.size() == 2);
   // validate each rule returned is present in the custom list
   for (const auto& transformer : transformers) {
-    ASSERT_TRUE(std::find(custom_list.begin(), custom_list.end(), transformer.first->Name()) != custom_list.end());
+    ASSERT_TRUE(std::find(custom_list.begin(), custom_list.end(), transformer->Name()) != custom_list.end());
   }
 
   // Transformer name no match test. When there is no match empty list is expected.

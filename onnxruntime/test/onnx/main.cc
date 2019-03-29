@@ -335,35 +335,22 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   // clang-format on
 
 #ifdef _WIN32
-  broken_tests["resnet50"] = "failed: type mismatch";
-  broken_tests["resnet50v2"] = "failed: type mismatch";
-  broken_tests["resnet101v2"] = "failed: type mismatch";
-  broken_tests["resnet101v2"] = "failed: type mismatch";
-  broken_tests["resnet152v2"] = "failed: type mismatch";
   broken_tests["tf_inception_resnet_v2"] = "failed: type mismatch";
-  broken_tests["tf_inception_v3"] = "failed: type mismatch";
   broken_tests["tf_inception_v4"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v1_50"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_50"] = "failed: type mismatch";
   broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
   broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
   broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
   broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
-
   broken_tests["vgg19"] = "failed: bad allocation";
   broken_tests["tf_nasnet_large"] = "failed: bad allocation";
   broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
-
+  broken_tests["zfnet512"] = "failed: bad allocation";
 #endif
 
 #ifdef __GNUG__
 #ifndef __LP64__
   broken_tests["nonzero_example"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
-  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
-  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
-  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
 #endif
 

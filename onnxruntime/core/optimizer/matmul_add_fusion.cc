@@ -21,6 +21,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 1) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", 9)) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
@@ -31,7 +32,8 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
+        next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
 
@@ -84,11 +86,14 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       gemm_input_defs.push_back(add_input_defs[0]);
     }
 
-    graph.AddNode(graph.GenerateNodeName("gemm"),
-                  "Gemm",
-                  "fused Matmul and Add " + add_node.OpType(),
-                  gemm_input_defs,
-                  add_node.MutableOutputDefs());
+    Node& gemm_node = graph.AddNode(graph.GenerateNodeName("gemm"),
+                                    "Gemm",
+                                    "fused Matmul and Add " + add_node.OpType(),
+                                    gemm_input_defs,
+                                    add_node.MutableOutputDefs());
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
     removed_nodes.push_front(matmul_node.Index());
     removed_nodes.push_front(add_node.Index());
