@@ -6,6 +6,7 @@
 #include "gsl/gsl_util"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include <sstream>
 
 namespace onnxruntime {
 
@@ -57,9 +58,15 @@ class TransposeBase {
     output_dims.resize(rank);
     for (int i = 0; i < rank; i++) {
       size_t inpdim = (*p_perm)[i];
-      if (inpdim >= rank)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, 
-			                   "Rank of input data does not align with the specified 'perm' in Transpose op");
+      if (inpdim >= rank) {
+        std::stringstream ss;
+        ss << "[ ";
+        for (const auto& p : *p_perm)
+          ss << p << " ";
+        ss << "]";
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "perm: ", ss.str(), " does not align with rank of input data: ", std::to_string(rank));
+      }
       output_dims[i] = input_dims[inpdim];
     }
     return Status::OK();
