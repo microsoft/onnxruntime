@@ -329,9 +329,6 @@ Status Add<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status Sub<T>::Compute(OpKernelContext* context) const {
-  const Tensor* data0 = context->Input<Tensor>(0);
-  const Tensor* data1 = context->Input<Tensor>(1);
-
   return BroadcastTwo<T, T>(
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 - input1.array(); },
@@ -350,9 +347,6 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
-  const Tensor* data0 = context->Input<Tensor>(0);
-  const Tensor* data1 = context->Input<Tensor>(1);
-
   return BroadcastTwo<T, T>(
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 / input1.array(); },
