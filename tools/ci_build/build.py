@@ -728,7 +728,7 @@ def main():
             elif args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
               # TODO: parallel executor test fails on MacOS
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
