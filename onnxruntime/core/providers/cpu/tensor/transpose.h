@@ -59,7 +59,7 @@ class TransposeBase {
     for (int i = 0; i < rank; i++) {
       size_t inpdim = (*p_perm)[i];
       if (inpdim >= rank) {
-        std::stringstream ss;
+        std::ostringstream ss;
         ss << "[ ";
         for (const auto& p : *p_perm)
           ss << p << " ";
