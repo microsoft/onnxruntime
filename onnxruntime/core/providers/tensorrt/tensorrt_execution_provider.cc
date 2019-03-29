@@ -73,7 +73,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  std::set<int> supported_nodes_set;
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
@@ -89,7 +88,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       int output_order = 0;
 
       for (const auto& index : group) {
-        supported_nodes_set.insert(node_index[index]);
         sub_graph->nodes.push_back(node_index[index]);
         const auto& node = graph.GetNode(node_index[index]);
 
@@ -203,6 +201,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, int> input_map;
     const auto& input_defs = fused_node->InputDefs();
+    input_map.reserve(input_defs.size());
     for (int i = 0, end = input_defs.size(); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
     }
@@ -210,6 +209,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Build map from output name to its index in output definitions
     std::unordered_map<std::string, int> output_map;
     const auto& output_defs = fused_node->OutputDefs();
+    output_map.reserve(output_defs.size());
     for (int i = 0, end = output_defs.size(); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
