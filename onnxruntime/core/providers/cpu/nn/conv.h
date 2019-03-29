@@ -31,3 +31,21 @@ class Conv : public OpKernel, public ConvBase {
 };
 
 }  // namespace onnxruntime
+
+namespace onnxruntime {
+namespace contrib {
+
+template <typename T>
+class ConvGrad final : public OpKernel, public ConvBase {
+ public:
+  explicit ConvGrad(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvGrad);
+};
+
+}  // namespace contrib
+}  // namespace onnxruntime

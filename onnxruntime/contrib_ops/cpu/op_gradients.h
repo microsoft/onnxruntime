@@ -36,18 +36,6 @@ class MulGrad final : public OpKernel {
 };
 
 template <typename T>
-class ConvGrad final : public OpKernel {
- public:
-  explicit ConvGrad(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvGrad);
-};
-
-template <typename T>
 class FlattenGrad final : public OpKernel {
  public:
   explicit FlattenGrad(const OpKernelInfo& info) : OpKernel(info) {

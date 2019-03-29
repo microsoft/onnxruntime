@@ -81,31 +81,6 @@ Status MulGrad<T>::Compute(OpKernelContext* context) const {
 }
 
 ONNX_CPU_OPERATOR_KERNEL(
-    ConvGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    ConvGrad<float>);
-
-template <typename T>
-Status ConvGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dZ = *context->Input<Tensor>(0);
-  //auto& X = *context->Input<Tensor>(1);
-  //auto& Y = *context->Input<Tensor>(2);
-
-  auto& dA = *context->Output(0, dZ.Shape());
-  auto& dB = *context->Output(1, dZ.Shape());
-  auto& dC = *context->Output(2, dZ.Shape());
-
-  // unimplemented
-
-  MakeEigenArrayMap<float>(dA) = MakeEigenArrayMap<float>(dZ);
-  MakeEigenArrayMap<float>(dB) = MakeEigenArrayMap<float>(dZ);
-  MakeEigenArrayMap<float>(dC) = MakeEigenArrayMap<float>(dZ);
-
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
     FlattenGrad,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
