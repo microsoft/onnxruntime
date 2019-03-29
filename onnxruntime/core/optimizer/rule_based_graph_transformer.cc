@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ::onnxruntime::common;
 
@@ -25,7 +26,7 @@ Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
   return Status::OK();
 }
 
-Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -33,6 +34,10 @@ Status TopDownRuleBasedTransformer::ApplyImpl(Graph& graph, bool& modified, int 
     auto* node = graph.GetNode(i);
     if (!node) {
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+    }
+
+    if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
+      continue;
     }
 
     // Apply rewrite rules on current node, then recursively apply rules to subgraphs (if any).

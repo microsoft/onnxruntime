@@ -10,8 +10,6 @@ namespace net = boost::asio;       // from <boost/asio.hpp>
 namespace beast = boost::beast;    // from <boost/beast.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
-using handler_fn = std::function<void(std::string, std::string, std::string, HttpContext&)>;
-
 HttpSession::HttpSession(std::shared_ptr<Routes> routes, tcp::socket socket)
     : routes_(std::move(routes)), socket_(std::move(socket)), strand_(socket_.get_executor()) {
 }
@@ -87,7 +85,7 @@ void HttpSession::Send(Msg&& msg) {
 
   http::async_write(self_->socket_, *ptr,
                     net::bind_executor(strand_,
-                                       [ self_, close = ptr->need_eof() ](beast::error_code ec, std::size_t bytes) {
+                                       [self_, close = ptr->need_eof()](beast::error_code ec, std::size_t bytes) {
                                          self_->OnWrite(ec, bytes, close);
                                        }));
 }
@@ -96,22 +94,44 @@ template <typename Body, typename Allocator>
 void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator> >&& req) {
   HttpContext context{};
   context.request = std::move(req);
-
   // TODO: set request id
-  std::string path = context.request.target().to_string();
-  std::string model_name, model_version, action;
-  handler_fn func;
-  http::status status = routes_->ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 
-  if (http::status::ok == status && func != nullptr) {
-    func(model_name, model_version, action, context);
-  } else {
-    context.response.result(status);
+  auto status = ExecuteUserFunction(context);
+
+  if (status != http::status::ok) {
+    routes_->on_error(context);
   }
 
   context.response.keep_alive(context.request.keep_alive());
   context.response.prepare_payload();
   return Send(std::move(context.response));
+}
+
+http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
+  std::string path = context.request.target().to_string();
+  std::string model_name, model_version, action;
+  HandlerFn func;
+
+  auto status = routes_->ParseUrl(context.request.method(), path, model_name, model_version, action, func);
+
+  if (status != http::status::ok) {
+    context.error_code = status;
+    context.error_message = std::string(http::obsolete_reason(status)) +
+                            ". For HTTP method: " +
+                            std::string(http::to_string(context.request.method())) +
+                            " and request path: " +
+                            context.request.target().to_string();
+    return status;
+  }
+
+  try {
+    func(model_name, model_version, action, context);
+  } catch (const std::exception& ex) {
+    context.error_message = std::string(ex.what());
+    return http::status::internal_server_error;
+  }
+
+  return http::status::ok;
 }
 
 }  // namespace hosting

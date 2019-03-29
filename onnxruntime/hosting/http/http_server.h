@@ -30,7 +30,7 @@ struct Details {
   int threads;
 };
 
-using start_fn = std::function<void(Details&)>;
+using StartFn = std::function<void(Details&)>;
 
 // Accepts incoming connections and launches the sessions
 // Each method returns the app itself so methods can be chained
@@ -40,13 +40,14 @@ class App {
 
   App& Bind(net::ip::address address, unsigned short port);
   App& NumThreads(int threads);
-  App& RegisterStartup(const start_fn& fn);
-  App& RegisterPost(const std::string& route, const handler_fn& fn);
+  App& RegisterStartup(const StartFn& fn);
+  App& RegisterPost(const std::string& route, const HandlerFn& fn);
+  App& RegisterError(const ErrorFn& fn);
   App& Run();
 
  private:
   const std::shared_ptr<Routes> routes_ = std::make_shared<Routes>();
-  start_fn on_start_ = {};
+  StartFn on_start_ = {};
   Details http_details{};
 };
 }  // namespace hosting
