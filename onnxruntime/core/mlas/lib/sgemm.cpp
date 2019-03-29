@@ -1081,7 +1081,7 @@ MlasSgemmTryMultithread(
     float beta,
     float* C,
     size_t ldc,
-    const ThreadPool* ExternalThreadPool
+    ThreadPool* ExternalThreadPool
     )
 /*++
 
@@ -1279,7 +1279,7 @@ MlasSgemm(
     float beta,
     float* C,
     size_t ldc,
-    const ThreadPool* ExternalThreadPool
+    ThreadPool* ExternalThreadPool
     )
 /*++
 

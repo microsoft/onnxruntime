@@ -199,7 +199,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            output_dims.data(),
            X->template Data<float>(),
            Y->template MutableData<float>(),
-           thread_pool);
+           const_cast<ThreadPool*>(thread_pool));
 
   return Status::OK();
 }

@@ -745,7 +745,7 @@ MlasConvTryMultithread(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    const ThreadPool* ExternalThreadPool
+    ThreadPool* ExternalThreadPool
     )
 /*++
 
@@ -838,7 +838,7 @@ MlasConv(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    const ThreadPool* ExternalThreadPool
+    ThreadPool* ExternalThreadPool
     )
 /*++
 
@@ -1201,10 +1201,7 @@ Return Value:
         }
 
         // Take the thread count either limited by the available pool or the platform limit
-        int32_t MaximumThreadCount = ThreadPoolLimit;
-        if (ThreadPoolLimit <= 0) {
-            MlasPlatform.GetMaximumThreadCount();
-        }
+        int32_t MaximumThreadCount = (ThreadPoolLimit > 0) ? ThreadPoolLimit : MlasPlatform.GetMaximumThreadCount();
 
         if (TargetThreadCount >= MaximumThreadCount) {
             TargetThreadCount = MaximumThreadCount;

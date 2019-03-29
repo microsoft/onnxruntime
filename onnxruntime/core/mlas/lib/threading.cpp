@@ -74,7 +74,7 @@ MlasExecuteThreaded(
     MLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
     int32_t Iterations,
-    const ThreadPool* ExternalThreadPool
+    ThreadPool* ExternalThreadPool
     )
 {
     //
@@ -92,7 +92,7 @@ MlasExecuteThreaded(
 
     if (!(ExternalThreadPool == nullptr)) {
       std::function<void(int)> WorkObject = [&](int32_t tid) { ThreadedRoutine(Context, tid); };
-      const_cast<ThreadPool*>(ExternalThreadPool)->ParallelFor(Iterations, WorkObject);
+      ExternalThreadPool->ParallelFor(Iterations, WorkObject);
 
       return;
     }

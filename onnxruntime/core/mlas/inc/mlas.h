@@ -98,7 +98,7 @@ MlasSgemm(
     float beta,
     float* C,
     size_t ldc,
-    const ThreadPool* ExternalThreadPool
+    ThreadPool* ExternalThreadPool
     );
 
 //
@@ -169,7 +169,7 @@ MlasConv(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    const ThreadPool *ExternalThreadPool
+    ThreadPool *ExternalThreadPool
     );
 
 //
@@ -194,7 +194,7 @@ MlasPool(
     const int64_t* OutputShape,
     const float* Input,
     float* Output,
-    const ThreadPool *ExternalThreadPool
+    ThreadPool *ExternalThreadPool
     );
 
 //

@@ -1183,7 +1183,7 @@ MlasPool(
     const int64_t* OutputShape,
     const float* Input,
     float* Output,
-    const ThreadPool *ExternalThreadPool
+    ThreadPool *ExternalThreadPool
     )
 /*++
 
@@ -1322,7 +1322,7 @@ Return Value:
 
     if (!(ExternalThreadPool == nullptr)) {
       std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
-      const_cast<ThreadPool*>(ExternalThreadPool)->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+      ExternalThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
 
       return;
     }
