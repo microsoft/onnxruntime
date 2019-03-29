@@ -798,7 +798,8 @@ TEST(PositiveTests, MLValue2TensorProtoTests_StringToStringData) {
   MLValue ml_value;
   onnxruntime::test::AllocateMLValue<std::string>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, &ml_value);
 
-  std::string* mutable_data = ml_value.GetMutable<std::string>();
+  Tensor* mutable_tensor = ml_value.GetMutable<Tensor>();
+  std::string* mutable_data = mutable_tensor->MutableData<std::string>();
   for (size_t i = 0; i < values_mul_x.size(); ++i) {
     mutable_data[i] = values_mul_x[i];
   }
