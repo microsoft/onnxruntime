@@ -144,8 +144,6 @@ if (MSVC)
   endif()
   #Always enable exception handling, even for Windows ARM
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
-  SET (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Zi")
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zi")
   #Disable 4100 globally. Too many this kind errors in protobuf
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100")
   if (NOT onnxruntime_USE_CUDA)
