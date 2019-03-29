@@ -12,14 +12,15 @@ namespace graph_utils {
 // local helpers
 
 // check if an output edge provides an implicit input to the destination node
-static bool OutputEdgeProvidesImplicitInput(const Node::EdgeEnd& output_edge) {
+static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge& output_edge) {
   // we treat the explicit and implicit inputs as sequential, so if the destination arg index of an output edge
   // is past the valid range for the node's explicit inputs, it is for an implicit input
-  const auto num_explicit_inputs = output_edge.GetNode().InputDefs().size();
-  bool is_implicit_input = output_edge.GetDstArgIndex() >= num_explicit_inputs;
+  const auto num_explicit_inputs = (*graph.GetNode(output_edge.dst_node)).InputDefs().size();
+  bool is_implicit_input = output_edge.dst_arg_index >= num_explicit_inputs;
   return is_implicit_input;
 }
 
+// Get the name of the outgoing NodeArg with the specified index for the given node.
 static const std::string& GetNodeOutputName(const Node& node, int index) {
   const auto& outputs = node.OutputDefs();
 
@@ -44,11 +45,11 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 
 bool IsSupportedProvider(const Node& node,
                          const std::unordered_set<std::string>& compatible_providers) {
-  if (!compatible_providers.empty() && 
+  if (!compatible_providers.empty() &&
       compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end()) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -191,49 +192,74 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
   }
 }
 
-bool RemoveSingleInSingleOutNode(Graph& graph, Node& node) {
-  if (!IsSingleInSingleOutNode(node)) {
-    return false;
+/** Remove a node with a single incoming node. */
+static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
+  // Store the output edges info.
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    output_edges.emplace_back(node.Index(),
+                              (*it).GetNode().Index(),
+                              (*it).GetSrcArgIndex(),
+                              (*it).GetDstArgIndex(),
+                              GetNodeOutputName(node, (*it).GetSrcArgIndex()));
   }
 
-  // Get input/output edges, nodes, and node args.
-  const Node::EdgeEnd& input_edge = *node.InputEdgesBegin();
-  const Node& input_edge_node = input_edge.GetNode();
-  const NodeIndex input_edge_node_index = input_edge_node.Index();
-  const int input_edge_dst_arg = input_edge.GetSrcArgIndex();
-
-  const Node::EdgeEnd& output_edge = *node.OutputEdgesBegin();
-  const Node& output_edge_node = output_edge.GetNode();
-  const NodeIndex output_edge_node_index = output_edge_node.Index();
-  const int output_edge_dst_arg = output_edge.GetDstArgIndex();
-
-  // check if the output from the node to remove is implicit input to the downstream node.
-  // if so, it's used in subgraph in that node and we have to check if it's valid to update that subgraph
-  if (OutputEdgeProvidesImplicitInput(output_edge)) {
-    // the output we need to wire to the downstream node, and the output name from the node we want to remove
-    const auto& output_name = GetNodeOutputName(input_edge_node, output_edge.GetSrcArgIndex());
-    const auto& removed_output_name = GetNodeOutputName(node, 0);
-
-    Node& mutable_output_edge_node = *graph.GetNode(output_edge_node_index);
-
-    if (CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, removed_output_name, output_name)) {
-      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, removed_output_name, output_name);
-    } else {
-      // we can't safely remove this node
-      return false;
-    }
+  // Remove output edges
+  for (const auto& edge_to_remove : output_edges) {
+    graph.RemoveEdge(edge_to_remove.src_node,
+                     edge_to_remove.dst_node,
+                     edge_to_remove.src_arg_index,
+                     edge_to_remove.dst_arg_index);
   }
 
-  // Remove output edge.
-  graph.RemoveEdge(node.Index(), output_edge_node_index, output_edge.GetSrcArgIndex(), output_edge_dst_arg);
+  // Store info for the input edge.
+  const Node::EdgeEnd& input_edge_end = *node.InputEdgesBegin();
+  const auto& input_edge_node = input_edge_end.GetNode();
+  const GraphEdge input_edge{input_edge_node.Index(),
+                             node.Index(),
+                             input_edge_end.GetSrcArgIndex(),
+                             input_edge_end.GetDstArgIndex(),
+                             GetNodeOutputName(input_edge_node, input_edge_end.GetSrcArgIndex())};
 
   // Remove node (this will remove the input edge too).
   graph.RemoveNode(node.Index());
 
-  // Add new edge connecting the input with the output nodes directly.
-  graph.AddEdge(input_edge_node_index, output_edge_node_index, input_edge_dst_arg, output_edge_dst_arg);
+  // Create connections between the incoming node and the outgoing nodes of the node that we removed.
+  for (auto& output_edge : output_edges) {
+    // Take care of subgraphs.
+    // check if the output from the node to remove is implicit input to the downstream node.
+    // if so, it's used in subgraph in that node and we have to check if it's valid to update that subgraph.
+    if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
+      Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+      if (CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_edge.arg_name)) {
+        UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_edge.arg_name);
+      } else {
+        // we can't safely remove this node
+        return false;
+      }
+    }
+
+    // Add new edge connecting the input with the output nodes directly.
+    graph.AddEdge(input_edge.src_node, output_edge.dst_node, input_edge.src_arg_index, output_edge.dst_arg_index);
+  }
 
   return true;
+}
+
+/** Remove a node with a single incoming initializer (and no other incoming node). */
+static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
+  // TODO
+  return true;
+}
+
+bool RemoveSingleInputNode(Graph& graph, Node& node) {
+  if (node.GetInputEdgesCount() == 1) {
+    return RemoveNodeWithSingleNodeIn(graph, node);
+  } else if (node.InputDefs().size() == 1) {  // Question: can it have a single input and this is not an initializer, i.e., is this check sufficient or do I need to check that it is also an initializer?
+    return RemoveNodeWithSingleInitializerIn(graph, node);
+  } else {
+    return false;
+  }
 }
 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {
@@ -258,17 +284,21 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
-  std::vector<std::tuple<NodeIndex, int, int>> edges_to_remove;
+  std::vector<GraphEdge> edges_to_remove;
   for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
-    edges_to_remove.emplace_back(std::make_tuple(it->GetNode().Index(),
-                                                 it->GetSrcArgIndex(),
-                                                 it->GetDstArgIndex()));
+    // Note: no need to store the arg_name below.
+    edges_to_remove.emplace_back(node.Index(),
+                                 it->GetNode().Index(),
+                                 it->GetSrcArgIndex(),
+                                 it->GetDstArgIndex(),
+                                 std::string());
   }
-  for (auto& edge_to_remove : edges_to_remove) {
-    graph.RemoveEdge(node.Index(),
-                     std::get<0>(edge_to_remove),
-                     std::get<1>(edge_to_remove),
-                     std::get<2>(edge_to_remove));
+
+  for (const auto& edge_to_remove : edges_to_remove) {
+    graph.RemoveEdge(edge_to_remove.src_node,
+                     edge_to_remove.dst_node,
+                     edge_to_remove.src_arg_index,
+                     edge_to_remove.dst_arg_index);
   }
 
   return edges_to_remove.size();

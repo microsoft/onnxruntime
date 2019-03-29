@@ -9,6 +9,22 @@
 namespace onnxruntime {
 
 namespace graph_utils {
+
+struct GraphEdge {
+  NodeIndex src_node;
+  NodeIndex dst_node;
+  int src_arg_index;
+  int dst_arg_index;
+  std::string arg_name;
+
+  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
+            int src_arg_index, int dst_arg_index, std::string arg_name) : src_node(src_node),
+                                                                          dst_node(dst_node),
+                                                                          src_arg_index(src_arg_index),
+                                                                          dst_arg_index(dst_arg_index),
+                                                                          arg_name(arg_name) {}
+};
+
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
@@ -49,8 +65,9 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
-/** Remove the given single-input-single-output Node from the Graph. */
-bool RemoveSingleInSingleOutNode(Graph& graph, Node& node);
+/** Remove the given single-input Node from the Graph. The single input might be either
+    another node or an initializer.*/
+bool RemoveSingleInputNode(Graph& graph, Node& node);
 
 /** Remove all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */

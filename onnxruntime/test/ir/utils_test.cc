@@ -207,7 +207,7 @@ static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
   auto& node_to_remove = *graph.GetNode(1);
   const auto& if_node = *graph.GetNode(2);
 
-  bool removed = graph_utils::RemoveSingleInSingleOutNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
   ASSERT_TRUE(removed);
 
   // check subgraph implicit input was updated
@@ -238,7 +238,7 @@ static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  bool removed = graph_utils::RemoveSingleInSingleOutNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
   ASSERT_FALSE(removed);
 }
 
