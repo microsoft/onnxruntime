@@ -69,6 +69,11 @@ class lru_map {
     return handles_.size();
   }
 
+  void clear() {
+    items_.clear();
+    handles_.clear();
+  }
+
 private:
   using value_type = std::pair<Key, T>;
   using iterator_type = typename std::list<value_type>::iterator;
@@ -95,8 +100,7 @@ struct CudnnConvState {
   CudnnTensor y_tensor;
   CudnnConvolutionDescriptor conv_desc;
 
-  using input_shapes = std::pair<std::vector<int64_t>, std::vector<int64_t>>;
-  lru_map<input_shapes, AlgoPerfType> cached_benchmark_results { 10000 };
+  lru_map<std::vector<int64_t>, AlgoPerfType> cached_benchmark_results { 10000 };
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;

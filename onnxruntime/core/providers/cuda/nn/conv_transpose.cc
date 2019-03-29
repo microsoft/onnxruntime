@@ -48,8 +48,10 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
       if (input_dims_changed)
         s_.last_x_dims = x_dims;
 
-      if (w_dims_changed)
+      if (w_dims_changed) {
         s_.last_w_dims = w_dims;
+        s_.cached_benchmark_results.clear();
+      }
 
       Prepare p;
       ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p));
@@ -81,8 +83,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
 
       y_data = reinterpret_cast<CudaT*>(p.Y->template MutableData<T>());
 
-      auto input_shapes = std::make_pair(x_dims, w_dims);
-      if (!s_.cached_benchmark_results.contains(input_shapes)) {
+      if (!s_.cached_benchmark_results.contains(x_dims)) {
         IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
 
         // set math type to tensor core before algorithm search
@@ -105,10 +106,10 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
             &perf,
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize));
-        s_.cached_benchmark_results.insert(input_shapes, perf);
+        s_.cached_benchmark_results.insert(x_dims, perf);
       }
 
-      const auto& perf = s_.cached_benchmark_results.at(input_shapes);
+      const auto& perf = s_.cached_benchmark_results.at(x_dims);
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
