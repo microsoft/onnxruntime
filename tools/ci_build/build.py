@@ -133,7 +133,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument("--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument("--enable_qspectre", action='store_true', help="Enable compiler option to compile with /Qspectre and /GUARD:CF")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
     return parser.parse_args()
@@ -321,7 +320,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
-                 "-Donnxruntime_ENABLE_QSPECTRE=" + ("ON" if args.build_shared_lib and args.enable_qspectre else "OFF"),
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  ]
