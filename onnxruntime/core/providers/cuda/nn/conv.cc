@@ -121,7 +121,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
       y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-      if (!s_.cached_benchmark_results.contains(x_dims)) {
+      if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
         IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
 
         // set math type to tensor core before algorithm search
@@ -144,10 +144,10 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
             &perf,
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize));
-        s_.cached_benchmark_results.insert(x_dims, perf);
+        s_.cached_benchmark_results.insert(x_dims_cudnn, perf);
       }
 
-      const auto& perf = s_.cached_benchmark_results.at(x_dims);
+      const auto& perf = s_.cached_benchmark_results.at(x_dims_cudnn);
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
