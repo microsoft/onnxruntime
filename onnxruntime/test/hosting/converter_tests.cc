@@ -14,6 +14,8 @@ namespace onnxruntime {
 namespace hosting {
 namespace test {
 
+void CreateMLValueBool(AllocatorPtr alloc, const std::vector<int64_t>& dims, const bool* value, MLValue* p_mlvalue);
+
 IExecutionProvider* TestCPUExecutionProvider() {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
@@ -375,8 +377,8 @@ TEST(PositiveTests, MLValue2TensorProtoTests_Int8ToInt32Data) {
 
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
-  int count = tp.int32_data().size() * (sizeof(int32_t) / sizeof(int8_t));
-  EXPECT_EQ(count, 8);
+  int count = tp.int32_data().size();
+  EXPECT_EQ(count, 2);
   auto data = tp.int32_data().data();
   const auto* data8 = reinterpret_cast<const int8_t*>(data);
   for (int x = 0; x < 6; ++x) {
@@ -387,8 +389,8 @@ TEST(PositiveTests, MLValue2TensorProtoTests_Int8ToInt32Data) {
 TEST(PositiveTests, MLValue2TensorProtoTests_UInt16ToRaw) {
   auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
 
-  std::vector<int64_t> dims_mul_x = {3, 2};
-  std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  std::vector<int64_t> dims_mul_x = {3, 3};
+  std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
   MLValue ml_value;
   onnxruntime::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
@@ -414,7 +416,7 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt16ToRaw) {
   // Verify data
   EXPECT_TRUE(tp.has_raw_data());
   int count = tp.raw_data().size() / sizeof(uint16_t);
-  EXPECT_EQ(count, 6);
+  EXPECT_EQ(count, 9);
 
   auto raw = tp.raw_data().data();
   const auto* tensor_data = reinterpret_cast<const uint16_t*>(raw);
@@ -426,8 +428,8 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt16ToRaw) {
 TEST(PositiveTests, MLValue2TensorProtoTests_UInt16ToInt32Data) {
   auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
 
-  std::vector<int64_t> dims_mul_x = {3, 2};
-  std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  std::vector<int64_t> dims_mul_x = {3, 3};
+  std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
   MLValue ml_value;
   onnxruntime::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
@@ -451,11 +453,11 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt16ToInt32Data) {
 
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
-  int count = tp.int32_data().size() * (sizeof(int32_t) / sizeof(uint16_t));
-  EXPECT_EQ(count, 6);
+  int count = tp.int32_data().size();
+  EXPECT_EQ(count, 5);
   auto data = tp.int32_data().data();
   const auto* data16 = reinterpret_cast<const uint16_t*>(data);
-  for (int x = 0; x < 6; ++x) {
+  for (int x = 0; x < 9; ++x) {
     EXPECT_EQ(data16[x], values_mul_x[x]);
   }
 }
@@ -536,6 +538,373 @@ TEST(PositiveTests, MLValue2TensorProtoTests_Int16ToInt32Data) {
   }
 }
 
+TEST(PositiveTests, MLValue2TensorProtoTests_BoolToRaw) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  bool values_mul_x[] = {true, false, false, true, true, false};
+  MLValue ml_value;
+  CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_BOOL);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(bool);
+  EXPECT_EQ(count, 6);
+
+  auto raw = tp.raw_data().data();
+  const auto* tensor_data = reinterpret_cast<const bool*>(raw);
+  for (int j = 0; j < count; ++j) {
+    EXPECT_EQ(tensor_data[j], values_mul_x[j]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_BoolToInt32Data) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  bool values_mul_x[] = {true, false, false, true, true, false};
+  MLValue ml_value;
+  CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_BOOL);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  int count = tp.int32_data().size();
+  EXPECT_EQ(count, 2);
+  auto data = tp.int32_data().data();
+  const auto* data16 = reinterpret_cast<const bool*>(data);
+  for (int x = 0; x < 6; ++x) {
+    EXPECT_EQ(data16[x], values_mul_x[x]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_Float16ToRaw) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<onnxruntime::MLFloat16> values_mul_x{
+      onnxruntime::MLFloat16(1),
+      onnxruntime::MLFloat16(2),
+      onnxruntime::MLFloat16(3),
+      onnxruntime::MLFloat16(4),
+      onnxruntime::MLFloat16(5),
+      onnxruntime::MLFloat16(6)};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_FLOAT16);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(onnxruntime::MLFloat16);
+  EXPECT_EQ(count, 6);
+
+  auto raw = tp.raw_data().data();
+  const auto* tensor_data = reinterpret_cast<const onnxruntime::MLFloat16*>(raw);
+  for (int j = 0; j < count; ++j) {
+    EXPECT_EQ(tensor_data[j], values_mul_x[j]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_FloatToInt32Data) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<onnxruntime::MLFloat16> values_mul_x{
+      onnxruntime::MLFloat16(1),
+      onnxruntime::MLFloat16(2),
+      onnxruntime::MLFloat16(3),
+      onnxruntime::MLFloat16(4),
+      onnxruntime::MLFloat16(5),
+      onnxruntime::MLFloat16(6)};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_FLOAT16);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  int count = tp.int32_data().size();
+  EXPECT_EQ(count, 3);
+  auto data = tp.int32_data().data();
+  const auto* data16 = reinterpret_cast<const onnxruntime::MLFloat16*>(data);
+  for (int x = 0; x < 6; ++x) {
+    EXPECT_EQ(data16[x], values_mul_x[x]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_BFloat16ToRaw) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<onnxruntime::BFloat16> values_mul_x{
+      onnxruntime::BFloat16(1.0f),
+      onnxruntime::BFloat16(2.0f),
+      onnxruntime::BFloat16(3.0f),
+      onnxruntime::BFloat16(4.0f),
+      onnxruntime::BFloat16(5.0f),
+      onnxruntime::BFloat16(6.0f)};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_BFLOAT16);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(uint16_t);
+  EXPECT_EQ(count, 6);
+
+  auto raw = tp.raw_data().data();
+  const auto* tensor_data = reinterpret_cast<const uint16_t*>(raw);
+  for (int j = 0; j < count; ++j) {
+    EXPECT_EQ(tensor_data[j], values_mul_x[j].val);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_BFloatToInt32Data) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<onnxruntime::BFloat16> values_mul_x{
+      onnxruntime::BFloat16(1.0f),
+      onnxruntime::BFloat16(2.0f),
+      onnxruntime::BFloat16(3.0f),
+      onnxruntime::BFloat16(4.0f),
+      onnxruntime::BFloat16(5.0f),
+      onnxruntime::BFloat16(6.0f)};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_BFLOAT16);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  int count = tp.int32_data().size();
+  EXPECT_EQ(count, 3);
+  auto data = tp.int32_data().data();
+  const auto* data16 = reinterpret_cast<const uint16_t*>(data);
+  for (int x = 0; x < 6; ++x) {
+    EXPECT_EQ(data16[x], values_mul_x[x].val);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_StringToStringData) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<std::string> values_mul_x{"A", "BC", "DEF", "123", "45", "6"};
+  MLValue ml_value;
+  onnxruntime::test::AllocateMLValue<std::string>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, &ml_value);
+
+  std::string* mutable_data = ml_value.GetMutable<std::string>();
+  for (size_t i = 0; i < values_mul_x.size(); ++i) {
+    mutable_data[i] = values_mul_x[i];
+  }
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_STRING);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  int count = tp.string_data().size();
+  EXPECT_EQ(count, 6);
+  const auto* data = tp.string_data().data();
+  for (int x = 0; x < 6; ++x) {
+    EXPECT_STREQ(data[x]->c_str(), values_mul_x[x].c_str());
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_Int64ToRaw) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_INT64);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(int64_t);
+  EXPECT_EQ(count, 6);
+
+  auto raw = tp.raw_data().data();
+  const int64_t* tensor_data = reinterpret_cast<const int64_t*>(raw);
+  for (int j = 0; j < count; ++j) {
+    EXPECT_EQ(tensor_data[j], values_mul_x[j]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_Int64ToInt64Data) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_INT64);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  EXPECT_EQ(tp.int64_data().size(), 6);
+  auto data = tp.int64_data().data();
+  for (int j = 0; j < tp.int64_data().size(); ++j) {
+    EXPECT_EQ(data[j], values_mul_x[j]);
+  }
+}
+
 TEST(PositiveTests, MLValue2TensorProtoTests_UInt32ToRaw) {
   auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
 
@@ -548,6 +917,14 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt32ToRaw) {
   common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
   EXPECT_TRUE(status.IsOK());
 
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_UINT32);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
   // Verify dimensions
   const auto& dims = tp.dims();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
@@ -556,10 +933,13 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt32ToRaw) {
   }
 
   // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(uint32_t);
+  EXPECT_EQ(count, 6);
+
   auto raw = tp.raw_data().data();
-  auto raw_len = tp.raw_data().size();
   uint32_t* tensor_data = (uint32_t*)raw;
-  for (size_t j = 0; j < raw_len / sizeof(uint32_t); ++j) {
+  for (int j = 0; j < count; ++j) {
     EXPECT_EQ(tensor_data[j], values_mul_x[j]);
   }
 }
@@ -576,6 +956,13 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt32ToUint64Data) {
   common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
   EXPECT_TRUE(status.IsOK());
 
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_UINT32);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
   // Verify dimensions
   const auto& dims = tp.dims();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
@@ -584,11 +971,178 @@ TEST(PositiveTests, MLValue2TensorProtoTests_UInt32ToUint64Data) {
   }
 
   // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  int count = tp.uint64_data().size() * (sizeof(uint64_t) / sizeof(uint32_t));
+  EXPECT_EQ(count, 6);
+
   auto data = tp.uint64_data().data();
-  auto data32 = reinterpret_cast<const uint32_t*>(data);
-  for (size_t x = 0; x < tp.uint64_data().size() * (sizeof(uint64_t) / sizeof(uint32_t)); ++x) {
+  const auto* data32 = reinterpret_cast<const uint32_t*>(data);
+  for (int x = 0; x < count; ++x) {
     EXPECT_EQ(data32[x], values_mul_x[x]);
   }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_UInt64ToRaw) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_UINT64);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(uint64_t);
+  EXPECT_EQ(count, 6);
+
+  auto raw = tp.raw_data().data();
+  const uint64_t* tensor_data = reinterpret_cast<const uint64_t*>(raw);
+  for (int j = 0; j < count; ++j) {
+    EXPECT_EQ(tensor_data[j], values_mul_x[j]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_UInt64ToInt64Data) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_UINT64);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  EXPECT_EQ(tp.uint64_data().size(), 6);
+  auto data = tp.uint64_data().data();
+  for (int j = 0; j < tp.uint64_data().size(); ++j) {
+    EXPECT_EQ(data[j], values_mul_x[j]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_DoubleToRaw) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_DOUBLE);
+
+  // Verify data location
+  EXPECT_TRUE(tp.has_data_location());
+  EXPECT_EQ(tp.data_location(), onnx::TensorProto_DataLocation_DEFAULT);
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_TRUE(tp.has_raw_data());
+  int count = tp.raw_data().size() / sizeof(uint64_t);
+  EXPECT_EQ(count, 6);
+
+  auto raw = tp.raw_data().data();
+  const double* tensor_data = reinterpret_cast<const double*>(raw);
+  for (int j = 0; j < count; ++j) {
+    EXPECT_DOUBLE_EQ(tensor_data[j], values_mul_x[j]);
+  }
+}
+
+TEST(PositiveTests, MLValue2TensorProtoTests_DoubleToInt64Data) {
+  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  MLValue ml_value;
+  onnxruntime::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
+
+  onnx::TensorProto tp;
+  common::Status status = onnxruntime::hosting::MLValue2TensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp.has_data_type());
+  EXPECT_EQ(tp.data_type(), onnx::TensorProto_DataType_DOUBLE);
+
+  // Verify data location
+  EXPECT_FALSE(tp.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp.has_raw_data());
+  EXPECT_EQ(tp.double_data().size(), 6);
+  auto data = tp.double_data().data();
+  for (int j = 0; j < tp.double_data().size(); ++j) {
+    EXPECT_DOUBLE_EQ(data[j], values_mul_x[j]);
+  }
+}
+
+void CreateMLValueBool(AllocatorPtr alloc,
+                       const std::vector<int64_t>& dims,
+                       const bool* value,
+                       MLValue* p_mlvalue) {
+  TensorShape shape(dims);
+  auto element_type = DataTypeImpl::GetType<bool>();
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+                                                              shape,
+                                                              alloc);
+  memcpy(p_tensor->MutableData<bool>(), &value[0], element_type->Size() * shape.Size());
+  p_mlvalue->Init(p_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
 }  // namespace test

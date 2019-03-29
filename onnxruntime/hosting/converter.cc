@@ -80,7 +80,7 @@ common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_ra
   tensor_proto.set_data_type(data_type);
 
   // data_location field: Data is stored in raw_data (if set) otherwise in type-specified field.
-  if (using_raw_data) {
+  if (using_raw_data && data_type != onnx::TensorProto_DataType_STRING) {
     tensor_proto.set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
   }
 
@@ -184,10 +184,15 @@ common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_ra
     }
     case onnx::TensorProto_DataType_BFLOAT16: {  // Target: raw_data or int32_data
       const auto* data = tensor.Data<onnxruntime::BFloat16>();
+      std::vector<uint16_t> raw_data;
+      for (int i = 0; i < tensor.Shape().Size(); ++i) {
+        raw_data.push_back(data[i].val);
+      }
+
       if (using_raw_data) {
-        tensor_proto.set_raw_data(data, tensor.Size());
+        tensor_proto.set_raw_data(raw_data.data(), raw_data.size() * sizeof(uint16_t));
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
+        auto i32data = reinterpret_cast<const int32_t*>(raw_data.data());
         for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
