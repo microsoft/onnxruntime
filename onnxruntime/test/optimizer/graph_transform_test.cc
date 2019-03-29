@@ -135,7 +135,6 @@ TEST(GraphTransformationTests, FuseConvActivation) {
   for (std::string act : activations) {
     InferenceSession session_object{so, &DefaultLoggingManager()};
     std::string model_uri = MODEL_FOLDER + "fusion/conv_" + act + ".onnx";
-
     ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
     std::shared_ptr<Model> p_model;
