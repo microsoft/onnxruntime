@@ -5,6 +5,9 @@
 namespace onnxruntime {
 namespace test {
 
+using ONNX_NAMESPACE::AttributeProto;
+using training::OpDef;
+
 // The jacobian transpose matrix is laid out as follows
 
 // Say there are three inputs each of size M X N, N X K, K X J
@@ -41,13 +44,13 @@ std::pair<int, int> inline CalculateJacobianTransposeIndex(const std::vector<Ten
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline std::vector<onnxruntime::MLValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionAtInput(
-    const std::string& op_name,
+    const OpDef& op_def,
     const std::vector<TensorShape>& x_shapes,
     const std::vector<TensorShape>& y_shapes,
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
-    std::vector<std::string> attributes) {
-  OpTester op_session(op_name.c_str(), 9, "", false);
+    const std::vector<AttributeProto>& attributes) {
+  OpTester op_session(op_def.type.c_str(), 9, op_def.domain.c_str(), false);
   for (int data_index = 0; data_index < x_datas->size(); data_index++) {
     std::string name = "input" + std::to_string(data_index);
     op_session.AddInput<X_T>(name.c_str(), x_shapes[data_index].GetDims(), (*x_datas)[data_index]);
@@ -59,20 +62,20 @@ inline std::vector<onnxruntime::MLValue> GradientChecker<X_T, Y_T, JAC_T>::Evalu
   }
   // Currently only allows setting int attributes to zero. TODO: Expand this
   for (auto attr : attributes) {
-    op_session.AddAttribute<int64_t>(attr, 0);
+    op_session.AddAttribute<AttributeProto>(attr.name(), attr);
   }
   op_session.Run();
   return op_session.GetFetches();
 }
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTranspose(
-    std::string& op_name,
+    const OpDef& op_def,
     const std::vector<TensorShape>& x_shapes,
     const std::vector<TensorShape>& y_shapes,
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts,
-    std::vector<std::string> attributes) {
+    const std::vector<AttributeProto>& attributes) {
   size_t y_num = y_shapes.size();
   size_t x_num = x_shapes.size();
 
@@ -83,7 +86,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     // Compute the theoretical Jacobians one row at a time by back propagating
     // '1.0'for each element of 'dy', while holding all other elements of 'dy' at zero.
     for (int c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
-      GradientOpTester op_session(op_name.c_str(), 9, "", false);
+      GradientOpTester op_session(op_def.type.c_str(), 9, op_def.domain.c_str(), false);
 
       for (int data_index = 0; data_index < x_num; data_index++) {
         std::string name = "input" + std::to_string(data_index);
@@ -97,7 +100,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
 
       // Currently only allows setting int attributes to zero. TODO: Expand this
       for (auto attr : attributes) {
-        op_session.AddAttribute<int64_t>(attr, 0);
+        op_session.AddAttribute<AttributeProto>(attr.name(), attr);
       }
 
       // While calculating theoritical jacobian transpose we calculate the gradient by
@@ -130,14 +133,14 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
-    const std::string& op_name,
+    const OpDef& op_def,
     const std::vector<TensorShape>& x_shapes,
     const std::vector<TensorShape>& y_shapes,
     const JAC_T delta,
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts,
-    std::vector<std::string> attributes) {
+    const std::vector<AttributeProto>& attributes) {
   size_t y_num = y_shapes.size();
   size_t x_num = x_shapes.size();
   X_T x_delta = X_T{delta};
@@ -154,11 +157,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
 
       // Evaluate at positive delta.
       (*x_datas)[x_idx][r] = v + x_delta;
-      std::vector<onnxruntime::MLValue> y_plus = EvaluateFunctionAtInput(op_name, x_shapes, y_shapes, x_datas, y_datas, attributes);
+      std::vector<onnxruntime::MLValue> y_plus = EvaluateFunctionAtInput(op_def, x_shapes, y_shapes, x_datas, y_datas, attributes);
 
       // Evaluate at negative delta.
       (*x_datas)[x_idx][r] = v - x_delta;
-      std::vector<onnxruntime::MLValue> y_minus = EvaluateFunctionAtInput(op_name, x_shapes, y_shapes, x_datas, y_datas, attributes);
+      std::vector<onnxruntime::MLValue> y_minus = EvaluateFunctionAtInput(op_def, x_shapes, y_shapes, x_datas, y_datas, attributes);
 
       for (int y_idx = 0; y_idx < y_num; y_idx++) {
         // Compute element-wise centered difference and store in each Jacobian.
@@ -224,20 +227,20 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitJacobians(
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
-    std::string& op_name,
+    const OpDef& op_def,
     const std::vector<TensorShape>& x_shapes,
     const std::vector<TensorShape>& y_shapes,
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
     JAC_T* max_error,
-    std::vector<std::string> attributes) {
+    const std::vector<AttributeProto>& attributes) {
   // Initialize theoretical Jacobians to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ts;
   InitJacobians(x_shapes, y_shapes, &jacobian_ts);
 
   // Compute theoretical Jacobian.
   ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(
-      op_name, x_shapes, y_shapes, x_datas, y_datas, &jacobian_ts, attributes));
+      op_def, x_shapes, y_shapes, x_datas, y_datas, &jacobian_ts, attributes));
 
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
@@ -245,7 +248,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
   // Compute numeric Jacobian.
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
-      op_name, x_shapes, y_shapes, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
+      op_def, x_shapes, y_shapes, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
 
   for (int i = 0; i < jacobian_ts.size(); i++) {
     // Compute the maximum error between theoretical and numeric Jacobians.
@@ -269,16 +272,16 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
 template <typename X_T, typename Y_T, typename JAC_T>
 inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
-    std::string& op_name,
+    const OpDef& op_def,
     const std::vector<TensorShape>& x_shapes,
     const std::vector<TensorShape>& y_shapes,
     JAC_T* max_error,
-    std::vector<std::string> attributes) {
+    const std::vector<AttributeProto>& attributes) {
   // Initialize 'x_datas' to random values.
   std::vector<std::vector<X_T>> x_datas(x_shapes.size());
   for (int i = 0; i < x_shapes.size(); i++) {
     // TODO: Consider varying mean and variance
-    float scale = 10.f;
+    float scale = 5.f;
     float mean = 0.f;
     auto seed = std::chrono::system_clock::now().time_since_epoch().count();
 
@@ -286,8 +289,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     std::normal_distribution<X_T> distribution{mean, scale};
 
     x_datas[i].resize(x_shapes[i].Size());
-    std::for_each(x_datas[i].begin(), x_datas[i].end(),
-                  [&generator, &distribution](X_T& value) { value = distribution(generator); });
+    std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
   }
 
   // Generate dummy placeholders with zero for y_datas
@@ -297,7 +299,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  return ComputeGradientErrorInternal(op_name, x_shapes, y_shapes, &x_datas, &y_datas, max_error, attributes);
+  return ComputeGradientErrorInternal(op_def, x_shapes, y_shapes, &x_datas, &y_datas, max_error, attributes);
 }
 
 #define INSTANTIATE_GRAD_ERR_TYPE(X_T, Y_T, JAC_T) \

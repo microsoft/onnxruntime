@@ -18,6 +18,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/training/gradient_builder_base.h"
 #include "core/training/gradient_schema_defs.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -36,12 +37,12 @@ class GradientGraphBuilder {
     @remarks Given initial graidents at 'y_node_args' w.r.t some loss function L,
     the backward graph computes the partial derivative of 'L' w.r.t the 'x_node_args'
     **/
-  GradientGraphBuilder(const Graph* graph,
+  GradientGraphBuilder(Graph* graph,
                        const std::vector<std::string>& y_node_arg_names_,
                        const std::vector<std::string>& x_node_arg_names_,
                        std::string loss_node_arg_name);
 
-  Status Build(GraphAugmenter::GraphDefs& gradient_graph_defs);
+  Status Build();
 
  private:
   std::vector<const NodeArg*> y_node_args_;
@@ -50,9 +51,11 @@ class GradientGraphBuilder {
   NodeSet y_nodes_;
   NodeSet x_nodes_;
 
-  const Graph* graph_;
+  Graph* graph_;
 
   std::string loss_node_arg_name_;
+
+  RuleBasedGraphTransformer pre_training_graph_transformer_;
 
   // key: ArgDef for the gradient after accumulation
   // value: ArgDef for the gradients to be accumulated

@@ -11,6 +11,7 @@
 #include "core/graph/schema_registry.h"
 #include "core/training/gradient_builder_registry.h"
 #include "core/training/gradient_graph_builder.h"
+#include "core/optimizer/insert_output_rewriter.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -19,11 +20,14 @@ namespace training {
 
 using namespace common;
 
-GradientGraphBuilder::GradientGraphBuilder(const Graph* graph,
+GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const std::vector<std::string>& y_node_arg_names,
                                            const std::vector<std::string>& x_node_arg_names,
                                            std::string loss_node_arg_name) : graph_(graph),
-                                                                             loss_node_arg_name_(loss_node_arg_name) {
+                                                                             loss_node_arg_name_(loss_node_arg_name),
+                                                                             pre_training_graph_transformer_{"pre_training_graph_transformer", ""} {
+  pre_training_graph_transformer_.Register(std::make_unique<InsertMaxPoolOutput>());
+
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (!node_arg) {
@@ -93,9 +97,11 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
   return Status::OK();
 }
 
-Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_defs) {
-  //GraphAugmenter::GraphDefs gradient_graph_defs;
+Status GradientGraphBuilder::Build() {
+  bool modified = false;
+  ORT_RETURN_IF_ERROR(pre_training_graph_transformer_.Apply(*graph_, modified));
 
+  GraphAugmenter::GraphDefs gradient_graph_defs;
   // add "gradient of the loss" node, always 1.
   if (loss_node_arg_name_ != "") {
     ONNX_NAMESPACE::TensorProto tensor_proto;
@@ -184,7 +190,7 @@ Status GradientGraphBuilder::Build(GraphAugmenter::GraphDefs& gradient_graph_def
     gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
   }
 
-  return Status::OK();
+  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
 }
 
 }  // namespace training

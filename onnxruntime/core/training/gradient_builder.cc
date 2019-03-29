@@ -339,7 +339,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
       NodeDef("Scale",
               {GO(0)},
               {IA("scaled_dY")},
-              {MakeAttribute("scale", static_cast<float>(scale))}),
+              {MakeAttribute("scale", 1.0f / static_cast<float>(scale))}),
       NodeDef("Shape",
               {X},
               {IA("x_shape")}),

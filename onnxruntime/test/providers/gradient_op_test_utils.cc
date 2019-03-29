@@ -65,17 +65,9 @@ void GradientOpTester::Run(
                                                       dy_values,
                                                       weights_to_train,
                                                       "");
-
-    training::GraphAugmenter::GraphDefs gradient_graph_def;
-    status = grad_graph_builder.Build(gradient_graph_def);
+    status = grad_graph_builder.Build();
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Gradient graph build failed: " << status.ErrorMessage();
-      return;
-    }
-
-    status = training::GraphAugmenter::AugmentGraph(graph, gradient_graph_def);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Augmentation failed: " << status.ErrorMessage();
       return;
     }
 

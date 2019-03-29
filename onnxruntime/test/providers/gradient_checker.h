@@ -39,48 +39,48 @@ class GradientChecker {
   /// if y = Square(x), where x (and so y) are DT_DOUBLE,
   /// <X_T, Y_T, JAC_T> should be <double, double, double>
   Status ComputeGradientError(
-      std::string& op_name,
+      const training::OpDef& op_def,
       const std::vector<onnxruntime::TensorShape>& x_shapes,
       const std::vector<onnxruntime::TensorShape>& y_shapes,
       JAC_T* max_error,
-      std::vector<std::string> attributes = {});
+      const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {});
 
  private:
   Status InitJacobians(const std::vector<TensorShape>& x_shapes,
                        const std::vector<TensorShape>& y_shapes,
                        std::vector<std::vector<JAC_T>>* jacobians);
 
-  std::vector<onnxruntime::MLValue> EvaluateFunctionAtInput(const std::string& op_name,
+  std::vector<onnxruntime::MLValue> EvaluateFunctionAtInput(const training::OpDef& op_def,
                                                             const std::vector<TensorShape>& x_shapes,
                                                             const std::vector<TensorShape>& y_shapes,
                                                             std::vector<std::vector<X_T>>* x_datas,
                                                             std::vector<std::vector<Y_T>>* y_datas,
-                                                            std::vector<std::string> attributes);
+                                                            const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
-  Status ComputeTheoreticalJacobianTranspose(std::string& op_name,
+  Status ComputeTheoreticalJacobianTranspose(const training::OpDef& op_def,
                                              const std::vector<TensorShape>& x_shapes,
                                              const std::vector<TensorShape>& y_shapes,
                                              std::vector<std::vector<X_T>>* x_datas,
                                              std::vector<std::vector<Y_T>>* y_datas,
                                              std::vector<std::vector<JAC_T>>* jacobian_ts,
-                                             std::vector<std::string> attributes);
+                                             const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
-  Status ComputeNumericJacobianTranspose(const std::string& op_name,
+  Status ComputeNumericJacobianTranspose(const training::OpDef& op_def,
                                          const std::vector<TensorShape>& x_shapes,
                                          const std::vector<TensorShape>& y_shapes,
                                          const JAC_T delta,
                                          std::vector<std::vector<X_T>>* x_datas,
                                          std::vector<std::vector<Y_T>>* y_datas,
                                          std::vector<std::vector<JAC_T>>* jacobian_ts,
-                                         std::vector<std::string> attributes);
+                                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
-  Status ComputeGradientErrorInternal(std::string& op_name,
+  Status ComputeGradientErrorInternal(const training::OpDef& op_name,
                                       const std::vector<TensorShape>& x_shapes,
                                       const std::vector<TensorShape>& y_shapes,
                                       std::vector<std::vector<X_T>>* x_datas,
                                       std::vector<std::vector<Y_T>>* y_datas,
                                       JAC_T* max_error,
-                                      std::vector<std::string> attributes);
+                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 };
 }  // namespace test
 }  // namespace onnxruntime

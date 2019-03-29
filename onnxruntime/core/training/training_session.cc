@@ -18,22 +18,13 @@ static Status AddLossFuncionInternal(Graph& graph,
 
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
-                                         const std::vector<std::string>& node_arg_names_to_train,
-                                         const GraphTransformer* graph_transformer) {
-  if (graph_transformer) {
-    bool modified = false;
-    ORT_RETURN_IF_ERROR(graph_transformer->Apply(graph, modified));
-  }
-
+                                         const std::vector<std::string>& node_arg_names_to_train) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
                                           loss_function_output_name);
-  GraphAugmenter::GraphDefs gradient_graph_def;
-  ORT_RETURN_IF_ERROR(grad_graph_builder.Build(gradient_graph_def));
-
-  return GraphAugmenter::AugmentGraph(graph, gradient_graph_def);
+  return grad_graph_builder.Build();
 }
 
 Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
@@ -53,8 +44,7 @@ Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_trai
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
-                                                 weights_to_train_,
-                                                 &pre_training_graph_transformer_));
+                                                 weights_to_train_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -91,8 +81,7 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    loss_func_info_.loss_name_,
-                                                   weights_to_train_,
-                                                   &pre_training_graph_transformer_));
+                                                   weights_to_train_));
   }
 
   return Model::Save(*new_model, model_uri);
