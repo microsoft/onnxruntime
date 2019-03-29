@@ -41,7 +41,9 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
       if (axis_index == axis)
         continue;
       ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
-		                "Non concat axis dimensions must match: Axis ", axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index], " and ", inputs_0_dims[axis_index]);
+                        "Non concat axis dimensions must match: Axis ", 
+                        axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index], 
+                        " and ", inputs_0_dims[axis_index]);
     }
     tensor_num_elements[index] = num_elements;
   }
