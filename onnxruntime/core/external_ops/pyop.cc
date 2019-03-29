@@ -1,205 +1,115 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/custom_ops_author.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include <numpy/arrayobject.h>
+#include "numpy/arrayobject.h"
+#include <iostream>
+#include <numeric>
+#include <vector>
 
-using namespace onnxruntime;
-using namespace onnxruntime::common;
-using namespace ONNX_NAMESPACE;
+using namespace std;
+namespace PythonFuncionWrapper {
 
-struct PyEnvInit
+string last_error_message = "";
+
+struct Finalizer
 {
-    PyEnvInit() {
-        Py_Initialize();
-        _import_array();
-    }
-
-    ~PyEnvInit()
-    {
+    ~Finalizer() {
         Py_Finalize();
     }
+};
 
-} pyEnvInit;
-
-PyObject* ToPyObj(const ::onnxruntime::MLValue* mlValue)
-{
-    PyObject* pyObj = nullptr;
-    auto type = mlValue->Type();
-    if (mlValue->IsTensor()) {
-        const Tensor* tensor = &mlValue->Get<Tensor>();
-        std::vector<npy_intp> dims(tensor->Shape().GetDims());
-        if (tensor->DataType() == DataTypeImpl::GetType<int32_t>()) {
-            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_INT32, 0);
-        } else if (tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
-            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_INT64, 0);
-        } else if (tensor->DataType() == DataTypeImpl::GetType<float>()) {
-            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_FLOAT, 0);
-        } else if (tensor->DataType() == DataTypeImpl::GetType<double>()) {
-            pyObj = PyArray_EMPTY(dims.size(), dims.data(), NPY_DOUBLE, 0);
-        } else ORT_ENFORCE(false, "input not supported");
-        auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
-        memcpy(PyArray_DATA(np_array), tensor->DataRaw(), tensor->Size());
-        pyObj = PyArray_Return(np_array);
-    } else {
-        if (type == DataTypeImpl::GetType<int32_t>()) {
-           pyObj = Py_BuildValue("i", mlValue->Get<int32_t>());
-        } else if (type == DataTypeImpl::GetType<int64_t>()) {
-           pyObj = Py_BuildValue("l", mlValue->Get<int64_t>());
-        } else if (type == DataTypeImpl::GetType<float>()) {
-           pyObj = Py_BuildValue("f", mlValue->Get<float>());
-        } else if (type == DataTypeImpl::GetType<double>()) {
-           pyObj = Py_BuildValue("d", mlValue->Get<double>());
-        } else ORT_ENFORCE(false, "input not supported");
+extern "C" bool Initialize() {
+    Py_Initialize();
+    if (_import_array() < 0) {
+        last_error_message = "Failed to initialize numpy array";
+        return false;
     }
+    static Finalizer finalizer;
+    return true;
+}
+
+extern "C" void SetSysPath(const wchar_t* dir) {
+    PySys_SetPath(dir);
+}
+
+extern "C" const char* GetLastErrorMessage() {
+    return last_error_message.c_str();
+}
+
+PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim) {
+    size_t data_len = 0;
+    std::vector<npy_intp> np_dim(dim);
+    PyObject* pyObj = nullptr;
+    switch (type) {
+        case 0:
+            pyObj = PyArray_EMPTY(np_dim.size(), np_dim.data(), NPY_INT32, 0);
+            data_len = sizeof(int32_t) * std::accumulate(begin(dim), end(dim), 1, std::multiplies<int64_t>());
+            break;
+        default:
+            break;
+    }
+    auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
+    memcpy(PyArray_DATA(np_array), data, data_len);
     return pyObj;
 }
 
-template<typename T>
-void deleter (void* data) { delete (T*)data; }
-
-ORT_EXPORT void CallPythonFuntion (const char* module,
-                                   const char* function,
-                                   OrtValue**  input,
-                                   int32_t     input_len,
-                                   OrtValue**  output,
-                                   int32_t&    output_len) {
-
-    auto pyModule_ = PyImport_ImportModule(module);
-    ORT_ENFORCE(nullptr != pyModule_, "import python module failed");
-    auto pyFunc_ = PyObject_GetAttrString(pyModule_, function);
-    ORT_ENFORCE(nullptr != pyFunc_ && PyCallable_Check(pyFunc_), "function not callable");
-
-    auto pyArgs = PyTuple_New(input_len);
-    for (int32_t i = 0; i < input_len; ++i) {
-        auto mlValue = reinterpret_cast<const ::onnxruntime::MLValue*>(input[i]);
-        PyTuple_SetItem(pyArgs, i, ToPyObj(mlValue));
+extern "C"  bool CallPythonFunction (const char*                    module,
+                                     const char*                    function,
+                                     const vector<const void*>&     input,
+                                     const vector<int32_t>&         input_type,
+                                     const vector<vector<int64_t>>& input_dim,
+                                     vector<const void*>&           output,
+                                     vector<int32_t>&               output_type,
+                                     vector<vector<int64_t>>&       output_dim) {
+  
+    auto pyModule = PyImport_ImportModule(module);
+    if (nullptr == pyModule) {
+        last_error_message = "Failed to import module";
+        return false;
+    }
+    auto pyFunc = PyObject_GetAttrString(pyModule, function);
+    if (nullptr == pyFunc) {
+        last_error_message = "Failed to import function";
+        return false;
+    }
+    if (!PyCallable_Check(pyFunc)) {
+        last_error_message = "Function is not callable";
+        return false;
     }
 
-    auto pyResult = PyEval_CallObject(pyFunc_, pyArgs);
-    if (Py_TYPE(pyResult) == &PyLong_Type) {
-        *output = reinterpret_cast<OrtValue*>(new MLValue(new int64_t(PyLong_AsLong(pyResult)), DataTypeImpl::GetType<int64_t>(), deleter<int64_t>));
-        output_len = 1;
-    } else if (Py_TYPE(pyResult) == &PyFloat_Type) {
-        *output = reinterpret_cast<OrtValue*>(new MLValue(new double(PyFloat_AsDouble(pyResult)), DataTypeImpl::GetType<double>(), deleter<double>));
-        output_len = 1;
-    } else if (Py_TYPE(pyResult) == &PyArray_Type) {
+    auto pyArgs = PyTuple_New(input.size());
+    for (int32_t i = 0; i < input.size(); ++i) {
+        PyTuple_SetItem(pyArgs, i, MakePyObj(input[i], input_type[i], input_dim[i]));
+    }
+
+    auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+    if (PyArray_Check(pyResult)) {
+        output_type.push_back(0);
+        output_dim.push_back({});
         auto np_array = reinterpret_cast<PyArrayObject*>(pyResult);
-        size_t element_count = 1;
-        std::vector<size_t> shape;
         for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
-            shape.push_back(PyArray_SHAPE(np_array)[i]);
-            element_count *= shape.back();
+            output_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
         }
-        OrtAllocatorInfo* info;
-        ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
-        if (PyLong_Check(np_array)) {
-            *output = OrtCreateTensorWithDataAsOrtValue(info, PyArray_DATA(np_array), element_count*sizeof(int64_t), shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
-        } else if (PyFloat_Check(np_array)) {
-            *output = OrtCreateTensorWithDataAsOrtValue(info, PyArray_DATA(np_array), element_count*sizeof(float), shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+        auto data_len = std::accumulate(begin(output_dim.back()), end(output_dim.back()), 1, std::multiplies<int64_t>());
+        switch (output_type.back()) {
+            case 0:
+                data_len *= sizeof(int32_t);
+                break;
+            default:
+                break;
         }
-        output_len = 1;
-    } else ORT_ENFORCE(false, "output type not supported");
-
-    Py_DECREF(pyArgs);
-    Py_XDECREF(pyModule_);
-    Py_XDECREF(pyFunc_);
-}
-
-class PyOp final: public OpKernel {
-public:
-    PyOp(const OpKernelInfo& info): OpKernel(info) {
-        Py_Initialize();
-        _import_array();
-        std::string module, script;
-        ORT_ENFORCE(info.GetAttr("module",   &module).IsOK(), "module not specified");
-        ORT_ENFORCE(info.GetAttr("function", &script).IsOK(), "script not specified");
-        PySys_SetPath(L".");
-        pyModule_ = PyImport_ImportModule(module.c_str());
-        ORT_ENFORCE(nullptr != pyModule_, "import python module failed");
-        pyFunc_ = PyObject_GetAttrString(pyModule_, script.c_str());
-        ORT_ENFORCE(nullptr != pyFunc_ && PyCallable_Check(pyFunc_), "script not callable");
+        auto data = new char[data_len];
+        memcpy(data, PyArray_DATA(np_array), data_len);
+        output.push_back(data);
     }
 
-    Status Compute(OpKernelContext* context) const override {
-        auto pyArgs = PyTuple_New(context->InputCount());
-        for (int i = 0; i < context->InputCount(); ++i) {
-            PyTuple_SetItem(pyArgs, i, FromTensor(context->Input<Tensor>(i)));
-        }
-        auto pyResult = PyEval_CallObject(pyFunc_, pyArgs);
-        Py_DECREF(pyArgs);
-        ORT_ENFORCE(PyArray_Check(pyResult));
-        auto np_array = reinterpret_cast<PyArrayObject*>(pyResult);
-        std::vector<int64_t> shape;
-        for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
-            shape.push_back(PyArray_SHAPE(np_array)[i]);
-        }
-        auto output_tensor = context->Output(0, TensorShape(shape));
-        ORT_ENFORCE(output_tensor->DataType() == DataTypeImpl::GetType<int32_t>(), "output type not int32_t");
-        memcpy(output_tensor->MutableDataRaw(), PyArray_DATA(np_array), output_tensor->Size());
-        Py_DECREF(pyResult);
-        return Status::OK(); 
-    }
-
-    ~PyOp() {
-        if (nullptr != pyModule_) {
-            Py_XDECREF(pyModule_);
-            pyModule_ = nullptr;
-        }
-        if (nullptr != pyFunc_) {
-            Py_XDECREF(pyFunc_);
-            pyFunc_ = nullptr;
-        }
-        Py_Finalize();
-    }
-
-private:
-    PyObject* FromTensor(const Tensor* tensor) const
-    {
-        ORT_ENFORCE(tensor->DataType() == DataTypeImpl::GetType<int32_t>(), "input type not int32_t");
-        std::vector<npy_intp> dims(tensor->Shape().GetDims());
-        auto obj = PyArray_EMPTY(dims.size(), dims.data(), NPY_INT32, 0);
-        auto np_array = reinterpret_cast<PyArrayObject*>(obj);
-        memcpy(PyArray_DATA(np_array), tensor->DataRaw(), tensor->Size());
-        return PyArray_Return(np_array);
-    }
-
-    PyObject* pyModule_ = nullptr;
-    PyObject* pyFunc_   = nullptr;
-};
-
-ORT_EXPORT KernelsContainer* GetAllKernels() {
-  KernelsContainer* kc = new KernelsContainer;
-  KernelDefBuilder def_builder;
-  def_builder.SetName("PyOp")
-      .SetDomain(onnxruntime::kOnnxDomain)
-      .SinceVersion(7)
-      .Provider(onnxruntime::kCpuExecutionProvider);
-  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) -> OpKernel* { return new PyOp(info); };
-  KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-  kc->kernels_list.push_back(std::move(create_info));
-  return kc;
+    Py_XDECREF(pyArgs);
+    Py_XDECREF(pyResult);
+    Py_XDECREF(pyModule);
+    Py_XDECREF(pyFunc);
+    return true;
 }
 
-ORT_EXPORT SchemasContainer* GetAllSchemas() {
-  SchemasContainer* sc = new SchemasContainer;
-  sc->domain = onnxruntime::kOnnxDomain;
-  sc->baseline_opset_version = 5;
-  sc->opset_version = 7;
-  ONNX_NAMESPACE::OpSchema schema("PyOp", "unknown", 0);
-  schema.SinceVersion(7);
-  sc->schemas_list.push_back(schema);
-  return sc;
-}
-
-ORT_EXPORT void FreeKernelsContainer(KernelsContainer* kc) {
-  delete kc;
-}
-
-ORT_EXPORT void FreeSchemasContainer(SchemasContainer* sc) {
-  delete sc;
-}
+} //namespace PythonFunctionWrapper

@@ -113,6 +113,8 @@ endif()
 set(onnxruntime_test_providers_src_patterns
   "${TEST_SRC_DIR}/contrib_ops/*.h"
   "${TEST_SRC_DIR}/contrib_ops/*.cc"
+  "${TEST_SRC_DIR}/external_ops/*.h"
+  "${TEST_SRC_DIR}/external_ops/*.cc"
   "${TEST_SRC_DIR}/providers/*.h"
   "${TEST_SRC_DIR}/providers/*.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
