@@ -341,16 +341,16 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtLoadModel, _In_ const char* model_path, _Out_ OrtModel** model_handle) {
-    API_IMPL_BEGIN
-        std::unique_ptr<ONNX_NAMESPACE::ModelProto> modelProto;
-    const auto status = ::onnxruntime::Model::LoadProto(std::string(model_path), modelProto);
-    if (!status.IsOK())
-        return ToOrtStatus(status);
+ORT_API_STATUS_IMPL(OrtLoadModel, _In_ const ORTCHAR_T* model_path, _Out_ OrtModel** model_handle) {
+  API_IMPL_BEGIN
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> modelProto;
+  const auto status = ::onnxruntime::Model::LoadProto(tstring(model_path), modelProto);
+  if (!status.IsOK())
+    return ToOrtStatus(status);
 
-    *model_handle = reinterpret_cast<OrtModel*>(modelProto.release());
-    return nullptr;
-    API_IMPL_END
+  *model_handle = reinterpret_cast<OrtModel*>(modelProto.release());
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain) {
@@ -377,9 +377,10 @@ ORT_API_STATUS_IMPL(OrtAddCustomOpDomain, _In_ OrtSessionOptions* options, OrtCu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
-                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
-  API_IMPL_BEGIN
+template <typename T>
+static OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ const T& model_path,
+                                    _In_ const OrtSessionOptions* options, 
+                                    _Out_ OrtSession** out) {
   auto sess = std::make_unique<::onnxruntime::InferenceSession>(
       options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
@@ -405,16 +406,31 @@ ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* mo
     return ToOrtStatus(status);
   *out = reinterpret_cast<OrtSession*>(sess.release());
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
+  API_IMPL_BEGIN
+  OrtSession* session = nullptr;
+  auto status = CreateSessionImpl<tstring>(env, tstring(model_path), options, &session);
+  if (status != nullptr)
+    return status;
+  *out = reinterpret_cast<OrtSession*>(session);
+  return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtCreateSessionFromHandle, _In_ OrtEnv* env, _In_ OrtModel* model_handle,
-    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
-    API_IMPL_BEGIN
-        auto& modelProto = *(reinterpret_cast<::onnx::ModelProto*>(model_handle));
-
-    return CreateSessionImpl<::onnx::ModelProto&>(env, modelProto, options, out);
-    API_IMPL_END
+                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
+  API_IMPL_BEGIN
+  auto& modelProto = *(reinterpret_cast<ONNX_NAMESPACE::ModelProto*>(model_handle));
+  OrtSession* session = nullptr;
+  auto status = CreateSessionImpl<ONNX_NAMESPACE::ModelProto>(env, modelProto, options, &session);
+  if (status != nullptr)
+    return status;
+  *out = reinterpret_cast<OrtSession*>(session);
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
@@ -1118,4 +1134,4 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, MLValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Model, ::onnx::ModelProto)
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Model, ONNX_NAMESPACE::ModelProto)

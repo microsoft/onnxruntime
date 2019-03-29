@@ -12,6 +12,13 @@
 #include "gsl/pointers"
 
 namespace onnxruntime {
+
+#ifdef _WIN32
+typedef std::wstring tstring;
+#else
+typedef std::string tstring;
+#endif
+
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
 
@@ -117,7 +124,7 @@ class Model {
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
 
-   static common::Status LoadProto(const std::string& p_file_path,
+   static common::Status LoadProto(const tstring& p_file_path,
                                    /*out*/ std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_modelProto);
 
  private:

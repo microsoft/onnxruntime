@@ -346,7 +346,7 @@ using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
 
-Status OpenFileHandle(const std::string& p_model_path, int* p_fd) {
+Status OpenFileHandle(const tstring& p_model_path, int* p_fd) {
   int fd;
   Status status = Env::Default().FileOpenRd(p_model_path, fd);
   if (!status.IsOK()) {
@@ -366,7 +366,7 @@ Status OpenFileHandle(const std::string& p_model_path, int* p_fd) {
   return Status::OK();
 }
 
-Status Model::LoadProto(const std::string& p_model_path, /*out*/ std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_modelProto) {
+Status Model::LoadProto(const tstring& p_model_path, /*out*/ std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_modelProto) {
   // Open the file for read
   int fd;
   auto status = OpenFileHandle(p_model_path, &fd);
