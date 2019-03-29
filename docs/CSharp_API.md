@@ -114,6 +114,10 @@ Appends execution provider to the session. For any operator in the graph the fir
         MklDnn
     }
 
+    SetSessionGraphOptimizationLevel(uint optimization_level);
+Sets the graph optimization level for the session. Default is set to 1. Available options are : 0, 1, 2
+0 -> Disable all optimizations, 1 -> Enable basic optimizations, 2 -> Enable all optimizations. 
+
 ### NodeMetadata
 Container of metadata for a model graph node, used for communicating the shape and type of the input and output nodes.
 
