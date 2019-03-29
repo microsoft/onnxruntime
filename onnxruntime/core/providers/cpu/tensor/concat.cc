@@ -38,7 +38,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     // Ensure all the other (non-concat) axes match
     for (int axis_index = 0; axis_index < inputs_0_rank; axis_index++) {
       num_elements *= inputs_n_dims[axis_index];
-	  if (axis_index == axis)
+      if (axis_index == axis)
         continue;
       ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
 		                "Non concat axis dimensions must match: Axis ", axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index], " and ", inputs_0_dims[axis_index]);
@@ -115,7 +115,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
     // no data in this tensor - so skip it
     if (prep.num_elements == 0)
       continue;
-	auto input_axis_pitch = prep.axis_pitch;
+    auto input_axis_pitch = prep.axis_pitch;
     const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
 
     auto input_size = prep.num_elements;
