@@ -75,7 +75,7 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_hosting_srcs} ${onnxruntime_h
 
 # Hosting Application
 add_executable(${PROJECT_NAME} ${onnxruntime_hosting_srcs})
-add_dependencies(${PROJECT_NAME} hosting_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+add_dependencies(${PROJECT_NAME} onnx hosting_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
@@ -83,7 +83,7 @@ if(NOT WIN32)
   endif()
 endif()
 
-onnxruntime_add_include_to_target(${PROJECT_NAME} onnxruntime_session onnxruntime_hosting_lib gsl onnx_proto hosting_proto)
+onnxruntime_add_include_to_target(${PROJECT_NAME} onnxruntime_session onnxruntime_hosting_lib gsl onnx onnx_proto hosting_proto)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${ONNXRUNTIME_ROOT}
