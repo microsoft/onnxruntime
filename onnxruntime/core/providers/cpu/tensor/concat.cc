@@ -23,8 +23,12 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
 
   auto axis = HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions());
 
+  // cache num of elements in tensor for later use
+  // as it's expensive to call Size() on TensorShape over and over
+  std::vector<size_t> tensor_num_elements(input_count);
   // Ensure all of the non concatenated axes match each other
   for (int index = 1; index < input_count; index++) {
+    size_t num_elements = 1;
     tensor_pointer = ctx->Input<Tensor>(index);
     if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     auto& inputs_n = *tensor_pointer;
@@ -33,11 +37,13 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     ORT_ENFORCE(inputs_n_rank == inputs_0_rank, "Ranks of input data are different, cannot concatenate them");
     // Ensure all the other (non-concat) axes match
     for (int axis_index = 0; axis_index < inputs_0_rank; axis_index++) {
-      if (axis_index == axis)
+      num_elements *= inputs_n_dims[axis_index];
+	  if (axis_index == axis)
         continue;
       ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
 		                "Non concat axis dimensions must match: Axis ", axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index], " and ", inputs_0_dims[axis_index]);
     }
+    tensor_num_elements[index] = num_elements;
   }
 
   // Calculate the size of the concatenated axis, and verify all other dimensions match
@@ -49,22 +55,27 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
 
   // Calculate the shape of the output tensor
   std::vector<int64_t> dims(inputs_0_rank);
-  for (int dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++)
+  size_t num_elements = 1; // cache size of the first input along the way
+  for (int dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
     dims[dimension_index] = inputs_0_dims[dimension_index];
+    num_elements *= inputs_0_dims[dimension_index];
+  }
+  tensor_num_elements[0] = num_elements;
   dims[axis] = concat_axis_size;
   TensorShape outputShape(dims);
  
   auto& concat_result = *ctx->Output(0, outputShape);
   p.output_tensor = &concat_result;
+  p.output_num_elements = outputShape.Size();
 
   // if the output tensor is not going to hold any elements,
   // there is no need to proceed further
-  if (outputShape.Size() == 0)
+  if (p.output_num_elements == 0)
     return Status::OK();
-
+    
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
   p.output_axis_pitch = 1;
-  for (auto i = int64_t(dims.size()); i-- > axis;)
+  for (auto i = int64_t(inputs_0_rank); i-- > axis;)
     p.output_axis_pitch *= dims[i];
 
   for (int input_index = 0; input_index < input_count; input_index++) {
@@ -79,7 +90,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     for (int i = int(inputs_0_rank); i-- > axis;)
       input_axis_pitch *= data_dims[i];
 
-    p.inputs.push_back({&data_n, input_axis_pitch});
+    p.inputs.push_back({&data_n, tensor_num_elements[input_index], input_axis_pitch});
   }
 
   return Status::OK();
@@ -92,7 +103,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count, p));
 
   // return at this point if output tensor is going to be empty
-  if (p.output_tensor->Shape().Size() == 0)
+  if (p.output_num_elements == 0)
     return Status::OK();
 
   auto is_string_type = ctx->Input<Tensor>(0)->DataType() == DataTypeImpl::GetType<std::string>();
@@ -101,12 +112,13 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   auto element_bytes = p.output_tensor->DataType()->Size();
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
-    auto input_axis_pitch = prep.axis_pitch;
-    const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
     // no data in this tensor - so skip it
-    if (input == nullptr)
-     continue;
-    auto input_size = prep.tensor->Shape().Size();
+    if (prep.num_elements == 0)
+      continue;
+	auto input_axis_pitch = prep.axis_pitch;
+    const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
+
+    auto input_size = prep.num_elements;
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
     uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
