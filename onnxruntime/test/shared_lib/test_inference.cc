@@ -13,24 +13,31 @@
 #include "onnx_protobuf.h"
 using namespace onnxruntime;
 
+struct Input {
+  const char* name;
+  std::vector<size_t> dims;
+  std::vector<float> values;
+};
+
 void RunSession(OrtAllocator* env, OrtSession* session_object,
-                const std::vector<size_t>& dims_x,
-                const std::vector<float>& values_x,
+                const std::vector<Input>& inputs,
+                const char* output_name,
                 const std::vector<int64_t>& dims_y,
                 const std::vector<float>& values_y,
                 OrtValue* output_tensor) {
-  std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> value_x(nullptr, OrtReleaseValue);
-  std::vector<OrtValue*> inputs(1);
-  inputs[0] = OrtCreateTensorAsOrtValue(env, dims_x, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-  value_x.reset(inputs[0]);
-  void* raw_data;
-  ORT_THROW_ON_ERROR(OrtGetTensorMutableData(inputs[0], &raw_data));
-  memcpy(raw_data, values_x.data(), values_x.size() * sizeof(values_x[0]));
-  std::vector<const char*> input_names{"X"};
-  const char* output_names[] = {"Y"};
+  std::vector<OrtValue*> ort_inputs;
+  std::vector<std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>> ort_inputs_cleanup;
+  std::vector<const char*> input_names;
+  for (int i = 0; i < inputs.size(); i++) {
+    input_names.emplace_back(inputs[i].name);
+    ort_inputs.emplace_back(OrtCreateTensorWithDataAsOrtValue(env->Info(env), (void*)inputs[i].values.data(), inputs[i].values.size() * sizeof(inputs[i].values[0]), inputs[i].dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+    ort_inputs_cleanup.emplace_back(ort_inputs.back(), OrtReleaseValue);
+  }
+
+  //  const char* output_names[] = {"Y"};
   bool is_output_allocated_by_ort = output_tensor == nullptr;
   OrtValue* old_output_ptr = output_tensor;
-  ORT_THROW_ON_ERROR(OrtRun(session_object, NULL, input_names.data(), inputs.data(), inputs.size(), output_names, 1, &output_tensor));
+  ORT_THROW_ON_ERROR(OrtRun(session_object, NULL, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1, &output_tensor));
   ASSERT_NE(output_tensor, nullptr);
   if (!is_output_allocated_by_ort)
     ASSERT_EQ(output_tensor, old_output_ptr);
@@ -59,8 +66,8 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
 
 template <typename T>
 void TestInference(OrtEnv* env, T model_uri,
-                   const std::vector<size_t>& dims_x,
-                   const std::vector<float>& values_x,
+                   const std::vector<Input>& inputs,
+                   const char* output_name,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
                    int provider_type, OrtCustomOpDomain* custom_op_domain_ptr) {
@@ -101,8 +108,8 @@ void TestInference(OrtEnv* env, T model_uri,
   //without preallocated output tensor
   RunSession(default_allocator.get(),
              inference_session.get(),
-             dims_x,
-             values_x,
+             inputs,
+             output_name,
              expected_dims_y,
              expected_values_y,
              nullptr);
@@ -123,8 +130,8 @@ void TestInference(OrtEnv* env, T model_uri,
   for (int i = 0; i != 2; ++i)
     RunSession(default_allocator.get(),
                inference_session.get(),
-               dims_x,
-               values_x,
+               inputs,
+               output_name,
                expected_dims_y,
                expected_values_y,
                value_y.get());
@@ -141,14 +148,17 @@ class CApiTestWithProvider : public CApiTest,
 TEST_P(CApiTestWithProvider, simple) {
   // simple inference test
   // prepare inputs
-  std::vector<size_t> dims_x = {3, 2};
-  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), nullptr);
+  TestInference<PATH_TYPE>(env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
@@ -195,7 +205,11 @@ struct MyCustomKernel {
     float* out;
     ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(outputs[0], reinterpret_cast<void**>(&out)));
 
-    int64_t size = OrtTensorDimensions(ort_, inputs[0]).ElementCount();
+    OrtTensorTypeAndShapeInfo* output_info;
+    ORT_THROW_ON_ERROR(ort_.GetTensorShapeAndType(outputs[0], &output_info));
+    int64_t size = ort_.GetTensorShapeElementCount(output_info);
+    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
@@ -227,8 +241,12 @@ struct MyCustomOp : OrtCustomOp {
 
 TEST_F(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
-  std::vector<size_t> dims_x = {3, 2};
-  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
@@ -238,10 +256,11 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("");
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain);
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
+#if 1
 struct OCRCustomKernel {
   OCRCustomKernel(const OrtCustomOpApi& ort, const OrtKernelInfo& info) : ort_(ort) {
   }
@@ -292,8 +311,22 @@ struct OCRCustomOp : OrtCustomOp {
 
 TEST_F(CApiTest, custom_op_handler_ocr) {
   std::cout << "Running custom op inference" << std::endl;
-  std::vector<size_t> dims_x = {3, 2};
-  std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<Input> inputs(2);
+  {
+    Input& input = inputs[0];
+    input.name = "data";
+    input.dims = {1, 3, 320, 320};
+    input.values.reserve(320 * 320 * 3);
+    for (int i = 0; i < 320 * 320 * 3; i++)
+      input.values.push_back(0.1f);
+  }
+  {
+    Input& input = inputs[1];
+    input.name = "im_info";
+    input.dims = {3};
+    input.values = {320, 320, 1};
+  }
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 2};
@@ -305,10 +338,12 @@ TEST_F(CApiTest, custom_op_handler_ocr) {
 
   //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
   //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, custom_op_domain);
-  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x_oneocr.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, custom_op_domain);
+  //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x_oneocr.onnx", inputs, expected_dims_y, expected_values_y, false, custom_op_domain);
+  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x_oneocr-v7.onnx", inputs, "rpn_rois_fpn2", expected_dims_y, expected_values_y, false, custom_op_domain);
   //  TestInference<PATH_TYPE>(env, L"E:\\mixed-r18-64c-2x_opset7.onnx", dims_x, values_x, expected_dims_y, expected_values_y, false, false, &custom_op);
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
+#endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
