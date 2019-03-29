@@ -76,14 +76,15 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
-      std::set<size_t> node_set;
+      std::unordered_set<size_t> node_set;
+      node_set.reserve(group.size());
       for (const auto& index : group) {
         node_set.insert(node_index[index]);
       }      
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
-      std::map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
-      std::set<const NodeArg*> erased;
+      std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+      std::unordered_set<const NodeArg*> erased;
       int input_order = 0;
       int output_order = 0;
 
@@ -239,7 +240,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     const auto& graph_output = model_proto.graph().output();
-    std::set<string> graph_outputs_set;
+    std::unordered_set<string> graph_outputs_set;
+    graph_outputs_set.reserve(graph_output.size());
     for (int i = 0, end = graph_output.size(); i < end; ++i) {
       graph_outputs_set.insert(graph_output[i].name());
     }
