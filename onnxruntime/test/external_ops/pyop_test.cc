@@ -25,11 +25,15 @@ typedef bool PYFUNC(const char*,
 typedef const char* LASTERR();
 typedef void SETPATH(const wchar_t*);
 
-TEST(PyOpTest, unittest_numpy_input)
+TEST(PyOpTest, unittest_numpy_input_output)
 {
     ofstream fs("test.py");
-    fs << "def Double(A):" << endl;
-    fs << "    return A+A" << endl;
+    fs << "def Double(A):"         << endl;
+    fs << "    return A+A"         << endl;
+    fs << "def Add(A,B):"          << endl;
+    fs << "    return A+B"         << endl;
+    fs << "def Inc(A):"            << endl;
+    fs << "    return A+1,A+2,A+3" << endl; 
     fs.close();
 
     void* handle = dlopen("./libonnxruntime_pyop.so", RTLD_NOW | RTLD_GLOBAL);
@@ -46,24 +50,47 @@ TEST(PyOpTest, unittest_numpy_input)
     ORT_ENFORCE(nullptr != SetSysPath, dlerror());
 
     ORT_ENFORCE(Initialize(), LastError());
-
-    int32_t data[] = {1,2,3};
-    vector<const void*> input  = { data };
-    vector<int32_t> input_type = {0};
-    vector<vector<int64_t>> input_dim = {{3}};
-
+    SetSysPath(L".");
     vector<const void*> output;
     vector<int32_t> output_type;
     vector<vector<int64_t>> output_dim;
 
-    SetSysPath(L".");
-    ORT_ENFORCE(Pyfunc("test", "Double", input, input_type, input_dim, output, output_type, output_dim), LastError());
-    ORT_ENFORCE(output.size() == 1, "Number of output is incorrect");
+    int32_t A[] = {1,2,3};
+    vector<vector<int64_t>> input_dim = {{3}};
+    ORT_ENFORCE(Pyfunc("test", "Double", {A}, {0}, input_dim, output, output_type, output_dim), LastError());
+    ORT_ENFORCE(output.size() == 1,     "Number of output is incorrect");
     ORT_ENFORCE(((const int32_t*)output[0])[0] == 2, "Number of output is incorrect");
     ORT_ENFORCE(((const int32_t*)output[0])[1] == 4, "Number of output is incorrect");
     ORT_ENFORCE(((const int32_t*)output[0])[2] == 6, "Number of output is incorrect");
+    output.clear();
+    output_type.clear();
+    output_dim.clear();
+
+    int32_t B[] = {0,1,2,3,4};
+    int32_t C[] = {5,6,7,8,9};
+    input_dim = {{5},{5}};
+    ORT_ENFORCE(Pyfunc("test", "Add", {B,C}, {0,0}, input_dim, output, output_type, output_dim), LastError());
+    ORT_ENFORCE(output.size() == 1, "Number of output is incorrect");
+    ORT_ENFORCE(((const int32_t*)output[0])[0] == 5);
+    ORT_ENFORCE(((const int32_t*)output[0])[1] == 7);
+    ORT_ENFORCE(((const int32_t*)output[0])[2] == 9);
+    ORT_ENFORCE(((const int32_t*)output[0])[3] == 11);
+    ORT_ENFORCE(((const int32_t*)output[0])[4] == 13);
+    output.clear();
+    output_type.clear();
+    output_dim.clear();
+
+    int32_t D[] = {123, 345};
+    input_dim = {{2}};
+    ORT_ENFORCE(Pyfunc("test", "Inc", {D}, {0}, input_dim, output, output_type, output_dim), LastError());
+    ORT_ENFORCE(output.size() == 3, "Number of output is incorrect");
+    ORT_ENFORCE(((const int32_t*)output[0])[0] == 124);
+    ORT_ENFORCE(((const int32_t*)output[0])[1] == 346);
+    ORT_ENFORCE(((const int32_t*)output[1])[0] == 125);
+    ORT_ENFORCE(((const int32_t*)output[1])[1] == 347);
+    ORT_ENFORCE(((const int32_t*)output[2])[0] == 126);
+    ORT_ENFORCE(((const int32_t*)output[2])[1] == 348);
 
     dlclose(handle);
     std::remove("test.py");
 }
-

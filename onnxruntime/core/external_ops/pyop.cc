@@ -20,7 +20,8 @@ struct Finalizer
     }
 };
 
-extern "C" bool Initialize() {
+extern "C" bool Initialize() 
+{
     Py_Initialize();
     if (_import_array() < 0) {
         last_error_message = "Failed to initialize numpy array";
@@ -30,15 +31,18 @@ extern "C" bool Initialize() {
     return true;
 }
 
-extern "C" void SetSysPath(const wchar_t* dir) {
+extern "C" void SetSysPath(const wchar_t* dir)
+{
     PySys_SetPath(dir);
 }
 
-extern "C" const char* GetLastErrorMessage() {
+extern "C" const char* GetLastErrorMessage()
+{
     return last_error_message.c_str();
 }
 
-PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim) {
+PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim)
+{
     size_t data_len = 0;
     std::vector<npy_intp> np_dim(dim);
     PyObject* pyObj = nullptr;
@@ -53,6 +57,30 @@ PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim) 
     auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
     memcpy(PyArray_DATA(np_array), data, data_len);
     return pyObj;
+}
+
+void ExtractOutput (PyObject*                pyObj,
+                    vector<const void*>&     output,
+                    vector<int32_t>&         output_type,
+                    vector<vector<int64_t>>& output_dim)
+{
+    output_type.push_back(0);
+    output_dim.push_back({});
+    auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
+    for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
+        output_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
+    }
+    auto data_len = std::accumulate(begin(output_dim.back()), end(output_dim.back()), 1, std::multiplies<int64_t>());
+    switch (output_type.back()) {
+        case 0:
+            data_len *= sizeof(int32_t);
+            break;
+        default:
+            break;
+    }
+    auto data = new char[data_len];
+    memcpy(data, PyArray_DATA(np_array), data_len);
+    output.push_back(data);
 }
 
 extern "C"  bool CallPythonFunction (const char*                    module,
@@ -86,23 +114,14 @@ extern "C"  bool CallPythonFunction (const char*                    module,
 
     auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
     if (PyArray_Check(pyResult)) {
-        output_type.push_back(0);
-        output_dim.push_back({});
-        auto np_array = reinterpret_cast<PyArrayObject*>(pyResult);
-        for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
-            output_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
+        ExtractOutput(pyResult, output, output_type, output_dim);
+    } else if (PyTuple_Check(pyResult)) {
+        for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
+            ExtractOutput(PyTuple_GetItem(pyResult, i), output, output_type, output_dim);
         }
-        auto data_len = std::accumulate(begin(output_dim.back()), end(output_dim.back()), 1, std::multiplies<int64_t>());
-        switch (output_type.back()) {
-            case 0:
-                data_len *= sizeof(int32_t);
-                break;
-            default:
-                break;
-        }
-        auto data = new char[data_len];
-        memcpy(data, PyArray_DATA(np_array), data_len);
-        output.push_back(data);
+    } else {
+        last_error_message = "output not supported, please return numpy object(s)";
+        return false;
     }
 
     Py_XDECREF(pyArgs);
