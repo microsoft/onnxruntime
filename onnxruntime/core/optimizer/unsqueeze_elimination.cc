@@ -65,6 +65,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
   }
   input_def->SetShape(shape);
 
+  /*
   // Temporarily store Unsqueeze's output nodes, so that we can access them to update their input after we have
   // removed the edges from unsqueeze to them.
   std::vector<NodeIndex> output_nodes_idx;
@@ -91,10 +92,15 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
       }
     }
   }
-
+  
   // Remove the Unsqueeze node.
   graph.RemoveNode(node.Index());
   removed = modified = true;
+  */
+
+  if (graph_utils::RemoveSingleInputNode(graph, node)) {
+    removed = modified = true;
+  }
 
   return Status::OK();
 }  // namespace onnxruntime
