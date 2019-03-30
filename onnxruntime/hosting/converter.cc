@@ -21,46 +21,38 @@ namespace hosting {
 
 namespace protobufutil = google::protobuf::util;
 
-onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::DataTypeImpl* cpp_type,
-                                                           const onnxruntime::logging::Logger& logger) {
-  onnx::TensorProto_DataType type;
+onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::DataTypeImpl* cpp_type) {
   if (cpp_type == onnxruntime::DataTypeImpl::GetType<float>()) {
-    type = onnx::TensorProto_DataType_FLOAT;
+    return onnx::TensorProto_DataType_FLOAT;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint8_t>()) {
-    type = onnx::TensorProto_DataType_UINT8;
+    return onnx::TensorProto_DataType_UINT8;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int8_t>()) {
-    type = onnx::TensorProto_DataType_INT8;
+    return onnx::TensorProto_DataType_INT8;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint16_t>()) {
-    type = onnx::TensorProto_DataType_UINT16;
+    return onnx::TensorProto_DataType_UINT16;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int16_t>()) {
-    type = onnx::TensorProto_DataType_INT16;
+    return onnx::TensorProto_DataType_INT16;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int32_t>()) {
-    type = onnx::TensorProto_DataType_INT32;
+    return onnx::TensorProto_DataType_INT32;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<int64_t>()) {
-    type = onnx::TensorProto_DataType_INT64;
+    return onnx::TensorProto_DataType_INT64;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<std::string>()) {
-    type = onnx::TensorProto_DataType_STRING;
+    return onnx::TensorProto_DataType_STRING;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<bool>()) {
-    type = onnx::TensorProto_DataType_BOOL;
+    return onnx::TensorProto_DataType_BOOL;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>()) {
-    type = onnx::TensorProto_DataType_FLOAT16;
+    return onnx::TensorProto_DataType_FLOAT16;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>()) {
-    type = onnx::TensorProto_DataType_BFLOAT16;
+    return onnx::TensorProto_DataType_BFLOAT16;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<double>()) {
-    type = onnx::TensorProto_DataType_DOUBLE;
+    return onnx::TensorProto_DataType_DOUBLE;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint32_t>()) {
-    type = onnx::TensorProto_DataType_UINT32;
+    return onnx::TensorProto_DataType_UINT32;
   } else if (cpp_type == onnxruntime::DataTypeImpl::GetType<uint64_t>()) {
-    type = onnx::TensorProto_DataType_UINT64;
+    return onnx::TensorProto_DataType_UINT64;
   } else {
-    type = onnx::TensorProto_DataType_UNDEFINED;
+    return onnx::TensorProto_DataType_UNDEFINED;
   }
-
-  // One time of data type mapping activity usage has limit information to us.
-  // But the collection of this information will let us know the frequency of data types.
-  // Above if-statement order could be optimized with the statistic.
-  LOGS(logger, VERBOSE) << "Converted TensorProto_DataType: " << type;
-  return type;
 }
 
 common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data,
@@ -76,7 +68,7 @@ common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_ra
   }
 
   // data_type field
-  onnx::TensorProto_DataType data_type = MLDataTypeToTensorProtoDataType(tensor.DataType(), logger);
+  onnx::TensorProto_DataType data_type = MLDataTypeToTensorProtoDataType(tensor.DataType());
   tensor_proto.set_data_type(data_type);
 
   // data_location field: Data is stored in raw_data (if set) otherwise in type-specified field.

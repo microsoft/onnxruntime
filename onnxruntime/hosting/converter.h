@@ -14,8 +14,7 @@
 namespace onnxruntime {
 namespace hosting {
 
-onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::DataTypeImpl* cpp_type,
-                                                           const onnxruntime::logging::Logger& logger);
+onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::DataTypeImpl* cpp_type);
 
 // Convert MLValue to TensorProto. Some fields are ignored:
 //   * name field: could not get from MLValue

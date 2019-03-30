@@ -14,15 +14,15 @@ namespace hosting {
 
 class Executor {
  public:
-  explicit Executor(std::shared_ptr<HostingEnvironment> hosting_env) : env_(hosting_env) {}
+  explicit Executor(std::shared_ptr<HostingEnvironment> hosting_env) : env_(std::move(hosting_env)) {}
 
   // Prediction method
-  google::protobuf::util::Status predict(const std::string& name, const std::string& version, const std::string& request_id,
+  google::protobuf::util::Status Predict(const std::string& name, const std::string& version, const std::string& request_id,
                                          onnxruntime::hosting::PredictRequest& request,
                                          /* out */ onnxruntime::hosting::PredictResponse& response);
 
  private:
-  std::shared_ptr<HostingEnvironment> env_;
+  const std::shared_ptr<HostingEnvironment> env_;
 };
 }  // namespace hosting
 }  // namespace onnxruntime

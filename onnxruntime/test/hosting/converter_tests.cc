@@ -26,63 +26,63 @@ TEST(PositiveTests, MLDataTypeToTensorProtoDataTypeTests) {
   auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
 
   MLDataType ml_data_type = DataTypeImpl::GetType<float>();
-  onnx::TensorProto_DataType result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  onnx::TensorProto_DataType result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_FLOAT);
 
   ml_data_type = DataTypeImpl::GetType<onnxruntime::MLFloat16>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_FLOAT16);
 
   ml_data_type = DataTypeImpl::GetType<onnxruntime::BFloat16>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_BFLOAT16);
 
   ml_data_type = DataTypeImpl::GetType<double>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_DOUBLE);
 
   ml_data_type = DataTypeImpl::GetType<uint8_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_UINT8);
 
   ml_data_type = DataTypeImpl::GetType<int8_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_INT8);
 
   ml_data_type = DataTypeImpl::GetType<uint16_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_UINT16);
 
   ml_data_type = DataTypeImpl::GetType<int16_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_INT16);
 
   ml_data_type = DataTypeImpl::GetType<uint32_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_UINT32);
 
   ml_data_type = DataTypeImpl::GetType<int32_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_INT32);
 
   ml_data_type = DataTypeImpl::GetType<uint64_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_UINT64);
 
   ml_data_type = DataTypeImpl::GetType<int64_t>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_INT64);
 
   ml_data_type = DataTypeImpl::GetType<std::string>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_STRING);
 
   ml_data_type = DataTypeImpl::GetType<bool>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_BOOL);
 
   ml_data_type = DataTypeImpl::GetTensorType<bool>();
-  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type, logger);
+  result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
   EXPECT_EQ(result, onnx::TensorProto_DataType_UNDEFINED);
 }
 

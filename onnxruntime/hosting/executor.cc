@@ -24,15 +24,15 @@ namespace protobufutil = google::protobuf::util;
 
 // TODO: make all logging has request id
 
-protobufutil::Status Executor::predict(const std::string& name, const std::string& version, const std::string& request_id,
+protobufutil::Status Executor::Predict(const std::string& name, const std::string& version, const std::string& request_id,
                                        onnxruntime::hosting::PredictRequest& request,
                                        /* out */ onnxruntime::hosting::PredictResponse& response) {
   bool using_raw_data = true;
   auto logger = env_->GetLogger();
 
   // Create the input NameMLValMap
-  onnxruntime::NameMLValMap nameMlValMap;
-  common::Status status;
+  onnxruntime::NameMLValMap nameMlValMap{};
+  common::Status status{};
   for (const auto& input : request.inputs()) {
     std::string input_name = input.first;
     onnx::TensorProto input_tensor = input.second;
@@ -111,7 +111,7 @@ protobufutil::Status Executor::predict(const std::string& name, const std::strin
     response.mutable_outputs()->insert({output_names[i], output_tensor});
   }
 
-  return google::protobuf::util::Status::OK;
+  return protobufutil::Status::OK;
 }
 
 }  // namespace hosting

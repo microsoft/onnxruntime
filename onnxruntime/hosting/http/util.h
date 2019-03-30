@@ -5,6 +5,8 @@
 #define ONNXRUNTIME_HOSTING_HTTP_UTIL_H
 
 #include <boost/beast/core.hpp>
+#include <boost/beast/http/status.hpp>
+#include <google/protobuf/stubs/status.h>
 
 namespace onnxruntime {
 namespace hosting {
@@ -13,6 +15,8 @@ namespace beast = boost::beast;  // from <boost/beast.hpp>
 
 // Report a failure
 void ErrorHandling(beast::error_code ec, char const* what);
+
+boost::beast::http::status GetHttpStatusCode(google::protobuf::util::Status status);
 }  // namespace hosting
 }  // namespace onnxruntime
 

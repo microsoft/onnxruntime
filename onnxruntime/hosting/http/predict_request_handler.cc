@@ -5,6 +5,7 @@
 #include "http_server.h"
 #include "json_handling.h"
 #include "executor.h"
+#include "util.h"
 
 namespace onnxruntime {
 namespace hosting {
@@ -33,7 +34,12 @@ void Predict(const std::string& name,
 
   Executor executor(env);
   PredictResponse response{};
-  executor.predict(name, version, "request_id", predictRequest, response);
+  status = executor.Predict(name, version, "request_id", predictRequest, response);
+  if (!status.ok()) {
+    context.response.result(GetHttpStatusCode(status));
+    context.response.body() = CreateJsonError(GetHttpStatusCode(status), status.error_message());
+    return;
+  }
 
   std::string response_body{};
   status = GenerateResponseInJson(response, response_body);
