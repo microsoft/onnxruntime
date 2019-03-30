@@ -298,8 +298,9 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
 }
 
 bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  if (node.GetInputEdgesCount() == 1) {
-    return RemoveNodeWithSingleNodeIn(graph, node);
+  if (node.GetInputEdgesCount() == 1 && node.InputDefs().size() == 1) {
+    // If it has a single input that is not an initializer.
+	return RemoveNodeWithSingleNodeIn(graph, node);
   } else if (node.InputDefs().size() == 1) {  // Question: can it have a single input and this is not an initializer, i.e., is this check sufficient or do I need to check that it is also an initializer?
     return RemoveNodeWithSingleInitializerIn(graph, node);
   } else {
