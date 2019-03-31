@@ -63,7 +63,7 @@ common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_ra
 
   // dims field
   const onnxruntime::TensorShape& tensor_shape = tensor.Shape();
-  for (auto dim : tensor_shape.GetDims()) {
+  for (const auto& dim : tensor_shape.GetDims()) {
     tensor_proto.add_dims(dim);
   }
 

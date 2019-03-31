@@ -16,7 +16,7 @@ void BadRequest(HttpContext& context, const std::string& error_message);
 void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
-             HttpContext& context,
+             /* in, out */ HttpContext& context,
              std::shared_ptr<HostingEnvironment> env);
 
 }  // namespace hosting

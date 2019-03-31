@@ -16,6 +16,7 @@ namespace beast = boost::beast;  // from <boost/beast.hpp>
 // Report a failure
 void ErrorHandling(beast::error_code ec, char const* what);
 
+// Mapping protobuf status to http status
 boost::beast::http::status GetHttpStatusCode(google::protobuf::util::Status status);
 }  // namespace hosting
 }  // namespace onnxruntime
