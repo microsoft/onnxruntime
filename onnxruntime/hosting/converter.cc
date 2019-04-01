@@ -56,7 +56,7 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::Da
 }
 
 common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data,
-                                   const onnxruntime::logging::Logger& logger,
+                                   std::shared_ptr<onnxruntime::logging::Logger> logger,
                                    /* out */ onnx::TensorProto& tensor_proto) {
   // Tensor in MLValue
   const auto& tensor = ml_value.Get<onnxruntime::Tensor>();
@@ -245,7 +245,7 @@ common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_ra
       break;
     }
     default: {
-      LOGS(logger, ERROR) << "Unsupported TensorProto DataType: " << data_type;
+      LOGS(*logger, ERROR) << "Unsupported TensorProto DataType: " << data_type;
       return common::Status(common::StatusCategory::ONNXRUNTIME,
                             common::StatusCode::NOT_IMPLEMENTED,
                             "Unsupported TensorProto DataType: " + std::to_string(data_type));

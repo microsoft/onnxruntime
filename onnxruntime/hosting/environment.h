@@ -16,17 +16,21 @@ namespace hosting {
 
 class HostingEnvironment {
  public:
-  HostingEnvironment();
+  explicit HostingEnvironment(onnxruntime::logging::Severity severity);
+  // TODO: cleanly dispose session
+  ~HostingEnvironment() = default;
   HostingEnvironment(const HostingEnvironment&) = delete;
 
-  const onnxruntime::logging::Logger& GetLogger();
+  const onnxruntime::logging::Logger& GetAppLogger();
+  std::shared_ptr<onnxruntime::logging::Logger> GetLogger(const std::string& id);
   std::shared_ptr<onnxruntime::InferenceSession> GetSession() const;
 
  private:
   std::string logger_id_;
   onnxruntime::hosting::LogSink sink_;
-  std::unique_ptr<onnxruntime::Environment> runtime_environment_;
   onnxruntime::logging::LoggingManager default_logging_manager_;
+
+  std::unique_ptr<onnxruntime::Environment> runtime_environment_;
   onnxruntime::SessionOptions options_;
   std::shared_ptr<onnxruntime::InferenceSession> session_;
 };

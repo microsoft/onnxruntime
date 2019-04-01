@@ -20,8 +20,8 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  auto env = std::make_shared<hosting::HostingEnvironment>();
-  auto logger = env->GetLogger();
+  auto env = std::make_shared<hosting::HostingEnvironment>(config.logging_level);
+  auto logger = env->GetAppLogger();
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
   LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
   auto status = env->GetSession()->Load(config.model_path);
@@ -33,26 +33,27 @@ int main(int argc, char* argv[]) {
   hosting::App app{};
 
   app.RegisterStartup(
-      [&env](const auto& details) -> void {
-        auto logger = env->GetLogger();
+      [env](const auto& details) -> void {
+        auto logger = env->GetAppLogger();
         LOGS(logger, VERBOSE) << "Listening at: "
                               << "http://" << details.address << ":" << details.port;
       });
 
   app.RegisterError(
-      [&env](auto& context) -> void {
-        auto logger = env->GetLogger();
-        LOGS(logger, VERBOSE) << "Error code: " << context.error_code;
-        LOGS(logger, VERBOSE) << "Error message: " << context.error_message;
+      [env](auto& context) -> void {
+        auto logger = env->GetLogger(context.uuid);
+        LOGS(*logger, VERBOSE) << "Error code: " << context.error_code;
+        LOGS(*logger, VERBOSE) << "Error message: " << context.error_message;
 
         context.response.result(context.error_code);
         context.response.body() = hosting::CreateJsonError(context.error_code, context.error_message);
       });
 
-  app.RegisterPost(R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))",
-                   [env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
-                     hosting::Predict(name, version, action, context, env);
-                   });
+  app.RegisterPost(
+      R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))",
+      [env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
+        hosting::Predict(name, version, action, context, env);
+      });
 
   app.Bind(boost_address, config.http_port)
       .NumThreads(config.num_http_threads)

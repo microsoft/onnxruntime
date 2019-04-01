@@ -18,7 +18,7 @@ namespace protobufutil = google::protobuf::util;
   {                                                                                  \
     auto http_error_code = (error_code);                                             \
     auto error_message = CreateJsonError(http_error_code, (status).error_message()); \
-    LOGS((logger), VERBOSE) << error_message;                                        \
+    LOGS((*logger), VERBOSE) << error_message;                                       \
     (context).response.result(http_error_code);                                      \
     (context).response.body() = error_message;                                       \
     (context).response.set(http::field::content_type, "application/json");           \
@@ -30,10 +30,8 @@ void Predict(const std::string& name,
              const std::string& action,
              /* in, out */ HttpContext& context,
              std::shared_ptr<HostingEnvironment> env) {
-  auto logger = env->GetLogger();
-  LOGS(logger, VERBOSE) << "Name: " << name;
-  LOGS(logger, VERBOSE) << "Version: " << version;
-  LOGS(logger, VERBOSE) << "Action: " << action;
+  auto logger = env->GetLogger(context.uuid);
+  LOGS(*logger, VERBOSE) << "Name: " << name << " Version: " << version << " Action: " << action;
 
   auto body = context.request.body();
   PredictRequest predictRequest{};

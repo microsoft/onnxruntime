@@ -29,7 +29,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name, const std:
                                        onnxruntime::hosting::PredictRequest& request,
                                        /* out */ onnxruntime::hosting::PredictResponse& response) {
   bool using_raw_data = true;
-  auto logger = env_->GetLogger();
+  auto logger = env_->GetLogger(request_id);
 
   // Create the input NameMLValMap
   onnxruntime::NameMLValMap nameMlValMap{};
@@ -43,16 +43,16 @@ protobufutil::Status Executor::Predict(const std::string& model_name, const std:
     OrtAllocatorInfo* cpuAllocatorInfo = nullptr;
     auto ort_status = OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo);
     if (ort_status != nullptr || cpuAllocatorInfo == nullptr) {
-      LOGS(logger, ERROR) << "OrtCreateAllocatorInfo FAILED! Input name: " << input_name;
+      LOGS(*logger, ERROR) << "OrtCreateAllocatorInfo FAILED! Input name: " << input_name;
       return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateAllocatorInfo() FAILED!");
     }
 
     size_t cpu_tensor_length = 0;
     status = onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
     if (!status.IsOK()) {
-      LOGS(logger, ERROR) << "GetSizeInBytesFromTensorProto() FAILED! Input name: " << input_name
-                          << " Error code: " << status.Code()
-                          << ". Error Message: " << status.ErrorMessage();
+      LOGS(*logger, ERROR) << "GetSizeInBytesFromTensorProto() FAILED! Input name: " << input_name
+                           << " Error code: " << status.Code()
+                           << ". Error Message: " << status.ErrorMessage();
       return protobufutil::Status(static_cast<protobufutil::error::Code>(status.Code()),
                                   "GetSizeInBytesFromTensorProto() FAILED: " + status.ErrorMessage());
     }
@@ -60,7 +60,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name, const std:
     std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
     memset(data.get(), 0, cpu_tensor_length);
     if (nullptr == data) {
-      LOGS(logger, ERROR) << "Run out memory. Input name: " << input_name;
+      LOGS(*logger, ERROR) << "Run out memory. Input name: " << input_name;
       return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "Run out of memory");
     }
 
@@ -71,9 +71,9 @@ protobufutil::Status Executor::Predict(const std::string& model_name, const std:
                                                       onnxruntime::MemBuffer(data.get(), cpu_tensor_length, *cpuAllocatorInfo),
                                                       ml_value, deleter);
     if (!status.IsOK()) {
-      LOGS(logger, ERROR) << "TensorProtoToMLValue() FAILED! Input name: " << input_name
-                          << " Error code: " << status.Code()
-                          << ". Error Message: " << status.ErrorMessage();
+      LOGS(*logger, ERROR) << "TensorProtoToMLValue() FAILED! Input name: " << input_name
+                           << " Error code: " << status.Code()
+                           << ". Error Message: " << status.ErrorMessage();
       return protobufutil::Status(static_cast<protobufutil::error::Code>(status.Code()),
                                   "TensorProtoToMLValue() FAILED: " + status.ErrorMessage());
     }
@@ -95,9 +95,9 @@ protobufutil::Status Executor::Predict(const std::string& model_name, const std:
 
   status = env_->GetSession()->Run(runOptions, nameMlValMap, output_names, &outputs);
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Run() FAILED!"
-                        << " Error code: " << status.Code()
-                        << ". Error Message: " << status.ErrorMessage();
+    LOGS(*logger, ERROR) << "Run() FAILED!"
+                         << " Error code: " << status.Code()
+                         << ". Error Message: " << status.ErrorMessage();
     return protobufutil::Status(static_cast<protobufutil::error::Code>(status.Code()),
                                 "Run() FAILED!" + status.ErrorMessage());
   }
@@ -105,11 +105,11 @@ protobufutil::Status Executor::Predict(const std::string& model_name, const std:
   // Build the response
   for (size_t i = 0; i < outputs.size(); ++i) {
     onnx::TensorProto output_tensor{};
-    status = MLValue2TensorProto(outputs[i], using_raw_data, logger, output_tensor);
+    status = MLValue2TensorProto(outputs[i], using_raw_data, std::move(logger), output_tensor);
     if (!status.IsOK()) {
-      LOGS(logger, ERROR) << "MLValue2TensorProto() FAILED! Output name: " << output_names[i]
-                          << " Error code: " << status.Code()
-                          << ". Error Message: " << status.ErrorMessage();
+      LOGS(*logger, ERROR) << "MLValue2TensorProto() FAILED! Output name: " << output_names[i]
+                           << " Error code: " << status.Code()
+                           << ". Error Message: " << status.ErrorMessage();
       return protobufutil::Status(static_cast<protobufutil::error::Code>(status.Code()), "MLValue2TensorProto() FAILED!");
     }
 
