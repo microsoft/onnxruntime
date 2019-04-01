@@ -85,7 +85,7 @@ void HttpSession::Send(Msg&& msg) {
 
   http::async_write(self_->socket_, *ptr,
                     net::bind_executor(strand_,
-                                       [self_, close = ptr->need_eof()](beast::error_code ec, std::size_t bytes) {
+                                       [ self_, close = ptr->need_eof() ](beast::error_code ec, std::size_t bytes) {
                                          self_->OnWrite(ec, bytes, close);
                                        }));
 }

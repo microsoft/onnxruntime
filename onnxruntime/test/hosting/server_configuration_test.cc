@@ -16,15 +16,17 @@ TEST(PositiveTests, ConfigParsingFullArgs) {
       const_cast<char*>("--model_path"), const_cast<char*>("testdata/mul_1.pb"),
       const_cast<char*>("--address"), const_cast<char*>("4.4.4.4"),
       const_cast<char*>("--http_port"), const_cast<char*>("80"),
-      const_cast<char*>("--num_http_threads"), const_cast<char*>("1")};
+      const_cast<char*>("--num_http_threads"), const_cast<char*>("1"),
+      const_cast<char*>("--logging_level"), const_cast<char*>("info")};
 
   onnxruntime::hosting::ServerConfiguration config{};
-  Result res = config.ParseInput(9, test_argv);
+  Result res = config.ParseInput(11, test_argv);
   EXPECT_EQ(res, Result::ContinueSuccess);
   EXPECT_EQ(config.model_path, "testdata/mul_1.pb");
   EXPECT_EQ(config.address, "4.4.4.4");
   EXPECT_EQ(config.http_port, 80);
   EXPECT_EQ(config.num_http_threads, 1);
+  EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kINFO);
 }
 
 TEST(PositiveTests, ConfigParsingShortArgs) {
@@ -42,6 +44,7 @@ TEST(PositiveTests, ConfigParsingShortArgs) {
   EXPECT_EQ(config.address, "4.4.4.4");
   EXPECT_EQ(config.http_port, 5001);
   EXPECT_EQ(config.num_http_threads, 2);
+  EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kVERBOSE);
 }
 
 TEST(PositiveTests, ConfigParsingDefaults) {
@@ -57,6 +60,7 @@ TEST(PositiveTests, ConfigParsingDefaults) {
   EXPECT_EQ(config.address, "0.0.0.0");
   EXPECT_EQ(config.http_port, 8001);
   EXPECT_EQ(config.num_http_threads, 3);
+  EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kVERBOSE);
 }
 
 TEST(PositiveTests, ConfigParsingHelp) {
@@ -79,7 +83,7 @@ TEST(NegativeTests, ConfigParsingNoModelArg) {
   EXPECT_EQ(res, Result::ExitFailure);
 }
 
-TEST(PositiveTests, ConfigParsingModelNotFound) {
+TEST(NegativeTests, ConfigParsingModelNotFound) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--model_path"), const_cast<char*>("does/not/exist"),
@@ -89,6 +93,20 @@ TEST(PositiveTests, ConfigParsingModelNotFound) {
 
   onnxruntime::hosting::ServerConfiguration config{};
   Result res = config.ParseInput(9, test_argv);
+  EXPECT_EQ(res, Result::ExitFailure);
+}
+
+TEST(NegativeTests, ConfigParsingWrongLoggingLevel) {
+  char* test_argv[] = {
+      const_cast<char*>("/path/to/binary"),
+      const_cast<char*>("--logging_level"), const_cast<char*>("not a logging level"),
+      const_cast<char*>("--model_path"), const_cast<char*>("testdata/mul_1.pb"),
+      const_cast<char*>("--address"), const_cast<char*>("4.4.4.4"),
+      const_cast<char*>("--http_port"), const_cast<char*>("80"),
+      const_cast<char*>("--num_http_threads"), const_cast<char*>("1")};
+
+  onnxruntime::hosting::ServerConfiguration config{};
+  Result res = config.ParseInput(11, test_argv);
   EXPECT_EQ(res, Result::ExitFailure);
 }
 
