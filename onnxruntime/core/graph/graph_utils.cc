@@ -193,38 +193,24 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
   }
 }
 
-/** Takes as input an outgoing edge and the name of an input of a node of the given graph.
-    Checks if the outgoing edge is used to provide input to a subgraph. If so, it updates the input of the subgraph
-    to use the arg_name of the incoming edge. This process is needed before removing the node from the graph.
-    Returns false if the input update cannot be performed safely. */
-static bool CheckAndUpdateImplicitInputInSubgraph(Graph& graph,
-                                                  const std::string& input_name,
-                                                  const GraphEdge& output_edge) {
-  if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
-    Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
-    if (CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_name)) {
-      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_name);
-    } else {
-      // we can't safely remove this node
-      return false;
-    }
+/** Returns a vector of the output GraphEdges of a node in a given graph. */
+static std::vector<GraphEdge> GetNodeOutputEdges(Graph& graph, Node& node) {
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    output_edges.push_back(GraphEdge{node.Index(),
+                                     (*it).GetNode().Index(),
+                                     (*it).GetSrcArgIndex(),
+                                     (*it).GetDstArgIndex(),
+                                     GetNodeOutputName(node, (*it).GetSrcArgIndex())});
   }
-  return true;
+
+  return output_edges;
 }
 
 /** Removes output edges of a given node and returns a vector of these edges. */
 static std::vector<GraphEdge> RemoveAndReturnOutputEdges(Graph& graph, Node& node) {
-  // Store info for the output edges.
-  std::vector<GraphEdge> output_edges;
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    output_edges.emplace_back(node.Index(),
-                              (*it).GetNode().Index(),
-                              (*it).GetSrcArgIndex(),
-                              (*it).GetDstArgIndex(),
-                              GetNodeOutputName(node, (*it).GetSrcArgIndex()));
-  }
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(graph, node);
 
-  // Remove output edges
   for (const auto& edge_to_remove : output_edges) {
     graph.RemoveEdge(edge_to_remove.src_node,
                      edge_to_remove.dst_node,
@@ -249,14 +235,26 @@ static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
                              input_edge_end.GetDstArgIndex(),
                              GetNodeOutputName(input_edge_node, input_edge_end.GetSrcArgIndex())};
 
+  // Check if one of the edges provides an implicit input to a subgraph, and if so, check if the subgraph allows
+  // the node to be safely removed.
+  for (const auto& output_edge : output_edges) {
+    if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
+      Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+      if (!CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_edge.arg_name)) {
+        return false;
+	  }
+    }
+  }
+
   // Remove node (this will remove the input edge too).
   graph.RemoveNode(node.Index());
 
   // Create connections between the incoming node and the outgoing nodes of the node that we removed.
   for (const auto& output_edge : output_edges) {
     // Take care of subgraph inputs.
-    if (!CheckAndUpdateImplicitInputInSubgraph(graph, input_edge.arg_name, output_edge)) {
-      return false;
+    if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
+      Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_edge.arg_name);
     }
 
     // Add new edge connecting the input with the output nodes directly.
@@ -274,38 +272,51 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
   // Get incoming initializer node arg.
   NodeArg* input_def = node.MutableInputDefs()[0];
 
+  // Check if one of the edges provides an implicit input to a subgraph, and if so, check if the subgraph allows
+  // the node to be safely removed.
+  for (const auto& output_edge : output_edges) {
+    if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
+      Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+      if (!CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_def->Name())) {
+        return false;
+      }
+    }
+  }
+
   // Remove the node.
   graph.RemoveNode(node.Index());
 
   // Add the incoming initializer as input to the outgoing nodes of the node that we removed.
   for (auto& output_edge : output_edges) {
     // Take care of subgraph inputs.
-    if (!CheckAndUpdateImplicitInputInSubgraph(graph, input_def->Name(), output_edge)) {
-      return false;
+    if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
+      Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
+      UpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_def->Name());
     }
 
     // Replace outgoing node's input to use the initializer.
     auto output_node = graph.GetNode(output_edge.dst_node);
-    if (!output_node) {
-      return false;
-    }
+    ORT_ENFORCE(output_node, "Outgoing node could not be found.");
 
-    auto& dst_def = output_node->MutableInputDefs()[output_edge.dst_arg_index];
-    dst_def = input_def;
+    output_node->MutableInputDefs()[output_edge.dst_arg_index] = input_def;
   }
 
   return true;
 }
 
 bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  if (node.GetInputEdgesCount() == 1 && node.InputDefs().size() == 1) {
-    // If it has a single input that is not an initializer.
-	return RemoveNodeWithSingleNodeIn(graph, node);
-  } else if (node.InputDefs().size() == 1) {  // Question: can it have a single input and this is not an initializer, i.e., is this check sufficient or do I need to check that it is also an initializer?
-    return RemoveNodeWithSingleInitializerIn(graph, node);
-  } else {
+  if (node.GetInputEdgesCount() > 1 || node.InputDefs().size() > 1) {
     return false;
   }
+
+  if (node.GetInputEdgesCount() == 1) {
+    // If it has a single input that is not an initializer.
+    return RemoveNodeWithSingleNodeIn(graph, node);
+  } else if (node.InputDefs().size() == 1) {
+    return RemoveNodeWithSingleInitializerIn(graph, node);
+  }
+
+  return false;
 }
 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {
@@ -330,24 +341,16 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
-  std::vector<GraphEdge> edges_to_remove;
-  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
-    // Note: no need to store the arg_name below.
-    edges_to_remove.emplace_back(node.Index(),
-                                 it->GetNode().Index(),
-                                 it->GetSrcArgIndex(),
-                                 it->GetDstArgIndex(),
-                                 std::string());
-  }
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(graph, node);
 
-  for (const auto& edge_to_remove : edges_to_remove) {
+  for (const auto& edge_to_remove : output_edges) {
     graph.RemoveEdge(edge_to_remove.src_node,
                      edge_to_remove.dst_node,
                      edge_to_remove.src_arg_index,
                      edge_to_remove.dst_arg_index);
   }
 
-  return edges_to_remove.size();
+  return output_edges.size();
 }
 
 }  // namespace graph_utils

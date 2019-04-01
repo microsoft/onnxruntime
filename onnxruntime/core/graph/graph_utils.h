@@ -18,11 +18,11 @@ struct GraphEdge {
   std::string arg_name;
 
   GraphEdge(NodeIndex src_node, NodeIndex dst_node,
-            int src_arg_index, int dst_arg_index, std::string arg_name) : src_node(src_node),
-                                                                          dst_node(dst_node),
-                                                                          src_arg_index(src_arg_index),
-                                                                          dst_arg_index(dst_arg_index),
-                                                                          arg_name(arg_name) {}
+            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
+                                                                                 dst_node(dst_node),
+                                                                                 src_arg_index(src_arg_index),
+                                                                                 dst_arg_index(dst_arg_index),
+                                                                                 arg_name(arg_name) {}
 };
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
