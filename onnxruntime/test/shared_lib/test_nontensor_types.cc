@@ -40,7 +40,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
   const int NUM_KV_PAIRS = 4;
   std::vector<OrtValue*> in(N);
   std::vector<int64_t> keys{3, 1, 2, 0};
-  std::vector<size_t> dims = {4};
+  std::vector<int64_t> dims = {4};
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
   for (int i = 0; i < N; ++i) {
     // create key tensor
@@ -147,11 +147,11 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output t
   RelAllocations<OrtStatus> rels(&OrtReleaseStatus);
 
   const int N = 3;
-  const size_t NUM_KV_PAIRS = 4;
+  const int64_t NUM_KV_PAIRS = 4;
   std::vector<OrtValue*> in(N);
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};
   std::vector<std::string> keys{keys_arr, keys_arr + NUM_KV_PAIRS};
-  std::vector<size_t> dims = {NUM_KV_PAIRS};
+  std::vector<int64_t> dims = {NUM_KV_PAIRS};
   std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
   for (int i = 0; i < N; ++i) {
     // create key tensor
