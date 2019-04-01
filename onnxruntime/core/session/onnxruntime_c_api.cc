@@ -167,7 +167,7 @@ ORT_API_STATUS_IMPL(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* 
 }
 
 template <typename T>
-OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator* allocator,
+OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
@@ -183,7 +183,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator*
  * this function will create a copy of the allocator info
  */
 template <typename T>
-OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
+OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -209,7 +209,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllo
  * this function will create a copy of the allocator info
  */
 ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-                    _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+                    _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
@@ -275,7 +275,7 @@ ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorIn
 }
 
 ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
-                    _In_ const size_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+                    _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
                     _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
@@ -796,7 +796,7 @@ OrtStatus* OrtGetValueImplSeqOfPrimitives(const MLValue* p_ml_value, int index, 
   using ElemType = typename T::value_type;
   auto& data = p_ml_value->Get<T>();
   auto& data_elem = data.at(index);
-  std::vector<size_t> dims = {1};
+  std::vector<int64_t> dims = {1};
   OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                             GetONNXTensorElementDataType<ElemType>(), out);
   return st ? st : PopulateTensorWithData<ElemType>(*out, &data_elem, 1);
@@ -830,7 +830,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
   using TKey = typename T::key_type;
   using TVal = typename T::mapped_type;
   auto& data = p_ml_value->Get<T>();
-  size_t num_kv_pairs = data.size();
+  int64_t num_kv_pairs = data.size();
   switch (index) {
     case 0: {  // user is requesting keys
       std::vector<TKey> vec;
@@ -838,7 +838,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       for (const auto& kv : data) {
         vec.push_back(kv.first);
       }
-      std::vector<size_t> dims{num_kv_pairs};
+      std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TKey>(), out);
       return st ? st : PopulateTensorWithData<TKey>(*out, vec.data(), num_kv_pairs);
@@ -849,7 +849,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       for (const auto& kv : data) {
         vec.push_back(kv.second);
       }
-      std::vector<size_t> dims{num_kv_pairs};
+      std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TVal>(), out);
       return st ? st : PopulateTensorWithData<TVal>(*out, vec.data(), num_kv_pairs);
