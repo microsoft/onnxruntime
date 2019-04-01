@@ -548,9 +548,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           else:
             run_subprocess([exe,'-x'] + cmd, cwd=cwd)
         else:
-          if provider == 'tensorrt':
-            run_subprocess([exe, '-c', '1'] + cmd, cwd=cwd)
-          else:
             run_subprocess([exe] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt):
