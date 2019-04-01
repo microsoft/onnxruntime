@@ -185,7 +185,7 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 /**
  * \load a model from disk and return an opaque handle for it.
  */
-ORT_API_STATUS(OrtLoadModel, _In_ const char* model_path, _Out_ OrtModel** model_handle);
+ORT_API_STATUS(OrtLoadModel, _In_ const ORTCHAR_T* model_path, _Out_ OrtModel** model_handle);
 
 // TODO: document the path separator convention? '/' vs '\'
 // TODO: should specify the access characteristics of model_path. Is this read only during the

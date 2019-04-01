@@ -63,7 +63,8 @@ void TestInference(OrtEnv* env, T model_uri,
                    const std::vector<float>& values_x,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
-                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr) {
+                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr,
+                   bool use_create_session_from_handle) {
   SessionOptionsWrapper sf(env);
 
   if (provider_type == 1) {
@@ -95,7 +96,14 @@ void TestInference(OrtEnv* env, T model_uri,
   }
 
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
-      inference_session(sf.OrtCreateSession(model_uri), OrtReleaseSession);
+      inference_session(nullptr, OrtReleaseSession);
+  if (use_create_session_from_handle) {
+    // session takes a copy of the model, so need to keep the model around
+    std::unique_ptr<OrtModel, decltype(&OrtReleaseModel)> model(sf.OrtLoadModel(model_uri), OrtReleaseModel);
+    inference_session.reset(sf.OrtCreateSessionFromHandle(model.get()));
+  } else {
+    inference_session.reset(sf.OrtCreateSession(model_uri));
+  }
   std::unique_ptr<MockedOrtAllocator> default_allocator(std::make_unique<MockedOrtAllocator>());
   // Now run
   //without preallocated output tensor
@@ -148,7 +156,11 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), nullptr);
+  // Test with OrtCreateSession
+  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), nullptr, false);
+
+  // Test with OrtCreateSessionFromHandle
+  TestInference<PATH_TYPE>(env, MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, GetParam(), nullptr, true);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
@@ -238,7 +250,12 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("");
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain);
+  // Test with OrtCreateSession
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain, false);
+
+  // Test with OrtCreateSessionFromHandle
+  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain, true);
+
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
 

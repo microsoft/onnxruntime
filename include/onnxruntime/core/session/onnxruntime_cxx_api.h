@@ -128,6 +128,18 @@ class SessionOptionsWrapper {
     return ret;
   }
 #endif
+
+  OrtSession* OrtCreateSessionFromHandle(_In_ OrtModel* model_handle) {
+    OrtSession* ret = nullptr;
+    ORT_THROW_ON_ERROR(::OrtCreateSessionFromHandle(env_, model_handle, value.get(), &ret));
+    return ret;
+  }
+
+  OrtModel* OrtLoadModel(_In_ const ORTCHAR_T* model_path) {
+    OrtModel* ret = nullptr;
+    ORT_THROW_ON_ERROR(::OrtLoadModel(model_path, &ret));
+    return ret;
+  }
 };
 inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
