@@ -16,7 +16,7 @@ void ErrorHandling(beast::error_code ec, char const* what) {
   std::cerr << what << ": " << ec.message() << "\n";
 }
 
-boost::beast::http::status GetHttpStatusCode(protobufutil::Status status) {
+boost::beast::http::status GetHttpStatusCode(const protobufutil::Status& status) {
   switch (status.error_code()) {
     case protobufutil::error::Code::OK:
       return boost::beast::http::status::ok;
