@@ -1107,12 +1107,11 @@ orthogonal transformations and translations of the coordinate system; thus trans
 result in the same boxes being selected by the algorithm.
 The selected_indices output is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
 The bounding box coordinates corresponding to the selected indices can then be obtained using the Gather or GatherND operation.
-Note: Normally, boxes and scores should have same num_classes. But for some cases, if the boxes has num_classes=1 which is different with scores.
-It means with same boxes it has scores calculated for different classes.)DOC")
+Note: The boxes doesn't has class dimension which means it alwasy has scores calculated for different classes on same box.)DOC")
       .Input(
           0,
           "boxes",
-          "An input tensor with shape [num_batches, num_classes, spatial_dimension, 4]. The box data format is indicated by center_point_box.",
+          "An input tensor with shape [num_batches, spatial_dimension, 4]. The single box data format is indicated by center_point_box.",
           "tensor(float)")
       .Input(
           1,

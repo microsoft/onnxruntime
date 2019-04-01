@@ -89,23 +89,18 @@ bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index
 
 Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShape& boxes_shape, const TensorShape& scores_shape,
                                           int32_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const {
-  ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 4, "boxes must be a 4D tensor.");
+  ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 3, "boxes must be a 3D tensor.");
   ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 3, "scores must be a 3D tensor.");
 
   auto boxes_dims = boxes_shape.GetDims();
   auto scores_dims = scores_shape.GetDims();
   ORT_RETURN_IF_NOT(boxes_dims[0] == scores_dims[0], "boxes and scores should have same num_batches.");
-  ORT_RETURN_IF_NOT(boxes_dims[1] == scores_dims[1] || boxes_dims[1] == 1, "boxes and scores should have same num_classes or boxes has num_classes = 1 for broadcast.");
-  ORT_RETURN_IF_NOT(boxes_dims[2] == scores_dims[2], "boxes and scores should have same spatial_dimention.");
-  ORT_RETURN_IF_NOT(boxes_dims[3] == 4, "The most inner dimension in boxes must have 4 data.");
+  ORT_RETURN_IF_NOT(boxes_dims[1] == scores_dims[2], "boxes and scores should have same spatial_dimention.");
+  ORT_RETURN_IF_NOT(boxes_dims[2] == 4, "The most inner dimension in boxes must have 4 data.");
 
   const_cast<int64_t&>(num_batches_) = boxes_dims[0];
-  const_cast<int64_t&>(num_classes_) = boxes_dims[1];
-  const_cast<int64_t&>(num_boxes_) = boxes_dims[2];
-  if (boxes_dims[1] == 1 && boxes_dims[1] != scores_dims[1]) {
-    const_cast<bool&>(class_broadcast_) = true;
-    const_cast<int64_t&>(num_classes_) = scores_dims[1];
-  }
+  const_cast<int64_t&>(num_classes_) = scores_dims[1];
+  const_cast<int64_t&>(num_boxes_) = boxes_dims[1];
 
   const Tensor* max_output_boxes_per_class_tensor = ctx->Input<Tensor>(2);
   if (max_output_boxes_per_class_tensor != nullptr) {
@@ -163,10 +158,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   for (int64_t batch_index = 0; batch_index < num_batches_; ++batch_index) {
     for (int64_t class_index = 0; class_index < num_classes_; ++class_index) {
       int64_t box_score_offset = (batch_index * num_classes_ + class_index) * num_boxes_;
-      int64_t box_offset = box_score_offset * 4;
-      if (class_broadcast_) {
-        box_offset = batch_index * num_classes_ * num_boxes_ * 4;
-      }
+      int64_t box_offset = batch_index * num_classes_ * num_boxes_ * 4;
       // Filter by score_threshold_
       std::priority_queue<ScoreIndexPair, std::deque<ScoreIndexPair>, decltype(LessCompare)> sorted_scores_with_index(LessCompare);
       for (int64_t box_index = 0; box_index < num_boxes_; ++box_index) {

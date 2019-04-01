@@ -17,7 +17,6 @@ class NonMaxSuppression final : public OpKernel {
     num_batches_ = 0;
     num_classes_ = 0;
     num_boxes_ = 0;
-    class_broadcast_ = false;
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -34,7 +33,6 @@ class NonMaxSuppression final : public OpKernel {
   int64_t num_batches_;
   int64_t num_classes_;
   int64_t num_boxes_;
-  bool class_broadcast_;
 
   struct selected_index {
     selected_index(int32_t batch_index, int32_t class_index, int32_t box_index)

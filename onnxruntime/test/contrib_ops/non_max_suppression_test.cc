@@ -9,7 +9,7 @@ namespace test {
 
 TEST(NonMaxSuppressionOpTest, WithIOUThreshold) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -29,7 +29,7 @@ TEST(NonMaxSuppressionOpTest, WithIOUThreshold) {
 
 TEST(NonMaxSuppressionOpTest, CenterPointBoxFormat) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.5f, 0.5f, 1.0f, 1.0f,
                         0.5f, 0.6f, 1.0f, 1.0f,
                         0.5f, 0.4f, 1.0f, 1.0f,
@@ -50,39 +50,7 @@ TEST(NonMaxSuppressionOpTest, CenterPointBoxFormat) {
 
 TEST(NonMaxSuppressionOpTest, TwoClasses) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 2, 6, 4},
-                       {0.0f, 0.0f, 1.0f, 1.0f,
-                        0.0f, 0.1f, 1.0f, 1.1f,
-                        0.0f, -0.1f, 1.0f, 0.9f,
-                        0.0f, 10.0f, 1.0f, 11.0f,
-                        0.0f, 10.1f, 1.0f, 11.1f,
-                        0.0f, 100.0f, 1.0f, 101.0f,
-
-                        0.0f, 0.0f, 1.0f, 1.0f,
-                        0.0f, 0.1f, 1.0f, 1.1f,
-                        0.0f, -0.1f, 1.0f, 0.9f,
-                        0.0f, 10.0f, 1.0f, 11.0f,
-                        0.0f, 10.1f, 1.0f, 11.1f,
-                        0.0f, 100.0f, 1.0f, 101.0f});
-  test.AddInput<float>("scores", {1, 2, 6},
-                       {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f,
-                        0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
-  test.AddInput<int32_t>("max_output_boxes_per_class", {}, {6L});
-  test.AddInput<float>("iou_threshold", {}, {0.5f});
-  test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<int32_t>("selected_indices", {6, 3},
-                          {0L, 0L, 3L,
-                           0L, 0L, 0L,
-                           0L, 0L, 5L,
-                           0L, 1L, 3L,
-                           0L, 1L, 0L,
-                           0L, 1L, 5L});
-  test.Run();
-}
-
-TEST(NonMaxSuppressionOpTest, ClassBroadcase) {
-  OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -107,7 +75,7 @@ TEST(NonMaxSuppressionOpTest, ClassBroadcase) {
 
 TEST(NonMaxSuppressionOpTest, TwoBathes) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {2, 1, 6, 4},
+  test.AddInput<float>("boxes", {2, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -137,7 +105,7 @@ TEST(NonMaxSuppressionOpTest, TwoBathes) {
 
 TEST(NonMaxSuppressionOpTest, WithScoreThreshold) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -156,7 +124,7 @@ TEST(NonMaxSuppressionOpTest, WithScoreThreshold) {
 
 TEST(NonMaxSuppressionOpTest, WithoutScoreThreshold) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -175,7 +143,7 @@ TEST(NonMaxSuppressionOpTest, WithoutScoreThreshold) {
 
 TEST(NonMaxSuppressionOpTest, WithScoreThresholdZeroScores) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -194,7 +162,7 @@ TEST(NonMaxSuppressionOpTest, WithScoreThresholdZeroScores) {
 
 TEST(NonMaxSuppressionOpTest, FlippedCoordinates) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {1.0f, 1.0f, 0.0f, 0.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, 0.9f, 1.0f, -0.1f,
@@ -214,7 +182,7 @@ TEST(NonMaxSuppressionOpTest, FlippedCoordinates) {
 
 TEST(NonMaxSuppressionOpTest, SelectTwo) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -233,7 +201,7 @@ TEST(NonMaxSuppressionOpTest, SelectTwo) {
 
 TEST(NonMaxSuppressionOpTest, SelectThirty) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -253,7 +221,7 @@ TEST(NonMaxSuppressionOpTest, SelectThirty) {
 
 TEST(NonMaxSuppressionOpTest, SelectSingleBox) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 1, 4},
+  test.AddInput<float>("boxes", {1, 1, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f});
   test.AddInput<float>("scores", {1, 1, 1}, {0.9f});
   test.AddInput<int32_t>("max_output_boxes_per_class", {}, {3L});
@@ -265,7 +233,7 @@ TEST(NonMaxSuppressionOpTest, SelectSingleBox) {
 
 TEST(NonMaxSuppressionOpTest, SelectFromIdenticalBoxes) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 10, 4},
+  test.AddInput<float>("boxes", {1, 10, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.0f, 1.0f, 1.0f,
@@ -287,7 +255,7 @@ TEST(NonMaxSuppressionOpTest, SelectFromIdenticalBoxes) {
 
 TEST(NonMaxSuppressionOpTest, InconsistentBoxAndScoreShapes) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 6, 4},
+  test.AddInput<float>("boxes", {1, 6, 4},
                        {0.0f, 0.0f, 1.0f, 1.0f,
                         0.0f, 0.1f, 1.0f, 1.1f,
                         0.0f, -0.1f, 1.0f, 0.9f,
@@ -304,7 +272,7 @@ TEST(NonMaxSuppressionOpTest, InconsistentBoxAndScoreShapes) {
 
 TEST(NonMaxSuppressionOpTest, InvalidIOUThreshold) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
+  test.AddInput<float>("boxes", {1, 1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
   test.AddInput<float>("scores", {1, 1, 1}, {0.9f});
   test.AddInput<int32_t>("max_output_boxes_per_class", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {1.2f});
@@ -315,7 +283,7 @@ TEST(NonMaxSuppressionOpTest, InvalidIOUThreshold) {
 
 TEST(NonMaxSuppressionOpTest, EmptyInput) {
   OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("boxes", {1, 1, 0, 4}, {});
+  test.AddInput<float>("boxes", {1, 0, 4}, {});
   test.AddInput<float>("scores", {1, 1, 0}, {});
   test.AddInput<int32_t>("max_output_boxes_per_class", {}, {30L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
