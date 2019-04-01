@@ -30,7 +30,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   int64_t N = input_shape.SizeToDimension(axis);
   int64_t D = input_shape.SizeFromDimension(axis);
-  std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
+  std::vector<int64_t> dims({N, D, 1, 1});  // cudnn expects 4D shape in NCHW format
 
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
   auto x_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
@@ -41,7 +41,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudnnTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(CudnnHandle(), CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
+  CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(CudnnHandle(), CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_CHANNEL, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
 
   return Status::OK();
 }
