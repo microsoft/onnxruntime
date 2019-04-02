@@ -155,13 +155,13 @@ TEST(GraphTransformationTests, FuseConvActivation) {
                                                                 {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
 
   for (const auto& model : model_to_op_name) {
-    std::string model_uri = "C:/repos/onnxruntime/onnxruntime/test/testdata/squeezenet/model.onnx";  //MODEL_FOLDER + model.first;
+    std::string model_uri = MODEL_FOLDER + model.first;
     std::shared_ptr<Model> p_model;
     ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
     Graph& graph = p_model->MainGraph();
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-    // ASSERT_TRUE(op_to_count[model.second] >= 1);
+    ASSERT_TRUE(op_to_count[model.second] >= 1);
 
     // Apply transformer
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
