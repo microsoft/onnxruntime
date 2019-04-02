@@ -562,8 +562,8 @@ Convolver(
     //
     //
 
-//    const size_t kbatch = 4;
-    const size_t kbatch = 1;
+    const size_t kbatch = 4;
+//    const size_t kbatch = 1;
 
 //    const size_t TotalWork = (OutputChannels / (NCHWC * kbatch)) * OutputHeight;
     const size_t TotalWork = ((OutputChannels + (NCHWC * kbatch) - 1) / (NCHWC * kbatch)) * OutputHeight;
@@ -602,7 +602,6 @@ Convolver(
     //
     //
 
-if (Index == 0) printf("%d: %zd/%zd/%zd  %zd  %zd:%zd:%zd\n", Index, WorkIndex, WorkIndexEnd, TotalWork, (WorkIndexEnd - WorkIndex) / NCHWC, OutputChannels, OutputHeight, OutputWidth);
     while (WorkIndex < WorkIndexEnd) {
 
         size_t FilterCount = (std::min)(kbatch, (OutputChannels / NCHWC) - batch * kbatch);
