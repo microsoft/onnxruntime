@@ -34,9 +34,10 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     auto& inputs_n = *tensor_pointer;
     const auto& inputs_n_dims = inputs_n.Shape().GetDims();
     const size_t inputs_n_rank = inputs_n_dims.size();
-    ORT_ENFORCE(inputs_n_rank == inputs_0_rank, "Ranks of input data are different, cannot concatenate them");
+    ORT_ENFORCE(inputs_n_rank == inputs_0_rank, "Ranks of input data are different, cannot concatenate them, "
+                "expected rank: ", std::to_string(inputs_0_rank), " got: ", std::to_string(inputs_n_rank));
     // Ensure all the other (non-concat) axes match
-    for (int axis_index = 0; axis_index < inputs_0_rank; axis_index++) {
+    for (int axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
       num_elements *= inputs_n_dims[axis_index];
       if (axis_index == axis)
         continue;
@@ -64,11 +65,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   }
   tensor_num_elements[0] = num_elements;
   dims[axis] = concat_axis_size;
-  TensorShape outputShape(dims);
+  TensorShape output_shape(dims);
  
-  auto& concat_result = *ctx->Output(0, outputShape);
+  auto& concat_result = *ctx->Output(0, output_shape);
   p.output_tensor = &concat_result;
-  p.output_num_elements = outputShape.Size();
+  p.output_num_elements = output_shape.Size();
 
   // if the output tensor is not going to hold any elements,
   // there is no need to proceed further
@@ -89,7 +90,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
-    for (int i = int(inputs_0_rank); i-- > axis;)
+    for (int i = static_cast<int>(inputs_0_rank); i-- > axis;)
       input_axis_pitch *= data_dims[i];
 
     p.inputs.push_back({&data_n, tensor_num_elements[input_index], input_axis_pitch});
