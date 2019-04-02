@@ -14,6 +14,12 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain = kOnnxDomainAlias);
 
+/* Returns true if the execution provider assigned to current node is present in the compatible providers list
+ * or if the compatible_providers list is empty
+ */
+bool IsSupportedProvider(const Node& node,
+                         const std::unordered_set<std::string>& compatible_providers);
+
 /** Check whether the node has a single input and a single output. */
 bool IsSingleInSingleOutNode(const Node& node);
 

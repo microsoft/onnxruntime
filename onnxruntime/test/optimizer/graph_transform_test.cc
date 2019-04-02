@@ -25,7 +25,6 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/graph_transformer_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -45,38 +44,19 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
   }
   return op_to_count;
 }
-
-// Takes a list of transformers and rules; creates a transformer manager and registers the transformers/rules
-// to it; applies the transformers/rules to the given graph.
-void RegisterAndApplyTransformers(Graph& graph, std::vector<std::string>& rules_and_transformers) {
-  auto levels = {TransformerLevel::Level1, TransformerLevel::Level2};
-  GraphTransformerManager graph_transformation_mgr{5};
-  // Register transformers.
-  for (auto level : levels) {
-    auto transformers_to_register =
-        transformer_utils::GenerateTransformers(level, &rules_and_transformers);
-    for (auto& entry : transformers_to_register) {
-      graph_transformation_mgr.Register(std::move(entry.first), level, std::move(entry.second));
-    }
-  }
-  // Apply transformers.
-  for (auto level : levels) {
-    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, level).IsOK());
-  }
-}
-
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
-  std::vector<std::string> rule_list = {"EliminateIdentity"};
-
-  // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
-  RegisterAndApplyTransformers(graph, rule_list);
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register(std::make_unique<EliminateIdentity>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
@@ -84,16 +64,18 @@ TEST(GraphTransformationTests, IdentityElimination) {
 
 TEST(GraphTransformationTests, SliceElimination) {
   string model_uri = MODEL_FOLDER + "slice-elim.onnx";
-  std::vector<std::string> rule_list = {"EliminateSlice"};
-
-  // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 5);
 
-  RegisterAndApplyTransformers(graph, rule_list);
+  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register(std::make_unique<EliminateSlice>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 3);
@@ -101,214 +83,226 @@ TEST(GraphTransformationTests, SliceElimination) {
 
 TEST(GraphTransformationTests, ConstantFolding1) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-  std::vector<std::string> rule_list = {"ConstantFolding"};
-
-  // Check that transformations actually happen.
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
-  RegisterAndApplyTransformers(graph, rule_list);
+  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+
+  rule_transformer->Register(std::make_unique<ConstantFolding>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  //ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
-}
-
-TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-  std::vector<std::string> rules_and_transformers =
-      {"UnsqueezeElimination", "ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
-
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Conv"] == 1);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
-  ASSERT_TRUE(op_to_count["BatchNormalization"] == 1);
-  ASSERT_TRUE(op_to_count["Mul"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Conv"] == 1);
-  //ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
-  ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
-  //ASSERT_TRUE(op_to_count["Mul"] == 0);
-  //ASSERT_TRUE(op_to_count["Add"] == 0);
-}
-
-TEST(GraphTransformationTests, FuseConvActivation) {
-  std::vector<std::string> rules_and_transformers = {"ConvActivationFusion"};
-  std::string activations[] = {"relu", "sigmoid", "softsign", "tanh", "leakyrelu"};
-
-  for (std::string act : activations) {
-    std::string model_uri = MODEL_FOLDER + "fusion/conv_" + act + ".onnx";
-
-    // Check that transformations actually happen.
-    std::shared_ptr<Model> model;
-    ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-    Graph& graph = model->MainGraph();
-    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-    // TODO: Add before checks.
-
-    RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-    op_to_count = CountOpsInGraph(graph);
-    // TODO: Add after checks.
-  }
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
 TEST(GraphTransformationTests, FuseConvBNNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
-  std::vector<std::string> rules_and_transformers = {"ConvBNFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<ConvBNFusion>(), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
+  ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
+}
 
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
+TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
+  std::vector<std::string> test_models = {"fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
+                                          "fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx"};
+  for (const auto& model : test_models) {
+    string model_uri = MODEL_FOLDER + model;
 
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+        std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+    rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
+    graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+    graph_transformation_mgr.Register(std::make_unique<ConvBNFusion>(), TransformerLevel::Level2);
+    graph_transformation_mgr.Register(std::make_unique<ConvMulFusion>(), TransformerLevel::Level2);
+    graph_transformation_mgr.Register(std::make_unique<ConvAddFusion>(), TransformerLevel::Level2);
+
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["BatchNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["Mul"] == 0);
+    ASSERT_TRUE(op_to_count["Add"] == 0);
+    ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  }
+}
+
+TEST(GraphTransformationTests, FuseConvActivation) {
+
+  std::unordered_map<std::string, std::string> model_to_op_name {{"fusion/conv_relu.onnx", "Relu"}, 
+                                                                 {"fusion/conv_sigmoid.onnx", "Sigmoid"}, 
+                                                                 {"fusion/conv_tanh.onnx", "Tanh"}, 
+                                                                 {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
+
+  for (const auto& model : model_to_op_name) {
+    std::string model_uri = MODEL_FOLDER + model.first;
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[model.second] >= 1);
+
+    // Apply transformer
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
+    ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[model.second] == 0);
+  }
 }
 
 TEST(GraphTransformationTests, FuseConvMulNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-mul-no-bias.onnx";
-  std::vector<std::string> rules_and_transformers = {"UnsqueezeElimination", "ConvMulFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(std::make_unique<ConvMulFusion>(), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
 TEST(GraphTransformationTests, FuseConvAddNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-no-bias.onnx";
-  std::vector<std::string> rules_and_transformers = {"UnsqueezeElimination", "ConvAddFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
+      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(std::make_unique<ConvAddFusion>(), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
-}
-
-TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueezeNoBias) {
-  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx";
-  std::vector<std::string> rules_and_transformers =
-      {"UnsqueezeElimination", "ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
-
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d.onnx";
-  std::vector<std::string> rules_and_transformers = {"ConvMulFusion", "ConvAddFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<ConvMulFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(std::make_unique<ConvAddFusion>(), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
 }
 
 TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
-  std::vector<std::string> rules_and_transformers = {"MatMulAddFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<MatMulAddFusion>(), TransformerLevel::Level2);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 1);
 }
 
 TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/model.onnx";
-  std::vector<std::string> rules_and_transformers = {"MatMulAddFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<MatMulAddFusion>(), TransformerLevel::Level2);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 1);
 }
 
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
-  std::vector<std::string> rules_and_transformers = {"GemmActivationFusion"};
 
-  // Check that transformations actually happen.
-  std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  Graph& graph = model->MainGraph();
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<GemmActivationFusion>(), TransformerLevel::Level2);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // TODO: Add before checks.
-
-  RegisterAndApplyTransformers(graph, rules_and_transformers);
-
-  op_to_count = CountOpsInGraph(graph);
-  // TODO: Add after checks.
+  ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
 
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";
-  std::vector<std::string> rules_and_transformers = {"ConvBNFusion", "ConvMulFusion", "ConvAddFusion"};
 
   SessionOptions so;
   so.session_logid = "GraphTransformationTests.LoadModelToTransform";
   InferenceSession session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-  session_object.AddCustomTransformerList(rules_and_transformers);
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  std::unique_ptr<ConvBNFusion> ConvBNFusion_transformer = std::make_unique<ConvBNFusion>();
+  std::unique_ptr<ConvMulFusion> ConvMulFusion_transformer = std::make_unique<ConvMulFusion>();
+  std::unique_ptr<ConvAddFusion> ConvAddFusion_transformer = std::make_unique<ConvAddFusion>();
+  session_object.RegisterGraphTransformer(std::move(ConvBNFusion_transformer));
+  session_object.RegisterGraphTransformer(std::move(ConvMulFusion_transformer));
+  session_object.RegisterGraphTransformer(std::move(ConvAddFusion_transformer));
+
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   NameMLValMap feeds;

@@ -5,6 +5,7 @@
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/reverse_sequence_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
@@ -18,9 +19,9 @@ void convPoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool u
 }
 namespace onnxruntime {
 namespace contrib {
-using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
-using ::ONNX_NAMESPACE::OpSchema;
+using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::OpSchema;
+using ONNX_NAMESPACE::OPTIONAL;
 
 void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx) {
   if (!hasInputShape(ctx, input1Idx) && !hasInputShape(ctx, input2Idx)) {
@@ -221,7 +222,6 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
-
   // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
   static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
@@ -585,6 +585,7 @@ activation and leaky_relu_alpha.)DOC")
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(ReverseSequence, RegisterReverseSequenceOpSchema);
 
   static const char* Tokenizer_ver1_doc = R"DOC(
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
@@ -1099,70 +1100,58 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(
-Pruning away boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
-Bounding boxes with score less than score_threshold are removed. Bounding boxes are supplied as [y1, x1, y2, x2],
-where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners and the coordinates can be provided
-as normalized (i.e., lying in the interval [0, 1]) or absolute.
+Filter out boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
+Bounding boxes with score less than score_threshold are removed. Bounding box format is indicated by attribute center_point_box.
 Note that this algorithm is agnostic to where the origin is in the coordinate system and more generally is invariant to
-orthogonal transformations and translations of the coordinate system;
-thus translating or reflections of the coordinate system result in the same boxes being selected by the algorithm.
-The output of this operation is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
-The bounding box coordinates corresponding to the selected indices can then be obtained using the gather operation.)DOC")
-      .Input(0, "boxes", "An input tensor. 2D tensor with shape [num_boxes, 4]", "T1")
-      .Input(1, "scores", "An input tensor. 1D tensor with shape [num_boxes]", "T1")
-      .Output(0, "selected_indices", "selected indices from the boxes tensor.", "T2")
-      .Output(
+orthogonal transformations and translations of the coordinate system; thus translating or reflections of the coordinate system
+result in the same boxes being selected by the algorithm.
+The selected_indices output is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
+The bounding box coordinates corresponding to the selected indices can then be obtained using the Gather or GatherND operation.
+Note: The boxes doesn't has class dimension which means it alwasy has scores calculated for different classes on same box.)DOC")
+      .Input(
+          0,
+          "boxes",
+          "An input tensor with shape [num_batches, spatial_dimension, 4]. The single box data format is indicated by center_point_box.",
+          "tensor(float)")
+      .Input(
           1,
-          "valid_outputs",
-          "Optional. A 0-D integer tensor representing the number of valid elements in selected_indices, with the valid elements appearing first.",
-          "T2",
+          "scores",
+          "An input tensor with shape [num_batches, num_classes, spatial_dimension]",
+          "tensor(float)")
+      .Input(
+          2,
+          "max_output_boxes_per_class",
+          "Integer representing the maximum number of boxes to be selected per batch per class. It is a scalar. Value should be greater than 0",
+          "tensor(int32)",
           OpSchema::Optional)
-      .TypeConstraint("T1", {"tensor(float)"}, "Constrain input type to float tensor.")
-      .TypeConstraint("T2",
-                      {"tensor(int32)"},
-                      "Constrain output data type to 32-bit integer tensor.")
-      .Attr(
-          "max_output_size",
-          "Integer representing the maximum number of boxes to be selected by non max suppression.",
-          AttributeProto::INT)
-      .Attr(
+      .Input(
+          3,
           "iou_threshold",
-          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. Value range [0, 1]. The default is 0.0",
-          AttributeProto::FLOAT,
-          static_cast<float>(0.0f))
-      .Attr(
+          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. It is scalar. Value range [0, 1].",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Input(
+          4,
           "score_threshold",
-          "Float tensor representing the threshold for deciding when to remove boxes based on score.",
-          AttributeProto::FLOAT)
+          "Float representing the threshold for deciding when to remove boxes based on score. It is a scalar",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "selected_indices",
+          "selected indices from the boxes tensor. [num_selected_indices, 3], the selected indices format is [batch_index, class_index, box_index].",
+          "tensor(int32)")
       .Attr(
-          "pad_to_max_output_size",
-          "Optional. 1(true) - the output selected_indices is padded to be of length max_output_size. Defaults to 0(false).",
+          "center_point_box",
+          "Integer indicate the format of the box data. The default is 0."
+          "0 - the box data is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners"
+          "and the coordinates can be provided as normalized (i.e., lying in the interval [0, 1]) or absolute. Mostly used for TF models."
+          "1 - the box data is supplied as [x_center, y_center, width, height]. Mostly used for Pytoch models.",
           AttributeProto::INT,
-          OPTIONAL)
+          static_cast<int64_t>(0))
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
         selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
-
-        // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
-        auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
-        if (pad_to_max_output_size && 1 == pad_to_max_output_size->i()) {
-          auto max_output_size = ctx.getAttribute("max_output_size")->i();
-          selected_indices_type
-              ->mutable_shape()
-              ->add_dim()
-              ->set_dim_value(max_output_size);
-        }
-
-        // valid_outputs is optional, shape is [1]
-        auto num_outputs = ctx.getNumOutputs();
-        if (num_outputs > 1) {
-          auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
-          valid_outputs_shape->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
-          valid_outputs_shape
-              ->mutable_shape()
-              ->add_dim()
-              ->set_dim_value(1);
-        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
