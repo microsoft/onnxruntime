@@ -217,10 +217,6 @@ endif()
 
 file(GLOB onnxruntime_test_framework_src ${onnxruntime_test_framework_src_patterns})
 
-if(NOT (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
-    list(REMOVE_ITEM onnxruntime_test_framework_src "${TEST_SRC_DIR}/framework/header_files_test.cc")
-endif()
-
 #with auto initialize onnxruntime
 add_library(onnxruntime_test_utils_for_framework ${onnxruntime_test_utils_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils_for_framework onnxruntime_framework gtest gsl onnx onnx_proto)
