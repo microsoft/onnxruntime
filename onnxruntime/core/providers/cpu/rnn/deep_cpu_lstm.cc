@@ -983,24 +983,22 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     }
   }
 
-  if (output_sequence) {
-    // copy last output to final_hidden_state
-    for (int i = 0; i < batch_size_; i++) {
-      const int seq_len = sequence_lengths[i];
-      if (seq_len == 0) {
-        auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
-        std::fill_n(final_hidden_state_dst, hidden_size_, T{});
-        continue;
-      }
+  for (int i = 0; i < batch_size_; i++) {
+    const int seq_len = sequence_lengths[i];
+    if (seq_len == 0) {  // zero out final_hidden_state if seq_len == 0
+      auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
+      std::fill_n(final_hidden_state_dst, hidden_size_, T{});
+      continue;
+    } else if (output_sequence) {  // copy last output to final_hidden_state
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
     }
-
-    if (direction_ == Direction::kReverse)
-      ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_,
-                         batch_size_, hidden_size_, num_directions);
   }
+
+  if (output_sequence && direction_ == Direction::kReverse)
+    ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_,
+                       batch_size_, hidden_size_, num_directions);
 }
 
 // #define PREVIOUS_BROKEN_VERSION
