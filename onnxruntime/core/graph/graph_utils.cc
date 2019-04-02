@@ -4,6 +4,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
@@ -193,40 +194,30 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
   }
 }
 
-/** Returns a vector of the output GraphEdges of a node in a given graph. */
-static std::vector<GraphEdge> GetNodeOutputEdges(Graph& graph, Node& node) {
+/** Returns a vector of the output GraphEdges of a node. */
+static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
   std::vector<GraphEdge> output_edges;
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    output_edges.push_back(GraphEdge{node.Index(),
-                                     (*it).GetNode().Index(),
-                                     (*it).GetSrcArgIndex(),
-                                     (*it).GetDstArgIndex(),
-                                     GetNodeOutputName(node, (*it).GetSrcArgIndex())});
+    output_edges.push_back(GraphEdge{node, *it, false});
   }
 
   return output_edges;
 }
 
-/** Removes output edges of a given node and returns a vector of these edges. */
-static std::vector<GraphEdge> RemoveAndReturnOutputEdges(Graph& graph, Node& node) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(graph, node);
-
-  for (const auto& edge_to_remove : output_edges) {
+/** Removes a set of GraphEdges from the graph. */
+static void RemoveOutputEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
+  for (const auto& edge_to_remove : edges) {
     graph.RemoveEdge(edge_to_remove.src_node,
                      edge_to_remove.dst_node,
                      edge_to_remove.src_arg_index,
                      edge_to_remove.dst_arg_index);
   }
-
-  return output_edges;
 }
 
-/** Remove a node with a single incoming node. */
+/** Removes a node with a single incoming node. */
 static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
-  // Store info for and remove the output edges.
-  std::vector<GraphEdge> output_edges = RemoveAndReturnOutputEdges(graph, node);
-
-  // Store info for the input edge.
+  // Store info for input and output edges.
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
   const Node::EdgeEnd& input_edge_end = *node.InputEdgesBegin();
   const auto& input_edge_node = input_edge_end.GetNode();
   const GraphEdge input_edge{input_edge_node.Index(),
@@ -241,12 +232,15 @@ static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
       if (!CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_edge.arg_name)) {
+        LOGS_DEFAULT(WARNING) << " Removal of node " << node.Name()
+                              << " failed due to problem in updating a subgraph.";
         return false;
-	  }
+      }
     }
   }
 
-  // Remove node (this will remove the input edge too).
+  // Remove the output edges of the node and then the node itself (this will remove its input edge too).
+  RemoveOutputEdges(graph, output_edges);
   graph.RemoveNode(node.Index());
 
   // Create connections between the incoming node and the outgoing nodes of the node that we removed.
@@ -266,11 +260,9 @@ static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
 
 /** Remove a node with a single incoming initializer (and no other incoming node). */
 static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
-  // Store info for and remove the output edges.
-  std::vector<GraphEdge> output_edges = RemoveAndReturnOutputEdges(graph, node);
-
-  // Get incoming initializer node arg.
+  // Store info for input initializer and output edges.
   NodeArg* input_def = node.MutableInputDefs()[0];
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
 
   // Check if one of the edges provides an implicit input to a subgraph, and if so, check if the subgraph allows
   // the node to be safely removed.
@@ -278,12 +270,15 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       Node& mutable_output_edge_node = *graph.GetNode(output_edge.dst_node);
       if (!CanUpdateImplicitInputNameInSubgraph(mutable_output_edge_node, output_edge.arg_name, input_def->Name())) {
+        LOGS_DEFAULT(WARNING) << " Removal of node " << node.Name()
+                              << " failed due to problem in updating a subgraph.";
         return false;
       }
     }
   }
 
-  // Remove the node.
+  // Remove the output edges of the node and then the node itself (this will remove its input edge too).
+  RemoveOutputEdges(graph, output_edges);
   graph.RemoveNode(node.Index());
 
   // Add the incoming initializer as input to the outgoing nodes of the node that we removed.
@@ -309,8 +304,8 @@ bool RemoveSingleInputNode(Graph& graph, Node& node) {
     return false;
   }
 
+  // If it has a single input that is not an initializer (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
-    // If it has a single input that is not an initializer.
     return RemoveNodeWithSingleNodeIn(graph, node);
   } else if (node.InputDefs().size() == 1) {
     return RemoveNodeWithSingleInitializerIn(graph, node);
@@ -341,7 +336,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(graph, node);
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
 
   for (const auto& edge_to_remove : output_edges) {
     graph.RemoveEdge(edge_to_remove.src_node,

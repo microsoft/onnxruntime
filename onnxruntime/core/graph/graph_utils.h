@@ -23,6 +23,19 @@ struct GraphEdge {
                                                                                  src_arg_index(src_arg_index),
                                                                                  dst_arg_index(dst_arg_index),
                                                                                  arg_name(arg_name) {}
+
+  GraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
+    is_input_edge ? GraphEdge{edge_end.GetNode().Index(),
+                              node.Index(),
+                              edge_end.GetSrcArgIndex(),
+                              edge_end.GetDstArgIndex(),
+                              GetNodeOutputName(edge_end.GetNode(), edge_end.GetSrcArgIndex())}
+                  : GraphEdge{node.Index(),
+                              edge_end.GetNode().Index(),
+                              edge_end.GetSrcArgIndex(),
+                              edge_end.GetDstArgIndex(),
+                              GetNodeOutputName(node, edge_end.GetSrcArgIndex())};
+  }
 };
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
