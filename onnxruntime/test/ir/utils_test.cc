@@ -250,5 +250,9 @@ TEST(GraphUtils, DontRemoveNodeIfItWillBreakNestedSubgraph) {
   DontRemoveNodeIfItWillBreakSubgraph(true);
 }
 
+//TEST(GraphUtils, CheckNodeRemoval) {
+//
+//}
+
 }  // namespace test
 }  // namespace onnxruntime
