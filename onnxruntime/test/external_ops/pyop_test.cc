@@ -5,13 +5,14 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/external_ops/pyop.h"
 #include <fstream>
 #include <iostream>
 #include <vector>
 
 using namespace std;
 using namespace onnxruntime;
-
+/*
 typedef bool INIT();
 typedef bool PYFUNC(const char*,
                     const char*,
@@ -24,7 +25,7 @@ typedef bool PYFUNC(const char*,
 
 typedef const char* LASTERR();
 typedef void SETPATH(const wchar_t*);
-
+*/
 TEST(PyOpTest, unittest_numpy_input_output)
 {
     ofstream fs("test.py");
