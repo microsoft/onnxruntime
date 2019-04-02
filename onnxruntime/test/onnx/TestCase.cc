@@ -52,100 +52,111 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
+using google::protobuf::RepeatedPtrField;
+
+using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>;
 
 namespace {
-template <typename InputType, typename OutputType>
-Status ConvertVector(const InputType& data, OutputType** vec) {
-  OutputType* v = new OutputType();
-  for (const auto& i : data) {
-    typename OutputType::value_type new_value;
-    for (const auto& j : i.v()) {
-      new_value[j.first] = j.second;
+
+template <typename T>
+ONNXTensorElementDataType NumericTypeToONNXType();
+template <>
+ONNXTensorElementDataType NumericTypeToONNXType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+ONNXTensorElementDataType NumericTypeToONNXType<double>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+}
+
+template <>
+ONNXTensorElementDataType NumericTypeToONNXType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+}
+
+template <>
+ONNXTensorElementDataType NumericTypeToONNXType<std::string>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+}
+
+template <typename T>
+OrtValue* CreateTensorWithDataAsOrtValue(OrtAllocatorInfo* info, std::vector<T>& input) {
+  std::vector<int64_t> dims(1, input.size());
+  OrtValue* ret = nullptr;
+  ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsOrtValue(info, input.data(), input.size() * sizeof(T), dims.data(),
+                                                         dims.size(), NumericTypeToONNXType<T>(), &ret));
+  return ret;
+}
+
+template <typename key_type, typename value_type>
+OrtValue* PbMapToMLValue(const google::protobuf::Map<key_type, value_type>& map) {
+  OrtAllocatorInfo* info;
+  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+  std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
+  const size_t ele_count = map.size();
+  std::vector<int64_t> dims(1, ele_count);
+  std::vector<key_type> keys(ele_count);
+  std::vector<value_type> values(ele_count);
+  size_t i = 0;
+  for (auto& kvp : map) {
+    keys[i] = kvp.first;
+    values[i] = kvp.second;
+    ++i;
+  }
+  std::vector<OrtValue*> map_in(2);
+  map_in[0] = CreateTensorWithDataAsOrtValue(info, keys);
+  if (map_in[0] == nullptr) ORT_THROW("Create keys tensor failed");
+
+  map_in[1] = CreateTensorWithDataAsOrtValue(info, values);
+  if (map_in[1] == nullptr) ORT_THROW("Create values tensor failed");
+
+  // create map ort value
+  OrtValue* map_ort = nullptr;
+  ORT_THROW_ON_ERROR(OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, &map_ort));
+  for (auto value : map_in) OrtReleaseValue(value);
+  return map_ort;
+}
+
+template <typename T>
+void VectorProtoToMLValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& output) {
+  OrtAllocatorInfo* info;
+  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+  std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
+  std::vector<OrtValue*> in(input.size());
+  size_t j = 0;
+  for (const T& v : input) {
+    // create key tensor
+    const auto& map = v.v();
+    int ele_count = map.size();
+    using key_type = typename std::remove_reference<decltype(v.v())>::type::key_type;
+    using value_type = typename std::remove_reference<decltype(v.v())>::type::mapped_type;
+    std::vector<int64_t> dims(1, ele_count);
+    std::vector<key_type> keys(ele_count);
+    std::vector<value_type> values(ele_count);
+    size_t i = 0;
+    for (auto& kvp : map) {
+      keys[i] = kvp.first;
+      values[i] = kvp.second;
+      ++i;
     }
-    v->push_back(new_value);
+    std::vector<OrtValue*> map_in(2);
+    map_in[0] = CreateTensorWithDataAsOrtValue(info, keys);
+    if (map_in[0] == nullptr) ORT_THROW("Create keys tensor failed");
+
+    map_in[1] = CreateTensorWithDataAsOrtValue(info, values);
+    if (map_in[1] == nullptr) return ORT_THROW("Create values tensor failed");
+
+    // create map ort value
+    OrtValue* map_ort = nullptr;
+    ORT_THROW_ON_ERROR(OrtCreateValue(map_in.data(), 2, ONNX_TYPE_MAP, &map_ort));
+    in[j++] = map_ort;
+    for (auto value : map_in) OrtReleaseValue(value);
   }
-  *vec = v;
-  return Status::OK();
-}
-
-template <typename InputType, typename OutputType>
-Status Convert(const InputType& tensor_proto, OutputType** p_tensor);
-
-template <>
-Status Convert(const google::protobuf::RepeatedPtrField<proto::MapInt64ToFloat>& data, VectorMapInt64ToFloat** vec) {
-  return ConvertVector<google::protobuf::RepeatedPtrField<proto::MapInt64ToFloat>, VectorMapInt64ToFloat>(data, vec);
-}
-
-template <>
-Status Convert(const google::protobuf::RepeatedPtrField<proto::MapStringToFloat>& data, VectorMapStringToFloat** vec) {
-  return ConvertVector<google::protobuf::RepeatedPtrField<proto::MapStringToFloat>, VectorMapStringToFloat>(data, vec);
-}
-
-template <typename InputType, typename OutputType>
-void ConvertMap(const InputType& data, OutputType** out) {
-  OutputType* ret = new OutputType();
-  for (const auto& pv : data) {
-    (*ret)[pv.first] = pv.second;
-  }
-  *out = ret;
-}
-
-template <>
-Status Convert(const google::protobuf::Map<std::string, std::string>& data, MapStringToString** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<std::string, int64_t>& data, MapStringToInt64** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<std::string, float>& data, MapStringToFloat** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<std::string, double>& data, MapStringToDouble** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<int64_t, std::string>& data, MapInt64ToString** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<int64_t, int64_t>& data, MapInt64ToInt64** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<int64_t, float>& data, MapInt64ToFloat** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-
-template <>
-Status Convert(const google::protobuf::Map<int64_t, double>& data, MapInt64ToDouble** out) {
-  ConvertMap(data, out);
-  return Status::OK();
-}
-template <typename InputType, typename OutputType>
-Status RichTypeProtoToMLValue(const InputType& input, MLValue& value) {
-  OutputType* tensor = nullptr;
-  Status st = Convert(input, &tensor);
-  if (!st.IsOK()) return st;
-  value.Init(tensor,
-             DataTypeImpl::GetType<OutputType>(),
-             DataTypeImpl::GetType<OutputType>()->GetDeleteFunc());
-  return Status::OK();
+  OrtValue* seq_ort = nullptr;
+  ORT_THROW_ON_ERROR(OrtCreateValue(in.data(), static_cast<int>(in.size()), ONNX_TYPE_SEQUENCE, &seq_ort));
+  for (auto value : in) OrtReleaseValue(value);
+  output.reset(seq_ort);
 }
 
 template <typename CHAR_T>
@@ -184,85 +195,89 @@ static Status SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>
   return Status::OK();
 }
 
-Status LoopDataFile(int test_data_pb_fd, const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info,
-                    std::unordered_map<std::string, OrtValue*>& name_data_map, HeapBuffer& b, std::ostringstream& oss) {
+void LoopDataFile(int test_data_pb_fd, const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info,
+                  std::unordered_map<std::string, OrtValue*>& name_data_map, HeapBuffer& b, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
   bool clean_eof = false;
-  Status st;
   int item_id = 1;
-  for (proto::TraditionalMLData data; google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof); ++item_id, data.Clear()) {
-    std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)> gvalue(nullptr, OrtReleaseValue);
-    MLValue value;
-    bool is_tensor = false;
-    switch (data.values_case()) {
-      case proto::TraditionalMLData::kVectorMapStringToFloat:
-        st = RichTypeProtoToMLValue<decltype(data.vector_map_string_to_float().v()), VectorMapStringToFloat>(data.vector_map_string_to_float().v(), value);
-        break;
-      case proto::TraditionalMLData::kVectorMapInt64ToFloat:
-        st = RichTypeProtoToMLValue<decltype(data.vector_map_int64_to_float().v()), VectorMapInt64ToFloat>(data.vector_map_int64_to_float().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapStringToString:
-        st = RichTypeProtoToMLValue<decltype(data.map_string_to_string().v()), MapStringToString>(data.map_string_to_string().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapStringToInt64:
-        st = RichTypeProtoToMLValue<decltype(data.map_string_to_int64().v()), MapStringToInt64>(data.map_string_to_int64().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapStringToFloat:
-        st = RichTypeProtoToMLValue<decltype(data.map_string_to_float().v()), MapStringToFloat>(data.map_string_to_float().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapStringToDouble:
-        st = RichTypeProtoToMLValue<decltype(data.map_string_to_double().v()), MapStringToDouble>(data.map_string_to_double().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapInt64ToString:
-        st = RichTypeProtoToMLValue<decltype(data.map_int64_to_string().v()), MapInt64ToString>(data.map_int64_to_string().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapInt64ToInt64:
-        st = RichTypeProtoToMLValue<decltype(data.map_int64_to_int64().v()), MapInt64ToInt64>(data.map_int64_to_int64().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapInt64ToFloat:
-        st = RichTypeProtoToMLValue<decltype(data.map_int64_to_float().v()), MapInt64ToFloat>(data.map_int64_to_float().v(), value);
-        break;
-      case proto::TraditionalMLData::kMapInt64ToDouble:
-        st = RichTypeProtoToMLValue<decltype(data.map_int64_to_double().v()), MapInt64ToDouble>(data.map_int64_to_double().v(), value);
-        break;
-      case proto::TraditionalMLData::kTensor: {
-        OrtValue* temp_value;
-        std::string s = data.tensor().SerializeAsString();
-        size_t len;
-        ORT_THROW_ON_ERROR(OrtGetTensorMemSizeInBytesFromTensorProto(s.data(), (int)s.size(), 0, &len));
-        char* p = len == 0 ? nullptr : (char*)b.AllocMemory(len);
-        OrtCallback* d;
-        ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(s.data(), (int)s.size(), nullptr, p, len, &temp_value, &d));
-        if (d != nullptr) {
-          b.AddDeleter(d);
-        }
-        gvalue.reset(temp_value);
-        is_tensor = true;
-      } break;
-      default:
-        st = Status(ONNXRUNTIME, NOT_IMPLEMENTED, "unknown data type inside TraditionalMLData");
-    }
-    if (!st.IsOK()) break;
-    if (!data.debug_info().empty()) {
-      oss << ":" << data.debug_info();
-    }
-    std::string value_name = data.name();
-    if (value_name.empty())
-      value_name = value_info[name_data_map.size()].name();
+  for (proto::TraditionalMLData data;
+       google::protobuf::util::ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
+       ++item_id, data.Clear()) {
+    try {
+      ORT_VALUE_HOLDER gvalue(nullptr, OrtReleaseValue);
+      switch (data.values_case()) {
+        case proto::TraditionalMLData::kVectorMapStringToFloat:
+          VectorProtoToMLValue(data.vector_map_string_to_float().v(), gvalue);
+          break;
+        case proto::TraditionalMLData::kVectorMapInt64ToFloat:
+          VectorProtoToMLValue(data.vector_map_int64_to_float().v(), gvalue);
+          break;
+        case proto::TraditionalMLData::kMapStringToString:
+          gvalue.reset(PbMapToMLValue(data.map_string_to_string().v()));
+          break;
+        case proto::TraditionalMLData::kMapStringToInt64:
+          gvalue.reset(PbMapToMLValue(data.map_string_to_int64().v()));
+          break;
+        case proto::TraditionalMLData::kMapStringToFloat:
+          gvalue.reset(PbMapToMLValue(data.map_string_to_float().v()));
+          break;
+        case proto::TraditionalMLData::kMapStringToDouble:
+          gvalue.reset(PbMapToMLValue(data.map_string_to_double().v()));
+          break;
+        case proto::TraditionalMLData::kMapInt64ToString:
+          gvalue.reset(PbMapToMLValue(data.map_int64_to_string().v()));
+          break;
+        case proto::TraditionalMLData::kMapInt64ToInt64:
+          gvalue.reset(PbMapToMLValue(data.map_int64_to_int64().v()));
+          break;
+        case proto::TraditionalMLData::kMapInt64ToFloat:
+          gvalue.reset(PbMapToMLValue(data.map_int64_to_float().v()));
+          break;
+        case proto::TraditionalMLData::kMapInt64ToDouble:
+          gvalue.reset(PbMapToMLValue(data.map_int64_to_double().v()));
+          break;
+        case proto::TraditionalMLData::kTensor: {
+          OrtValue* temp_value;
+          std::string s = data.tensor().SerializeAsString();
+          size_t len;
+          ORT_THROW_ON_ERROR(OrtGetTensorMemSizeInBytesFromTensorProto(s.data(), (int)s.size(), 0, &len));
+          char* p = len == 0 ? nullptr : (char*)b.AllocMemory(len);
+          OrtCallback* d;
+          ORT_THROW_ON_ERROR(OrtTensorProtoToOrtValue(s.data(), (int)s.size(), nullptr, p, len, &temp_value, &d));
+          if (d != nullptr) {
+            b.AddDeleter(d);
+          }
+          gvalue.reset(temp_value);
+        } break;
+        default:
+          ORT_NOT_IMPLEMENTED("unknown data type inside TraditionalMLData");
+      }
+      if (!data.debug_info().empty()) {
+        oss << ":" << data.debug_info();
+      }
+      std::string value_name = data.name();
+      if (value_name.empty()) value_name = value_info[name_data_map.size()].name();
 
-    auto pv = name_data_map.insert(std::make_pair(value_name, is_tensor ? gvalue.release() : (OrtValue*)new MLValue(value)));
-    if (!pv.second) {
-      st = Status(ONNXRUNTIME, FAIL, "duplicated test data name");
-      break;
+      auto pv = name_data_map.insert(std::make_pair(value_name, gvalue.release()));
+      if (!pv.second) {
+        ORT_THROW("duplicated test data name");
+        break;
+      }
+    } catch (onnxruntime::NotImplementedException& ex) {
+      std::ostringstream oss2;
+      oss2 << "load the " << item_id << "-th item failed," << ex.what();
+      ORT_NOT_IMPLEMENTED(oss2.str());
+    } catch (std::exception& ex) {
+      std::ostringstream oss2;
+      oss2 << "load the " << item_id << "-th item failed," << ex.what();
+      ORT_THROW(oss2.str());
     }
   }
-  if (!st.IsOK()) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "load the ", item_id, "-th item failed,", st.ErrorMessage());
   if (!clean_eof) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse input file failed, has extra unparsed data");
+    ORT_THROW("parse input file failed, has extra unparsed data");
   }
-  return Status::OK();
 }
 
 template <typename T>
@@ -430,6 +445,12 @@ Status OnnxTestCase::ParseConfig() {
        to represent simple config files that have only key-value pairs.
      */
     std::map<std::string, std::string> fc;
+    per_sample_tolerance_ = 1e-3;
+    relative_per_sample_tolerance_ = 1e-5;
+#ifdef USE_CUDA
+    relative_per_sample_tolerance_ = 0.017;  // to resolve random MNIST test failure
+#endif
+    post_processing_ = false;
     if (read_config_file(config_path, fc)) {
       if (fc.count("per_sample_tolerance")) {
         per_sample_tolerance_ = stod(fc["per_sample_tolerance"]);
@@ -438,18 +459,13 @@ Status OnnxTestCase::ParseConfig() {
         relative_per_sample_tolerance_ = stod(fc["relative_per_sample_tolerance"]);
       }
       if (fc.count("post_processing")) {
-        post_processing_ = fc["post_processing"] == "true" ? true : false;
+        post_processing_ = fc["post_processing"] == "true";
       }
       return;
-    } else {
-      per_sample_tolerance_ = 1e-3;
-      relative_per_sample_tolerance_ = 1e-5;
-#ifdef USE_CUDA
-      relative_per_sample_tolerance_ = 0.017;  // to resolve random MNIST test failure
-#endif
-      post_processing_ = false;
-      return;
     }
+
+    return;
+
   });
   return Status::OK();
 }
@@ -527,14 +543,17 @@ Status OnnxTestCase::LoadTestData(OrtSession* session, size_t id, HeapBuffer& b,
       std::lock_guard<OrtMutex> l(m_);
       oss << debuginfo_strings[id];
     }
-    st = LoopDataFile(test_data_pb_fd, is_input ? input_value_info_ : output_value_info_, name_data_map, b, oss);
+    try {
+      LoopDataFile(test_data_pb_fd, is_input ? input_value_info_ : output_value_info_, name_data_map, b, oss);
+    } catch (std::exception& ex) {
+      std::ostringstream oss2;
+      oss2 << "parse data file \"" << ToMBString(test_data_pb) << "\" failed:" << ex.what();
+      ORT_THROW(oss.str());
+    }
     {
       std::lock_guard<OrtMutex> l(m_);
       debuginfo_strings[id] = oss.str();
     }
-    if (!st.IsOK())
-      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOADED, "parse data file \"", ToMBString(test_data_pb),
-                             "\" failed:", st.ErrorMessage());
     return Status::OK();
   }
 
