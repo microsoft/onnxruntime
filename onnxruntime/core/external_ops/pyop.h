@@ -59,19 +59,37 @@ struct PythonWrapper {
 
 struct PyCustomKernel {
 
-    PyCustomKernel (const OrtCustomOpApi& api,
+    PyCustomKernel (const OrtCustomOpApi& ort,
                     const std::string&    module,
                     const std::string&    compute,
                     const std::string&    shape_inference): 
-                    ort_(api),
+                    ort_(ort),
                     module_(module),
                     compute_(compute),
                     shape_inference_(shape_inference) {}
 
-    void GetOutputShape (OrtValue**,
-                         size_t,
-                         size_t,
-                         OrtTensorTypeAndShapeInfo*) {}
+    void GetOutputShape (OrtValue** ort_input,
+                         size_t     ort_input_count,
+                         size_t     ort_output_index,
+                         ORT_SHAPE* ort_info) {
+
+        std::vector<const void*>            input,      output;
+        std::vector<int32_t>                input_type, output_size;
+        std::vector<std::vector<int64_t>>   input_dim,  output_dim;
+
+        for (size_t i = 0; i < ort_input_count; ++i) {
+            input.push_back(ort_input[i]);
+            input_type.push_back(GetType(ort_input[i]));
+            input_dim.push_back(((MLValue*)ort_input[i])->Get<Tensor>().Shape().GetDims());
+        }
+
+        ORT_ENFORCE (pyWrapper_.pyFunc(module_.c_str(), shape_inference_.c_str(), input, input_type, input_dim, output, output_size, output_dim), pyWrapper_.lastErr());
+        ORT_ENFORCE (output.size() > ort_output_index, "output count is less then ort output index");
+        ORT_ENFORCE (ort_.SetDims(ort_info, (const int64_t*)output[ort_output_index], output_dim[ort_output_index][0]), "Failed to set output shape");
+        for (auto mem: output) {
+            free(const_cast<void*>(mem));
+        }
+    }
 
     void Compute(OrtValue** ort_input, size_t ort_input_count, OrtValue** ort_output, size_t ort_output_count) {
 
