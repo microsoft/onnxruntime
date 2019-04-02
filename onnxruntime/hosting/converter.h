@@ -22,9 +22,9 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::Da
 //   * segment field: we do not expect very large tensors in the prediction output
 //   * external_data field: we do not expect very large tensors in the prediction output
 // Note: If any input data is in raw_data field, all outputs tensor data will be put into raw_data field.
-common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data,
-                                   std::shared_ptr<onnxruntime::logging::Logger> logger,
-                                   /* out */ onnx::TensorProto& tensor_proto);
+common::Status MLValueToTensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data,
+                                    std::shared_ptr<onnxruntime::logging::Logger> logger,
+                                    /* out */ onnx::TensorProto& tensor_proto);
 
 }  // namespace hosting
 }  // namespace onnxruntime

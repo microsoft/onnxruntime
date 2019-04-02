@@ -55,9 +55,9 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::Da
   }
 }
 
-common::Status MLValue2TensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data,
-                                   std::shared_ptr<onnxruntime::logging::Logger> logger,
-                                   /* out */ onnx::TensorProto& tensor_proto) {
+common::Status MLValueToTensorProto(onnxruntime::MLValue& ml_value, bool using_raw_data,
+                                    std::shared_ptr<onnxruntime::logging::Logger> logger,
+                                    /* out */ onnx::TensorProto& tensor_proto) {
   // Tensor in MLValue
   const auto& tensor = ml_value.Get<onnxruntime::Tensor>();
 
