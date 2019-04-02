@@ -581,6 +581,10 @@ else()
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
+endif()
+
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
 if (onnxruntime_BUILD_SHARED_LIB)
