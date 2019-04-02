@@ -21,13 +21,15 @@ static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge&
   return is_implicit_input;
 }
 
-// Get the name of the outgoing NodeArg with the specified index for the given node.
-static const std::string& GetNodeOutputName(const Node& node, int index) {
+const std::string& GetNodeInputName(const Node& node, int index) {
+  const auto& inputs = node.InputDefs();
+  ORT_ENFORCE(index < inputs.size(), "Attempting to get an input that does not exist.");
+  return inputs[index]->Name();
+}
+
+const std::string& GetNodeOutputName(const Node& node, int index) {
   const auto& outputs = node.OutputDefs();
-
-  // this should never happen as it's internal logic so just use an assert
   assert(index < outputs.size());
-
   return outputs[index]->Name();
 }
 

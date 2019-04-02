@@ -10,34 +10,6 @@ namespace onnxruntime {
 
 namespace graph_utils {
 
-struct GraphEdge {
-  NodeIndex src_node;
-  NodeIndex dst_node;
-  int src_arg_index;
-  int dst_arg_index;
-  std::string arg_name;
-
-  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
-            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
-                                                                                 dst_node(dst_node),
-                                                                                 src_arg_index(src_arg_index),
-                                                                                 dst_arg_index(dst_arg_index),
-                                                                                 arg_name(arg_name) {}
-
-  GraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
-    is_input_edge ? GraphEdge{edge_end.GetNode().Index(),
-                              node.Index(),
-                              edge_end.GetSrcArgIndex(),
-                              edge_end.GetDstArgIndex(),
-                              GetNodeOutputName(edge_end.GetNode(), edge_end.GetSrcArgIndex())}
-                  : GraphEdge{node.Index(),
-                              edge_end.GetNode().Index(),
-                              edge_end.GetSrcArgIndex(),
-                              edge_end.GetDstArgIndex(),
-                              GetNodeOutputName(node, edge_end.GetSrcArgIndex())};
-  }
-};
-
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
@@ -57,6 +29,12 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
 /** Checks if the given node has only constant inputs (initializers). */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
+
+/** Get the name of the incoming NodeArg with the specified index for the given node. */
+const std::string& GetNodeInputName(const Node& node, int index);
+
+/** Get the name of the outgoing NodeArg with the specified index for the given node. */
+const std::string& GetNodeOutputName(const Node& node, int index);
 
 /** Return the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
@@ -85,6 +63,39 @@ bool RemoveSingleInputNode(Graph& graph, Node& node);
 /** Remove all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+struct GraphEdge {
+  NodeIndex src_node;
+  NodeIndex dst_node;
+  int src_arg_index;
+  int dst_arg_index;
+  std::string arg_name;
+
+  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
+            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
+                                                                                 dst_node(dst_node),
+                                                                                 src_arg_index(src_arg_index),
+                                                                                 dst_arg_index(dst_arg_index),
+                                                                                 arg_name(arg_name) {}
+
+  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+  GraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
+    is_input_edge
+        ? init(edge_end.GetNode().Index(), node.Index(), edge_end.GetSrcArgIndex(),
+               edge_end.GetDstArgIndex(), GetNodeInputName(node, edge_end.GetDstArgIndex()))
+        : init(node.Index(), edge_end.GetNode().Index(), edge_end.GetSrcArgIndex(),
+               edge_end.GetDstArgIndex(), GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
+  }
+
+  void init(NodeIndex src_node_idx, NodeIndex dst_node_idx,
+            int src_arg_idx, int dst_arg_idx, const std::string& name) {
+    src_node = src_node_idx;
+    dst_node = dst_node_idx;
+    src_arg_index = src_arg_idx;
+    dst_arg_index = dst_arg_idx;
+    arg_name = name;
+  }
+};
 
 }  // namespace graph_utils
 

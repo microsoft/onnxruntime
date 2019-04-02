@@ -161,40 +161,5 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   ExpectSame(node2, node4, 1);
 }
 
-static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  // Generate the input & output def lists
-  p_model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                 domain_to_version);
-  onnxruntime::Graph& graph = p_model->MainGraph();
-
-  TypeProto tensor_float;
-  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-
-  std::vector<onnxruntime::NodeArg*> input_defs;
-  auto& input_arg_a = graph.GetOrCreateNodeArg("A", &tensor_float);
-  input_defs.push_back(&input_arg_a);
-
-  auto& input_arg_b = graph.GetOrCreateNodeArg("B", &tensor_float);
-  input_defs.push_back(&input_arg_b);
-
-  std::vector<onnxruntime::NodeArg*> output_defs;
-  auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_float);
-  output_defs.push_back(&output_arg);
-
-  // Create a simple model
-  auto& node = graph.AddNode("node1", "MatMul", "MatMul", input_defs, output_defs, nullptr, onnxruntime::kOnnxDomain);
-  if (provider_type == kCpuExecutionProvider) {
-    node.SetExecutionProviderType(provider_type);
-  } else {
-#ifdef USE_CUDA
-    node.SetExecutionProviderType(provider_type);
-#endif
-  }
-  Status status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-}
-
 }  // namespace test
 }  // namespace onnxruntime
