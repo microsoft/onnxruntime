@@ -128,10 +128,10 @@ void VectorProtoToMLValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& ou
   for (const T& v : input) {
     // create key tensor
     const auto& map = v.v();
-    int ele_count = map.size();
+    size_t ele_count = map.size();
     using key_type = typename std::remove_reference<decltype(v.v())>::type::key_type;
     using value_type = typename std::remove_reference<decltype(v.v())>::type::mapped_type;
-    std::vector<int64_t> dims(1, ele_count);
+    std::vector<int64_t> dims(1, static_cast<int64_t>(ele_count));
     std::vector<key_type> keys(ele_count);
     std::vector<value_type> values(ele_count);
     size_t i = 0;
