@@ -535,6 +535,7 @@ if (onnxruntime_BUILD_HOSTING)
   if(NOT WIN32)
     if(HAS_UNUSED_PARAMETER)
       set_source_files_properties("${TEST_SRC_DIR}/hosting/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/hosting/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
 
@@ -548,7 +549,7 @@ if (onnxruntime_BUILD_HOSTING)
   AddTest(
     TARGET onnxruntime_hosting_tests
     SOURCES ${onnxruntime_test_hosting_src}
-    LIBS ${onnxruntime_test_hosting_libs} hosting_proto onnxruntime_hosting_lib
+    LIBS ${onnxruntime_test_hosting_libs} hosting_proto onnxruntime_hosting_lib ${onnxruntime_test_providers_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 endif()
