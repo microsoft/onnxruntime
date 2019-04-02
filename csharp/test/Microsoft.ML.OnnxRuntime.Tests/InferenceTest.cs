@@ -50,18 +50,59 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
-        private void CanRunInferenceOnAModel()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(2)]
+        private void CanRunInferenceOnAModel(uint graphOptimizationLevel)
         {
-            // Run test with all graph optimizations disabled.
-            Assert.True(RunInferenceOnAModel(0));
-        }
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
-        [Fact]
-        private void CanRunInferenceOnAModelWithAllGraphOptimizationsEnabled()
-        {
-            // Run test with all graph optimizations enabled.
-            Assert.True(RunInferenceOnAModel(2));
+            // Set the graph optimization level for this session.
+            SessionOptions options = new SessionOptions();
+            Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+
+            using (var session = new InferenceSession(modelPath, options))
+            {
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+                // Run the inference
+                using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                {
+                    Assert.Equal(1, results.Count);
+
+                    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                    // validate the results
+                    foreach (var r in results)
+                    {
+                        Assert.Equal("softmaxout_1", r.Name);
+
+                        var resultTensor = r.AsTensor<float>();
+                        int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
+                        Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+                        var resultDimensions = resultTensor.Dimensions;
+                        for (int i = 0; i < expectedDimensions.Length; i++)
+                        {
+                            Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+                        }
+
+                        var resultArray = r.AsTensor<float>().ToArray();
+                        Assert.Equal(expectedOutput.Length, resultArray.Length);
+                        Assert.Equal(expectedOutput, resultArray, new floatComparer());
+                    }
+                }
+            }
         }
 
         [Fact]
@@ -642,61 +683,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var x = GetProcAddress(hModule, ep);
                 Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
             }
-        }
-
-        private bool RunInferenceOnAModel(uint graphOotimizationLevel)
-        {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            
-            // Set the graph optimization level for this session.
-            SessionOptions options = new SessionOptions();
-            Assert.True(options.SetSessionGraphOptimizationLevel(graphOotimizationLevel));
-
-            using (var session = new InferenceSession(modelPath, options))
-            {
-                var inputMeta = session.InputMetadata;
-                var container = new List<NamedOnnxValue>();
-
-                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
-
-                foreach (var name in inputMeta.Keys)
-                {
-                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
-                    Assert.True(inputMeta[name].IsTensor);
-                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
-                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
-                }
-
-                // Run the inference
-                using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
-                {
-                    Assert.Equal(1, results.Count);
-
-                    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-                    // validate the results
-                    foreach (var r in results)
-                    {
-                        Assert.Equal("softmaxout_1", r.Name);
-
-                        var resultTensor = r.AsTensor<float>();
-                        int[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
-                        Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
-
-                        var resultDimensions = resultTensor.Dimensions;
-                        for (int i = 0; i < expectedDimensions.Length; i++)
-                        {
-                            Assert.Equal(expectedDimensions[i], resultDimensions[i]);
-                        }
-
-                        var resultArray = r.AsTensor<float>().ToArray();
-                        Assert.Equal(expectedOutput.Length, resultArray.Length);
-                        Assert.Equal(expectedOutput, resultArray, new floatComparer());
-                    }
-                }
-            }
-
-            return true;            
-        }
+        }        
 
         static string GetTestModelsDir()
         {

@@ -25,8 +25,6 @@ namespace CSharpUsage
             string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
 
             // Optional : Create session options and set the graph optimization level for the session
-            // Default graph optimization level is set to 1 which enables all basic optimizations (Such as redundant node removals)
-            // Level 2 enables all optimizations (Includes level 1 + more complex optimizations like node fusions)
             SessionOptions options = new SessionOptions();
             options.SetSessionGraphOptimizationLevel(2);
 
