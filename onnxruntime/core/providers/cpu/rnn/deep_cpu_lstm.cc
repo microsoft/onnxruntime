@@ -784,6 +784,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   int32_t min_sequence_length = std::min(seq_length_, *std::min_element(sequence_lengths.cbegin(),
                                                                         sequence_lengths.cend()));
 
+  if (max_sequence_length == 0) return;
+
   ///**************************LSTM Calculations****************************/
   float alpha = 1.0f;
   float beta = 0.0f;  // first call to ComputeGemm zeros out any existing data
@@ -966,6 +968,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     // copy last output to final_hidden_state
     for (int i = 0; i < batch_size_; i++) {
       const int seq_len = sequence_lengths[i];
+      if (seq_len == 0) continue;
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);

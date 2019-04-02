@@ -313,7 +313,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   // GRU outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
-  Tensor* Y = context.Output(/*index*/ 0, Y_dims);  // TODO: Adjust for however optional outputs gets implemented
+  Tensor* Y = context.Output(/*index*/ 0, Y_dims);
 
   TensorShape Y_h_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_h = context.Output(/*index*/ 1, Y_h_dims);
@@ -560,6 +560,8 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   int32_t max_sequence_length = *std::max_element(sequence_lengths.cbegin(), sequence_lengths.cend());
   int32_t min_sequence_length = std::min(seq_length_, *std::min_element(sequence_lengths.cbegin(),
                                                                         sequence_lengths.cend()));
+
+  if (max_sequence_length == 0) return;
 
   const int hidden_size_x2 = 2 * hidden_size_;
   const int hidden_size_x3 = 3 * hidden_size_;
@@ -1028,6 +1030,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
     // copy last output to final_hidden_state
     for (int i = 0; i < batch_size_; i++) {
       const int seq_len = sequence_lengths[i];
+      if (seq_len == 0) continue;
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
@@ -1039,7 +1042,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                          batch_size_, hidden_size_, num_directions);
     }
   }
-}
+}  // namespace detail
 
 template <typename T>
 void UniDirectionalGru<T>::AllocateBuffers() {
