@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 namespace test {
-
+/*
 TEST(DynamicSliceTest, dynamic_slice_varied_types) {
   OpTester test1 ("DynamicSlice", 1);
   test1.AddInput  <int32_t> ("data",   {3,3}, {1,2,3,4,5,6,7,8,9});
@@ -120,6 +120,7 @@ TEST(DynamicSliceTest, dynamic_slice_full_axes) {
   test2.AddInput  <int32_t> ("axes",   {3},     {2,0,1});
   test2.AddOutput <int32_t> ("output", {1,2,1}, {5,8});
   test2.Run();
+  */
 }
 }  // namespace Test
 }  // namespace onnxruntime

@@ -155,7 +155,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
         output += alignSkip;
         {
           float* axisStart = output;
-          output = input.CopyInnermostAxis(output);
+          output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];

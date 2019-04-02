@@ -7,8 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(SliceTest, Slice1D) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice1D) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("starts", std::vector<int64_t>{2});
@@ -19,8 +19,8 @@ TEST(SliceTest, Slice1D) {
   test.Run();
 }
 
-TEST(SliceTest, Slice1D_Perf) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice1D_Perf) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("starts", std::vector<int64_t>{2});
@@ -33,8 +33,8 @@ TEST(SliceTest, Slice1D_Perf) {
   test.Run();
 }
 
-TEST(SliceTest, Slice2D_OutOfBounds) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice2D_OutOfBounds) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{0, 1});
   test.AddAttribute("starts", std::vector<int64_t>{0, 1000});
@@ -45,8 +45,8 @@ TEST(SliceTest, Slice2D_OutOfBounds) {
   test.Run();
 }
 
-TEST(SliceTest, Slice2D_OneAxis) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice2D_OneAxis) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("starts", std::vector<int64_t>{1});
@@ -65,8 +65,8 @@ TEST(SliceTest, Slice2D_OneAxis) {
   test.Run();
 }
 
-TEST(SliceTest, Slice2D_TwoAxes) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice2D_TwoAxes) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{1, 0});
   test.AddAttribute("starts", std::vector<int64_t>{2, 3});
@@ -85,8 +85,8 @@ TEST(SliceTest, Slice2D_TwoAxes) {
   test.Run();
 }
 
-TEST(SliceTest, Slice2D_TwoAxesEque) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice2D_TwoAxesEque) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{1, 0});
   test.AddAttribute("starts", std::vector<int64_t>{2, 3});
@@ -104,8 +104,8 @@ TEST(SliceTest, Slice2D_TwoAxesEque) {
   test.Run();
 }
 
-TEST(SliceTest, Slice3D) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice3D) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("starts", std::vector<int64_t>{0, 1, 1});
   test.AddAttribute("ends", std::vector<int64_t>{1000, 1000, 1000});
@@ -134,8 +134,8 @@ TEST(SliceTest, Slice3D) {
   test.Run();
 }
 
-TEST(SliceTest, Slice1D_Int) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice1D_Int) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("starts", std::vector<int64_t>{2});
@@ -146,8 +146,8 @@ TEST(SliceTest, Slice1D_Int) {
   test.Run();
 }
 
-TEST(SliceTest, Slice1D_String) {
-  OpTester test("Slice");
+TEST(SliceTestV9, Slice1D_String) {
+  OpTester test("Slice", 9);
 
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("starts", std::vector<int64_t>{2});

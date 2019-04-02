@@ -176,7 +176,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     while (input_counters) {
       Y_data += alignSkip;
       {
-        Y_data = input.CopyInnermostAxis(Y_data);
+        Y_data = input.CopyInnermostAxisSolitaryInnerStep(Y_data);
         int64_t prePad = inferredPads[inner_axis];
         int64_t postPad = inferredPads[inner_axis + dimension_count];
         Y_data += postPad;
