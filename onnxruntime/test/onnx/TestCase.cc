@@ -452,20 +452,17 @@ Status OnnxTestCase::ParseConfig() {
 #endif
     post_processing_ = false;
     if (read_config_file(config_path, fc)) {
-      if (fc.count("per_sample_tolerance")) {
+      if (fc.count("per_sample_tolerance") > 0) {
         per_sample_tolerance_ = stod(fc["per_sample_tolerance"]);
       }
-      if (fc.count("relative_per_sample_tolerance")) {
+      if (fc.count("relative_per_sample_tolerance") > 0) {
         relative_per_sample_tolerance_ = stod(fc["relative_per_sample_tolerance"]);
       }
-      if (fc.count("post_processing")) {
+      if (fc.count("post_processing") > 0) {
         post_processing_ = fc["post_processing"] == "true";
       }
       return;
     }
-
-    return;
-
   });
   return Status::OK();
 }
