@@ -87,9 +87,12 @@ Return Value:
     this->KernelZeroRoutine = MlasSgemmKernelZeroSse;
     this->KernelAddRoutine = MlasSgemmKernelAddSse;
 #if defined(MLAS_TARGET_AMD64)
+    this->SconvKernelNchwRoutine = MlasConvKernelNchwSse;
+    this->SconvKernelNchwcRoutine = MlasConvKernelNchwcSse;
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
+    this->NchwcBlockSize = 8;
 #endif
 
     //
@@ -135,11 +138,21 @@ Return Value:
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+
                     this->KernelZeroRoutine = MlasSgemmKernelZeroAvx512F;
                     this->KernelAddRoutine = MlasSgemmKernelAddAvx512F;
+                    this->SconvKernelNchwRoutine = MlasConvKernelNchwAvx512F;
+                    this->SconvKernelNchwcRoutine = MlasConvKernelNchwcAvx512F;
+                    this->SconvKernel1x1Routine = MlasConvKernel1x1NchwcAvx512F;
+                    this->NchwcBlockSize = 16;
+
                 } else {
+
                     this->KernelZeroRoutine = MlasSgemmKernelZeroFma3;
                     this->KernelAddRoutine = MlasSgemmKernelAddFma3;
+                    this->SconvKernelNchwRoutine = MlasConvKernelNchwFma3;
+                    this->SconvKernelNchwcRoutine = MlasConvKernelNchwcFma3;
+                    this->SconvKernel1x1Routine = MlasConvKernel1x1NchwcFma3;
                 }
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
@@ -149,6 +162,9 @@ Return Value:
 
                 this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
                 this->KernelAddRoutine = MlasSgemmKernelAddAvx;
+                this->SconvKernelNchwRoutine = MlasConvKernelNchwAvx;
+                this->SconvKernelNchwcRoutine = MlasConvKernelNchwcAvx;
+                this->SconvKernel1x1Routine = MlasConvKernel1x1NchwcAvx;
             }
 
             this->KernelM1Routine = MlasSgemmKernelM1Avx;

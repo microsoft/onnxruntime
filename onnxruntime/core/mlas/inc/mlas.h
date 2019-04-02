@@ -218,3 +218,48 @@ MlasConvertHalfToFloatBuffer(
     float* Destination,
     size_t Count
     );
+
+//
+//
+//
+
+void
+MlasConvReorderInput(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* S,
+    float* D,
+    size_t InputChannels
+    );
+
+void
+MlasConvReorderFilter(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* S,
+    float* D
+    );
+
+void
+MlasConvReorderFilter2(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* S,
+    float* D
+    );
+
+void
+MlasConvReorderOutput(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* S,
+    float* D,
+    size_t OutputChannels
+    );
+
+void
+MLASCALL
+MlasConvNchwc(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* Output,
+    bool ZeroMode
+    );

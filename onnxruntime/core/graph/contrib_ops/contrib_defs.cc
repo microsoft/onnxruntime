@@ -388,6 +388,77 @@ Sample echo operator.)DOC");
         ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderInput)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Input(0, "X", "", "T")
+      .Output(0, "Y", "", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderOutput)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Input(0, "X", "", "T")
+      .Output(0, "Y", "", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NchwcConv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "",
+          AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "group",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "activation",
+          "",
+          AttributeProto::STRING,
+          OPTIONAL)
+      .Attr(
+          "alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL)
+      .Input(0, "X", "", "T")
+      .Input(1, "W", "", "T")
+      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Input(3, "Sum", "", "T", OpSchema::Optional)
+      .Output(0, "Y", "","T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -447,7 +518,7 @@ activation.)DOC")
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)

@@ -155,6 +155,51 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 
 typedef
 void
+(MLASCALL MLAS_SCONV_KERNEL_ROUTINE)(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountPadLeft,
+    size_t OutputCountPadNone,
+    size_t OutputCountPadRight,
+    const float* Bias,
+    unsigned Flags
+    );
+
+typedef MLAS_SCONV_KERNEL_ROUTINE* PMLAS_SCONV_KERNEL_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_SCONV_KERNEL_1X1_ROUTINE)(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t AdjustCount,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t OutputCount,
+    const float* Bias,
+    unsigned Flags
+    );
+
+typedef MLAS_SCONV_KERNEL_1X1_ROUTINE* PMLAS_SCONV_KERNEL_1X1_ROUTINE;
+
+typedef
+void
 (MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
@@ -198,6 +243,20 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Sse;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
+#endif
+
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwSse;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcSse;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwAvx;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcAvx;
+    MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcAvx;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwFma3;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcFma3;
+    MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcFma3;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwAvx512F;
+    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcAvx512F;
+    MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcAvx512F;
 #endif
 
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
@@ -266,8 +325,12 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
+    PMLAS_SCONV_KERNEL_ROUTINE SconvKernelNchwRoutine;
+    PMLAS_SCONV_KERNEL_ROUTINE SconvKernelNchwcRoutine;
+    PMLAS_SCONV_KERNEL_1X1_ROUTINE SconvKernel1x1Routine;
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
+    size_t NchwcBlockSize;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)

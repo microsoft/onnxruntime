@@ -61,7 +61,15 @@ save_xmm128_avx MACRO Register, Offset
 
 EmitIfCountGE MACRO Count, Value, Statement
 
-IF Count GE Value
+IF (Count GE Value)
+        Statement
+ENDIF
+
+        ENDM
+
+EmitIfCount2GE MACRO Count1, Value1, Count2, Value2, Statement
+
+IF (Count1 GE Value1) AND (Count2 GE Value2)
         Statement
 ENDIF
 
