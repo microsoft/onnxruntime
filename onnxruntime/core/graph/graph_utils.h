@@ -64,39 +64,6 @@ bool RemoveSingleInputNode(Graph& graph, Node& node);
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-struct GraphEdge {
-  NodeIndex src_node;
-  NodeIndex dst_node;
-  int src_arg_index;
-  int dst_arg_index;
-  std::string arg_name;
-
-  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
-            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
-                                                                                 dst_node(dst_node),
-                                                                                 src_arg_index(src_arg_index),
-                                                                                 dst_arg_index(dst_arg_index),
-                                                                                 arg_name(arg_name) {}
-
-  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
-  GraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
-    is_input_edge
-        ? init(edge_end.GetNode().Index(), node.Index(), edge_end.GetSrcArgIndex(),
-               edge_end.GetDstArgIndex(), GetNodeInputName(node, edge_end.GetDstArgIndex()))
-        : init(node.Index(), edge_end.GetNode().Index(), edge_end.GetSrcArgIndex(),
-               edge_end.GetDstArgIndex(), GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
-  }
-
-  void init(NodeIndex src_node_idx, NodeIndex dst_node_idx,
-            int src_arg_idx, int dst_arg_idx, const std::string& name) {
-    src_node = src_node_idx;
-    dst_node = dst_node_idx;
-    src_arg_index = src_arg_idx;
-    dst_arg_index = dst_arg_idx;
-    arg_name = name;
-  }
-};
-
 }  // namespace graph_utils
 
 }  // namespace onnxruntime

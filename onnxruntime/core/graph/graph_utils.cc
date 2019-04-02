@@ -10,7 +10,39 @@ namespace onnxruntime {
 
 namespace graph_utils {
 
-// local helpers
+struct GraphEdge {
+  NodeIndex src_node;
+  NodeIndex dst_node;
+  int src_arg_index;
+  int dst_arg_index;
+  std::string arg_name;
+
+  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
+            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
+                                                                                 dst_node(dst_node),
+                                                                                 src_arg_index(src_arg_index),
+                                                                                 dst_arg_index(dst_arg_index),
+                                                                                 arg_name(arg_name) {}
+
+  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
+    return is_input_edge
+               ? GraphEdge(edge_end.GetNode().Index(),
+                           node.Index(),
+                           edge_end.GetSrcArgIndex(),
+                           edge_end.GetDstArgIndex(),
+                           GetNodeInputName(node, edge_end.GetDstArgIndex()))
+               : GraphEdge(node.Index(),
+                           edge_end.GetNode().Index(),
+                           edge_end.GetSrcArgIndex(),
+                           edge_end.GetDstArgIndex(),
+                           GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
+  }
+};
+
+//---------------------
+//--- local helpers ---
+//---------------------
 
 // check if an output edge provides an implicit input to the destination node
 static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge& output_edge) {
@@ -19,97 +51,6 @@ static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge&
   const auto num_explicit_inputs = (*graph.GetNode(output_edge.dst_node)).InputDefs().size();
   bool is_implicit_input = output_edge.dst_arg_index >= num_explicit_inputs;
   return is_implicit_input;
-}
-
-const std::string& GetNodeInputName(const Node& node, int index) {
-  const auto& inputs = node.InputDefs();
-  ORT_ENFORCE(index < inputs.size(), "Attempting to get an input that does not exist.");
-  return inputs[index]->Name();
-}
-
-const std::string& GetNodeOutputName(const Node& node, int index) {
-  const auto& outputs = node.OutputDefs();
-  assert(index < outputs.size());
-  return outputs[index]->Name();
-}
-
-// fusion is only done for ONNX domain ops
-bool IsSupportedOptypeVersionAndDomain(const Node& node,
-                                       const std::string& op_type,
-                                       ONNX_NAMESPACE::OperatorSetVersion version,
-                                       const std::string& domain) {
-  if (node.OpType() != op_type ||
-      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!node.Domain().empty() && node.Domain() != domain)) {
-    return false;
-  }
-  return true;
-}
-
-bool IsSupportedProvider(const Node& node,
-                         const std::unordered_set<std::string>& compatible_providers) {
-  if (!compatible_providers.empty() &&
-      compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end()) {
-    return false;
-  }
-
-  return true;
-}
-
-Status ForAllMutableSubgraphs(Graph& graph, std::function<Status(Graph&)> func) {
-  Status status = Status::OK();
-
-  for (auto& node : graph.Nodes()) {
-    for (auto& attr_name_to_subgraph_pair : node.GetAttributeNameToMutableSubgraphMap()) {
-      Graph* subgraph = attr_name_to_subgraph_pair.second;
-      ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
-
-      status = func(*subgraph);
-      ORT_RETURN_IF_ERROR(status);
-
-      // recurse
-      status = ForAllMutableSubgraphs(*subgraph, func);
-      ORT_RETURN_IF_ERROR(status);
-    }
-  }
-
-  return status;
-}
-
-Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> func) {
-  Status status = Status::OK();
-
-  for (auto& node : graph.Nodes()) {
-    for (auto& attribute : node.GetAttributes()) {
-      auto& name = attribute.first;
-      auto& proto = attribute.second;
-
-      // check if it has a subgraph
-      if (proto.has_g()) {
-        const Graph* subgraph = node.GetGraphAttribute(name);
-        ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
-
-        status = func(*subgraph);
-        ORT_RETURN_IF_ERROR(status);
-
-        // recurse
-        status = ForAllSubgraphs(*subgraph, func);
-        ORT_RETURN_IF_ERROR(status);
-      }
-    }
-  }
-
-  return status;
-}
-
-bool IsSingleInSingleOutNode(const Node& node) {
-  return node.GetInputEdgesCount() == 1 && node.GetOutputEdgesCount() == 1;
-}
-
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
-  const auto& attrs = node.GetAttributes();
-  const auto iter = attrs.find(attr_name);
-  return iter == attrs.end() ? nullptr : &iter->second;
 }
 
 /** Checks if new_output_name can be used to replace removed_output_name in the subgraph input.
@@ -200,7 +141,7 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
 static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
   std::vector<GraphEdge> output_edges;
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    output_edges.push_back(GraphEdge{node, *it, false});
+    output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
   }
 
   return output_edges;
@@ -263,7 +204,7 @@ static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
 /** Remove a node with a single incoming initializer (and no other incoming node). */
 static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
   // Store info for input initializer and output edges.
-  NodeArg* input_def = node.MutableInputDefs()[0];
+  auto* input_def = node.MutableInputDefs()[0];
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
 
   // Check if one of the edges provides an implicit input to a subgraph, and if so, check if the subgraph allows
@@ -299,6 +240,101 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
   }
 
   return true;
+}
+
+//----------------------------
+//--- end of local helpers ---
+//----------------------------
+
+const std::string& GetNodeInputName(const Node& node, int index) {
+  const auto& inputs = node.InputDefs();
+  ORT_ENFORCE(index < inputs.size(), "Attempting to get an input that does not exist.");
+  return inputs[index]->Name();
+}
+
+const std::string& GetNodeOutputName(const Node& node, int index) {
+  const auto& outputs = node.OutputDefs();
+  assert(index < outputs.size());
+  return outputs[index]->Name();
+}
+
+// fusion is only done for ONNX domain ops
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       const std::string& op_type,
+                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::string& domain) {
+  if (node.OpType() != op_type ||
+      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
+      (!node.Domain().empty() && node.Domain() != domain)) {
+    return false;
+  }
+  return true;
+}
+
+bool IsSupportedProvider(const Node& node,
+                         const std::unordered_set<std::string>& compatible_providers) {
+  if (!compatible_providers.empty() &&
+      compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end()) {
+    return false;
+  }
+
+  return true;
+}
+
+Status ForAllMutableSubgraphs(Graph& graph, std::function<Status(Graph&)> func) {
+  Status status = Status::OK();
+
+  for (auto& node : graph.Nodes()) {
+    for (auto& attr_name_to_subgraph_pair : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = attr_name_to_subgraph_pair.second;
+      ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+
+      status = func(*subgraph);
+      ORT_RETURN_IF_ERROR(status);
+
+      // recurse
+      status = ForAllMutableSubgraphs(*subgraph, func);
+      ORT_RETURN_IF_ERROR(status);
+    }
+  }
+
+  return status;
+}
+
+Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> func) {
+  Status status = Status::OK();
+
+  for (auto& node : graph.Nodes()) {
+    for (auto& attribute : node.GetAttributes()) {
+      auto& name = attribute.first;
+      auto& proto = attribute.second;
+
+      // check if it has a subgraph
+      if (proto.has_g()) {
+        const Graph* subgraph = node.GetGraphAttribute(name);
+        ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
+
+        status = func(*subgraph);
+        ORT_RETURN_IF_ERROR(status);
+
+        // recurse
+        status = ForAllSubgraphs(*subgraph, func);
+        ORT_RETURN_IF_ERROR(status);
+      }
+    }
+  }
+
+  return status;
+}
+
+bool IsSingleInSingleOutNode(const Node& node) {
+  return node.GetInputEdgesCount() == 1 && node.GetOutputEdgesCount() == 1;
+}
+
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
+  const auto& attrs = node.GetAttributes();
+  const auto iter = attrs.find(attr_name);
+  return iter == attrs.end() ? nullptr : &iter->second;
 }
 
 bool RemoveSingleInputNode(Graph& graph, Node& node) {
