@@ -289,7 +289,7 @@ ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
  * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
  */
 ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
-               _In_ const size_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+               _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
                _Out_ OrtValue** out);
 
 /**
@@ -298,7 +298,7 @@ ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
  * \param out Should be freed by calling OrtReleaseValue
  */
 ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-               _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+               _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                ONNXTensorElementDataType type, _Out_ OrtValue** out);
 
 // This function doesn't work with string tensor

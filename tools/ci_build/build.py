@@ -136,7 +136,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument("--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument("--enable_qspectre", action='store_true', help="Enable compiler option to compile with /Qspectre and /GUARD:CF")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
     return parser.parse_args()
@@ -336,7 +335,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_HOSTING=" + ("ON" if args.build_hosting else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
-                 "-Donnxruntime_ENABLE_QSPECTRE=" + ("ON" if args.build_shared_lib and args.enable_qspectre else "OFF"),
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  ]
@@ -569,9 +567,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           else:
             run_subprocess([exe,'-x'] + cmd, cwd=cwd)
         else:
-          if provider == 'tensorrt':
-            run_subprocess([exe, '-c', '1'] + cmd, cwd=cwd)
-          else:
             run_subprocess([exe] + cmd, cwd=cwd)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt):
@@ -751,7 +746,7 @@ def main():
             elif args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
               # TODO: parallel executor test fails on MacOS
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)

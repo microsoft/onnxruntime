@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard1.1</TargetFramework>
+    <Platform>AnyCPU</Platform>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <DelaySign>false</DelaySign>
@@ -118,3 +119,4 @@
   </ItemGroup>
 
 </Project>
+
