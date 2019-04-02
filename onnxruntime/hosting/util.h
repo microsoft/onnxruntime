@@ -4,14 +4,15 @@
 #ifndef ONNXRUNTIME_HOSTING_UTIL_H
 #define ONNXRUNTIME_HOSTING_UTIL_H
 
-#include "core/common/status.h"
-
 #include <google/protobuf/stubs/status.h>
+
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace hosting {
 
-google::protobuf::util::Status GenerateProtoBufStatus(onnxruntime::common::Status onnx_status, const std::string& message);
+// Generate proper protobuf status from ONNX Runtime status
+google::protobuf::util::Status GenerateProtoBufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message);
 
 }  // namespace hosting
 }  // namespace onnxruntime

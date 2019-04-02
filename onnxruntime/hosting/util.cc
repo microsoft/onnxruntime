@@ -2,31 +2,18 @@
 // Licensed under the MIT License.
 
 #include <sstream>
+#include <google/protobuf/stubs/status.h>
+
 #include "core/common/status.h"
 #include "util.h"
-#include <google/protobuf/stubs/status.h>
 
 namespace onnxruntime {
 namespace hosting {
 
 namespace protobufutil = google::protobuf::util;
 
-//    OK = static_cast<unsigned int>(MLStatus::OK),
-//      FAIL = static_cast<unsigned int>(MLStatus::FAIL),
-//      INVALID_ARGUMENT = static_cast<unsigned int>(MLStatus::INVALID_ARGUMENT),
-//      NO_SUCHFILE = static_cast<unsigned int>(MLStatus::NO_SUCHFILE),
-//      NO_MODEL = static_cast<unsigned int>(MLStatus::NO_MODEL),
-//      ENGINE_ERROR = static_cast<unsigned int>(MLStatus::ENGINE_ERROR),
-//      RUNTIME_EXCEPTION = static_cast<unsigned int>(MLStatus::RUNTIME_EXCEPTION),
-//      INVALID_PROTOBUF = static_cast<unsigned int>(MLStatus::INVALID_PROTOBUF),
-//      MODEL_LOADED = static_cast<unsigned int>(MLStatus::MODEL_LOADED),
-//      NOT_IMPLEMENTED = static_cast<unsigned int>(MLStatus::NOT_IMPLEMENTED),
-//      INVALID_GRAPH = static_cast<unsigned int>(MLStatus::INVALID_GRAPH),
-//      SHAPE_INFERENCE_NOT_REGISTERED = static_cast<unsigned int>(MLStatus::SHAPE_INFERENCE_NOT_REGISTERED),
-//      REQUIREMENT_NOT_REGISTERED = static_cast<unsigned int>(MLStatus::REQUIREMENT_NOT_REGISTERED),
-
-protobufutil::Status GenerateProtoBufStatus(onnxruntime::common::Status onnx_status, const std::string& message) {
-  protobufutil::error::Code code;
+protobufutil::Status GenerateProtoBufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
+  protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
   switch (onnx_status.Code()) {
     case onnxruntime::common::StatusCode::OK:
     case onnxruntime::common::StatusCode::MODEL_LOADED:
