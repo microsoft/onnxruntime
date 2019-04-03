@@ -129,15 +129,15 @@ class SessionOptionsWrapper {
   }
 #endif
 
-  OrtSession* OrtCreateSessionFromHandle(_In_ OrtModel* model_handle) {
+  OrtSession* OrtCreateSessionFromModel(_In_ OrtModel* model_handle) {
     OrtSession* ret = nullptr;
-    ORT_THROW_ON_ERROR(::OrtCreateSessionFromHandle(env_, model_handle, value.get(), &ret));
+    ORT_THROW_ON_ERROR(::OrtCreateSessionFromModel(env_, model_handle, value.get(), &ret));
     return ret;
   }
 
-  OrtModel* OrtLoadModel(_In_ const ORTCHAR_T* model_path) {
+  OrtModel* OrtCreateModel(_In_ const ORTCHAR_T* model_path) {
     OrtModel* ret = nullptr;
-    ORT_THROW_ON_ERROR(::OrtLoadModel(model_path, &ret));
+    ORT_THROW_ON_ERROR(::OrtCreateModel(model_path, &ret));
     return ret;
   }
 };

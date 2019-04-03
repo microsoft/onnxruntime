@@ -183,9 +183,9 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 
 
 /**
- * \load a model from disk and return an opaque handle for it.
+ * \create a model from disk and return an opaque handle for it.
  */
-ORT_API_STATUS(OrtLoadModel, _In_ const ORTCHAR_T* model_path, _Out_ OrtModel** model_handle);
+ORT_API_STATUS(OrtCreateModel, _In_ const ORTCHAR_T* model_path, _Out_ OrtModel** model_handle);
 
 // TODO: document the path separator convention? '/' vs '\'
 // TODO: should specify the access characteristics of model_path. Is this read only during the
@@ -197,9 +197,9 @@ ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_p
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 /**
- * \create a session from opaque model handle.
+ * \create a session from model.
  */
-ORT_API_STATUS(OrtCreateSessionFromHandle, _In_ OrtEnv* env, _In_ OrtModel* model_handle,
+ORT_API_STATUS(OrtCreateSessionFromModel, _In_ OrtEnv* env, _In_ OrtModel* model_handle,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,

@@ -372,7 +372,7 @@ Status Model::LoadProto(const tstring& p_model_path, /*out*/ std::unique_ptr<ONN
   auto status = OpenFileHandle(p_model_path, &fd);
   if (!status.IsOK())
     return status;
-  std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
+  auto model_proto = std::make_unique<ModelProto>();
 
   try {
     auto raw_input = std::unique_ptr<ZeroCopyInputStream>(std::make_unique<FileInputStream>(fd));

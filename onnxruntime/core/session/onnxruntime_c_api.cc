@@ -341,7 +341,7 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtLoadModel, _In_ const ORTCHAR_T* model_path, _Out_ OrtModel** model_handle) {
+ORT_API_STATUS_IMPL(OrtCreateModel, _In_ const ORTCHAR_T* model_path, _Out_ OrtModel** model_handle) {
   API_IMPL_BEGIN
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> modelProto;
   const auto status = ::onnxruntime::Model::LoadProto(tstring(model_path), modelProto);
@@ -420,7 +420,7 @@ ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* mo
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtCreateSessionFromHandle, _In_ OrtEnv* env, _In_ OrtModel* model_handle,
+ORT_API_STATUS_IMPL(OrtCreateSessionFromModel, _In_ OrtEnv* env, _In_ OrtModel* model_handle,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
   auto& modelProto = *(reinterpret_cast<ONNX_NAMESPACE::ModelProto*>(model_handle));

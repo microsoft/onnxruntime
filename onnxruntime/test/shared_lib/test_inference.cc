@@ -98,9 +98,9 @@ void TestInference(OrtEnv* env, T model_uri,
   std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)>
       inference_session(nullptr, OrtReleaseSession);
   if (use_create_session_from_handle) {
-    // session takes a copy of the model, so need to keep the model around
-    std::unique_ptr<OrtModel, decltype(&OrtReleaseModel)> model(sf.OrtLoadModel(model_uri), OrtReleaseModel);
-    inference_session.reset(sf.OrtCreateSessionFromHandle(model.get()));
+    // session takes a copy of the model, so no need to keep the model around
+    std::unique_ptr<OrtModel, decltype(&OrtReleaseModel)> model(sf.OrtCreateModel(model_uri), OrtReleaseModel);
+    inference_session.reset(sf.OrtCreateSessionFromModel(model.get()));
   } else {
     inference_session.reset(sf.OrtCreateSession(model_uri));
   }
