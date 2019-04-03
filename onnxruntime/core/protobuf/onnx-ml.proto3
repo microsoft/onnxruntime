@@ -590,7 +590,3 @@ message FunctionProto {
   // A human-readable documentation for this function. Markdown is allowed.
   string doc_string = 8;
 }
-
-// For using protobuf-lite
-option optimize_for = LITE_RUNTIME;
-

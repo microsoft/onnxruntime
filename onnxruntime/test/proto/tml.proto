@@ -104,4 +104,3 @@ message TestCaseConfig {
   double relative_per_sample_tolerance = 2;
   bool post_processing = 3;
 }
-option optimize_for = LITE_RUNTIME;
