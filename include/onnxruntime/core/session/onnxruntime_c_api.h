@@ -534,6 +534,8 @@ ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXTyp
 */
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
+struct OrtKernelContext;
+typedef struct OrtKernelContext OrtKernelContext;
 
 struct OrtCustomOpApi {
   /*
@@ -548,10 +550,12 @@ struct OrtCustomOpApi {
   size_t(ORT_API_CALL* GetNumOfDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info);
   void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   OrtStatus*(ORT_API_CALL* SetDims)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
-
-  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Out_ void** out);
+  void*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value);
 
   void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
+
+  OrtValue*(ORT_API_CALL* KernelContext_GetInput)(OrtKernelContext* context, _In_ size_t index);
+  OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;
 
@@ -575,8 +579,8 @@ struct OrtCustomOp {
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
 
   // Op kernel callbacks
-  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
-  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ OrtValue** outputs, _In_ size_t output_count);
+  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtKernelContext* context, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
+  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 };
 typedef struct OrtCustomOp OrtCustomOp;

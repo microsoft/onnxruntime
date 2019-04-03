@@ -29,6 +29,24 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   return onnxruntime::ToOrtStatus(status);
 }
 
+void* OrtGetTensorMutableData2(OrtValue* value) {
+  void* result;
+  if (OrtStatus* status = OrtGetTensorMutableData(value, &result)) {
+    OrtReleaseStatus(status);
+    return nullptr;
+  }
+  return result;
+}
+
+OrtValue* OrtKernelContext_GetInput(OrtKernelContext* context, _In_ size_t index) {
+  return reinterpret_cast<OrtValue*>(const_cast<onnxruntime::MLValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index)));
+};
+
+OrtValue* OrtKernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
+  onnxruntime::TensorShape shape(dim_values, dim_count);
+  return reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+};
+
 constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtKernelInfoGetAttribute_float,
     &OrtKernelInfoGetAttribute_int64,
@@ -40,9 +58,12 @@ constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtGetDimensions,
     &OrtSetDims,
 
-    &OrtGetTensorMutableData,
+    &OrtGetTensorMutableData2,
 
     &OrtReleaseTensorTypeAndShapeInfo,
+
+    &OrtKernelContext_GetInput,
+    &OrtKernelContext_GetOutput,
 };
 
 namespace onnxruntime {
@@ -60,20 +81,7 @@ struct CustomOpKernel : OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
-    std::vector<OrtValue*> input_tensors;
-    auto input_count = ictx->InputCount();
-    for (int i = 0; i < input_count; i++)
-      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ictx->GetInputMLValue(i))));
-
-    std::vector<OrtValue*> output_tensors;
-    auto output_count = ictx->OutputCount();
-    for (int i = 0; i < output_count; i++) {
-      OrtTensorTypeAndShapeInfo info;
-      op_.KernelGetOutputShape(op_kernel_, input_tensors.data(), input_tensors.size(), i, &info);
-      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ictx->OutputMLValue(0, info.shape)));
-    }
-
-    op_.KernelCompute(op_kernel_, input_tensors.data(), input_tensors.size(), output_tensors.data(), output_tensors.size());
+    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ictx));
     return Status::OK();
   }
 
