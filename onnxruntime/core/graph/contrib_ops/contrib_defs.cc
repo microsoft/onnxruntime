@@ -286,6 +286,65 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
 
+  static const char* ThresholdedRelu_ver1_doc = R"DOC( 
+ThresholdedRelu takes one input data (Tensor<T>) and produces one output data 
+(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise, 
+is applied to the tensor elementwise. )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ThresholdedRelu)
+      .SinceVersion(1)
+      .SetDoc(ThresholdedRelu_ver1_doc)
+      .Attr("alpha", "Threshold value", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "X", "Input tensor", "T")
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput); 
+
+  static const char* DynamicSlice_ver1_doc = R"DOC(
+Produces a slice of the input tensor along multiple axes. Similar to numpy:
+https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
+Slices uses `axes`, `starts` and `ends` inputs to specify the start and end
+dimension for each axis in the list of axes, it uses this information to
+slice the input `data` tensor. If a negative value is passed for any of the
+start or end indices, it represent number of elements before the end of that
+dimension. If the value passed to start or end is larger than the `n` (the
+number of elements in this dimension), it represents `n`. For slicing to the
+end of a dimension with unknown size, it is recommended to pass in `INT_MAX`.
+If `axes` are omitted, they are set to `[0, ..., ndim-1]`.
+Example 1:
+  data = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+  ]
+  axes = [0, 1]
+  starts = [1, 0]
+  ends = [2, 3]
+  result = [
+      [5, 6, 7],
+  ]
+Example 2:
+  data = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+  ]
+  starts = [0, 1]
+  ends = [-1, 1000]
+  result = [
+      [2, 3, 4],
+  ]
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
+      .SinceVersion(1)
+      .SetDoc(DynamicSlice_ver1_doc)
+      .Input(0, "data", "Tensor of data to extract slices from.", "T")
+      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`", "Tind")
+      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes", "Tind")
+      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to.", "Tind", OpSchema::Optional)
+      .Output(0, "output", "Sliced data tensor.", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
       .SinceVersion(10)
       .Deprecate()
@@ -331,6 +390,18 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(DynamicSlice_ver1_doc)
+      .Input(0, "data", "Tensor of data to extract slices from.", "T")
+      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`", "Tind")
+      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes", "Tind")
+      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to.", "Tind", OpSchema::Optional)
+      .Output(0, "output", "Sliced data tensor.", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
 
   // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
 
@@ -385,7 +456,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -447,7 +518,7 @@ activation.)DOC")
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)
@@ -1100,70 +1171,58 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(
-Pruning away boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
-Bounding boxes with score less than score_threshold are removed. Bounding boxes are supplied as [y1, x1, y2, x2],
-where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners and the coordinates can be provided
-as normalized (i.e., lying in the interval [0, 1]) or absolute.
+Filter out boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
+Bounding boxes with score less than score_threshold are removed. Bounding box format is indicated by attribute center_point_box.
 Note that this algorithm is agnostic to where the origin is in the coordinate system and more generally is invariant to
-orthogonal transformations and translations of the coordinate system;
-thus translating or reflections of the coordinate system result in the same boxes being selected by the algorithm.
-The output of this operation is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
-The bounding box coordinates corresponding to the selected indices can then be obtained using the gather operation.)DOC")
-      .Input(0, "boxes", "An input tensor. 2D tensor with shape [num_boxes, 4]", "T1")
-      .Input(1, "scores", "An input tensor. 1D tensor with shape [num_boxes]", "T1")
-      .Output(0, "selected_indices", "selected indices from the boxes tensor.", "T2")
-      .Output(
+orthogonal transformations and translations of the coordinate system; thus translating or reflections of the coordinate system
+result in the same boxes being selected by the algorithm.
+The selected_indices output is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
+The bounding box coordinates corresponding to the selected indices can then be obtained using the Gather or GatherND operation.
+Note: The boxes doesn't has class dimension which means it alwasy has scores calculated for different classes on same box.)DOC")
+      .Input(
+          0,
+          "boxes",
+          "An input tensor with shape [num_batches, spatial_dimension, 4]. The single box data format is indicated by center_point_box.",
+          "tensor(float)")
+      .Input(
           1,
-          "valid_outputs",
-          "Optional. A 0-D integer tensor representing the number of valid elements in selected_indices, with the valid elements appearing first.",
-          "T2",
+          "scores",
+          "An input tensor with shape [num_batches, num_classes, spatial_dimension]",
+          "tensor(float)")
+      .Input(
+          2,
+          "max_output_boxes_per_class",
+          "Integer representing the maximum number of boxes to be selected per batch per class. It is a scalar. Value should be greater than 0",
+          "tensor(int32)",
           OpSchema::Optional)
-      .TypeConstraint("T1", {"tensor(float)"}, "Constrain input type to float tensor.")
-      .TypeConstraint("T2",
-                      {"tensor(int32)"},
-                      "Constrain output data type to 32-bit integer tensor.")
-      .Attr(
-          "max_output_size",
-          "Integer representing the maximum number of boxes to be selected by non max suppression.",
-          AttributeProto::INT)
-      .Attr(
+      .Input(
+          3,
           "iou_threshold",
-          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. Value range [0, 1]. The default is 0.0",
-          AttributeProto::FLOAT,
-          static_cast<float>(0.0f))
-      .Attr(
+          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. It is scalar. Value range [0, 1].",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Input(
+          4,
           "score_threshold",
-          "Float tensor representing the threshold for deciding when to remove boxes based on score.",
-          AttributeProto::FLOAT)
+          "Float representing the threshold for deciding when to remove boxes based on score. It is a scalar",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "selected_indices",
+          "selected indices from the boxes tensor. [num_selected_indices, 3], the selected indices format is [batch_index, class_index, box_index].",
+          "tensor(int32)")
       .Attr(
-          "pad_to_max_output_size",
-          "Optional. 1(true) - the output selected_indices is padded to be of length max_output_size. Defaults to 0(false).",
+          "center_point_box",
+          "Integer indicate the format of the box data. The default is 0."
+          "0 - the box data is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners"
+          "and the coordinates can be provided as normalized (i.e., lying in the interval [0, 1]) or absolute. Mostly used for TF models."
+          "1 - the box data is supplied as [x_center, y_center, width, height]. Mostly used for Pytoch models.",
           AttributeProto::INT,
-          OPTIONAL)
+          static_cast<int64_t>(0))
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
         selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
-
-        // If pad_to_max_output_size is set to 1, the output(0) selected_indices will has a fixed shape [max_output_size].
-        auto pad_to_max_output_size = ctx.getAttribute("pad_to_max_output_size");
-        if (pad_to_max_output_size && 1 == pad_to_max_output_size->i()) {
-          auto max_output_size = ctx.getAttribute("max_output_size")->i();
-          selected_indices_type
-              ->mutable_shape()
-              ->add_dim()
-              ->set_dim_value(max_output_size);
-        }
-
-        // valid_outputs is optional, shape is [1]
-        auto num_outputs = ctx.getNumOutputs();
-        if (num_outputs > 1) {
-          auto valid_outputs_shape = ctx.getOutputType(1)->mutable_tensor_type();
-          valid_outputs_shape->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
-          valid_outputs_shape
-              ->mutable_shape()
-              ->add_dim()
-              ->set_dim_value(1);
-        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)

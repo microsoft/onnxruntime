@@ -29,6 +29,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL_ALIAS(Softplus, ParametricSoftplus, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Tanh, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
 
 template <>
 Status Sigmoid<float>::Compute(OpKernelContext* context) const {
