@@ -385,7 +385,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -447,7 +447,7 @@ activation.)DOC")
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)
