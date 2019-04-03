@@ -11,7 +11,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
-  // Get "axes" attribute
+  // Get "axes" attribute.
   const ONNX_NAMESPACE::AttributeProto* attr = graph_utils::GetNodeAttribute(node, "axes");
   if (attr == nullptr || attr->type() != AttributeProto_AttributeType_INTS) {
     return Status::OK();
@@ -22,7 +22,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
     axes.push_back(static_cast<int64_t>(attr->ints(i)));
   }
 
-  // Generate new dims
+  // Generate new dims.
   NodeArg* input_def = node.MutableInputDefs()[0];
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   graph.GetInitializedTensor(input_def->Name(), tensor_proto);
@@ -45,7 +45,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
     }
   }
 
-  // Update shape of tensor proto
+  // Update shape of tensor proto.
   ONNX_NAMESPACE::TensorProto new_tensor_proto(*tensor_proto);
 
   for (int i = 0; i < static_cast<int>(new_dims.size()); i++) {
@@ -58,46 +58,14 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
   graph.RemoveInitializedTensor(input_def->Name());
   graph.AddInitializedTensor(new_tensor_proto);
 
-  // Update shape of NodeArg
+  // Update shape of NodeArg.
   TensorShapeProto shape;
   for (auto dim : new_dims) {
     shape.add_dim()->set_dim_value(dim);
   }
   input_def->SetShape(shape);
 
-  /*
-  // Temporarily store Unsqueeze's output nodes, so that we can access them to update their input after we have
-  // removed the edges from unsqueeze to them.
-  std::vector<NodeIndex> output_nodes_idx;
-  for (auto it = node.OutputNodesBegin(), end = node.OutputNodesEnd(); it != end; ++it) {
-    auto output_node_idx = (*it).Index();
-    output_nodes_idx.push_back(output_node_idx);
-  }
-
-  // Remove output edges of the Unsqueeze node.
-  graph_utils::RemoveNodeOutputEdges(graph, node);
-
-  // Update the input of the nodes following the Unsqueeze node to point to Unsqueeze's initializer input.
-  const NodeArg* output_def = node.OutputDefs()[0];
-  for (auto idx : output_nodes_idx) {
-    auto output_node = graph.GetNode(idx);
-
-    if (!output_node) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT);
-    }
-    auto& input_defs = output_node->MutableInputDefs();
-    for (auto& def : input_defs) {
-      if (def == output_def) {
-        def = input_def;
-      }
-    }
-  }
-  
-  // Remove the Unsqueeze node.
-  graph.RemoveNode(node.Index());
-  removed = modified = true;
-  */
-
+  // Remove Unsqueeze node.
   if (graph_utils::RemoveSingleInputNode(graph, node)) {
     removed = modified = true;
   }
