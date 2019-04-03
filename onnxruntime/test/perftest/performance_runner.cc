@@ -90,13 +90,8 @@ bool PerformanceRunner::Initialize() {
   std::string narrow_model_name = ToMBString(model_name);
   performance_result_.model_name = narrow_model_name;
 
-  // TODO: remove dependency on OnnxTestCase.
-  std::unique_ptr<ITestCase> test_case(CreateOnnxTestCase(narrow_model_name));
-
-  if (!test_case->SetModelPath(performance_test_config_.model_info.model_file_path.c_str()).IsOK()) {
-    LOGF_DEFAULT(ERROR, "load model failed");
-    return false;
-  }
+  auto p_model = TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
+  std::unique_ptr<ITestCase> test_case(CreateOnnxTestCase(narrow_model_name, p_model, 0.0, 0.0));
 
   SessionOptionsWrapper sf(env_);
   const bool enable_cpu_mem_arena = true;
@@ -159,11 +154,7 @@ bool PerformanceRunner::Initialize() {
     return false;
   }
 
-  st = test_case->LoadTestData(session_object_, 0 /* id */, b_, feeds_, true);
-  if (!st.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Load data failed " << test_case->GetTestCaseName();
-    return false;
-  }
+  test_case->LoadTestData(0 /* id */, b_, feeds_, true);
 
   input_names_.resize(feeds_.size());
   input_values_.resize(feeds_.size());
