@@ -83,6 +83,13 @@ backend_test.exclude(r'('
 '|^test_vgg19_cpu.*'
 '|^test_zfnet512_cpu.*'
 '|^test_gru_seq_length_cpu.*'
+'|^test_slice_cpu.*'
+'|^test_slice_default_axes_cpu.*'
+'|^test_slice_default_steps_cpu.*'
+'|^test_slice_end_out_of_bounds_cpu.*'
+'|^test_slice_neg_cpu.*'
+'|^test_slice_neg_steps_cpu.*'
+'|^test_slice_start_out_of_bounds_cpu.*'
 ')')
 
 # import all test cases at global scope to make

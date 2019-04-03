@@ -117,25 +117,25 @@ class SessionOptionsWrapper {
   }
 #ifdef _WIN32
   OrtSession* OrtCreateSession(_In_ const wchar_t* model_path) {
-    OrtSession* ret;
+    OrtSession* ret = nullptr;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #else
   OrtSession* OrtCreateSession(_In_ const char* model_path) {
-    OrtSession* ret;
+    OrtSession* ret = nullptr;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
 #endif
 };
-inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
+inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
   ORT_THROW_ON_ERROR(::OrtCreateTensorAsOrtValue(env, shape.data(), shape.size(), type, &ret));
   return ret;
 }
 
-inline OrtValue* OrtCreateTensorWithDataAsOrtValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
+inline OrtValue* OrtCreateTensorWithDataAsOrtValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
   ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_len, shape.data(), shape.size(), type, &ret));
   return ret;

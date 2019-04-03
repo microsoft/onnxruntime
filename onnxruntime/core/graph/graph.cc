@@ -869,12 +869,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   if (nullptr == dst_arg) {
     ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
-  if (src_arg != dst_arg) {
-    // The edge ends specified by source and destination arg slot are not referring to same node arg.
-    // It means there was no edge between these two slots before.
-    ORT_THROW("Argument type mismatch when removing edge.");
-  }
-
+  
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
   nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
@@ -1660,16 +1655,15 @@ Status Graph::VerifyNodeAndOpMatch() {
         node.op_ = nullptr;
       }
 
-      if (!node.op_) {
-        ONNX_NAMESPACE::FunctionBuilderRegistry& function_registry =
-            FunctionBuilderRegistry::OnnxInstance();
-        auto onnx_function_proto = function_registry.GetFunction(node.OpType(), maxInclusiveVersion, ONNX_DOMAIN);
-        if (!onnx_function_proto) {
-          return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
-        }
+      if (node.op_ && node.op_->HasFunction()) {
+        auto onnx_function_proto = node.op_->GetFunction();
         auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
+      }
+
+      if (!node.op_) {
+        return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
     }
 

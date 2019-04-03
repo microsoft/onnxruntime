@@ -150,6 +150,18 @@ void AddStripedBatch(
     int batch,
     Provider* provider);
 
+// Compute the row-wise sum of a N*D matrix X, and write it to a N
+// dimensional vector y.
+template <typename T, class Provider>
+void RowwiseSum(int N, int D, const T* x, T* y,
+                Provider* provider);
+
+// Compute the column-wise sum of a N*D matrix X, and write it to a D
+// dimensional vector y.
+template <typename T, class Provider>
+void ColwiseSum(int N, int D, const T* x, T* y,
+                Provider* provider);
+
 // Compute the row-wise max of a N*D matrix X, and write it to a N
 // dimensional vector y.
 template <typename T, class Provider>

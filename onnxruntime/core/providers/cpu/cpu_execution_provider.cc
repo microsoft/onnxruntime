@@ -4,7 +4,11 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
+
+#ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/contrib_kernels.h"
+#endif
+
 #include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
@@ -258,6 +262,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 
 // Opset 10
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, StringNormalizer);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, TopK);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, ThresholdedRelu);
 
 void RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 6, Clip)>());
@@ -509,6 +514,7 @@ void RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   // Opset 10
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, StringNormalizer)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, TopK)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, ThresholdedRelu)>());
 }
 
 // Forward declarations of ml op kernels
@@ -605,7 +611,9 @@ void RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 static void RegisterCPUKernels(KernelRegistry& kernel_registry) {
   RegisterOnnxOperatorKernels(kernel_registry);
   ::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry);
+#ifndef DISABLE_CONTRIB_OPS
   ::onnxruntime::contrib::RegisterContribKernels(kernel_registry);
+#endif
 }
 
 std::shared_ptr<KernelRegistry> GetCpuKernelRegistry() {

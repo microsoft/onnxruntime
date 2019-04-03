@@ -18,35 +18,15 @@ class GraphTransformerManager {
   }
 
   // Register a transformer with a level and compatible providers list
-  common::Status Register(std::unique_ptr<GraphTransformer> transformer,
-                          const TransformerLevel& level,
-                          const std::vector<std::string>& provider = {});
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
 
   // Apply all transformers registered for the given level on the given graph
-  common::Status ApplyTransformers(Graph& graph, const TransformerLevel& level) const;
+  common::Status ApplyTransformers(Graph& graph, TransformerLevel level) const;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
-
-  const std::vector<std::string>& GetProvidersForTransformer(const std::string& name) const {
-    const auto& entry = transformers_info_.find(name);
-    ORT_ENFORCE(entry != transformers_info_.end());
-    return entry->second.compatible_providers;
-  }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);  
 
   const unsigned steps_;
-
-  struct TransformerInfo {
-   public:
-    TransformerInfo(TransformerLevel level, const std::vector<std::string>& providers, GraphTransformer* graphTransformer)
-        : level{level}, compatible_providers{providers}, transformer{graphTransformer} {}
-
-    TransformerInfo() = default;
-
-    TransformerLevel level;
-    std::vector<std::string> compatible_providers;
-    GraphTransformer* transformer;
-  };  
 
   // Older GCC versions don't support std::hash with enum types
   // Therefore, std::hash<T> appears to be undefined when T is an enum Type. This is fixed in version 6.1
@@ -59,6 +39,6 @@ class GraphTransformerManager {
   };
 
   std::unordered_map<TransformerLevel, std::vector<std::unique_ptr<GraphTransformer>>, EnumHashKey> level_to_transformer_map_;
-  std::unordered_map<std::string, TransformerInfo> transformers_info_;
+  std::unordered_map<std::string, GraphTransformer*> transformers_info_;
 };
 }  // namespace onnxruntime

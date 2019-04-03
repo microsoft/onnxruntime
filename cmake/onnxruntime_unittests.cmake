@@ -63,11 +63,6 @@ function(AddTest)
     )
 endfunction(AddTest)
 
-#Check whether C++17 header file <filesystem> is present
-include(CheckIncludeFiles)
-check_include_files("filesystem" HAS_FILESYSTEM_H LANGUAGE CXX)
-check_include_files("experimental/filesystem" HAS_EXPERIMENTAL_FILESYSTEM_H LANGUAGE CXX)
-
 #Do not add '${TEST_SRC_DIR}/util/include' to your include directories directly
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
 #can propagate correctly.
@@ -111,13 +106,16 @@ if(onnxruntime_USE_CUDA)
 endif()
 
 set(onnxruntime_test_providers_src_patterns
-  "${TEST_SRC_DIR}/contrib_ops/*.h"
-  "${TEST_SRC_DIR}/contrib_ops/*.cc"
   "${TEST_SRC_DIR}/providers/*.h"
   "${TEST_SRC_DIR}/providers/*.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
   )
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  list(APPEND onnxruntime_test_providers_src_patterns
+    "${TEST_SRC_DIR}/contrib_ops/*.h"
+    "${TEST_SRC_DIR}/contrib_ops/*.cc")
+endif()
 
 file(GLOB onnxruntime_test_providers_src ${onnxruntime_test_providers_src_patterns})
 file(GLOB_RECURSE onnxruntime_test_providers_cpu_src
@@ -159,8 +157,6 @@ set(onnxruntime_test_framework_libs
 
 if(WIN32)
     list(APPEND onnxruntime_test_framework_libs Advapi32)
-elseif(HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H)
-    list(APPEND onnxruntime_test_framework_libs stdc++fs)
 endif()
 
 
@@ -211,10 +207,6 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
-endif()
-
-if( NOT WIN32 AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
-  list(APPEND onnxruntime_test_providers_libs stdc++fs)
 endif()
 
 if(WIN32)
@@ -315,12 +307,15 @@ endif()  # SingleUnitTestProject
 
 # standalone test for inference session without environment
 # the normal test executables set up a default runtime environment, which we don't want here
+if(NOT ipo_enabled)
+  #TODO: figure out why this test doesn't work with gcc LTO
 AddTest(
   TARGET onnxruntime_test_framework_session_without_environment_standalone
   SOURCES "${TEST_SRC_DIR}/framework/inference_session_without_environment/inference_session_without_environment_standalone_test.cc" "${TEST_SRC_DIR}/framework/test_main.cc"
   LIBS  onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
   DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
 )
+endif()
 
 #
 # onnxruntime_ir_graph test data
@@ -379,6 +374,7 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/testenv.cc
   ${onnx_test_runner_src_dir}/heap_buffer.h
   ${onnx_test_runner_src_dir}/heap_buffer.cc
+  ${onnx_test_runner_src_dir}/OrtValueList.h
   ${onnx_test_runner_src_dir}/runner.h
   ${onnx_test_runner_src_dir}/runner.cc
   ${onnx_test_runner_src_dir}/TestCase.cc
@@ -421,7 +417,7 @@ install(TARGETS onnx_test_runner
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if(onnxruntime_BUILD_BENCHMARKS AND (HAS_FILESYSTEM_H OR HAS_EXPERIMENTAL_FILESYSTEM_H))
+if(onnxruntime_BUILD_BENCHMARKS)
   add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc ${TEST_SRC_DIR}/onnx/microbenchmark/model_init.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
   onnxruntime_add_include_to_target(onnxruntime_benchmark gsl)
