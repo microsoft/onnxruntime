@@ -249,6 +249,14 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
   return true;
 }
 
+/** Checks if the graph's outputs will be safe in case of removing the node.
+    This happens when at least one of the outputs of the node appears in the graph outputs (as removing
+    the node will lead to losing that graph output too). Note that when the node belongs to a sub-graph,
+    the graph outputs are not affected by its removal, since they are specified positionally and not by name. */
+static bool AreGraphOutputsSafe(const Graph& graph, const Node& node) {
+  return !graph.IsNodeOutputsInGraphOutputs(node) || graph.IsSubgraph();
+}
+
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
@@ -347,7 +355,10 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
 }
 
 bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  if (!IsSingleInSingleOutNode(node)) {
+  // Cannot remove a node with multiple output NodeArgs (multiple output edges is fine), neither
+  // a node whose output is also a graph output.
+  if (!IsSingleInSingleOutNode(node) ||
+      !AreGraphOutputsSafe(graph, node)) {
     return false;
   }
 
