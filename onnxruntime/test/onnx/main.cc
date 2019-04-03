@@ -318,7 +318,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"tf_inception_v4", "Cast opset 9 not supported yet"},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
-      {"tf_pnasnet_large", "disable temporarily"}};
+      {"tf_pnasnet_large", "disable temporarily"},
+      {"slice", "Slice opset 10 not supported yet"},
+      {"slice_neg", "Slice opset 10 not supported yet"},
+      {"slice_start_out_of_bounds", "Slice opset 10 not supported yet"},
+      {"slice_end_out_of_bounds", "Slice opset 10 not supported yet"},
+      {"slice_default_axes", "Slice opset 10 not supported yet"}};
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
