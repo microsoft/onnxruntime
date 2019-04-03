@@ -270,22 +270,15 @@ TEST(GradientCheckerTest, ConcatGrad) {
   }
 }
 
-// TODO: label doesn't have gradient
-TEST(GradientCheckerTest, DISABLED_SoftmaxCrossEntropyGrad) {
+TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  training::OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
+  OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
   const float error_tolerance = 1e-3f;
 
   {
-    TensorShape input_shape({1, 10, 1, 1});
-    gradient_checker.ComputeGradientError(op_def, {input_shape, input_shape}, {{1}}, &max_error);
-    EXPECT_TRUE(max_error <= error_tolerance);
-  }
-
-  {
-    TensorShape input_shape({1, 10});
-    gradient_checker.ComputeGradientError(op_def, {input_shape, input_shape}, {{1}}, &max_error);
+    TensorShape input_shape({2, 10});
+    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error);
     EXPECT_TRUE(max_error <= error_tolerance);
   }
 }

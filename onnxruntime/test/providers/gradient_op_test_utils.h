@@ -3,13 +3,22 @@
 
 #pragma once
 #include "provider_test_utils.h"
+#include "gradient_checker.h"
 
 namespace onnxruntime {
 namespace test {
 
 class GradientOpTester : public OpTester {
  public:
-  using OpTester::OpTester;
+  explicit GradientOpTester(const char* op,
+                            const std::vector<TensorInfo>& input_infos,
+                            const std::vector<TensorInfo>& output_infos,
+                            int opset_version = 9,
+                            const char* domain = onnxruntime::kOnnxDomain,
+                            bool verify_output = true)
+      : OpTester(op, opset_version, domain, verify_output),
+        input_infos_(input_infos),
+        output_infos_(output_infos) {}
 
   void Run(int output_index_to_use_as_loss,
            int data_index_of_output,
@@ -24,6 +33,9 @@ class GradientOpTester : public OpTester {
                                std::vector<std::string>& output_names,
                                int output_index_to_use_as_loss,
                                int data_index_of_output);
+
+  std::vector<TensorInfo> input_infos_;
+  std::vector<TensorInfo> output_infos_;
 };
 }  // namespace test
 }  // namespace onnxruntime

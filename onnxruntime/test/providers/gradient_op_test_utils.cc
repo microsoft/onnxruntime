@@ -53,12 +53,16 @@ void GradientOpTester::Run(
     // Not all inputs/outputs reqiures/have a gradient, e.g.index in gather
     VectorString weights_to_train;
     for (int i = 0; i < input_data_.size(); i++) {
-      weights_to_train.push_back(input_data_[i].def_.Name());
+      if (input_infos_[i].has_gradient) {
+        weights_to_train.push_back(input_data_[i].def_.Name());
+      }
     }
 
     VectorString dy_values;
     for (int i = 0; i < output_data_.size(); i++) {
-      dy_values.push_back(output_data_[i].def_.Name());
+      if (output_infos_[i].has_gradient) {
+        dy_values.push_back(output_data_[i].def_.Name());
+      }
     }
 
     training::GradientGraphBuilder grad_graph_builder(&graph,
@@ -115,13 +119,19 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
   output_names.clear();  //ignore output names
 
   // add gradients as output instead
-  for (auto& output : input_data_) {
-    output_names.push_back(output.def_.Name() + "_grad");
+  for (int i = 0; i < input_data_.size(); ++i) {
+    if (!input_infos_[i].has_gradient) {
+      continue;
+    }
+    output_names.push_back(input_data_[i].def_.Name() + "_grad");
   }
 
   // Append gradient names and values to feeds
   std::vector<Data> gradient_data;
   for (int i = 0; i < output_data_.size(); i++) {
+    if (!output_infos_[i].has_gradient) {
+      continue;
+    }
     auto shape = output_data_[i].data_.Get<Tensor>().Shape();
     std::vector<float> values(shape.Size(), 0.0);
     if (output_index_to_use_as_loss == i) {

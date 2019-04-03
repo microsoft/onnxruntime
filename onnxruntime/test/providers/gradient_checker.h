@@ -19,6 +19,17 @@ limitations under the License.
 namespace onnxruntime {
 namespace test {
 
+struct TensorInfo {
+  TensorInfo(const std::initializer_list<int64_t>& shape, bool has_gradient = true)
+      : shape(shape), has_gradient(has_gradient) {}
+
+  TensorInfo(const TensorShape& shape, bool has_gradient = true)
+      : shape(shape), has_gradient(has_gradient) {}
+
+  TensorShape shape;
+  bool has_gradient;
+};
+
 // TODO: This class currently assumes the inputs share types and the outputs share a type.
 // However there are cases like MaxPool and Gather where this is not true.
 template <typename X_T, typename Y_T, typename JAC_T>
@@ -40,34 +51,34 @@ class GradientChecker {
   /// <X_T, Y_T, JAC_T> should be <double, double, double>
   Status ComputeGradientError(
       const training::OpDef& op_def,
-      const std::vector<onnxruntime::TensorShape>& x_shapes,
-      const std::vector<onnxruntime::TensorShape>& y_shapes,
+      const std::vector<TensorInfo>& x_infos,
+      const std::vector<TensorInfo>& y_infos,
       JAC_T* max_error,
       const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {});
 
  private:
-  Status InitJacobians(const std::vector<TensorShape>& x_shapes,
-                       const std::vector<TensorShape>& y_shapes,
+  Status InitJacobians(const std::vector<TensorInfo>& x_infos,
+                       const std::vector<TensorInfo>& y_infos,
                        std::vector<std::vector<JAC_T>>* jacobians);
 
   std::vector<onnxruntime::MLValue> EvaluateFunctionAtInput(const training::OpDef& op_def,
-                                                            const std::vector<TensorShape>& x_shapes,
-                                                            const std::vector<TensorShape>& y_shapes,
+                                                            const std::vector<TensorInfo>& x_infos,
+                                                            const std::vector<TensorInfo>& y_infos,
                                                             std::vector<std::vector<X_T>>* x_datas,
                                                             std::vector<std::vector<Y_T>>* y_datas,
                                                             const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
   Status ComputeTheoreticalJacobianTranspose(const training::OpDef& op_def,
-                                             const std::vector<TensorShape>& x_shapes,
-                                             const std::vector<TensorShape>& y_shapes,
+                                             const std::vector<TensorInfo>& x_infos,
+                                             const std::vector<TensorInfo>& y_infos,
                                              std::vector<std::vector<X_T>>* x_datas,
                                              std::vector<std::vector<Y_T>>* y_datas,
                                              std::vector<std::vector<JAC_T>>* jacobian_ts,
                                              const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
   Status ComputeNumericJacobianTranspose(const training::OpDef& op_def,
-                                         const std::vector<TensorShape>& x_shapes,
-                                         const std::vector<TensorShape>& y_shapes,
+                                         const std::vector<TensorInfo>& x_infos,
+                                         const std::vector<TensorInfo>& y_infos,
                                          const JAC_T delta,
                                          std::vector<std::vector<X_T>>* x_datas,
                                          std::vector<std::vector<Y_T>>* y_datas,
@@ -75,8 +86,8 @@ class GradientChecker {
                                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
   Status ComputeGradientErrorInternal(const training::OpDef& op_name,
-                                      const std::vector<TensorShape>& x_shapes,
-                                      const std::vector<TensorShape>& y_shapes,
+                                      const std::vector<TensorInfo>& x_infos,
+                                      const std::vector<TensorInfo>& y_infos,
                                       std::vector<std::vector<X_T>>* x_datas,
                                       std::vector<std::vector<Y_T>>* y_datas,
                                       JAC_T* max_error,
