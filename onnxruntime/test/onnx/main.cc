@@ -323,7 +323,10 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"slice_neg", "Slice opset 10 not supported yet"},
       {"slice_start_out_of_bounds", "Slice opset 10 not supported yet"},
       {"slice_end_out_of_bounds", "Slice opset 10 not supported yet"},
-      {"slice_default_axes", "Slice opset 10 not supported yet"}};
+      {"slice_default_axes", "Slice opset 10 not supported yet"},
+      {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
+      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"}
+  };
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
