@@ -21,7 +21,9 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 bool IsSupportedProvider(const Node& node,
                          const std::unordered_set<std::string>& compatible_providers);
 
-/** Check whether the node has a single input and a single output. */
+/** Check whether the node has a single input and a single output. The single input can be either the output of
+    another node or an initializer, but not an implicit input from a parent subgraph. The single output can be 
+    fed to multiple downstream operators, i.e., it can have multiple output edges. */
 bool IsSingleInSingleOutNode(const Node& node);
 
 /** Returns true if the graph has the given input.*/
@@ -57,7 +59,8 @@ Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> f
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
 /** Remove the given single-input Node from the Graph. The single input might be either
-    another node or an initializer.*/
+    another node or an initializer, but not an implicit input. The node should have a single
+    output but can have multiple output edges. */
 bool RemoveSingleInputNode(Graph& graph, Node& node);
 
 /** Remove all output edges from the given Node of the Graph. 

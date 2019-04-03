@@ -326,7 +326,9 @@ Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> f
 }
 
 bool IsSingleInSingleOutNode(const Node& node) {
-  return node.GetInputEdgesCount() == 1 && node.GetOutputEdgesCount() == 1;
+  return node.InputDefs().size() == 1 &&
+         node.ImplicitInputDefs().size() == 0 &&
+         node.GetOutputEdgesCount() == 1;
 }
 
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
@@ -336,18 +338,16 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
 }
 
 bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  if (node.GetInputEdgesCount() > 1 || node.InputDefs().size() > 1) {
+  if (!IsSingleInSingleOutNode(node)) {
     return false;
   }
 
-  // If it has a single input that is not an initializer (initializers are not connected with edges to nodes).
+  // If the single input comes from another node (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
     return RemoveNodeWithSingleNodeIn(graph, node);
-  } else if (node.InputDefs().size() == 1) {
+  } else {
     return RemoveNodeWithSingleInitializerIn(graph, node);
   }
-
-  return false;
 }
 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {
@@ -362,8 +362,8 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   const onnx::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
-    // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should not
-    // appear in the graph's inputs (that is the only way to guarantee it will always be constant).
+    // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should
+    // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
     if (!graph.GetInitializedTensor(input_def->Name(), initializer) || IsGraphInput(graph, input_def)) {
       return false;
     }
