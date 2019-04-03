@@ -234,7 +234,16 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
     auto output_node = graph.GetNode(output_edge.dst_node);
     ORT_ENFORCE(output_node, "Outgoing node could not be found.");
 
-    output_node->MutableInputDefs()[output_edge.dst_arg_index] = input_def;
+    auto dst_arg_idx = output_edge.dst_arg_index;
+    if (dst_arg_idx < output_node->InputDefs().size()) {
+      output_node->MutableInputDefs()[output_edge.dst_arg_index] = input_def;
+    } else if (dst_arg_idx < output_node->InputDefs().size() + output_node->ImplicitInputDefs().size()) {
+      // If we need to update an implicit input.
+      output_node->MutableImplicitInputDefs()[dst_arg_idx - output_node->InputDefs().size()] = input_def;
+    } else {
+      LOGS_DEFAULT(ERROR) << " Invalid value for input index of node " << output_node->Name();
+      return false;
+    }
   }
 
   return true;
@@ -328,7 +337,7 @@ Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> f
 bool IsSingleInSingleOutNode(const Node& node) {
   return node.InputDefs().size() == 1 &&
          node.ImplicitInputDefs().size() == 0 &&
-         node.GetOutputEdgesCount() == 1;
+         node.OutputDefs().size() == 1;
 }
 
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {

@@ -156,6 +156,11 @@ class Node {
     return definitions_.implicit_input_defs;
   }
 
+  /** Gets a modifiable collection of the Node's implicit input definitions. */
+  std::vector<NodeArg*>& MutableImplicitInputDefs() noexcept {
+    return definitions_.implicit_input_defs;
+  }
+
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
   const ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
