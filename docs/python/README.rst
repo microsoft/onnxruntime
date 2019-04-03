@@ -52,6 +52,11 @@ replaces *scikit-learn* to compute the predictions.
 Changes
 -------
 
+0.3.1
+^^^^^
+
+Protobuf-lite, NuGet file fixes (patch to 0.3.0).
+
 0.3.0
 ^^^^^
 
