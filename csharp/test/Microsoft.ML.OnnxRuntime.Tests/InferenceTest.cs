@@ -50,12 +50,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
-        private void CanRunInferenceOnAModel()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(2)]
+        private void CanRunInferenceOnAModel(uint graphOptimizationLevel)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
-            using (var session = new InferenceSession(modelPath))
+            // Set the graph optimization level for this session.
+            SessionOptions options = new SessionOptions();
+            Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+
+            using (var session = new InferenceSession(modelPath, options))
             {
                 var inputMeta = session.InputMetadata;
                 var container = new List<NamedOnnxValue>();
@@ -664,8 +670,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtSessionGetOutputTypeInfo","OrtReleaseSession","OrtCreateSessionOptions","OrtCloneSessionOptions",
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
-            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSessionOptionsAppendExecutionProvider_CPU",
-            "OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
+            "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
             "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
             "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetNumOfDimensions",
@@ -677,7 +683,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var x = GetProcAddress(hModule, ep);
                 Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
             }
-        }
+        }        
 
         static string GetTestModelsDir()
         {
