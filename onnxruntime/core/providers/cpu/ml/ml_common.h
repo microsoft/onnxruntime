@@ -284,10 +284,11 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
   }
 }
 
-static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z, int add_second_class) {
+template <typename T>
+void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+                  int add_second_class) {
   if (post_transform == POST_EVAL_TRANSFORM::PROBIT && scores.size() == 1) {
     scores[0] = ComputeProbit(scores[0]);
-    Z->template MutableData<float>()[write_index] = scores[0];
   } else if (scores.size() >= 2) {  //multiclass
     if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
       for (float& score : scores) {
@@ -322,10 +323,12 @@ static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM 
       }
     }
   }
-  for (float score : scores) {
-    Z->template MutableData<float>()[write_index] = score;
-    write_index++;
+  T* out_p = Z->template MutableData<T>() + write_index;
+  size_t len;
+  if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
+    ORT_THROW("length overflow");
   }
+  memcpy(out_p, scores.data(), len);
 }
 
 }  // namespace ml
