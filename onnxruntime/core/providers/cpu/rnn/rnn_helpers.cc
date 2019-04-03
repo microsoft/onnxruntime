@@ -79,7 +79,7 @@ Status ValidateCommonRnnInputs(const Tensor& X,
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
     if (std::any_of(sequence_len_entries.cbegin(),
                     sequence_len_entries.cend(),
-                    [seq_length](int len) { return len <= 0 || len > seq_length; })) {
+                    [seq_length](int len) { return len < 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
