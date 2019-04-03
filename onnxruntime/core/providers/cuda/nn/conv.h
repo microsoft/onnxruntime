@@ -31,56 +31,79 @@ class CudnnConvolutionDescriptor final {
   cudnnConvolutionDescriptor_t desc_;
 };
 
-template <typename Key, typename T>
-class lru_map {
+template <typename T>
+struct vector_hash {
+  std::size_t operator()(const std::vector<T>& values) const {
+    std::size_t seed = values.size();
+    for (auto& val : values)
+      seed ^= std::hash<T>()(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+  }
+};
+
+template <typename Key, typename T,
+          typename Hash = std::hash<Key>,
+          typename KeyEqual = std::equal_to<Key>,
+          typename Allocator = std::allocator<std::pair<const Key, T>>,
+          typename ListAllocator = std::allocator<Key>>
+class lru_unordered_map {
  public:
-  lru_map(size_t max_size) : max_size_(max_size) {}
+  lru_unordered_map(size_t max_size) : max_size_(max_size) {}
 
   void insert(const Key& key, const T& value) {
-    auto it = handles_.find(key);
-    if (it != handles_.end()) {
-      items_.erase(it->second);
-      handles_.erase(it);
+    auto it = items_.find(key);
+    if (it != items_.end()) {
+      it->second.value = value;
+      move_to_front(it->second.lru_iterator);
+      return;
     }
 
-    items_.emplace_front(key, value);
-    handles_.emplace(key, items_.begin());
-
-    while (size() > max_size_) {
-      handles_.erase(items_.back().first);
-      items_.pop_back();
+    while (size() + 1 > max_size_) {
+      items_.erase(lru_list_.back());
+      lru_list_.pop_back();
     }
+
+    lru_list_.emplace_front(key);
+    items_.emplace(key, value_type{value, lru_list_.begin()});
   }
 
   T& at(const Key& key) {
-    auto it = handles_.find(key);
-    if (it == handles_.end()) {
+    auto it = items_.find(key);
+    if (it == items_.end()) {
       throw std::out_of_range("There is no such key in cache");
     }
-    items_.splice(items_.begin(), items_, it->second);
-    return it->second->second;
+    move_to_front(it->second.lru_iterator);
+    return it->second.value;
   }
 
   bool contains(const Key& key) const {
-    return handles_.find(key) != handles_.end();
+    return items_.find(key) != items_.end();
   }
 
   size_t size() const {
-    return handles_.size();
+    return items_.size();
   }
 
   void clear() {
     items_.clear();
-    handles_.clear();
+    lru_list_.clear();
   }
 
 private:
-  using value_type = std::pair<Key, T>;
-  using iterator_type = typename std::list<value_type>::iterator;
+  using list_type = std::list<Key, ListAllocator>;
+  using iterator_type = typename list_type::iterator;
+  struct value_type {
+    T value;
+    iterator_type lru_iterator;
+  };
+
+  void move_to_front(iterator_type it) {
+    lru_list_.splice(lru_list_.begin(), lru_list_, it);
+  }
 
   size_t max_size_;
-  std::list<value_type> items_;
-  std::map<Key, iterator_type> handles_;
+  std::unordered_map<Key, value_type, Hash, KeyEqual, Allocator> items_;
+  list_type lru_list_;
 };
 
 // cached cudnn descriptors
@@ -102,7 +125,7 @@ struct CudnnConvState {
   CudnnTensor y_tensor;
   CudnnConvolutionDescriptor conv_desc;
 
-  lru_map<std::vector<int64_t>, AlgoPerfType> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
+  lru_unordered_map<std::vector<int64_t>, AlgoPerfType, vector_hash<int64_t>> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
