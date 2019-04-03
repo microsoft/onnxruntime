@@ -1677,7 +1677,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     // default value defined in operator definition if needed.
     // Fill node attribute with default value specified in operator definition if any.
     auto node_attributes = node.GetAttributes();
-    for (auto attr_def : p_op->attributes()) {
+    for (const auto& attr_def : p_op->attributes()) {
       auto node_attr_iter = node_attributes.find(attr_def.first);
       if (node_attributes.end() == node_attr_iter) {
         // The attribute was not specified in the node.
