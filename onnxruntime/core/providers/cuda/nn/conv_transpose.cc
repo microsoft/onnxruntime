@@ -106,7 +106,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
             &perf,
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize));
-        s_.cached_benchmark_results.insert(x_dims, perf);
+        s_.cached_benchmark_results.insert(x_dims, {perf.algo, perf.memory, perf.mathType});
       }
 
       const auto& perf = s_.cached_benchmark_results.at(x_dims);

@@ -125,7 +125,13 @@ struct CudnnConvState {
   CudnnTensor y_tensor;
   CudnnConvolutionDescriptor conv_desc;
 
-  lru_unordered_map<std::vector<int64_t>, AlgoPerfType, vector_hash<int64_t>> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
+  struct PerfResultParams {
+    decltype(AlgoPerfType().algo)     algo;
+    decltype(AlgoPerfType().memory)   memory;
+    decltype(AlgoPerfType().mathType) mathType;
+  };
+
+  lru_unordered_map<std::vector<int64_t>, PerfResultParams, vector_hash<int64_t>> cached_benchmark_results { MAX_CACHED_ALGO_PERF_RESULTS };
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;

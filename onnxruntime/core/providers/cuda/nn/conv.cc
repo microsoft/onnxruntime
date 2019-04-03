@@ -144,7 +144,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
             &perf,
             algo_search_workspace.get(),
             AlgoSearchWorkspaceSize));
-        s_.cached_benchmark_results.insert(x_dims_cudnn, perf);
+        s_.cached_benchmark_results.insert(x_dims_cudnn, {perf.algo, perf.memory, perf.mathType});
       }
 
       const auto& perf = s_.cached_benchmark_results.at(x_dims_cudnn);
