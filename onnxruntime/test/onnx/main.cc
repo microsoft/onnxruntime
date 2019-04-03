@@ -306,6 +306,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
+      {"shrink", "test case is wrong"},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"}
