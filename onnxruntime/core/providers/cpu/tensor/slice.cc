@@ -8,7 +8,7 @@ using namespace std;
 
 namespace onnxruntime {
 
-#define ADD_TYPED_SLICE_V9_OP(data_type)                                      \
+#define ADD_TYPED_SLICE_V9_OP(data_type)                                                \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                             \
       Slice,                                                                            \
       1, 9,                                                                             \
@@ -30,16 +30,14 @@ ADD_TYPED_SLICE_V9_OP(MLFloat16);
 ADD_TYPED_SLICE_V9_OP(bool);
 ADD_TYPED_SLICE_V9_OP(string);
 
-/*
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                                                 \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                             \
-      DynamicSlice,                                                                                           \
-      1,                                                                                                      \
-      data_type,                                                                                              \ 
-      KernelDefBuilder()                                                                                      \
-      .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                          \
-      .TypeConstraint("Tind",                                                                                 \
-                    {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),        \  
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                              \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                          \
+      DynamicSlice,                                                                        \
+      1,                                                                                   \
+      data_type,                                                                           \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())     \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),   \
+                                                 DataTypeImpl::GetTensorType<int64_t>()}), \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -55,7 +53,8 @@ ADD_TYPED_DYNAMIC_SLICE_OP(double);
 ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
 ADD_TYPED_DYNAMIC_SLICE_OP(bool);
 ADD_TYPED_DYNAMIC_SLICE_OP(string);
-*/
+
+/*
 #define ADD_TYPED_SLICE_V10_OP(data_type)                                                                      \       
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                              \    
       Slice,                                                                                                   \    
@@ -78,6 +77,7 @@ ADD_TYPED_SLICE_V10_OP(double);
 ADD_TYPED_SLICE_V10_OP(MLFloat16);
 ADD_TYPED_SLICE_V10_OP(bool);
 ADD_TYPED_SLICE_V10_OP(string);
+*/
 
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
@@ -134,11 +134,6 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     std::vector<int64_t>& starts,
                                     std::vector<int64_t>& steps,
                                     std::vector<int64_t>& output_dims) const {
-  const auto& input_rank = input_dimensions.size();
-  if (input_rank != raw_starts.size() || input_rank != raw_ends.size())
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Rank of input data: ", std::to_string(input_rank), 
-                           " needs to be same as length of starts/ends which is: ", std::to_string(raw_starts.size()));
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
   if (axes.size() == 0) {
@@ -147,6 +142,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     std::iota(axes.begin(), axes.end(), 0);
   }
 
+    /*
   // Initialize steps to default steps if not provided
   if (steps.size() == 0) {
     // steps are omitted, they are set to[1, ..., 1]
@@ -158,11 +154,13 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Rank of input data: ", std::to_string(input_rank),
                            " needs to be same as length of steps is: ", std::to_string(steps.size()));
+  */
 
   // Iterate through the provided axes and override the start/end/steps ranges
+  const auto& dimension_count = input_dimensions.size();
   for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
-    auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(input_rank) : axes[axesIndex];
-    if (axis >= static_cast<int64_t>(input_rank) || axis < 0)
+    auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
+    if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
     auto start = raw_starts[axesIndex];
     if (start < 0)
@@ -172,20 +170,19 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     auto end = raw_ends[axesIndex];
     if (end < 0)
       end += input_dimensions[axis];
-    output_dims[axis] = static_cast<int64_t>(ceil( 1.0 * (clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis]) / abs(steps[axesIndex])));
+    output_dims[axis] = static_cast<int64_t>(ceil( 1.0 * (clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis]) / steps[axesIndex]));
     if (output_dims[axis] < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'starts' and 'ends' values resulted in a negative dimension");
   }
   return Status::OK();
 }
 
-// DynamicSlice & Slice V10
+// Slice V10 & DynamicSlice
 void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
                                      std::vector<int64_t>& input_starts,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
                                      std::vector<int64_t>& input_steps) const {
-  // Slice V10 & DynamicSlice
   auto start_tensor = context->Input<Tensor>(1);
   auto ends_tensor = context->Input<Tensor>(2);
   const Tensor* axes_tensor = nullptr;
@@ -260,7 +257,7 @@ Status SliceImpl(OpKernelContext* ctx,
 
   return Status::OK();
 }
-
+         
 template <typename T, bool dynamic>
 Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
@@ -273,12 +270,12 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> steps(input_dimensions.size(), 1);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  // DynamicSlice & Slice V10
+  // Slice V10 & DynamicSlice 
   if (dynamic) {
-    std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
+    std::vector<int64_t> input_starts, input_ends, input_axes;
+    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                                          input_dimensions, starts, input_steps, output_dims));
+                                          input_dimensions, starts, steps, output_dims));
   } 
   // Slice V1-9
   else {
@@ -286,6 +283,6 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
                                           input_dimensions, starts, output_dims));
   }
 
-  return SliceImpl<T>(ctx, input_tensor, output_dims, starts, input_steps);
+  return SliceImpl<T>(ctx, input_tensor, output_dims, starts, steps);
 }
 }  // namespace onnxruntime

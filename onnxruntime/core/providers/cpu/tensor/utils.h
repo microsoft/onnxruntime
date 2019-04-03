@@ -126,8 +126,8 @@ struct SliceSkips : std::vector<int64_t> {
 	         gsl::span<const int64_t> steps)
       : std::vector<int64_t>(input_shape.NumDimensions(), 0) {
     auto& dims = input_shape.GetDims();
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size());
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == steps.size());
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
+                static_cast<ptrdiff_t>(dims.size()) == steps.size());
     size_t pitch = dims.back();
     back() = pitch - extents[size() - 1];
     for (size_t i = size() - 1; i-- > 0;) {
@@ -222,7 +222,7 @@ struct SliceIterator {
   const Tensor& tensor_;
   const T* input_{tensor_.template Data<T>()};
   gsl::span<const int64_t> extents_;
-  size_t inner_counter_{}, inner_extent_, inner_step_, inner_dim;
+  size_t inner_counter_{}, inner_extent_, inner_step_, inner_dim_;
   SliceSkips skips_;
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
 };

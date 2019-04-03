@@ -171,7 +171,8 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     size_t inner_axis = dimension_count - 1;
 
     TensorAxisCounters input_counters(*p_tensor);
-    SliceIterator<float> input(*p_tensor, input_starts, input_extents);
+    std::vector<int64_t> input_steps(dimension_count, 1);
+    SliceIterator<float> input(*p_tensor, input_starts, input_extents, input_steps);
 
     while (input_counters) {
       Y_data += alignSkip;
