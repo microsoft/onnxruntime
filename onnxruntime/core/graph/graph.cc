@@ -618,7 +618,6 @@ Graph::Graph(GraphProto* graph_proto,
       parent_graph_{parent_graph} {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
-  TypeToCountMap type_to_count_map;
 
   // these are all empty unless we received a graph_proto as input
   if (graph_proto != nullptr) {
@@ -688,7 +687,7 @@ Graph::Graph(GraphProto* graph_proto,
     }
 
     for (auto node_proto : graph_proto_->node()) {
-      AddNode(node_proto, name_to_type_map, type_to_count_map);
+      AddNode(node_proto, name_to_type_map);
     }
   }
 }
@@ -871,6 +870,12 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
 
+  if (src_arg != dst_arg) {
+    // The edge ends specified by source and destination arg slot are not referring to same node arg.
+    // It means there was no edge between these two slots before.
+    ORT_THROW("Argument type mismatch when removing edge.");
+  }
+
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
   nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
@@ -882,6 +887,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
+    const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
+
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
         std::vector<std::string> node_args_consumed;
@@ -933,6 +940,17 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
             inner_nodes.insert(&output_node);
+            
+            // If this Graph was built manually, remove the implicit input from the graph outputs if it is present there
+            // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
+            // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
+            if (!loaded_from_model_file) {
+              auto in_ordered_graph_outputs = find(graph_output_order_.cbegin(), graph_output_order_.cend(), node_arg);
+              if (in_ordered_graph_outputs == graph_output_order_.cend()) {
+                graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
+                                     graph_outputs_.end());
+              }
+            }
           }
         }
       }
@@ -1656,16 +1674,15 @@ Status Graph::VerifyNodeAndOpMatch() {
         node.op_ = nullptr;
       }
 
-      if (!node.op_) {
-        ONNX_NAMESPACE::FunctionBuilderRegistry& function_registry =
-            FunctionBuilderRegistry::OnnxInstance();
-        auto onnx_function_proto = function_registry.GetFunction(node.OpType(), maxInclusiveVersion, ONNX_DOMAIN);
-        if (!onnx_function_proto) {
-          return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
-        }
+      if (node.op_ && node.op_->HasFunction()) {
+        auto onnx_function_proto = node.op_->GetFunction();
         auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
+      }
+
+      if (!node.op_) {
+        return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
     }
 
@@ -1679,7 +1696,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     // default value defined in operator definition if needed.
     // Fill node attribute with default value specified in operator definition if any.
     auto node_attributes = node.GetAttributes();
-    for (auto attr_def : p_op->attributes()) {
+    for (const auto& attr_def : p_op->attributes()) {
       auto node_attr_iter = node_attributes.find(attr_def.first);
       if (node_attributes.end() == node_attr_iter) {
         // The attribute was not specified in the node.
@@ -1980,8 +1997,7 @@ Node& Graph::AddNode(const Node& other) {
 }
 
 Node& Graph::AddNode(const NodeProto& node_proto,
-                     const ArgNameToTypeMap& name_to_type_map,
-                     TypeToCountMap& type_to_count_map) {
+                     const ArgNameToTypeMap& name_to_type_map) {
   auto input_defs = CreateNodeArgs(node_proto.input(), name_to_type_map);
   auto output_defs = CreateNodeArgs(node_proto.output(), name_to_type_map);
 
@@ -1994,17 +2010,7 @@ Node& Graph::AddNode(const NodeProto& node_proto,
     attributes[attr.name()] = attr;
   }
 
-  size_t current_op_type_count = 1;
-  const auto& op_type = node_proto.op_type();
-  auto iter = type_to_count_map.find(op_type);
-  if (iter == type_to_count_map.end())
-    type_to_count_map.insert({op_type, 1});
-  else
-    current_op_type_count = ++iter->second;
-
-  const auto& node_name = node_proto.name();
-  return AddNode(!node_name.empty() ? node_name : 
-                 GenerateNodeName("unnamed_" + op_type + "_" + std::to_string(current_op_type_count)),
+  return AddNode(node_proto.name(),
                  node_proto.op_type(),
                  node_proto.doc_string(),
                  input_defs,
