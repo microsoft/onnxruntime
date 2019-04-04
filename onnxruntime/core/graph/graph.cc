@@ -940,10 +940,10 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
             inner_nodes.insert(&output_node);
-
-            // if this Graph was built manually, remove the implicit input from graph outputs if it is present there
-            // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
-            // if the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
+            
+            // If this Graph was built manually, remove the implicit input from the graph outputs if it is present there
+            // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
+            // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
             if (!loaded_from_model_file) {
               auto in_ordered_graph_outputs = find(graph_output_order_.cbegin(), graph_output_order_.cend(), node_arg);
               if (in_ordered_graph_outputs == graph_output_order_.cend()) {
