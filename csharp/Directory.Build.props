@@ -1,0 +1,8 @@
+<!-- WARNING: This is a generated file, please do not check it in! -->
+<Project>
+  <PropertyGroup>
+    <!-- Note: build.py puts the CMake binary directory under an additional directory named for the build
+               configuration, so we want the parent directory here. -->
+    <OnnxRuntimeBuildDirectory>D:/projects/onnxruntime/build/Windows/RelWithDebInfo/..</OnnxRuntimeBuildDirectory>
+  </PropertyGroup>
+</Project>

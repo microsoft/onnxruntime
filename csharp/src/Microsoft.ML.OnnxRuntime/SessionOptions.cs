@@ -51,19 +51,21 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Enable parallel execution.
+        /// Enable Sequential Execution. By default, it is enabled.
         /// </summary>
-        /// <param name="enable">
-        /// Call with true to enable Parallel Execution
-        /// Call with false to disable Parallel Execution
-        /// By default, Parallel Execution is disabled
         /// </param>
-        public void EnableParallelExecution(bool enable=true)
+        public void EnableSequentialExecution()
         {
-            if (enable)
-                NativeMethods.OrtDisableSequentialExecution(_nativePtr);
-            else
                 NativeMethods.OrtEnableSequentialExecution(_nativePtr);
+        }
+
+        /// <summary>
+        /// Disable Sequential Execution and enable Parallel Execution.
+        /// </summary>
+        /// </param>
+        public void DisableSequentialExecution()
+        {
+            NativeMethods.OrtDisableSequentialExecution(_nativePtr);
         }
 
         /// <summary>

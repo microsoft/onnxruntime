@@ -63,14 +63,6 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
             RunModelOnnxRuntime(modelPath, inputPath, iteration, timestamps, parallelExecution, optLevel);
             PrintReport(timestamps, iteration);
             Console.WriteLine("Done");
-
-            Console.WriteLine("Running model {0} in Sonoma:", modelPath);
-            Console.WriteLine("input:{0}", inputPath);
-            Console.WriteLine("iteration count:{0}", iteration);
-            SonomaRunner.RunModelSonoma(modelPath, inputPath, iteration, timestamps);
-            PrintReport(timestamps, iteration);
-            Console.WriteLine("Done");
-
         }
 
 
@@ -101,7 +93,7 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
 
             timestamps[(int)TimingPoint.Start] = DateTime.Now;
             SessionOptions options = new SessionOptions();
-            options.EnableParallelExecution(parallelExecution);
+            if (parallelExecution) options.DisableSequentialExecution();
             options.SetSessionGraphOptimizationLevel(optLevel);
             using (var session = new InferenceSession(modelPath, options))
             {

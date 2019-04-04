@@ -111,10 +111,11 @@ Sets the graph optimization level for the session. Default is set to 1. Availabl
  * 1 -> Enable basic optimizations such as redundant node removals and constant folding
  * 2 -> Enable all optimizations (includes Level1 and more complex optimizations such as node fusions)
 
-    EnableParallelExecution(bool enable);
-Enable Parallel Execution for the session. By default, Parallel Execution is disabled. 
-* True -> Enable parallel execution.
-* False -> Disable parallel execution.
+    EnableSequentialExecution();
+Enable Sequential Execution. By default, it is enabled.
+
+    DisableSequentialExecution();
+Disable Sequential Execution and enable Parallel Execution.
 
     AppendExecutionProvider(ExecutionProvider provider);
 Appends execution provider to the session. For any operator in the graph the first execution provider that implements the operator will be user. ExecutionProvider is defined as the following enum.
