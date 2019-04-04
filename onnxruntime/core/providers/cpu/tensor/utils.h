@@ -123,33 +123,33 @@ struct ExtentAxisCounters {
 // and optionally steps along each axis: 
 // This is used by the SliceIterator to iterate over a slice of a tensor
 struct SliceSkips : std::vector<int64_t> {
-  SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, 
-	         gsl::span<const int64_t> steps)
+  SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : std::vector<int64_t>(input_shape.NumDimensions(), 0) {    
-	auto& dims = input_shape.GetDims();
-	ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
+    auto& dims = input_shape.GetDims();
+    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
                 static_cast<ptrdiff_t>(dims.size()) >= steps.size());
     
     int64_t inner_most_dim = dims.size() - 1;
     // assume step == 1 if not present
-	int64_t steps_i = 1;
+    int64_t steps_i = 1;
     if (inner_most_dim >= 0 && static_cast<ptrdiff_t>(inner_most_dim) < steps.size())
       steps_i = steps[inner_most_dim];
 
     size_t pitch = 1;
-	for (size_t i = size(); i-- > 0;) {
+    for (size_t i = size(); i-- > 0;) {
       auto prevPitch = pitch;
       pitch *= dims[i];
       
-	  // assume step == 1 if not present
-	  int64_t steps_i_minus_1 = 1;
+      // assume step == 1 if not present
+      int64_t steps_i_minus_1 = 1;
       if (i > 0 && static_cast<ptrdiff_t>(i)-1 < steps.size())
-          steps_i_minus_1 =  steps[i - 1];
+         steps_i_minus_1 =  steps[i - 1];
 
-	  operator[](i) = steps_i_minus_1 * pitch 
-		            - steps_i * extents[i] * prevPitch;
-
-	  steps_i = steps_i_minus_1;
+      // first "revert" back to the old starting position (term with -ve sign)
+      // and then "step" over the pitch accordingly (term with +ve sign)
+      operator[](i) = steps_i_minus_1 * pitch - steps_i * extents[i] * prevPitch;
+      
+      steps_i = steps_i_minus_1;
     }
   }
 };
