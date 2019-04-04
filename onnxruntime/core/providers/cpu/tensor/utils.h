@@ -193,7 +193,6 @@ struct SliceIterator {
     inner_extent_ = extents_[dims.size() - 1];
     inner_step_ = static_cast<ptrdiff_t>(dims.size()) == steps.size() 
 		          ? steps[dims.size() - 1] : 1;
-    inner_dim_ = dims[dims.size() - 1];
   }
 
   void AdvanceOverInnerExtent() {
@@ -242,7 +241,7 @@ struct SliceIterator {
   const Tensor& tensor_;
   const T* input_{tensor_.template Data<T>()};
   gsl::span<const int64_t> extents_;
-  size_t inner_counter_{}, inner_extent_, inner_step_, inner_dim_;
+  size_t inner_counter_{}, inner_extent_, inner_step_;
   SliceSkips skips_;
   std::vector<int64_t> indices_;  // There is no index for innermost axis since it's a special case
 };
