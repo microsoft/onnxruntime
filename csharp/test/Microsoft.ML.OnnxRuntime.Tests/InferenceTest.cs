@@ -212,7 +212,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 "fp16_inception_v1",
                 "fp16_shufflenet",
                 "fp16_tiny_yolov2" };
-        
+
             var opsets = new[] { "opset7", "opset8" };
             var modelsDir = GetTestModelsDir();
             // return if model directories does not exist(build without 'enable_onnx_tests' option)
@@ -227,7 +227,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         
                     if (skipModels.Contains(modelDir.Name))
                         continue;
-        
+
                     try
                     {
                         var onnxModelNames = modelDir.GetFiles("*.onnx");
@@ -243,14 +243,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     validModelFound = true;
                                 }
                             }
-        
+
                             if (!validModelFound)
                             {
                                 var modelNamesList = string.Join(",", onnxModelNames.Select(x => x.ToString()));
                                 throw new Exception($"Opset {opset}: Model {modelDir}. Can't determine model file name. Found these :{modelNamesList}");
                             }
                         }
-        
+
                         onnxModelFileName = Path.Combine(modelsDir, opset, modelDir.Name, onnxModelNames[0].Name);
                         using (var session = new InferenceSession(onnxModelFileName))
                         {
@@ -263,7 +263,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                 if (innodedims[i] < 0)
                                     innodedims[i] = -1 * innodedims[i];
                             }
-        
+
                             var testRoot = new DirectoryInfo(Path.Combine(modelsDir, opset, modelDir.Name));
                             var testData = testRoot.EnumerateDirectories("test_data*").First();
                             var dataIn = LoadTensorFromFilePb(Path.Combine(modelsDir, opset, modelDir.Name, testData.ToString(), "input_0.pb"));
