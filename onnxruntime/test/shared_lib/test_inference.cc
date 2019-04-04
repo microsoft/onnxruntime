@@ -166,10 +166,9 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(const OrtCustomOpApi& ort, OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info;
-    ORT_THROW_ON_ERROR(ort.GetTensorShapeAndType(value, &info));
-    auto dimensionCount = ort.GetNumOfDimensions(info);
+  OrtTensorDimensions(onnxruntime::CustomOpApi ort, OrtValue* value) {
+    OrtTensorTypeAndShapeInfo* info = ort.GetTensorShapeAndType(value);
+    auto dimensionCount = ort.GetDimensionCount(info);
     resize(dimensionCount);
     ort.GetDimensions(info, data(), dimensionCount);
     ort.ReleaseTensorTypeAndShapeInfo(info);
@@ -188,29 +187,28 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
-  MyCustomKernel(const OrtCustomOpApi& ort, const OrtKernelInfo& /*info*/) : ort_(ort) {
+  MyCustomKernel(onnxruntime::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
 
   void GetOutputShape(OrtKernelContext* context, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
     OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     OrtTensorDimensions dimensions(ort_, input_X);
-    ORT_THROW_ON_ERROR(ort_.SetDims(info, dimensions.data(), dimensions.size()));
+    ort_.SetDimensions(info, dimensions.data(), dimensions.size());
   }
 
   void Compute(OrtKernelContext* context) {
     // Setup inputs
     OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    float* X = reinterpret_cast<float*>(ort_.GetTensorMutableData(input_X));
-    float* Y = reinterpret_cast<float*>(ort_.GetTensorMutableData(input_Y));
+    float* X = ort_.GetTensorMutableData<float>(input_X);
+    float* Y = ort_.GetTensorMutableData<float>(input_Y);
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
     OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-    float* out = reinterpret_cast<float*>(ort_.GetTensorMutableData(output));
+    float* out = ort_.GetTensorMutableData<float>(output);
 
-    OrtTensorTypeAndShapeInfo* output_info;
-    ORT_THROW_ON_ERROR(ort_.GetTensorShapeAndType(output, &output_info));
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorShapeAndType(output);
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
@@ -221,27 +219,20 @@ struct MyCustomKernel {
   }
 
  private:
-  const OrtCustomOpApi& ort_;
+  onnxruntime::CustomOpApi ort_;
 };
 
-struct MyCustomOp : OrtCustomOp {
-  MyCustomOp() {
-    OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](OrtCustomOp* /*this_*/, const OrtCustomOpApi* api, const OrtKernelInfo* info, void** output) { *output = new MyCustomKernel(*api, *info); };
-    OrtCustomOp::GetName = [](OrtCustomOp* /*this_*/) { return "Foo"; };
+struct MyCustomOp : onnxruntime::CustomOpBase<MyCustomOp, MyCustomKernel> {
+  void* CreateKernel(onnxruntime::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
+  const char* GetName() const { return "Foo"; };
 
-    static const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-    OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* /*this_*/) { return countof(c_inputTypes); };
-    OrtCustomOp::GetInputType = [](OrtCustomOp* /*this_*/, size_t index) { return c_inputTypes[index]; };
+  static constexpr const ONNXTensorElementDataType c_inputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
+  size_t GetInputTypeCount() const { return countof(c_inputTypes); };
+  ONNXTensorElementDataType GetInputType(size_t index) const { return c_inputTypes[index]; };
 
-    static const ONNXTensorElementDataType c_outputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-    OrtCustomOp::GetOutputTypeCount = [](OrtCustomOp* /*this_*/) { return countof(c_outputTypes); };
-    OrtCustomOp::GetOutputType = [](OrtCustomOp* /*this_*/, size_t index) { return c_outputTypes[index]; };
-
-    OrtCustomOp::KernelGetOutputShape = [](void* op_kernel, OrtKernelContext* context, size_t output_index, OrtTensorTypeAndShapeInfo* output) { static_cast<MyCustomKernel*>(op_kernel)->GetOutputShape(context, output_index, output); };
-    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<MyCustomKernel*>(op_kernel)->Compute(context); };
-    OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<MyCustomKernel*>(op_kernel); };
-  }
+  static constexpr const ONNXTensorElementDataType c_outputTypes[] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
+  size_t GetOutputTypeCount() const { return countof(c_outputTypes); };
+  ONNXTensorElementDataType GetOutputType(size_t index) const { return c_outputTypes[index]; };
 };
 
 TEST_F(CApiTest, custom_op_handler) {

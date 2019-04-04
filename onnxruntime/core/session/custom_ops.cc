@@ -29,15 +29,6 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   return onnxruntime::ToOrtStatus(status);
 }
 
-void* OrtGetTensorMutableData2(OrtValue* value) {
-  void* result;
-  if (OrtStatus* status = OrtGetTensorMutableData(value, &result)) {
-    OrtReleaseStatus(status);
-    return nullptr;
-  }
-  return result;
-}
-
 OrtValue* OrtKernelContext_GetInput(OrtKernelContext* context, _In_ size_t index) {
   return reinterpret_cast<OrtValue*>(const_cast<onnxruntime::MLValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index)));
 };
@@ -58,7 +49,7 @@ constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtGetDimensions,
     &OrtSetDims,
 
-    &OrtGetTensorMutableData2,
+    &OrtGetTensorMutableData,
 
     &OrtReleaseTensorTypeAndShapeInfo,
 
@@ -72,7 +63,7 @@ struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version != 1)
       throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
+    op_kernel_ = op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
   ~CustomOpKernel() {
