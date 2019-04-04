@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_set>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http/status.hpp>
 #include <google/protobuf/stubs/status.h>
@@ -11,6 +12,11 @@
 namespace protobufutil = google::protobuf::util;
 namespace onnxruntime {
 namespace hosting {
+
+static std::unordered_set<std::string> protobuf_mime_types{
+    "application/octet-stream",
+    "application/vnd.google.protobuf",
+    "application/x-protobuf"};
 
 // Report a failure
 void ErrorHandling(beast::error_code ec, char const* what) {
@@ -57,7 +63,7 @@ SupportedContentType GetRequestContentType(const HttpContext& context) {
   if (context.request.find("Content-Type") != context.request.end()) {
     if (context.request["Content-Type"] == "application/json") {
       return SupportedContentType::Json;
-    } else if (context.request["Content-Type"] == "application/octet-stream") {
+    } else if (protobuf_mime_types.find(context.request["Content-Type"].to_string()) != protobuf_mime_types.end()) {
       return SupportedContentType::PbByteArray;
     }
   }
@@ -69,7 +75,7 @@ SupportedContentType GetResponseContentType(const HttpContext& context) {
   if (context.request.find("Accept") != context.request.end()) {
     if (context.request["Accept"] == "application/json") {
       return SupportedContentType::Json;
-    } else if (context.request["Accept"] == "*/*" || context.request["Accept"] == "application/octet-stream") {
+    } else if (context.request["Accept"] == "*/*" || protobuf_mime_types.find(context.request["Accept"].to_string()) != protobuf_mime_types.end()) {
       return SupportedContentType::PbByteArray;
     }
   } else {

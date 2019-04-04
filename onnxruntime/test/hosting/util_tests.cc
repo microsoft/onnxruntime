@@ -30,6 +30,14 @@ TEST(PositiveTests, GetRequestContentTypeRawData) {
 
   auto result = GetRequestContentType(context);
   EXPECT_EQ(result, SupportedContentType::PbByteArray);
+
+  context.request.set(http::field::content_type, "application/vnd.google.protobuf");
+  result = GetRequestContentType(context);
+  EXPECT_EQ(result, SupportedContentType::PbByteArray);
+
+  context.request.set(http::field::content_type, "application/x-protobuf");
+  result = GetRequestContentType(context);
+  EXPECT_EQ(result, SupportedContentType::PbByteArray);
 }
 
 TEST(NegativeTests, GetRequestContentTypeUnknown) {
@@ -68,6 +76,14 @@ TEST(PositiveTests, GetResponseContentTypeRawData) {
   context.request = request;
 
   auto result = GetResponseContentType(context);
+  EXPECT_EQ(result, SupportedContentType::PbByteArray);
+
+  context.request.set(http::field::accept, "application/vnd.google.protobuf");
+  result = GetResponseContentType(context);
+  EXPECT_EQ(result, SupportedContentType::PbByteArray);
+
+  context.request.set(http::field::accept, "application/x-protobuf");
+  result = GetResponseContentType(context);
   EXPECT_EQ(result, SupportedContentType::PbByteArray);
 }
 
