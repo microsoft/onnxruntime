@@ -14,17 +14,31 @@ namespace hosting {
 
 namespace protobufutil = google::protobuf::util;
 
-#define GenerateErrorResponse(logger, error_code, status, context)                   \
-  {                                                                                  \
-    auto http_error_code = (error_code);                                             \
-    auto error_message = CreateJsonError(http_error_code, (status).error_message()); \
-    LOGS((*logger), VERBOSE) << error_message;                                       \
-    (context).response.result(http_error_code);                                      \
-    (context).response.body() = error_message;                                       \
-    (context).response.set(http::field::content_type, "application/json");           \
+#define GenerateErrorResponse(logger, error_code, message, context, ms_request_id, client_request_id) \
+  {                                                                                                   \
+    auto http_error_code = (error_code);                                                              \
+    (context).response.insert("x-ms-request-id", (ms_request_id));                                    \
+    if (!client_request_id.empty()) {                                                                 \
+      (context).response.insert("x-ms-client-request-id", (client_request_id));                       \
+    }                                                                                                 \
+    auto json_error_message = CreateJsonError(http_error_code, (message));                            \
+    LOGS((*logger), VERBOSE) << json_error_message;                                                   \
+    (context).response.result(http_error_code);                                                       \
+    (context).response.body() = json_error_message;                                                   \
+    (context).response.set(http::field::content_type, "application/json");                            \
   }
 
-// TODO: decide whether this should be a class
+enum class SupportedContentType {
+  Unknown,
+  Json,
+  PbByteArray
+};
+
+static SupportedContentType GetRequestContentType(const HttpContext& context);
+static SupportedContentType GetResponseContentType(const HttpContext& context);
+static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type,
+                                /* out */ PredictRequest& predictRequest, /* out */ http::status& error_code, /* out */ std::string& error_message);
+
 void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
@@ -33,33 +47,125 @@ void Predict(const std::string& name,
   auto logger = env->GetLogger(context.uuid);
   LOGS(*logger, VERBOSE) << "Name: " << name << " Version: " << version << " Action: " << action;
 
+  // We need to persist the "x-ms-client-request-id" field for the user to track the request from client side
+  std::string client_request_id{};
+  if (context.request.find("x-ms-client-request-id") != context.request.end()) {
+    client_request_id = context.request["x-ms-client-request-id"].to_string();
+    LOGS(*logger, VERBOSE) << "x-ms-client-request-id: [" << client_request_id << "]";
+  }
+
+  // Request and Response content type information
+  SupportedContentType request_type = GetRequestContentType(context);
+  SupportedContentType response_type = GetResponseContentType(context);
+  if (response_type == SupportedContentType::Unknown) {
+    GenerateErrorResponse(logger, http::status::bad_request, "Unknown 'Accept' header field in the request", context, context.uuid, client_request_id);
+  }
+
+  // Deserialize the payload
   auto body = context.request.body();
   PredictRequest predictRequest{};
-  auto status = GetRequestFromJson(body, predictRequest);
-  if (!status.ok()) {
-    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status, context);
+  http::status error_code;
+  std::string error_message;
+  bool parse_succeeded = ParseRequestPayload(context, request_type, predictRequest, error_code, error_message);
+  if (!parse_succeeded) {
+    GenerateErrorResponse(logger, error_code, error_message, context, context.uuid, client_request_id);
     return;
   }
 
+  // Run Prediction
+  protobufutil::Status status;
   Executor executor(env);
   PredictResponse predictResponse{};
-  status = executor.Predict(name, version, "request_id", predictRequest, predictResponse);
+  status = executor.Predict(name, version, context.uuid, predictRequest, predictResponse);
   if (!status.ok()) {
-    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status, context);
+    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context, context.uuid, client_request_id);
     return;
   }
 
+  // Serialize to proper output format
   std::string response_body{};
-  status = GenerateResponseInJson(predictResponse, response_body);
-  if (!status.ok()) {
-    GenerateErrorResponse(logger, http::status::internal_server_error, status, context);
-    return;
+  if (response_type == SupportedContentType::Json) {
+    status = GenerateResponseInJson(predictResponse, response_body);
+    if (!status.ok()) {
+      GenerateErrorResponse(logger, http::status::internal_server_error, status.error_message(), context, context.uuid, client_request_id);
+      return;
+    }
+    context.response.set(http::field::content_type, "application/json");
+  } else {
+    response_body = predictResponse.SerializeAsString();
+    context.response.set(http::field::content_type, "application/octet-stream");
   }
 
+  // Build HTTP response
+  context.response.insert("x-ms-request-id", context.uuid);
+  if (!client_request_id.empty()) {
+    context.response.insert("x-ms-client-request-id", client_request_id);
+  }
   context.response.body() = response_body;
   context.response.result(http::status::ok);
-  context.response.set(http::field::content_type, "application/json");
 };
+
+// "Content-Type" header field in request is MUST-HAVE.
+// Currently we only support two types of input content type: application/json and application/octet-stream
+static SupportedContentType GetRequestContentType(const HttpContext& context) {
+  if (context.request.find("Content-Type") != context.request.end()) {
+    if (context.request["Content-Type"] == "application/json") {
+      return SupportedContentType::Json;
+    } else if (context.request["Content-Type"] == "application/octet-stream") {
+      return SupportedContentType::PbByteArray;
+    }
+  }
+
+  return SupportedContentType::Unknown;
+}
+
+// "Accept" header field in request is OPTIONAL.
+// Currently we only support three types of response content type: */*, application/json and application/octet-stream
+static SupportedContentType GetResponseContentType(const HttpContext& context) {
+  if (context.request.find("Accept") != context.request.end()) {
+    if (context.request["Accept"] == "application/json") {
+      return SupportedContentType::Json;
+    } else if (context.request["Accept"] == "*/*" || context.request["Accept"] == "application/octet-stream") {
+      return SupportedContentType::PbByteArray;
+    }
+  } else {
+    return SupportedContentType::PbByteArray;
+  }
+
+  return SupportedContentType::Unknown;
+}
+
+static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type, PredictRequest& predictRequest, http::status& error_code, std::string& error_message) {
+  auto body = context.request.body();
+  protobufutil::Status status;
+  switch (request_type) {
+    case SupportedContentType::Json: {
+      status = GetRequestFromJson(body, predictRequest);
+      if (!status.ok()) {
+        error_code = GetHttpStatusCode(status);
+        error_message = status.error_message();
+        return false;
+      }
+      break;
+    }
+    case SupportedContentType::PbByteArray: {
+      bool parse_succeeded = predictRequest.ParseFromArray(body.data(), body.size());
+      if (!parse_succeeded) {
+        error_code = http::status::bad_request;
+        error_message = "Invalid payload.";
+        return false;
+      }
+      break;
+    }
+    default: {
+      error_code = http::status::bad_request;
+      error_message = "Missing or unknown 'Content-Type' header field in the request";
+      return false;
+    }
+  }
+
+  return true;
+}
 
 }  // namespace hosting
 }  // namespace onnxruntime
