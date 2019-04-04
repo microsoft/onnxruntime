@@ -191,7 +191,6 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
         results.push_back(
             std::make_shared<TestCaseResult>(env.tests[i]->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name));
         OrtCloseEvent(ev);
-        throw ex;
       }
     }
   }
