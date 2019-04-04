@@ -105,6 +105,12 @@ Constructs a SessionOptions will all options at default/unset values.
 Accessor to the default static option object
 
 #### Methods
+    SetSessionGraphOptimizationLevel(uint optimization_level);
+Sets the graph optimization level for the session. Default is set to 1. Available options are : {0, 1, 2}. 
+ * 0 -> Disable all optimizations
+ * 1 -> Enable basic optimizations such as redundant node removals and constant folding
+ * 2 -> Enable all optimizations (includes Level1 and more complex optimizations such as node fusions)
+
     AppendExecutionProvider(ExecutionProvider provider);
 Appends execution provider to the session. For any operator in the graph the first execution provider that implements the operator will be user. ExecutionProvider is defined as the following enum.
 
