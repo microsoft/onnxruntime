@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/dropout.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
@@ -20,31 +21,30 @@ ONNX_CPU_OPERATOR_KERNEL(
 #endif
 
 Status Dropout::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const TensorShape& shape = X->Shape();
-  Tensor* Y = context->Output(0, shape);
-  const float* X_data = X->template Data<float>();
-  float* Y_data = Y->template MutableData<float>();
+  const Tensor& X = *context->Input<Tensor>(0);
+  const TensorShape& shape = X.Shape();
+  Tensor& Y = *context->Output(0, shape);
 
   if (!is_train_) {
-    //If source and target pointers are not equal, we need to copy the data.
-    if (Y_data != X_data) {
-      memcpy(Y_data, X_data, shape.Size() * sizeof(float));
+    auto X_type = X.DataType();
+    const void* source = X.DataRaw(X_type);
+    void* target = Y.MutableDataRaw(X_type);
+    if (target != source) {
+      //If source and target pointers are not equal, we need to copy the data.
+      memcpy(target, source, shape.Size() * X_type->Size());
     }
   } else {
     float scale = 1.0f / keep_prob_;
-    Tensor* mask = context->Output(1, shape);
-    bool* mask_data = mask->template MutableData<bool>();
+    Tensor& mask = *context->Output(1, shape);
+    bool* mask_data = mask.template MutableData<bool>();
 
     // TODO: Compute is a const function, generator cannot be a private meber
     float seed = gsl::narrow_cast<float>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
     std::bernoulli_distribution distribution(keep_prob_);
+    std::generate_n(mask_data, shape.Size(), [&] { return distribution(generator); });
 
-    for (int i = 0; i < shape.Size(); ++i) {
-      mask_data[i] = distribution(generator);
-      Y_data[i] = X_data[i] * scale * mask_data[i];
-    }
+    EigenMap<float>(Y) = scale * EigenMap<float>(X).cwiseProduct(EigenMap<bool>(mask).cast<float>());
   }
 
   return Status::OK();
@@ -61,27 +61,22 @@ ONNX_CPU_OPERATOR_KERNEL(
     DropoutGrad);
 
 Status DropoutGrad::Compute(OpKernelContext* context) const {
-  const Tensor* dY = context->Input<Tensor>(0);
-  const TensorShape& shape = dY->Shape();
-  Tensor* dX = context->Output(0, shape);
-
-  const float* dY_data = dY->template Data<float>();
-  float* dX_data = dX->template MutableData<float>();
+  const Tensor& dY = *context->Input<Tensor>(0);
+  const TensorShape& shape = dY.Shape();
+  Tensor& dX = *context->Output(0, shape);
 
   if (!is_train_) {
-    //If source and target pointers are not equal, we need to copy the data.
-    if (dY_data != dX_data) {
-      memcpy(dX_data, dY_data, shape.Size() * sizeof(float));
+    auto data_type = dY.DataType();
+    const void* source = dY.DataRaw(data_type);
+    void* target = dX.MutableDataRaw(data_type);
+    if (target != source) {
+      //If source and target pointers are not equal, we need to copy the data.
+      memcpy(target, source, shape.Size() * data_type->Size());
     }
   } else {
-    const Tensor* mask = context->Input<Tensor>(1);
-    const bool* mask_data = mask->template Data<bool>();
-
+    const Tensor& mask = *context->Input<Tensor>(1);
     float scale = 1.0f / keep_prob_;
-
-    for (int i = 0; i < shape.Size(); ++i) {
-      dX_data[i] = dY_data[i] * scale * mask_data[i];
-    }
+    EigenMap<float>(dX) = scale * EigenMap<float>(dY).cwiseProduct(EigenMap<bool>(mask).cast<float>());
   }
 
   return Status::OK();
