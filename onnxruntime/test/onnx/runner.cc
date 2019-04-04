@@ -183,7 +183,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
           return OnnxRuntimeSetEventWhenCallbackReturns(pci, ev);
         });
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
-        env.tests[i]->Release();
+        // env.tests[i]->Release();
       } catch (std::exception& ex) {
         LOGF_DEFAULT(ERROR, "Test %s failed:%s", test_case_name, ex.what());
         std::string node_name;
