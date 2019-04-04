@@ -90,6 +90,15 @@ backend_test.exclude(r'('
 '|^test_slice_neg_cpu.*'
 '|^test_slice_neg_steps_cpu.*'
 '|^test_slice_start_out_of_bounds_cpu.*'
+'|^test_averagepool_2d_ceil_cpu.*'
+'|^test_maxpool_2d_ceil_cpu.*'
+'|^test_maxpool_2d_dilations_cpu.*'
+'|^test_mvn_cpu.*'
+'|^test_resize_downsample_linear_cpu.*'
+'|^test_resize_downsample_nearest_cpu.*'
+'|^test_resize_nearest_cpu.*'
+'|^test_resize_upsample_linear_cpu.*'
+'|^test_resize_upsample_nearest_cpu.*'
 ')')
 
 # import all test cases at global scope to make
