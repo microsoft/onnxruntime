@@ -191,7 +191,7 @@ Process1x1FilterCountN MACRO FilterCount
 
 ProcessNextOutputCountBy2:
         Process1x1OutputCountN 8, FilterCount, 2
-        lea     r12,[r12+r9*2]              ; advance input by 2 elements
+        lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
         sub     r10,2
         jae     ProcessNextOutputCountBy2
 

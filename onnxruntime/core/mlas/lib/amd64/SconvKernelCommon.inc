@@ -83,10 +83,10 @@ SconvKernel1x1Frame STRUCT
         SavedXmm14 OWORD ?
         SavedXmm15 OWORD ?
         SavedR12 QWORD ?
-        SavedR13 QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
         SavedRbx QWORD ?
+        SavedRbp QWORD ?
         ReturnAddress QWORD ?
         PreviousP1Home QWORD ?
         PreviousP2Home QWORD ?
@@ -334,10 +334,10 @@ SconvKernelFunction MACRO Format, BlockSize, Isa, BiasFilter
 
         END_PROLOGUE
 
+        mov     rbp,rcx
 IFNB <BiasFilter>
         add     rdx,4*8*4
 ENDIF
-        mov     rbp,rcx
         mov     SconvKernelFrame.PreviousP2Home[rsp],rdx
         mov     rsi,SconvKernelFrame.FilterStride[rsp]
         mov     rdi,SconvKernelFrame.DilationWidth[rsp]
@@ -437,8 +437,8 @@ Process1x1OutputCountN MACRO BlockSize, FilterCount, OutputCount
         LOCAL   SkipBiasAddition
         LOCAL   SkipReluActivation
 
-        mov     rcx,r12
-        mov     rdx,r13
+        mov     rcx,rbp
+        mov     rdx,r12
         mov     r11,SconvKernel1x1Frame.InputChannels[rsp]
         ClearBlock FilterCount, OutputCount
 
@@ -501,10 +501,10 @@ SconvKernel1x1Function MACRO Isa, BiasFilter
 
         NESTED_ENTRY MlasConvKernel1x1Nchwc&Isa, _TEXT
 
-        rex_push_reg rbx
+        rex_push_reg rbp
+        push_reg rbx
         push_reg rsi
         push_reg rdi
-        push_reg r13
         push_reg r12
         alloc_stack (SconvKernel1x1Frame.SavedR12)
 
@@ -521,16 +521,16 @@ SconvKernel1x1Function MACRO Isa, BiasFilter
 
         END_PROLOGUE
 
+        mov     rbp,rcx
+IFNB <BiasFilter>
+        lea     r12,[rdx+4*8*4]
+ELSE
+        mov     r12,rdx
+ENDIF
         mov     r10,SconvKernel1x1Frame.OutputCount[rsp]
         mov     r11,SconvKernel1x1Frame.FilterCount[rsp]
         mov     rsi,SconvKernel1x1Frame.FilterStride[rsp]
         mov     rdi,SconvKernel1x1Frame.AdjustCount[rsp]
-        mov     r12,rcx
-IFNB <BiasFilter>
-        lea     r13,[rdx+4*8*4]
-ELSE
-        mov     r13,rdx
-ENDIF
 
 ;
 ; Process the specified number of filter rows.
@@ -576,10 +576,10 @@ ExitKernel:
         BEGIN_EPILOGUE
 
         pop     r12
-        pop     r13
         pop     rdi
         pop     rsi
         pop     rbx
+        pop     rbp
         ret
 
         NESTED_END MlasConvKernel1x1Nchwc&Isa&, _TEXT

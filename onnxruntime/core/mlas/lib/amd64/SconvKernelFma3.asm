@@ -195,7 +195,7 @@ Process1x1FilterCountN MACRO FilterCount
 ProcessNextOutputCountBy3:
         Process1x1OutputCountN 8, FilterCount, 3
         lea     rax,[r9*2+r9]
-        add     r12,rax                     ; advance input by 3 elements
+        add     rbp,rax                     ; advance input by 3 elements
         sub     r10,3
         jae     ProcessNextOutputCountBy3
 
