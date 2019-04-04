@@ -417,5 +417,8 @@ class InferenceSession {
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   InsertCastTransformer insert_cast_transformer_;
+
+  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+
 };
 }  // namespace onnxruntime
