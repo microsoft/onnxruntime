@@ -311,11 +311,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"dynamic_slice_default_axes", "op deprecated in version 10"},
       {"dynamic_slice_start_out_of_bounds", "op deprecated in version 10"},
       {"dynamic_slice_end_out_of_bounds", "op deprecated in version 10"},
-      {"slice", "Slice opset 10 not supported yet"},
-      {"slice_neg", "Slice opset 10 not supported yet"},
-      {"slice_start_out_of_bounds", "Slice opset 10 not supported yet"},
-      {"slice_end_out_of_bounds", "Slice opset 10 not supported yet"},
-      {"slice_default_axes", "Slice opset 10 not supported yet"}};
       {"shrink", "test case is wrong"},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
