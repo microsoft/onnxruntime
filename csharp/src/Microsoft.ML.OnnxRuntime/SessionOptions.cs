@@ -36,6 +36,21 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Sets the graph optimization level for the session. Default is set to 1.        
+        /// </summary>
+        /// <param name="optimization_level">optimization level for the session</param>
+        /// Available options are : 0, 1, 2
+        /// 0 -> Disable all optimizations
+        /// 1 -> Enable basic optimizations
+        /// 2 -> Enable all optimizations
+        /// <returns>True on success and false otherwise</returns>
+        public bool SetSessionGraphOptimizationLevel(uint optimization_level)
+        {
+            var result = NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level);
+            return result == 0;
+        }
+
+        /// <summary>
         /// Default instance
         /// </summary>
         public static SessionOptions Default

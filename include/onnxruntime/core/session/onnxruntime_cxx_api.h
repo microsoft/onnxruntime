@@ -129,13 +129,13 @@ class SessionOptionsWrapper {
   }
 #endif
 };
-inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
+inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
   ORT_THROW_ON_ERROR(::OrtCreateTensorAsOrtValue(env, shape.data(), shape.size(), type, &ret));
   return ret;
 }
 
-inline OrtValue* OrtCreateTensorWithDataAsOrtValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<size_t>& shape, ONNXTensorElementDataType type) {
+inline OrtValue* OrtCreateTensorWithDataAsOrtValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
   ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_len, shape.data(), shape.size(), type, &ret));
   return ret;

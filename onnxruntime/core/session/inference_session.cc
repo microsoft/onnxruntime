@@ -191,7 +191,22 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 }
 
-InferenceSession::~InferenceSession() = default;
+InferenceSession::~InferenceSession() {
+  if (session_options_.enable_profiling) {
+    try {
+      EndProfiling();
+    } catch (std::exception& e) {
+      // TODO: Currently we have no way to transport this error to the API user
+      // Maybe this should be refactored, so that profiling must be explicitly
+      // started and stopped via C-API functions.
+      // And not like now a session option and therefore profiling must be started
+      // and stopped implicitly.
+      LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
+    } catch (...) {
+      LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
+    }
+  }
+}
 
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
   if (p_exec_provider == nullptr) {
@@ -205,13 +220,12 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return Status::OK();
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                                          const std::vector<std::string>& providers,
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
                                                           TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
-  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level, providers);
+  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
 common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
@@ -1015,7 +1029,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
     for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry.first), level, std::move(entry.second));
+      transformer_manager.Register(std::move(entry), level);
     }
   };
 

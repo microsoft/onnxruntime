@@ -57,13 +57,13 @@ int main(int argc, char* argv[]) {
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
   std::vector<const char*> input_node_names(num_input_nodes);
-  std::vector<size_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
+  std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                         // Otherwise need vector<vector<>>
 
   printf("Number of inputs = %zu\n", num_input_nodes);
 
   // iterate over all input nodes
-  for (int i = 0; i < num_input_nodes; i++) {
+  for (size_t i = 0; i < num_input_nodes; i++) {
     // print input node names
     char* input_name;
     status = OrtSessionGetInputName(session, i, allocator, &input_name);
@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
     printf("Input %d : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
-    for (int j = 0; j < num_dims; j++)
+    for (size_t j = 0; j < num_dims; j++)
       printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
 
     OrtReleaseTypeInfo(typeinfo);
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
   std::vector<const char*> output_node_names = {"softmaxout_1"};
 
   // initialize input data with values in [0.0, 1.0]
-  for (unsigned int i = 0; i < input_tensor_size; i++)
+  for (size_t i = 0; i < input_tensor_size; i++)
     input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
