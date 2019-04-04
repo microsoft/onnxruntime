@@ -71,6 +71,16 @@ TEST(PositiveTests, GetResponseContentTypeRawData) {
   EXPECT_EQ(result, SupportedContentType::PbByteArray);
 }
 
+TEST(NegativeTests, GetResponseContentTypeAny) {
+  HttpContext context;
+  http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
+  request.set(http::field::accept, "*/*");
+  context.request = request;
+
+  auto result = GetResponseContentType(context);
+  EXPECT_EQ(result, SupportedContentType::PbByteArray);
+}
+
 TEST(NegativeTests, GetResponseContentTypeUnknown) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
