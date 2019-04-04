@@ -154,20 +154,6 @@ struct CustomOpApi {
   template <typename T>
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
-  template <>
-  float KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-    float out;
-    ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_float(info, name, &out));
-    return out;
-  }
-
-  template <>
-  int64_t KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-    int64_t out;
-    ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_int64(info, name, &out));
-    return out;
-  }
-
   OrtTensorTypeAndShapeInfo* GetTensorShapeAndType(_In_ const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* out;
     ORT_THROW_ON_ERROR(api_.GetTensorShapeAndType(value, &out));
@@ -211,6 +197,20 @@ struct CustomOpApi {
  private:
   const OrtCustomOpApi& api_;
 };
+
+template <>
+float CustomOpApi::KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  float out;
+  ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_float(info, name, &out));
+  return out;
+}
+
+template <>
+int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  int64_t out;
+  ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_int64(info, name, &out));
+  return out;
+}
 
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
