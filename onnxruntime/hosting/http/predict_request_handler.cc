@@ -28,14 +28,6 @@ namespace protobufutil = google::protobuf::util;
     (context).response.set(http::field::content_type, "application/json");                            \
   }
 
-enum class SupportedContentType {
-  Unknown,
-  Json,
-  PbByteArray
-};
-
-static SupportedContentType GetRequestContentType(const HttpContext& context);
-static SupportedContentType GetResponseContentType(const HttpContext& context);
 static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type,
                                 /* out */ PredictRequest& predictRequest, /* out */ http::status& error_code, /* out */ std::string& error_message);
 
@@ -63,10 +55,10 @@ void Predict(const std::string& name,
 
   // Deserialize the payload
   auto body = context.request.body();
-  PredictRequest predictRequest{};
+  PredictRequest predict_request{};
   http::status error_code;
   std::string error_message;
-  bool parse_succeeded = ParseRequestPayload(context, request_type, predictRequest, error_code, error_message);
+  bool parse_succeeded = ParseRequestPayload(context, request_type, predict_request, error_code, error_message);
   if (!parse_succeeded) {
     GenerateErrorResponse(logger, error_code, error_message, context, context.uuid, client_request_id);
     return;
@@ -75,8 +67,8 @@ void Predict(const std::string& name,
   // Run Prediction
   protobufutil::Status status;
   Executor executor(env);
-  PredictResponse predictResponse{};
-  status = executor.Predict(name, version, context.uuid, predictRequest, predictResponse);
+  PredictResponse predict_response{};
+  status = executor.Predict(name, version, context.uuid, predict_request, predict_response);
   if (!status.ok()) {
     GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context, context.uuid, client_request_id);
     return;
@@ -85,14 +77,14 @@ void Predict(const std::string& name,
   // Serialize to proper output format
   std::string response_body{};
   if (response_type == SupportedContentType::Json) {
-    status = GenerateResponseInJson(predictResponse, response_body);
+    status = GenerateResponseInJson(predict_response, response_body);
     if (!status.ok()) {
       GenerateErrorResponse(logger, http::status::internal_server_error, status.error_message(), context, context.uuid, client_request_id);
       return;
     }
     context.response.set(http::field::content_type, "application/json");
   } else {
-    response_body = predictResponse.SerializeAsString();
+    response_body = predict_response.SerializeAsString();
     context.response.set(http::field::content_type, "application/octet-stream");
   }
 
@@ -104,36 +96,6 @@ void Predict(const std::string& name,
   context.response.body() = response_body;
   context.response.result(http::status::ok);
 };
-
-// "Content-Type" header field in request is MUST-HAVE.
-// Currently we only support two types of input content type: application/json and application/octet-stream
-static SupportedContentType GetRequestContentType(const HttpContext& context) {
-  if (context.request.find("Content-Type") != context.request.end()) {
-    if (context.request["Content-Type"] == "application/json") {
-      return SupportedContentType::Json;
-    } else if (context.request["Content-Type"] == "application/octet-stream") {
-      return SupportedContentType::PbByteArray;
-    }
-  }
-
-  return SupportedContentType::Unknown;
-}
-
-// "Accept" header field in request is OPTIONAL.
-// Currently we only support three types of response content type: */*, application/json and application/octet-stream
-static SupportedContentType GetResponseContentType(const HttpContext& context) {
-  if (context.request.find("Accept") != context.request.end()) {
-    if (context.request["Accept"] == "application/json") {
-      return SupportedContentType::Json;
-    } else if (context.request["Accept"] == "*/*" || context.request["Accept"] == "application/octet-stream") {
-      return SupportedContentType::PbByteArray;
-    }
-  } else {
-    return SupportedContentType::PbByteArray;
-  }
-
-  return SupportedContentType::Unknown;
-}
 
 static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type, PredictRequest& predictRequest, http::status& error_code, std::string& error_message) {
   auto body = context.request.body();

@@ -5,6 +5,7 @@
 #include <boost/beast/http/status.hpp>
 #include <google/protobuf/stubs/status.h>
 
+#include "context.h"
 #include "util.h"
 
 namespace protobufutil = google::protobuf::util;
@@ -50,6 +51,32 @@ boost::beast::http::status GetHttpStatusCode(const protobufutil::Status& status)
     default:
       return boost::beast::http::status::internal_server_error;
   }
+}
+
+SupportedContentType GetRequestContentType(const HttpContext& context) {
+  if (context.request.find("Content-Type") != context.request.end()) {
+    if (context.request["Content-Type"] == "application/json") {
+      return SupportedContentType::Json;
+    } else if (context.request["Content-Type"] == "application/octet-stream") {
+      return SupportedContentType::PbByteArray;
+    }
+  }
+
+  return SupportedContentType::Unknown;
+}
+
+SupportedContentType GetResponseContentType(const HttpContext& context) {
+  if (context.request.find("Accept") != context.request.end()) {
+    if (context.request["Accept"] == "application/json") {
+      return SupportedContentType::Json;
+    } else if (context.request["Accept"] == "*/*" || context.request["Accept"] == "application/octet-stream") {
+      return SupportedContentType::PbByteArray;
+    }
+  } else {
+    return SupportedContentType::PbByteArray;
+  }
+
+  return SupportedContentType::Unknown;
 }
 
 }  // namespace hosting
