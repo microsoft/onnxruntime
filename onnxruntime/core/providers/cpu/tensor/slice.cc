@@ -3,6 +3,9 @@
 
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include <unordered_map>
+#include <limits>
+
 using namespace ::onnxruntime::common;
 using namespace std;
 
@@ -30,14 +33,12 @@ ADD_TYPED_SLICE_V9_OP(MLFloat16);
 ADD_TYPED_SLICE_V9_OP(bool);
 ADD_TYPED_SLICE_V9_OP(string);
 
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                              \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                          \
-      DynamicSlice,                                                                        \
-      1,                                                                                   \
-      data_type,                                                                           \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())     \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),   \
-                                                 DataTypeImpl::GetTensorType<int64_t>()}), \
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                                                                                                                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
+      DynamicSlice,                                                                                                                                                                              \
+      1,                                                                                                                                                                                         \
+      data_type,                                                                                                                                                                                 \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -54,14 +55,12 @@ ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
 ADD_TYPED_DYNAMIC_SLICE_OP(bool);
 ADD_TYPED_DYNAMIC_SLICE_OP(string);
 
-/*
-#define ADD_TYPED_SLICE_V10_OP(data_type)                                                                      \       
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                              \    
-      Slice,                                                                                                   \    
-      10,                                                                                                      \    
-      data_type,                                                                                               \    
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind",  \    
-                         {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),    \           
+#define ADD_TYPED_SLICE_V10_OP(data_type)                                                                                                                                                        \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
+      Slice,                                                                                                                                                                                     \
+      10,                                                                                                                                                                                        \
+      data_type,                                                                                                                                                                                 \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
       Slice<data_type, true>);
 
 ADD_TYPED_SLICE_V10_OP(uint8_t);
@@ -77,7 +76,6 @@ ADD_TYPED_SLICE_V10_OP(double);
 ADD_TYPED_SLICE_V10_OP(MLFloat16);
 ADD_TYPED_SLICE_V10_OP(bool);
 ADD_TYPED_SLICE_V10_OP(string);
-*/
 
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
@@ -105,22 +103,33 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   }
 
   // Iterate through the provided axes and override the start/end ranges
+  std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
   for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
     auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
+    if (unique_axes.find(axis) != unique_axes.end())
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
+    unique_axes.insert(axis);
+
+    // process start
     auto start = raw_starts[axesIndex];
     if (start < 0)
       start += input_dimensions[axis];
     starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
+    // process end
     auto end = raw_ends[axesIndex];
     if (end < 0)
       end += input_dimensions[axis];
-    output_dims[axis] = clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis];
-    if (output_dims[axis] < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'starts' and 'ends' values resulted in a negative dimension");
+
+    // find output dim value for this axis
+    auto temp = clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis];
+    if (temp < 0)
+      output_dims[axis] = 0;
+    else
+      output_dims[axis] = temp;
   }
 
   return Status::OK();
@@ -130,6 +139,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
+                                    const std::vector<int64_t>& raw_steps,
                                     const std::vector<int64_t>& input_dimensions,
                                     std::vector<int64_t>& starts,
                                     std::vector<int64_t>& steps,
@@ -142,37 +152,59 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     std::iota(axes.begin(), axes.end(), 0);
   }
 
-    /*
-  // Initialize steps to default steps if not provided
-  if (steps.size() == 0) {
-    // steps are omitted, they are set to[1, ..., 1]
-    steps.resize(input_rank);
-    std::fill(steps.begin(), steps.end(), 1);
-  }
-
-  if (input_rank != steps.size())
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Rank of input data: ", std::to_string(input_rank),
-                           " needs to be same as length of steps is: ", std::to_string(steps.size()));
-  */
-
   // Iterate through the provided axes and override the start/end/steps ranges
+  std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
   for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
     auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
+    if (unique_axes.find(axis) != unique_axes.end())
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
+    unique_axes.insert(axis);
+
+	// process step
+    auto step = axesIndex < raw_steps.size() ? raw_steps[axesIndex] : 1;
+    if (step == 0)
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
+    steps[axis] = step;
+
+    // process start
     auto start = raw_starts[axesIndex];
     if (start < 0)
       start += input_dimensions[axis];
-    starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
+    if (step < 0)
+      starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis] - 1);
+    else
+      starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
+    // process end
     auto end = raw_ends[axesIndex];
-    if (end < 0)
-      end += input_dimensions[axis];
-    output_dims[axis] = static_cast<int64_t>(ceil( 1.0 * (clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis]) / steps[axesIndex]));
-    if (output_dims[axis] < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'starts' and 'ends' values resulted in a negative dimension");
+    // INT_MAX has a special meaning for end according to spec
+    // equivalent to 'None' in numpy
+    // it represent slicing to the end of the dimension
+	if (end == std::numeric_limits<int32_t>::max() ||
+        end == std::numeric_limits<int64_t>::max()) {
+      end = step < 0 ? -1 : input_dimensions[axis];
+    }
+
+    else {
+      if (end < 0)
+        end += input_dimensions[axis];
+
+      if (step < 0)
+        end = clamp(end, int64_t{0}, input_dimensions[axis] - 1);
+      else
+        end = clamp(end, int64_t{0}, input_dimensions[axis]);
+
+	}
+
+    // find output dim value for this axis
+    auto temp = static_cast<int64_t>(ceil(1.0 * (end - starts[axis]) / step));
+    if (temp < 0)
+      output_dims[axis] = 0;
+    else
+      output_dims[axis] = temp;
   }
   return Status::OK();
 }
@@ -187,7 +219,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   auto ends_tensor = context->Input<Tensor>(2);
   const Tensor* axes_tensor = nullptr;
   if (context->InputCount() >= 4)
-	axes_tensor = context->Input<Tensor>(3);
+    axes_tensor = context->Input<Tensor>(3);
   // Slice V10 (optional input)
   const Tensor* steps_tensor = nullptr;
   if (context->InputCount() == 5)
@@ -214,7 +246,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
     std::copy(ends_tensor->Data<int32_t>(), ends_tensor->Data<int32_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
       std::copy(axes_tensor->Data<int32_t>(), axes_tensor->Data<int32_t>() + size, input_axes.begin());
-	// Slice V10
+    // Slice V10
     if (nullptr != steps_tensor)
       std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
   }
@@ -240,7 +272,7 @@ Status SliceImpl(OpKernelContext* ctx,
                  const Tensor& input_tensor,
                  std::vector<int64_t>& output_dims,
                  const std::vector<int64_t>& starts,
-				 const std::vector<int64_t>& steps) {
+                 const std::vector<int64_t>& steps) {
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
 
@@ -251,13 +283,13 @@ Status SliceImpl(OpKernelContext* ctx,
   auto* output = output_tensor.template MutableData<T>();
   const auto* output_end = output + output_tensor.Shape().Size();
 
-  SliceIterator<T> input_iterator(input_tensor, starts, output_tensor.Shape().GetDims(), steps);
+  SliceIterator<T> input_iterator(input_tensor, starts, output_dims, steps);
   while (output != output_end)
     *output++ = *input_iterator++;
 
   return Status::OK();
 }
-         
+
 template <typename T, bool dynamic>
 Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
@@ -270,13 +302,13 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> steps(input_dimensions.size(), 1);
   std::vector<int64_t> output_dims(input_dimensions);
 
-  // Slice V10 & DynamicSlice 
+  // Slice V10 & DynamicSlice
   if (dynamic) {
-    std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, steps);
-    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
+    std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
+    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
+    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
                                           input_dimensions, starts, steps, output_dims));
-  } 
+  }
   // Slice V1-9
   else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,

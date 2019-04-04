@@ -124,21 +124,32 @@ struct ExtentAxisCounters {
 struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, 
 	         gsl::span<const int64_t> steps)
-      : std::vector<int64_t>(input_shape.NumDimensions(), 0) {
-    auto& dims = input_shape.GetDims();
-    ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
-                static_cast<ptrdiff_t>(dims.size()) == steps.size());
-    size_t pitch = dims.back();
-    back() = pitch - extents[size() - 1];
-    for (size_t i = size() - 1; i-- > 0;) {
+      : std::vector<int64_t>(input_shape.NumDimensions(), 0) {    
+	auto& dims = input_shape.GetDims();
+	ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
+                static_cast<ptrdiff_t>(dims.size()) >= steps.size());
+    
+	size_t pitch = 1;
+	for (size_t i = size(); i-- > 0;) {
       auto prevPitch = pitch;
       pitch *= dims[i];
-      operator[](i) = pitch - prevPitch * extents[i] + (steps[i] - 1) * pitch;
+      
+	  // assume step == 1 if not present
+	  int64_t steps_i_minus_1 = 1;
+      if (i > 0 && static_cast<ptrdiff_t>(i)-1 < steps.size())
+          steps_i_minus_1 =  steps[i - 1];
+
+	  int64_t steps_i = 1;
+      if (i >= 0 && static_cast<ptrdiff_t>(i) < steps.size())
+            steps_i = steps[i];
+
+	  operator[](i) = steps_i_minus_1 * pitch 
+		            - steps_i * extents[i] * prevPitch;
     }
   }
 };
 
-// This provides easy sequential iteration over a subset of a tensor given a span of starts & extents
+// This provides easy sequential iteration over a subset of a tensor given a span of starts, extents & optionally steps  
 template <typename T>
 struct SliceIterator {
   SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, 
@@ -151,6 +162,7 @@ struct SliceIterator {
     // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
     // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
     // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
+    // Also supports arbitrary positive and negative stepping along individual axes
   SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, 
 	            gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
@@ -164,7 +176,7 @@ struct SliceIterator {
 
     ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && 
 		        static_cast<ptrdiff_t>(dims.size()) == extents_.size() && 
-		        static_cast<ptrdiff_t>(dims.size()) == steps.size());
+		        static_cast<ptrdiff_t>(dims.size()) >= steps.size());
 
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
@@ -174,7 +186,8 @@ struct SliceIterator {
     }
 
     inner_extent_ = extents_[dims.size() - 1];
-    inner_step_ = steps[dims.size() - 1];
+    inner_step_ = static_cast<ptrdiff_t>(dims.size()) == steps.size() 
+		          ? steps[dims.size() - 1] : 1;
     inner_dim_ = dims[dims.size() - 1];
   }
 
@@ -197,14 +210,14 @@ struct SliceIterator {
     return input;
   }
 
-
-  // spliting this function as most likely called within a loop 
+  // spliting the function into 2 as most likely called within a loop 
   // and we want to avoid the check inside to avoid overhead
   // upto the caller to call the relevant one
   T* CopyInnermostAxisSolitaryInnerStep(T* output) {
     std::copy(input_, input_ + inner_extent_, output);
     input_ += inner_extent_;
-    output += inner_extent_;    
+    output += inner_extent_;
+    AdvanceOverInnerExtent();
     return output;
   }
 

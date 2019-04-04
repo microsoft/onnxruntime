@@ -33,6 +33,7 @@ class SliceBase {
   Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
                            const std::vector<int64_t>& raw_ends,
                            const std::vector<int64_t>& raw_axes,
+                           const std::vector<int64_t>& raw_steps,
                            const std::vector<int64_t>& input_dimensions,
                            std::vector<int64_t>& starts,
                            std::vector<int64_t>& steps,
