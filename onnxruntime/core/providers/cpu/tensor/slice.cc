@@ -33,12 +33,14 @@ ADD_TYPED_SLICE_V9_OP(MLFloat16);
 ADD_TYPED_SLICE_V9_OP(bool);
 ADD_TYPED_SLICE_V9_OP(string);
 
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                                                                                                                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
-      DynamicSlice,                                                                                                                                                                              \
-      1,                                                                                                                                                                                         \
-      data_type,                                                                                                                                                                                 \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                         \
+      DynamicSlice,                                                                       \
+      1,                                                                                  \
+      data_type,                                                                          \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())    \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),  \
+					     DataTypeImpl::GetTensorType<int64_t>()}),                        \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -55,12 +57,14 @@ ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
 ADD_TYPED_DYNAMIC_SLICE_OP(bool);
 ADD_TYPED_DYNAMIC_SLICE_OP(string);
 
-#define ADD_TYPED_SLICE_V10_OP(data_type)                                                                                                                                                        \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
-      Slice,                                                                                                                                                                                     \
-      10,                                                                                                                                                                                        \
-      data_type,                                                                                                                                                                                 \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
+#define ADD_TYPED_SLICE_V10_OP(data_type)                                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                            \
+      Slice,                                                                                 \
+      10,                                                                                    \
+      data_type,                                                                             \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())       \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),     \
+					     DataTypeImpl::GetTensorType<int64_t>()}),                           \
       Slice<data_type, true>);
 
 ADD_TYPED_SLICE_V10_OP(uint8_t);
@@ -191,12 +195,10 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     else {
       if (end < 0)
         end += input_dimensions[axis];
-
       if (step < 0)
-        end = clamp(end, int64_t{0}, input_dimensions[axis] - 1);
+        end = clamp(end, int64_t{-1}, input_dimensions[axis]);
       else
-        end = clamp(end, int64_t{0}, input_dimensions[axis]);
-
+        end = clamp(end, int64_t{0}, input_dimensions[axis]); 
 	}
 
     // find output dim value for this axis
@@ -296,6 +298,8 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Missing input tensor to be processed");
   const auto& input_tensor = *input_tensor_ptr;
   const auto& input_dimensions = input_tensor.Shape().GetDims();
+  if (input_dimensions.size() < 1)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
 
   // Initialize the starts & ends to the actual tensor shape
   std::vector<int64_t> starts(input_dimensions.size(), 0);

@@ -44,7 +44,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 }
 
 // Slice V1-9 & Slice V10 can both run the following tests
-TEST(SliceTest, Slice1D_InvalidStartEndRange_NoOutput) {
+TEST(SliceTest, Slice1D_InvalidStartEndRange) {
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                       {3},
@@ -66,7 +66,7 @@ TEST(SliceTest, Slice1D_ValidStartEndRange_NoOutput) {
                       {});
 }
 
-TEST(SliceTest, Slice1D) {
+TEST(SliceTest, Slice1D_Regular) {
   RunSliceTest<float>
 	          ({6},
                {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
@@ -91,7 +91,29 @@ TEST(SliceTest, Slice1D_Perf) {
                output);
 }
 
-TEST(SliceTest, Slice2D_OutOfBounds) {
+TEST(SliceTest, Slice1D_EndOutOfBounds) {
+  RunSliceTest<float>({6},
+                      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
+                      {0},
+                      {10},
+                      {},
+                      {},
+                      {6},
+                      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+}
+
+TEST(SliceTest, Slice1D_StartAndEndOutOfBounds) {
+  RunSliceTest<float>({6},
+                      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
+                      {1000},
+                      {1001},
+                      {},
+                      {},
+                      {0},
+                      {});
+}
+
+TEST(SliceTest, Slice2D_StartAndEndOutOfBounds) {
   RunSliceTest<float>({2, 3},
                {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
                {0, 1000},
@@ -215,7 +237,7 @@ TEST(SliceTest, Slice1D_WithPositiveSteps) {
 	                  true);
 }
 
-TEST(SliceTest, Slice1D_WithNegativeSteps_InvalidStartEndRange) {
+TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_1) {
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                       {0},
@@ -224,6 +246,18 @@ TEST(SliceTest, Slice1D_WithNegativeSteps_InvalidStartEndRange) {
                       {-1},
                       {0},
                       {},
+                      true);
+}
+
+TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_2) {
+  RunSliceTest<float>({6},
+                      {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
+                      {0},
+                      {-10},
+                      {0},
+                      {-1},
+                      {1},
+                      {0.0f},
                       true);
 }
 
@@ -243,7 +277,7 @@ TEST(SliceTest, Slice1D_WithNegativeSteps_ValidStartEndRange) {
 TEST(SliceTest, Slice1D_WithNegativeSteps_StartOutOfBounds) {
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
-                      {7}, // out of bounds intentionally
+                      {7},
                       {0},
                       {0},
                       {-3},
@@ -345,7 +379,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::max()}, // end of dimension
                       {0},  // axis = 0 only
                       {-1},
                       {2, 2},
@@ -353,7 +387,17 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
                       true);
 }
 
-// Slice for making copy (not an expected use-case but within scope of the op)
+TEST(SliceTest, Slice2D_ImplicitCopyBySlicingADimensionFully) {
+  RunSliceTest<float>({2, 2},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {0},
+                      {std::numeric_limits<int64_t>::max()}, // end of dimension
+                      {1},  // axis = 1 only
+                      {1},
+                      {2, 2},
+                      {1.0f, 2.0, 3.0f, 4.0f},
+                      true);
+}
 
 }  // namespace test
 }  // namespace onnxruntime
