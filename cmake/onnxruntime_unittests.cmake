@@ -31,10 +31,9 @@ function(AddTest)
   if(_UT_DYN)
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime ${CMAKE_DL_LIBS} Threads::Threads)
   else()
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG}
-            optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
-  onnxruntime_add_include_to_target(${_UT_TARGET} gsl eigen)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface gsl eigen)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
 
   if (WIN32)
@@ -404,7 +403,7 @@ set(onnx_test_libs
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto)
 
-list(APPEND onnx_test_libs debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
+list(APPEND onnx_test_libs ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
 
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
