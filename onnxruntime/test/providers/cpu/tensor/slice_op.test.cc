@@ -43,7 +43,6 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   testv10.Run();
 }
 
-/*
 // Slice V1-9 & Slice V10 can both run the following tests
 TEST(SliceTest, Slice1D_InvalidStartEndRange_NoOutput) {
   RunSliceTest<float>({6},
@@ -315,7 +314,6 @@ TEST(SliceTest, Slice1D_ReverseAllAxes) {
                       {4.0f, 3.0f, 2.0f, 1.0f},
                       true);
 }
-*/
 
 TEST(SliceTest, Slice2D_ReverseAllAxes) {
   RunSliceTest<float>({2, 2},
@@ -342,7 +340,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
                       true);
 }
 
-/*
+
 TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -354,7 +352,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
                       {3.0f, 4.0f, 1.0f, 2.0f},
                       true);
 }
-*/
+
 // Slice for making copy (not an expected use-case but within scope of the op)
 
 }  // namespace test
