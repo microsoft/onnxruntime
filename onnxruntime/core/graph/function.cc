@@ -267,7 +267,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     sub_graph.AddNode(uniq_identifier + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
   }
   auto status = sub_graph.Resolve();
-  ORT_ENFORCE(status.IsOK());
+  ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
 }
 
 FunctionImpl::~FunctionImpl() = default;
