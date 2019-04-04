@@ -4,6 +4,9 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - task: NuGetToolInstaller@0
+      inputs:
+        versionSpec:'4.3.0'
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:
