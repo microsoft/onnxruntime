@@ -57,7 +57,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
       std::make_unique<RuleBasedGraphTransformer>(transformer_utils::GenerateRuleBasedTransformerName(level),
-                                                  "Apply rewrite rules for Level" + 
+                                                  "Apply rewrite rules for Level" +
                                                       std::to_string(static_cast<uint32_t>(level)),
                                                   compatible_execution_providers);
   for (auto& entry : rewrite_rules_to_register) {
@@ -97,6 +97,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       }
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvAddFusion>());
       transformers.emplace_back(std::make_unique<ConvMulFusion>());
       transformers.emplace_back(std::make_unique<ConvBNFusion>());

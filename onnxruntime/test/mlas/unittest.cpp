@@ -604,7 +604,7 @@ ExecuteConvTests(
     for (unsigned ic = 0; ic < _countof(cs); ic++) {
         for (unsigned ih = 0; ih < _countof(is); ih++) {
             for (unsigned iw = 0; iw < _countof(is); iw++) {
-                fprintf(stderr, "Handling %dx%dx%d\n", cs[ic], is[ih], is[iw]);
+                fprintf(stderr, "Handling %ux%ux%u\n", cs[ic], is[ih], is[iw]);
                 for (unsigned fc = 0; fc < _countof(cs); fc++) {
                     for (unsigned kh = 1; kh <= 5; kh++) {
                         if (kh == 4) continue;
@@ -1080,7 +1080,7 @@ ExecutePool2DTests(
 
     for (unsigned ih = 0; ih < _countof(is); ih++) {
         for (unsigned iw = 0; iw < _countof(is); iw++) {
-            fprintf(stderr, "Handling %dx%d\n", is[ih], is[iw]);
+            fprintf(stderr, "Handling %ux%u\n", is[ih], is[iw]);
             TrialPool2D(1, 1, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
             TrialPool2D(1, 1, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
             TrialPool2D(1, 1, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
@@ -1117,7 +1117,7 @@ ExecutePool3DTests(
     for (unsigned id = 0; id < _countof(is); id++) {
         for (unsigned ih = 0; ih < _countof(is); ih++) {
             for (unsigned iw = 0; iw < _countof(is); iw++) {
-                fprintf(stderr, "Handling %dx%dx%d\n", is[id], is[ih], is[iw]);
+                fprintf(stderr, "Handling %ux%ux%u\n", is[id], is[ih], is[iw]);
                 TrialPool3D(1, 1, is[id], is[ih], is[iw], is[id], is[ih], is[iw], 0, 0, 0, 0, 0, 0, 1, 1, 1);
                 for (unsigned kd = 1; kd <= 4; kd++) {
                     if (kd > is[id]) break;
