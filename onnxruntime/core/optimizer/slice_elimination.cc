@@ -9,20 +9,17 @@
 namespace onnxruntime {
 
 Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
-  if (graph_utils::RemoveSingleInSingleOutNode(graph, node)) {
+  if (graph_utils::RemoveSingleInputNode(graph, node)) {
     removed = modified = true;
   }
 
   return Status::OK();
 }
 
-bool EliminateSlice::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
-  if (node.OpType() != included_op_type_) {
-    return false;
-  }
-
-  // At the moment, we eliminate a slice operator only if it has a single input and a single output.
-  if (!graph_utils::IsSingleInSingleOutNode(node)) {
+bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
+  if (node.OpType() != included_op_type_ ||
+      !graph_utils::IsSingleInSingleOutNode(node) ||
+      graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 
