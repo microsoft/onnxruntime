@@ -212,6 +212,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   auto attr_map = node_in_parent_graph->GetAttributes();
   for (auto& node : onnx_func_proto_->node()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
+    std::string uniq_identifier = node.name();
+    if (!node.has_name()) {
+      std::stringstream ss;
+      ss << static_cast<const void*>(&node);
+      uniq_identifier = ss.str();
+    }
+
     for (int idx = 0; idx < node.input_size(); ++idx) {
       std::string tensor_name = node.input().Get(idx);
       auto iter = input_name_idx_map.find(tensor_name);
@@ -257,7 +264,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
         new_attr_map[attr.name()] = attr;
       }
     }
-    sub_graph.AddNode(node.name() + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
+    sub_graph.AddNode(uniq_identifier + "_" + std::to_string(node_index), node.op_type(), node.doc_string(), inputs, outputs, &new_attr_map, node.domain());
   }
   auto status = sub_graph.Resolve();
   ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());

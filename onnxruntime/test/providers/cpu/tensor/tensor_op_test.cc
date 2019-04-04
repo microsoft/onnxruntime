@@ -561,7 +561,7 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
   test.Run();
 }
 
-TEST(TensorOpTest, DISABLED_MeanVarianceNormalizationCPUTest) {
+TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
   // across_channels: true, normalize_variance: true
   MeanVarianceNormalizationAcrossChannels(true, true);
 
