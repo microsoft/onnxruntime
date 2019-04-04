@@ -299,31 +299,18 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"operator_rnn_single_layer", "disable reason"},
       {"prelu_broadcast", "disable reason"},
       {"prelu_example", "disable reason"},
-      {"sinh_example", "opset 9 not supported yet"},
-      {"cosh_example", "opset 9 not supported yet"},
-      {"asinh_example", "opset 9 not supported yet"},
-      {"acosh_example", "opset 9 not supported yet"},
-      {"atanh_example", "opset 9 not supported yet"},
-      {"scan_sum", "opset 9 not supported yet"},
-      {"shrink", "opset 9 not supported yet"},
-      {"cast_DOUBLE_to_FLOAT16", "Cast opset 9 not supported yet"},
-      {"cast_DOUBLE_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_DOUBLE", "Cast opset 9 not supported yet"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT16_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_FLOAT16", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT16_to_DOUBLE", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
       {"tf_inception_v4", "Cast opset 9 not supported yet"},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"slice", "Slice opset 10 not supported yet"},
-      {"slice_neg", "Slice opset 10 not supported yet"},
-      {"slice_start_out_of_bounds", "Slice opset 10 not supported yet"},
-      {"slice_end_out_of_bounds", "Slice opset 10 not supported yet"},
-      {"slice_default_axes", "Slice opset 10 not supported yet"}};
+      {"shrink", "test case is wrong"},
+      {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
+      {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
+      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"}
+  };
 
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
