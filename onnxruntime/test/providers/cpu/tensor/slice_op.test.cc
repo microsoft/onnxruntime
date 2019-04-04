@@ -334,7 +334,26 @@ TEST(SliceTest, Slice2D_WithNegativeSteps_2) {
                       true);
 }
 
-// Slice3D
+TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
+  RunSliceTest<int32_t>({3, 3, 3},
+                      {27, 20,  2,
+	                   4, 26, 11,
+                       26,  5, 17,
+
+	                   0, 21,  6,
+                       22, 13, 29,
+                       19, 17, 27,
+
+                       4, 20, 12,
+                       3,  9, 24,
+                       17,  6, 24},
+                      {0, 1, 1},
+                      {1000, 1000, 1000},
+                      {0, 1, 2},
+                      {2, 2, 2},
+                      {2, 1, 1},
+                      {26, 10});
+}
 
 // Slice for Reversing
 TEST(SliceTest, Slice1D_ReverseAllAxes) {
@@ -387,6 +406,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
                       true);
 }
 
+// Slice for implicit copy
 TEST(SliceTest, Slice2D_ImplicitCopyBySlicingADimensionFully) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
