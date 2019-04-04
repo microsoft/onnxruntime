@@ -119,7 +119,8 @@ struct ExtentAxisCounters {
   gsl::span<const int64_t> extents_;  // The extents of each axis
 };
 
-// A std::vector that holds the number of entries to skip to go to the next axis start given an extent and optionally steps along each axis
+// A std::vector that holds the number of entries to skip to go to the next axis start given an extent
+// and optionally steps along each axis: 
 // This is used by the SliceIterator to iterate over a slice of a tensor
 struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, 

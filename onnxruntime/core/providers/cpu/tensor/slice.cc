@@ -40,7 +40,7 @@ ADD_TYPED_SLICE_V9_OP(string);
       data_type,                                                                          \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())    \
                         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),  \
-					     DataTypeImpl::GetTensorType<int64_t>()}),                        \
+                        DataTypeImpl::GetTensorType<int64_t>()}),                         \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -64,7 +64,7 @@ ADD_TYPED_DYNAMIC_SLICE_OP(string);
       data_type,                                                                             \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())       \
                         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),     \
-					     DataTypeImpl::GetTensorType<int64_t>()}),                           \
+                        DataTypeImpl::GetTensorType<int64_t>()}),                            \
       Slice<data_type, true>);
 
 ADD_TYPED_SLICE_V10_OP(uint8_t);
