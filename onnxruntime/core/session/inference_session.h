@@ -418,6 +418,8 @@ class InferenceSession {
 
   InsertCastTransformer insert_cast_transformer_;
 
+  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner. 
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
 };

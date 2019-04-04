@@ -42,8 +42,6 @@ class KernelRegistryManager {
   // Then B > A > providers
   void RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry);
 
-  void RegisterKernelRegistry(std::shared_ptr<CustomRegistry> custom_registry);
-
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
   Status CreateKernel(const onnxruntime::Node& node,

@@ -80,12 +80,6 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
   custom_kernel_registries_.push_front(kernel_registry);
 }
 
-void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<CustomRegistry> custom_registry) {
-  if(custom_registry == nullptr)
-    return;
-  this->RegisterKernelRegistry(custom_registry->GetKernelRegistry());
-}
-
 bool KernelRegistryManager::HasImplementationOf(const Node& node, const std::string& provider_type) const {
   auto kernel_registries = GetKernelRegistriesByProviderType(provider_type);
   for (auto* kernel_registry : kernel_registries) {

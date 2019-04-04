@@ -21,11 +21,11 @@ common::Status CustomRegistry::RegisterOpSet(
   return opschema_registry_->RegisterOpSet(schemas, domain, baseline_opset_version, opset_version);
 }
 
-std::shared_ptr<KernelRegistry> CustomRegistry::GetKernelRegistry() {
+const std::shared_ptr<KernelRegistry>& CustomRegistry::GetKernelRegistry() {
   return kernel_registry_;
 }
 
-std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> CustomRegistry::GetOpschemaRegistry() {
+const std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry>& CustomRegistry::GetOpschemaRegistry() {
   return opschema_registry_;
 }
 

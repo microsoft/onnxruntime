@@ -35,9 +35,9 @@ class CustomRegistry final {
   common::Status RegisterOpSet(std::vector<ONNX_NAMESPACE::OpSchema>& schemas, const std::string& domain, 
                                int baseline_opset_version, int opset_version); 
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry();
+  const std::shared_ptr<KernelRegistry>& GetKernelRegistry();
 
-  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> GetOpschemaRegistry();
+  const std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry>& GetOpschemaRegistry();
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomRegistry);
