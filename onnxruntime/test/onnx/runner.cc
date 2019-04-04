@@ -153,6 +153,8 @@ static Status ParallelRunTests(TestEnv& env, int p_models, size_t current_runs, 
 }
 
 Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool) {
+  int ii;
+  std::cin >> ii;
   TestResultStat& stat = env.stat;
   stat.total_model_count = env.tests.size();
   stat.total_test_case_count = std::accumulate(env.tests.begin(), env.tests.end(), static_cast<size_t>(0), [](size_t v, const ITestCase* info) {
@@ -181,6 +183,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
           return OnnxRuntimeSetEventWhenCallbackReturns(pci, ev);
         });
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
+        env.tests[i]->Release();
       } catch (std::exception& ex) {
         LOGF_DEFAULT(ERROR, "Test %s failed:%s", test_case_name, ex.what());
         std::string node_name;
@@ -188,6 +191,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
         results.push_back(
             std::make_shared<TestCaseResult>(env.tests[i]->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name));
         OrtCloseEvent(ev);
+        throw ex;
       }
     }
   }
