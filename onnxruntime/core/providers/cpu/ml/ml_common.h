@@ -287,6 +287,7 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
 template <typename T>
 void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                   int add_second_class) {
+  if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
         for (float& score : scores)
