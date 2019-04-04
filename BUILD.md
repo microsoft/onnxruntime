@@ -183,9 +183,60 @@ Then run it
 ```
 
 ## ARM Builds
-We've experimental support for Linux ARM builds. Windows on ARM is well tested.
+We have experimental support for Linux ARM builds. Windows on ARM is well tested.
 
-### Cross compiling on Linux(FASTER)
+### Cross compiling for ARM with Docker (Linux/Windows - FASTER, RECOMMENDED)
+This method allows you to compile using a desktop or cloud VM. This is much faster than compiling natively and avoids out-of-memory issues that may be encountered when on lower-powered ARM devices. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
+
+The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+ running Raspbian Stretch. The same approach should work for other ARM devices, but may require some changes to the Dockerfile such as choosing a different base image (Line 0: `FROM ...`).
+
+1. Install DockerCE on your development machine by following the instructions [here](https://docs.docker.com/install/)
+2. Create an empty local directory
+    ```bash
+    mkdir onnx-build
+    cd onnx-build
+    ```
+3. Save the Dockerfile to your new directory
+    - [Dockerfile.arm32v7](https://github.com/Microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.arm32v7)
+4. Run docker build
+
+    This will build all the dependencies first, then build ONNX Runtime and its Python bindings. This will take several hours.
+    ```bash
+    docker build -t onnxruntime-arm32v7 -f Dockerfile.arm32v7 .
+    ```
+5. Note the full path of the `.whl` file
+
+    - Reported at the end of the build, after the `# Build Output` line.
+    - It should follow the format `onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl`, but version number may have changed. You'll use this path to extract the wheel file later.
+6. Check that the build succeeded
+
+    Upon completion, you should see an image tagged `onnxruntime-arm32v7` in your list of docker images:
+    ```bash
+    docker images
+    ```
+7. Extract the Python wheel file from the docker image
+
+    (Update the path/version of the `.whl` file with the one noted in step 5)
+    ```bash
+    docker create -ti --name onnxruntime_temp onnxruntime-arm32v7 bash
+    docker cp onnxruntime_temp:/code/onnxruntime/build/Linux/MinSizeRel/dist/onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl .
+    docker rm -fv onnxruntime_temp
+    ```
+    This will save a copy of the wheel file, `onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl`, to your working directory on your host machine.
+8. Copy the wheel file (`onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl`) to your Raspberry Pi or other ARM device
+9. On device, install the ONNX Runtime wheel file
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y python3 python3-pip
+    pip3 install numpy
+
+    # Install ONNX Runtime
+    # Important: Update path/version to match the name and location of your .whl file
+    pip3 install onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl
+    ```
+10. Test installation by following the instructions [here](https://microsoft.github.io/onnxruntime/)
+
+### Cross compiling on Linux (without Docker)
 1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
 2. Setup env vars
     ```bash
@@ -193,7 +244,8 @@ We've experimental support for Linux ARM builds. Windows on ARM is well tested.
        export CC=arm-linux-gnueabihf-gcc
        export CXX=arm-linux-gnueabihf-g++
     ```
-3. Get a pre-compiled protoc: 
+3. Get a pre-compiled protoc:
+
    You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
 4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
 5. Save the following content as tool.cmake
@@ -210,14 +262,57 @@ We've experimental support for Linux ARM builds. Windows on ARM is well tested.
 6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it.
 
 
-### Native compiling on Linux (SLOWER)
+### Native compiling on Linux ARM device (SLOWER)
+Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    sudo \
+    build-essential \
+    curl \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    wget \
+    python3 \
+    python3-pip \
+    python3-dev \
+    git \
+    tar
 
-Please see [ARM docker file](dockerfiles/Dockerfile.arm32v7). Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total. If you want to use [Azure Container Registry Tasks](https://docs.microsoft.com/en-us/azure/container-registry/container-registry-tasks-overview) to build the Docker image in cloud, you may want to split this Dockerfile to two steps:
+pip3 install --upgrade pip
+pip3 install --upgrade setuptools
+pip3 install --upgrade wheel
+pip3 install numpy
 
-1. Build environment image creation: steps before onnxruntime repo clone
-2. ONNX Runtime and Python binding creation: the rest of steps in the original Dockerfile with step 1 output as base image.
+# Build the latest cmake
+mkdir /code
+cd /code
+wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
+tar zxf cmake-3.12.3.tar.gz
 
-By doing this, you could avoid hit the ACR-Tasks build timeout (8 hours) 
+cd /code/cmake-3.12.3
+./configure --system-curl
+make
+sudo make install
+
+# Prepare onnxruntime Repo
+cd /code
+git clone --recursive https://github.com/Microsoft/onnxruntime
+
+# Start the basic build
+cd /code/onnxruntime
+./build.sh --config MinSizeRel --arm --update --build
+
+# Build Shared Library
+./build.sh --config MinSizeRel --arm --build_shared_lib
+
+# Build Python Bindings and Wheel
+./build.sh --config MinSizeRel --arm --enable_pybind --build_wheel
+
+# Build Output
+ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
+ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
+```
 
 ### Cross compiling on Windows
 #### Using Visual C++ compilers

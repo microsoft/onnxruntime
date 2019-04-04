@@ -21,6 +21,7 @@
 #include <test/compare_mlvalue.h>
 #include "TestCase.h"
 #include "heap_buffer.h"
+#include "OrtValueList.h"
 #include "FixedCountFinishCallback.h"
 
 using namespace onnxruntime;
@@ -39,8 +40,7 @@ void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK
     return;
   } catch (std::exception& ex) {
     LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
-    std::string node_name;
-    (void)info->GetNodeName(&node_name);
+    std::string node_name = info->GetNodeName();
     ret = std::make_shared<TestCaseResult>(info->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name);
   }
   auto status = OnTestCaseFinished(pci, task, ret);
@@ -183,8 +183,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
       } catch (std::exception& ex) {
         LOGF_DEFAULT(ERROR, "Test %s failed:%s", test_case_name, ex.what());
-        std::string node_name;
-        (void)env.tests[i]->GetNodeName(&node_name);
+        std::string node_name = env.tests[i]->GetNodeName();
         results.push_back(
             std::make_shared<TestCaseResult>(env.tests[i]->GetDataCount(), EXECUTE_RESULT::WITH_EXCEPTION, node_name));
         OrtCloseEvent(ev);
@@ -244,7 +243,8 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
 }
 
 std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases) {
+                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+                                  double default_per_sample_tolerance, double default_relative_per_sample_tolerance) {
   std::vector<ITestCase*> tests;
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -263,18 +263,14 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
 
       std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
       if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
-      if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(), test_case_name) == whitelisted_test_cases.end()) {
+      if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(),
+                                                       test_case_name) == whitelisted_test_cases.end()) {
         return true;
       }
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
 
-      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name));
-      auto status = l->SetModelPath(p.c_str());
-      if (!status.IsOK()) {
-        LOGF_DEFAULT(ERROR, "load data from %s failed:%s\n", p.c_str(), status.ErrorMessage().c_str());
-        delete l;
-        return true;
-      }
+      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
+                                        default_per_sample_tolerance, default_relative_per_sample_tolerance);
       tests.push_back(l);
       return true;
     });
@@ -288,8 +284,7 @@ SeqTestRunner::SeqTestRunner(OrtSession* session1,
 }
 
 DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(std::make_unique<MockedOrtAllocator>()) {
-  std::string s;
-  c->GetNodeName(&s);
+  std::string s = c->GetNodeName();
   result = std::make_shared<TestCaseResult>(c->GetDataCount(), EXECUTE_RESULT::UNKNOWN_ERROR, s);
   SetTimeSpecToZero(&spent_time_);
 }
@@ -319,11 +314,7 @@ std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const OrtValue* o, co
 EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   HeapBuffer holder;
   std::unordered_map<std::string, OrtValue*> feeds;
-  common::Status status = c_->LoadTestData(session, task_id, holder, feeds, true);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-    return StatusCodeToExecuteResult(status.Code());
-  }
+  c_->LoadTestData(task_id, holder, feeds, true);
 
   // Create output feed
   size_t output_count;
@@ -336,46 +327,36 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     output_names[i] = output_name;
     default_allocator->Free(output_name);
   }
-
-  TIME_SPEC start_time, end_time;
-  GetMonotonicTimeCounter(&start_time);
+  if (feeds.size() > std::numeric_limits<int>::max()) {
+    ORT_THROW("length overflow");
+  }
   std::vector<const char*> input_names(feeds.size());
-  std::vector<OrtValue*> input_values(feeds.size());
+  OrtValueArray input_values(static_cast<int>(feeds.size()));
   size_t input_index = 0;
   for (auto& kvp : feeds) {
     input_names[input_index] = kvp.first.c_str();
-    input_values[input_index] = kvp.second;
+    input_values.Set(input_index, kvp.second);
     ++input_index;
   }
-  std::vector<OrtValue*> output_values(output_count);
+
+  TIME_SPEC start_time, end_time;
+  OrtValueArray output_values(static_cast<int>(output_count));
   {
     std::vector<const char*> output_names_raw_ptr(output_count);
     for (size_t i = 0; i != output_count; ++i) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
-    auto onnx_status = OrtRun(session, nullptr, input_names.data(), input_values.data(), input_index, output_names_raw_ptr.data(), output_count, output_values.data());
-    if (onnx_status != nullptr) {
-      std::string onnx_runtime_error_message = OrtGetErrorMessage(onnx_status);
-      OrtReleaseStatus(onnx_status);
-      for (auto& kvp : feeds) {
-        OrtReleaseValue(kvp.second);
-      }
-      throw std::runtime_error(onnx_runtime_error_message);
-    }
+    GetMonotonicTimeCounter(&start_time);
+    ORT_THROW_ON_ERROR(OrtRun(session, nullptr, input_names.data(), input_values.Data(),
+                              static_cast<size_t>(input_values.Length()), output_names_raw_ptr.data(), output_count,
+                              output_values.Data()));
   }
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
-  for (auto& kvp : feeds) {
-    OrtReleaseValue(kvp.second);
-  }
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << test_case_name_ << ":" << status.ErrorMessage() << "\n";
-    return StatusCodeToExecuteResult(status.Code());
-  }
 
   double per_sample_tolerance, relative_per_sample_tolerance;
   bool post_procesing;
-
+  Status status;
   if (!(status = c_->GetPerSampleTolerance(&per_sample_tolerance)).IsOK()) {
     LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
     return StatusCodeToExecuteResult(status.Code());
@@ -391,19 +372,16 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   //TODO: if there are no output value files, just skip the validation
   std::unordered_map<std::string, OrtValue*> expected_output_values;
-  status = c_->LoadTestData(session, task_id, holder, expected_output_values, false);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << status.ErrorMessage() << "\n";
-    return StatusCodeToExecuteResult(status.Code());
-  }
+  c_->LoadTestData(task_id, holder, expected_output_values, false);
+
   std::unordered_map<std::string, OrtValue*> name_fetch_output_map;
   std::unordered_map<std::string, const ONNX_NAMESPACE::ValueInfoProto*> name_output_value_info_proto;
-  int i = 0;
+  size_t i = 0;
   for (auto& output_name : output_names) {
     // p_fetches is filled in the order of output_names.
-    name_fetch_output_map[output_name] = output_values[i];
-    const ONNX_NAMESPACE::ValueInfoProto& infoProto = c_->GetOutputInfoFromModel(i);
-    name_output_value_info_proto.insert(std::make_pair(infoProto.name(), &infoProto));
+    name_fetch_output_map[output_name] = output_values.Get(i);
+    const ONNX_NAMESPACE::ValueInfoProto* infoProto = c_->GetOutputInfoFromModel(i);
+    if (infoProto != nullptr) name_output_value_info_proto.insert(std::make_pair(infoProto->name(), infoProto));
     i++;
   }
 
@@ -421,8 +399,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     std::pair<COMPARE_RESULT, std::string> ret = CompareGenericValue(actual_output_value, expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
-      const ONNX_NAMESPACE::ValueInfoProto& v = *name_output_value_info_proto[output_name];
-      ret = VerifyValueInfo(v, actual_output_value);
+      const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
+      if (v == nullptr) continue;
+      ret = VerifyValueInfo(*v, actual_output_value);
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {
         switch (compare_result) {
@@ -468,9 +447,6 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   for (auto& kvp : expected_output_values) {
     OrtReleaseValue(kvp.second);
   }
-  for (OrtValue* p : output_values) {
-    OrtReleaseValue(p);
-  }
   return res;
 }
 
@@ -488,13 +464,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
   size_t data_count = info->GetDataCount();
   try {
     DataRunner* r = nullptr;
-    std::string node_name;
-    Status status = info->GetNodeName(&node_name);
-    if (!status.IsOK()) {
-      LOGF_DEFAULT(ERROR, "load model %s failed:%s\n", info->GetTestCaseName().c_str(), status.ErrorMessage().c_str());
-      ret = std::make_shared<TestCaseResult>(data_count, StatusCodeToExecuteResult(status.Code()), node_name);
-      goto end;
-    }
+    std::string node_name = info->GetNodeName();
     auto sf2 = sf.clone();
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());
     std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> session_object(
@@ -504,11 +474,10 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")
       concurrent_runs = 1;
     if (concurrent_runs > 1 && data_count > 1) {
-      r = new PTestRunner(session_object.get(), info, tpool, on_finished);
+      r = new PTestRunner(session_object.release(), info, tpool, on_finished);
     } else {
-      r = new SeqTestRunner(session_object.get(), info, repeat_count, on_finished);
+      r = new SeqTestRunner(session_object.release(), info, repeat_count, on_finished);
     }
-    session_object.release();
     r->Start(pci, concurrent_runs);
     return;
   } catch (onnxruntime::NotImplementedException& ex) {
@@ -516,7 +485,6 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     std::string node_name;
     ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   }
-end:
   on_finished(ret, pci);
 }
 
