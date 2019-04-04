@@ -352,7 +352,52 @@ TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
                       {0, 1, 2},
                       {2, 2, 2},
                       {2, 1, 1},
-                      {26, 10});
+                      {26, 9},
+	                  true);
+} 
+
+TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_1) {
+  RunSliceTest<int32_t>({3, 3, 3},
+                        {27, 20, 2,
+                         4, 26, 11,
+                         26, 5, 17,
+
+                         0, 21, 6,
+                         22, 13, 29,
+                         19, 17, 27,
+
+                         4, 20, 12,
+                         3, 9, 24,
+                         17, 6, 24},
+                        {1, 4},
+                        {1000, 1},
+                        {1, 2},
+                        {3, -2},
+                        {3, 1, 1},
+                        {11, 29, 24},
+                        true);
+}
+
+TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_2) {
+  RunSliceTest<int32_t>({3, 3, 3},
+                        {27, 20, 2,
+                         4, 26, 11,
+                         26, 5, 17,
+
+                         0, 21, 6,
+                         22, 13, 29,
+                         19, 17, 27,
+
+                         4, 20, 12,
+                         3, 9, 24,
+                         17, 6, 24},
+                        {1, 4},
+                        {1000, 2},
+                        {1, 2},
+                        {3, -2},
+                        {3, 1, 0},
+                        {},
+	                    true);
 }
 
 // Slice for Reversing

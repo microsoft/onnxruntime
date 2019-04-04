@@ -119,7 +119,7 @@ struct ExtentAxisCounters {
   gsl::span<const int64_t> extents_;  // The extents of each axis
 };
 
-// A std::vector that holds the number of entries to skip to go to the next axis start given an extent in each axis
+// A std::vector that holds the number of entries to skip to go to the next axis start given an extent and optionally steps along each axis
 // This is used by the SliceIterator to iterate over a slice of a tensor
 struct SliceSkips : std::vector<int64_t> {
   SliceSkips(const TensorShape& input_shape, gsl::span<const int64_t> extents, 
@@ -129,7 +129,13 @@ struct SliceSkips : std::vector<int64_t> {
 	ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == extents.size() &&
                 static_cast<ptrdiff_t>(dims.size()) >= steps.size());
     
-	size_t pitch = 1;
+    int64_t inner_most_dim = dims.size() - 1;
+    // assume step == 1 if not present
+	int64_t steps_i = 1;
+    if (inner_most_dim >= 0 && static_cast<ptrdiff_t>(inner_most_dim) < steps.size())
+      steps_i = steps[inner_most_dim];
+
+    size_t pitch = 1;
 	for (size_t i = size(); i-- > 0;) {
       auto prevPitch = pitch;
       pitch *= dims[i];
@@ -139,12 +145,10 @@ struct SliceSkips : std::vector<int64_t> {
       if (i > 0 && static_cast<ptrdiff_t>(i)-1 < steps.size())
           steps_i_minus_1 =  steps[i - 1];
 
-	  int64_t steps_i = 1;
-      if (i >= 0 && static_cast<ptrdiff_t>(i) < steps.size())
-            steps_i = steps[i];
-
 	  operator[](i) = steps_i_minus_1 * pitch 
 		            - steps_i * extents[i] * prevPitch;
+
+	  steps_i = steps_i_minus_1;
     }
   }
 };
@@ -210,9 +214,12 @@ struct SliceIterator {
     return input;
   }
 
-  // spliting the function into 2 as most likely called within a loop 
+  // spliting the function that copies the innermost dimension into 2 separate methods, 
+  // as this is most likely being called within a loop 
   // and we want to avoid the check inside to avoid overhead
   // upto the caller to call the relevant one
+
+  // Assumes inner_step_ == 1
   T* CopyInnermostAxisSolitaryInnerStep(T* output) {
     std::copy(input_, input_ + inner_extent_, output);
     input_ += inner_extent_;
@@ -221,13 +228,12 @@ struct SliceIterator {
     return output;
   }
 
+  // Assumes generic inner_step_
   T* CopyInnermostAxisNonSolitaryInnerStep(T* output) {
-    const T* iter = input_;
     for (size_t i = 0; i < inner_extent_; ++i) {
-      *output++ = *iter;
-      iter += inner_step_;
+      *output++ = *input_;
+      input_ += inner_step_;
     }
-    input_ += inner_dim_;
     return output;
   }
 
