@@ -199,14 +199,14 @@ struct CustomOpApi {
 };
 
 template <>
-float CustomOpApi::KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+inline float CustomOpApi::KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   float out;
   ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_float(info, name, &out));
   return out;
 }
 
 template <>
-int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   int64_t out;
   ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_int64(info, name, &out));
   return out;
