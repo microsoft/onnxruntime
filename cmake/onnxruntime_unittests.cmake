@@ -374,6 +374,7 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/testenv.cc
   ${onnx_test_runner_src_dir}/heap_buffer.h
   ${onnx_test_runner_src_dir}/heap_buffer.cc
+  ${onnx_test_runner_src_dir}/OrtValueList.h
   ${onnx_test_runner_src_dir}/runner.h
   ${onnx_test_runner_src_dir}/runner.cc
   ${onnx_test_runner_src_dir}/TestCase.cc

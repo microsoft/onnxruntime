@@ -1,6 +1,24 @@
-FROM arm32v7/ubuntu:16.04
+FROM balenalib/raspberrypi3-python:latest-stretch-build
 
-RUN apt-get update && apt-get install -y sudo build-essential curl libcurl4-openssl-dev libssl-dev wget python3 python3-pip python3-dev git
+#Enforces cross-compilation through Quemu
+RUN [ "cross-build-start" ]
+
+RUN install_packages \
+    sudo \
+    build-essential \
+    curl \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    wget \
+    python3 \
+    python3-pip \
+    python3-dev \
+    git \
+    tar
+
+RUN pip3 install --upgrade pip
+RUN pip3 install --upgrade setuptools
+RUN pip3 install --upgrade wheel
 RUN pip3 install numpy
 
 # Build the latest cmake
@@ -13,21 +31,26 @@ RUN ./configure --system-curl
 RUN make
 RUN sudo make install
 
+# Set up build args
+ARG BUILDTYPE=MinSizeRel
+ARG BUILDARGS="--config ${BUILDTYPE} --arm"
+
 # Prepare onnxruntime Repo
+WORKDIR /code
 RUN git clone --recursive https://github.com/Microsoft/onnxruntime
 
-WORKDIR /code/onnxruntime
-ARG BUILDTYPE=Debug
-
 # Start the basic build
-RUN ./build.sh --config ${BUILDTYPE}
+WORKDIR /code/onnxruntime
+RUN ./build.sh ${BUILDARGS} --update --build
 
 # Build Shared Library
-RUN ./build.sh --config ${BUILDTYPE} --build_shared_lib
+RUN ./build.sh ${BUILDARGS} --build_shared_lib
 
-# Build Python Binding
-RUN ./build.sh --config ${BUILDTYPE} --enable_pybind
+# Build Python Bindings and Wheel
+RUN ./build.sh ${BUILDARGS} --enable_pybind --build_wheel
 
 # Build Output
-RUN ls -l /code/onnxruntime/build/Linux/Debug/*.so
-RUN ls -l /code/onnxruntime/build/Linux/Debug/dist/*.whl
+RUN ls -l /code/onnxruntime/build/Linux/${BUILDTYPE}/*.so
+RUN ls -l /code/onnxruntime/build/Linux/${BUILDTYPE}/dist/*.whl
+
+RUN [ "cross-build-end" ]
