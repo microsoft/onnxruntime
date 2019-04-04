@@ -36,13 +36,14 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   // Initialize the starts & ends to the actual tensor shape
   const size_t dimension_count = input_dimensions.size();
   std::vector<int64_t> starts(dimension_count, 0);
+  std::vector<int64_t> steps(input_dimensions.size(), 1);
   std::vector<int64_t> output_dims(input_dimensions);
 
   if (dynamic) {
-    std::vector<int64_t> input_starts, input_ends, input_axes;
+    std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
     FillVectorsFromInput(ctx, input_starts, input_ends, input_axes);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                        input_dimensions, starts, output_dims));
+                        input_steps, input_dimensions, starts, steps, output_dims));
 
   } else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
