@@ -7,10 +7,26 @@
 
 namespace onnxruntime {
 namespace cuda {
+#define REGISTER_TYPED_VERSIONED_SLICE(TIND)                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                \
+      Slice,                                                                              \
+      kOnnxDomain,                                                                        \
+      1, 9,                                                                               \
+      TIND,                                                                               \
+      kCudaExecutionProvider,                                                             \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
+                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
+      Slice<TIND,false>);
 
-#define REGISTER_TYPED_SLICE(NAME, TIND, DYNAMIC)                                         \
+REGISTER_TYPED_VERSIONED_SLICE(int32_t) 
+REGISTER_TYPED_VERSIONED_SLICE(int64_t) 
+      
+#define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
-      NAME,                                                                               \
+      DynamicSlice,                                                                       \
       kOnnxDomain,                                                                        \
       1,                                                                                  \
       TIND,                                                                               \
@@ -20,12 +36,10 @@ namespace cuda {
                          InputMemoryType<OrtMemTypeCPUInput>(3).                          \
                          TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,DYNAMIC>);
+      Slice<TIND,true>);
 
-REGISTER_TYPED_SLICE(Slice,        int32_t, false) 
-REGISTER_TYPED_SLICE(Slice,        int64_t, false) 
-REGISTER_TYPED_SLICE(DynamicSlice, int32_t, true ) 
-REGISTER_TYPED_SLICE(DynamicSlice, int64_t, true )
+REGISTER_TYPED_DYNAMICSLICE(int32_t) 
+REGISTER_TYPED_DYNAMICSLICE(int64_t)
 
 template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
