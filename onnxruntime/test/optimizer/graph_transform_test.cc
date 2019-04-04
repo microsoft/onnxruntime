@@ -149,11 +149,10 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 }
 
 TEST(GraphTransformationTests, FuseConvActivation) {
-
-  std::unordered_map<std::string, std::string> model_to_op_name {{"fusion/conv_relu.onnx", "Relu"}, 
-                                                                 {"fusion/conv_sigmoid.onnx", "Sigmoid"}, 
-                                                                 {"fusion/conv_tanh.onnx", "Tanh"}, 
-                                                                 {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
+  std::unordered_map<std::string, std::string> model_to_op_name{{"fusion/conv_relu.onnx", "Relu"},
+                                                                {"fusion/conv_sigmoid.onnx", "Sigmoid"},
+                                                                {"fusion/conv_tanh.onnx", "Tanh"},
+                                                                {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
 
   for (const auto& model : model_to_op_name) {
     std::string model_uri = MODEL_FOLDER + model.first;
