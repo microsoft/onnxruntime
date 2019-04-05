@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-#define REGISTER_TYPED_VERSIONED_SLICE(TIND)                                              \
+#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                                              \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                \
       Slice,                                                                              \
       kOnnxDomain,                                                                        \
@@ -21,8 +21,8 @@ namespace cuda {
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
       Slice<TIND,false>);
 
-REGISTER_TYPED_VERSIONED_SLICE(int32_t) 
-REGISTER_TYPED_VERSIONED_SLICE(int64_t) 
+REGISTER_VERSIONED_TYPED_SLICE(int32_t) 
+REGISTER_VERSIONED_TYPED_SLICE(int64_t) 
       
 #define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \

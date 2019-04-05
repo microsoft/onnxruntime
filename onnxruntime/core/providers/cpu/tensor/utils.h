@@ -158,30 +158,30 @@ struct SliceSkips : std::vector<int64_t> {
 template <typename T>
 struct SliceIterator {
   SliceIterator(const Tensor& tensor, gsl::span<const int64_t> starts, 
-	            gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
+                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+    : tensor_(tensor), extents_(extents), skips_(tensor_.Shape(), extents, steps), indices_(extents.size(), 0) {
     auto& dims = tensor_.Shape().GetDims();
     Init(dims, starts, steps);
   }
     
-    // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
-    // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
-    // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
-    // Also supports arbitrary positive and negative stepping along individual axes
+  // This construct takes a explicit tensor_shape which might be different from the shape defined in input tensor.
+  // The explicit tensor_shape usually has inner most axis flattened. For example, given shape[1,4,4,2], if last axis
+  // does not have padding or slice, then it will be flattened as [1,4,8] for better performance (One inner most copy instead of 4).
+  // Also supports arbitrary positive and negative stepping along individual axes
   SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts, 
-	            gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
-      : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
+                gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
+    : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
     auto& dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
   // Initialize initial skip and inner_extent.
   void Init(const std::vector<int64_t>& dims, gsl::span<const int64_t> starts, 
-	        gsl::span<const int64_t> steps) {
+            gsl::span<const int64_t> steps) {
 
     ORT_ENFORCE(static_cast<ptrdiff_t>(dims.size()) == starts.size() && 
-		        static_cast<ptrdiff_t>(dims.size()) == extents_.size() && 
-		        static_cast<ptrdiff_t>(dims.size()) >= steps.size());
+                static_cast<ptrdiff_t>(dims.size()) == extents_.size() && 
+                static_cast<ptrdiff_t>(dims.size()) >= steps.size());
 
     size_t pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
