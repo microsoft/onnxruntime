@@ -36,9 +36,8 @@ Status ComputePadAndOutputShape(
       case AutoPadType::SAME_UPPER:
       case AutoPadType::SAME_LOWER: {
         ORT_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
-        int64_t legacy_target_size = (in_dim + stride - 1) / stride;
-        int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
-        *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
+        int64_t pad_needed = (in_dim - 1) * stride + kernel - in_dim;
+        *out_dim = (in_dim + pad_needed - kernel) / stride + 1;
 
         // make sure padding is symmetric
         if (ForceSymmetricAutoPadding)
