@@ -226,13 +226,11 @@ struct MyCustomOp : onnxruntime::CustomOpBase<MyCustomOp, MyCustomKernel> {
   void* CreateKernel(onnxruntime::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
 
-  static constexpr const ONNXTensorElementDataType c_inputTypes[]{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-  size_t GetInputTypeCount() const { return countof(c_inputTypes); };
-  ONNXTensorElementDataType GetInputType(size_t index) const { return c_inputTypes[index]; };
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t index) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
-  static constexpr const ONNXTensorElementDataType c_outputTypes[]{ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT};
-  size_t GetOutputTypeCount() const { return countof(c_outputTypes); };
-  ONNXTensorElementDataType GetOutputType(size_t index) const { return c_outputTypes[index]; };
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t index) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
 
 TEST_F(CApiTest, custom_op_handler) {
