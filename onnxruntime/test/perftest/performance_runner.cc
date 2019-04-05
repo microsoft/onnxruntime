@@ -139,9 +139,9 @@ bool PerformanceRunner::Initialize() {
     sf.EnableSequentialExecution();
   else
   {
-      sf.DisableSequentialExecution();
-      fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config_.run_config.session_thread_pool_size);
-      sf.SetSessionThreadPoolSize(performance_test_config_.run_config.session_thread_pool_size);
+    sf.DisableSequentialExecution();
+    fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config_.run_config.session_thread_pool_size);
+    sf.SetSessionThreadPoolSize(performance_test_config_.run_config.session_thread_pool_size);
   }
 
   // Set optimization level.
