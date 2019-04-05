@@ -199,10 +199,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestPreTrainedModelsOpset7And8()
         {
             // 16-bit float not supported type in C#.
-            var skipModels = new[] {
+            var skipModels = new List<String>() {
                 "fp16_inception_v1",
                 "fp16_shufflenet",
                 "fp16_tiny_yolov2" };
+
+            var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
+            var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
+            if (isContribOpsDisabled) {
+                skipModels.Add("test_tiny_yolov2");
+            }
 
             var opsets = new[] { "opset7", "opset8" };
             var modelsDir = GetTestModelsDir();

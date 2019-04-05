@@ -367,6 +367,32 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
 #endif
 
+
+#ifdef DISABLE_CONTRIB_OPS
+  broken_tests["coreml_SqueezeNet_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Permute_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_ReLU_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Padding-Upsampling-Normalizer_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["tiny_yolov2"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Pooling_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Padding_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Normalizer_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_ImageNet_small"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_ImageNet_large"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_leakyrelu_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_hard_sigmoid_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_elu_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Dense_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Conv2D_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_VGG16_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_Resnet50_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_Inceptionv3_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_FNS-Candy_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_AgeNet_ImageNet"] = "This model uses contrib ops.";
+#endif
+
   int result = 0;
   for (const std::string& s : stat.GetFailedTest()) {
     if (broken_tests.find(s) == broken_tests.end()) {
