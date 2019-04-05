@@ -336,6 +336,9 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #ifdef _WIN32
   broken_tests["vgg19"] = "failed: bad allocation";
+  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
+  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+  broken_tests["zfnet512"] = "failed: bad allocation";
 #endif
 
 #ifdef __GNUG__

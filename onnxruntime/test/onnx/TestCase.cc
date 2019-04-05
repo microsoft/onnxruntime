@@ -184,7 +184,7 @@ static Status SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>
   return Status::OK();
 }
 
-Status LoopDataFile(int test_data_pb_fd, const std::vector<ONNX_NAMESPACE::ValueInfoProto> value_info,
+Status LoopDataFile(int test_data_pb_fd, const std::vector<ONNX_NAMESPACE::ValueInfoProto>& value_info,
                     std::unordered_map<std::string, OrtValue*>& name_data_map, HeapBuffer& b, std::ostringstream& oss) {
   google::protobuf::io::FileInputStream f(test_data_pb_fd);
   f.SetCloseOnDelete(true);
