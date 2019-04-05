@@ -264,6 +264,7 @@ common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomO
                       DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
       }
 
+      schema.SetDomain(domain->domain_);
       schema.SinceVersion(1);
       schema.AllowUncheckedAttributes();
 
@@ -271,9 +272,20 @@ common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomO
 
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
-          .SetDomain(onnxruntime::kOnnxDomain)
-          .SinceVersion(1)
-          .Provider(onnxruntime::kCpuExecutionProvider);
+          .SetDomain(domain->domain_)
+          .SinceVersion(1);
+
+      if (&op->GetExecutionProviderType) {
+        auto provider = op->GetExecutionProviderType(op);
+        if (provider == ORT_EXECUTION_PROVIDER_CPU)
+          def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+        else if (provider == ORT_EXECUTION_PROVIDER_CUDA)
+          def_builder.Provider(onnxruntime::kCudaExecutionProvider);
+        else
+          return Status(common::ONNXRUNTIME, common::FAIL, "Unsupported ExecutionProvider type");
+      } else {
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+      }
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
 
