@@ -1,4 +1,4 @@
-// Copyright (c) Facebook Inc. and Microsoft Corporation.
+// Copyright (c) ONNX Project Contributors.
 // Licensed under the MIT license.
 
 syntax = "proto2";
@@ -6,9 +6,9 @@ syntax = "proto2";
 package {PACKAGE_NAME};
 
 // #if ONNX-ML
-import "onnx/onnx-ml.proto";
+import "onnx-ml.proto";
 // #else
-import "onnx/onnx.proto";
+import "onnx.proto";
 // #endif
 
 //
@@ -100,7 +100,7 @@ message OperatorSetProto {
   // All OperatorSetProtos indicate the version of the IR syntax and semantics
   // they adhere to. It is always IR_VERSION.
   // This field MUST be present in this version of the IR
-  optional int32 ir_version = 2;
+  optional int64 ir_version = 2;
 
   // The prerelease component of the SemVer of the IR.
   // This field MAY be absent in this version of the IR

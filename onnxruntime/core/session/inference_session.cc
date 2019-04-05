@@ -191,7 +191,22 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 }
 
-InferenceSession::~InferenceSession() = default;
+InferenceSession::~InferenceSession() {
+  if (session_options_.enable_profiling) {
+    try {
+      EndProfiling();
+    } catch (std::exception& e) {
+      // TODO: Currently we have no way to transport this error to the API user
+      // Maybe this should be refactored, so that profiling must be explicitly
+      // started and stopped via C-API functions.
+      // And not like now a session option and therefore profiling must be started
+      // and stopped implicitly.
+      LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
+    } catch (...) {
+      LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
+    }
+  }
+}
 
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
   if (p_exec_provider == nullptr) {
