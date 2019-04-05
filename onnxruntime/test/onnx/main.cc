@@ -178,7 +178,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     data_dirs.emplace_back(argv[i]);
   }
   {
-    std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases);
+    //std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases);
     SessionOptionsWrapper sf(env);
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
@@ -221,6 +221,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       return -1;
 #endif
     }
+    LoadTestAndRun(data_dirs, whitelisted_test_cases, [&] (ITestCase* l) {
+        RunSingleTestCase(l, sf, 1, 1, GetDefaultThreadPool(Env::Default()), nullptr,
+            [] (std::shared_ptr<TestCaseResult>, ORT_CALLBACK_INSTANCE){
+                return Status::OK();
+            }
+        );
+    });
+/*
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -234,6 +242,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     for (ITestCase* l : tests) {
       delete l;
     }
+*/
   }
   // clang-format off
   std::map<std::string, std::string> broken_tests{
