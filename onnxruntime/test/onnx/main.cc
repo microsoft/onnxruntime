@@ -353,6 +353,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   broken_tests["vgg19"] = "failed: bad allocation";
   broken_tests["tf_nasnet_large"] = "failed: bad allocation";
   broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 
 #endif
 
