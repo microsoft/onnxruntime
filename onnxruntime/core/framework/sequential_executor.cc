@@ -120,7 +120,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       ss << "Non-zero status code returned while running Node: " <<
             p_op_kernel->Node().Name() <<
             " Status Message: " <<
-          compute_status.ErrorMessage();
+            compute_status.ErrorMessage();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
