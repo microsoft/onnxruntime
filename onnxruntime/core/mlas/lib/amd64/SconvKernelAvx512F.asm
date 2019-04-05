@@ -102,7 +102,7 @@ ClearBlock MACRO FilterCount, OutputCount
 
 ComputeBlock MACRO FilterCount, OutputCount, VectorOffset, BroadcastOffset
 
-IF FilterCount EQ 15555
+IF FilterCount EQ 1
         vmovups zmm24,ZMMWORD PTR [rdx+VectorOffset]
         EmitIfCountGE OutputCount, 1, <vfmadd231ps zmm0,zmm24,DWORD BCST [rcx+BroadcastOffset]>
         EmitIfCountGE OutputCount, 2, <vfmadd231ps zmm4,zmm24,DWORD BCST [rcx+r9+BroadcastOffset]>
@@ -437,23 +437,33 @@ ProcessOutputCountRightPad:
 
 Process1x1FilterCountN MACRO FilterCount
 
-        LOCAL   ProcessNextOutputCountBy3
+        LOCAL   ProcessNextOutputCountBy6
         LOCAL   ProcessRemainingOutputCount
+        LOCAL   ProcessRemainingOutputCountLessThan3
         LOCAL   ProcessRemainingOutputCount1
 
-        sub     r10,3
+        sub     r10,6
         jb      ProcessRemainingOutputCount
 
-ProcessNextOutputCountBy3:
+ProcessNextOutputCountBy6:
+        Process1x1OutputCountN 16, FilterCount, 6
+        lea     rax,[r9*2+r9]
+        lea     rbp,[rbp+rax*2]             ; advance input by 6 elements
+        sub     r10,6
+        jae     ProcessNextOutputCountBy6
+
+ProcessRemainingOutputCount:
+        add     r10,6                       ; correct for over-subtract above
+        jz      ExitKernel
+        cmp     r10,3
+        jb      ProcessRemainingOutputCountLessThan3
         Process1x1OutputCountN 16, FilterCount, 3
         lea     rax,[r9*2+r9]
         add     rbp,rax                     ; advance input by 3 elements
         sub     r10,3
-        jae     ProcessNextOutputCountBy3
-
-ProcessRemainingOutputCount:
-        add     r10,3                       ; correct for over-subtract above
         jz      ExitKernel
+
+ProcessRemainingOutputCountLessThan3:
         cmp     r10,2
         jb      ProcessRemainingOutputCount1
         Process1x1OutputCountN 16, FilterCount, 2

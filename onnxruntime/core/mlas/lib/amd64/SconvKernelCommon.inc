@@ -82,7 +82,9 @@ SconvKernel1x1Frame STRUCT
         SavedXmm13 OWORD ?
         SavedXmm14 OWORD ?
         SavedXmm15 OWORD ?
+        Padding QWORD ?
         SavedR12 QWORD ?
+        SavedR14 QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
         SavedRbx QWORD ?
@@ -443,6 +445,10 @@ Process1x1OutputCountN MACRO BlockSize, FilterCount, OutputCount
         ClearBlock FilterCount, OutputCount
 
 ProcessNextInputBlock:
+IF OutputCount GT 3
+        lea     r14,[r9+r9*2]
+        add     r14,rcx                     ; compute input plus 3 blocks
+ENDIF
 IF FilterCount GT 2
         lea     rbx,[rdx+rsi*2]             ; compute filter plus 2 rows
 ENDIF
@@ -505,6 +511,7 @@ SconvKernel1x1Function MACRO Isa, BiasFilter
         push_reg rbx
         push_reg rsi
         push_reg rdi
+        push_reg r14
         push_reg r12
         alloc_stack (SconvKernel1x1Frame.SavedR12)
 
@@ -576,6 +583,7 @@ ExitKernel:
         BEGIN_EPILOGUE
 
         pop     r12
+        pop     r14
         pop     rdi
         pop     rsi
         pop     rbx
