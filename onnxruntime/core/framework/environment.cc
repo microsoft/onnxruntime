@@ -57,6 +57,22 @@ Status Environment::Initialize() {
             "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(ScaledTanh)
+        .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+        .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+        .Input(0, "input", "Input tensor", "T")
+        .Output(
+            0,
+            "output",
+            "The scaled hyperbolic tangent values of the input tensor "
+            "computed element-wise",
+            "T")
+        .TypeConstraint(
+            "T",
+            {"tensor(float16)", "tensor(float)", "tensor(double)"},
+            "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx

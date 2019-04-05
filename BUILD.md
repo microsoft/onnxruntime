@@ -60,6 +60,12 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 1. For Windows, just add --x86 argument when launching build.bat
 2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
+## Build Hosting Application on Linux
+
+1. Besides dependencies needed for ONNX Runtime, to build the hosting application, `g++-7` is needed to build `vcpkg`.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_hosting  --use_openmp --parallel --use_full_protobuf`
+3. The hosting application will be generated as `./build/Linux/RelWithDebInfo/onnxruntime_hosting`
+
 ## Build/Test Flavors for CI
 
 ### CI Build Environments

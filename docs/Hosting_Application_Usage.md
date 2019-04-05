@@ -1,0 +1,134 @@
+# How to Use ONNX Hosting Application REST API for Prediction
+
+The ONNX hosting application is designed to provide a REST API for a prediction service. The command line is quite simple as below. Only `model_path` is MUST-HAVE to start a server.
+
+```
+~./onnxruntime_hosting --help
+ONNX Hosting: host an ONNX model for inferencing with ONNXRuntime
+Allowed options:
+  -h [ --help ]                   Shows a help message and exits
+  --logging_level arg (=verbose)  Logging level. Allowed options (case 
+                                  sensitive): verbose, info, warning, error, 
+                                  fatal
+  -m [ --model_path ] arg         Path to ONNX model
+  -a [ --address ] arg (=0.0.0.0) The base HTTP address
+  --http_port arg (=8001)         HTTP port to listen to requests
+  --num_http_threads arg (=8)     Number of http threads
+
+```
+
+## Start the Server
+
+To host an ONNX model as REST API server, you simply need to run as:
+
+```
+./onnxruntime_hosting -m /<your>/<model>/<path>
+```
+
+The prediction URL is in this format:
+
+```
+http://<your_ip_address>:<port>/v1/models/<your-model-name>/versions/<your-version>:predict
+```
+
+**Note**: Since we currently only support one model, the model name and version can be any string length > 0.
+
+## Request and Response Payload
+
+The HTTP request can be a protobuf message in binary format or JSON format. The HTTP request header field `Content-Type` will tell the server how to handle the request payload. It is a MUST-HAVE field in request headers. Requests missing `Content-Type` will be rejected as `400 Bad Request`.
+
+* For `"Content-Type: application/json"`, the payload will be deserialized as JSON string in UTF-8 format
+* For `"Content-Type: application/vnd.google.protobuf"`, `"Content-Type: application/x-protobuf"` or `"Content-Type: application/octet-stream"`, the payload will be consumed as protobuf message directly.
+
+The protobuf definition can be found [here](https://github.com/Microsoft/onnxruntime/blob/master/onnxruntime/hosting/protobuf/predict.proto). You can use it for your preferred programming language.
+
+## Inferencing
+
+To send the request to the HTTP server, you can use any of your preferred tools. Here we use `curl` as example:
+
+```
+curl  -X POST -d "@predict_request_0.json" -H "Content-Type: application/json" http://127.0.0.1:8001/v1/models/mymodel/versions/3:predict
+```
+
+or
+
+```
+curl -X POST --data-binary "@predict_request_0.pb" -H "Content-Type: application/octet-stream" -H "Foo: 1234"  http://127.0.0.1:8001/v1/models/mymodel/versions/3:predict
+```
+
+To control the response data type, we allow the client to send the request with `Accept` header field to indicate what kind of serialization to be expected. It has the same choices and meanings as `Content-Type` header field.
+
+## Advanced Topics
+
+### Number of HTTP Threads
+
+This configuration is for advanced users to optimize the utilization of the server. Our default value comes from the number of CPU cores in the environment.
+
+### Request ID and Client Request ID
+
+In production environment, to make the client side easily track their request/response and benefit server owner (usually not the same person who maintain the client) investigate issues on server side, we provide the following header fields:
+
+* `x-ms-request-id`: it will only be available in the response header, no matter the request succeeded or failed. It will be a GUID/uuid string with dash, e.g. `72b68108-18a4-493c-ac75-d0abd82f0a11`. If the request headers contain this field, the value will be ignored.
+* `x-ms-client-request-id`: it is a field for client to provide some tracking information. The content will be persisted in the response headers with the same name. Except this header field, other custom header fields will not be persisted by the HTTP server.
+
+Here is an example:
+
+#### Client Side
+
+```
+$ curl -v -X POST --data-binary "@predict_request_0.pb" -H "Content-Type: application/octet-stream" -H "Foo: 1234" -H "x-ms-client-request-id: my-request-001" -H "Accept: application/json"  http://127.0.0.1:8001/v1/models/mymodel/versions/3:predict
+Note: Unnecessary use of -X or --request, POST is already inferred.
+*   Trying 127.0.0.1...
+* Connected to 127.0.0.1 (127.0.0.1) port 8001 (#0)
+> POST /v1/models/mymodel/versions/3:predict HTTP/1.1
+> Host: 127.0.0.1:8001
+> User-Agent: curl/7.47.0
+> Content-Type: application/octet-stream
+> x-ms-client-request-id: my-request-001
+> Accept: application/json
+> Content-Length: 3179
+> Expect: 100-continue
+> 
+* Done waiting for 100-continue
+* We are completely uploaded and fine
+< HTTP/1.1 200 OK
+< Content-Type: application/json
+< x-ms-request-id: 72b68108-18a4-493c-ac75-d0abd82f0a11
+< x-ms-client-request-id: my-request-001
+< Content-Length: 159
+< 
+* Connection #0 to host 127.0.0.1 left intact
+{"outputs":{"Sample_Output_Name":{"dims":["1","10"],"dataType":1,"rawData":"6OpzRFquGsSFdM1FyAEnRFtRZcRa9NDEUBj0xI4ydsJIS0LE//CzxA==","dataLocation":"DEFAULT"}}}%
+```
+
+#### Server Side
+
+```
+2019-04-04 23:48:26.395200744 [V:onnxruntime:72b68108-18a4-493c-ac75-d0abd82f0a11, predict_request_handler.cc:40 Predict] Name: mymodel Version: 3 Action: predict
+2019-04-04 23:48:26.395289437 [V:onnxruntime:72b68108-18a4-493c-ac75-d0abd82f0a11, predict_request_handler.cc:46 Predict] x-ms-client-request-id: [my-request-001]
+2019-04-04 23:48:26.395540707 [I:onnxruntime:InferenceSession, inference_session.cc:736 Run] Running with tag: 72b68108-18a4-493c-ac75-d0abd82f0a11
+2019-04-04 23:48:26.395596858 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, inference_session.cc:976 CreateLoggerForRun] Created logger for run with id of 72b68108-18a4-493c-ac75-d0abd82f0a11
+2019-04-04 23:48:26.395731391 [I:onnxruntime:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:42 Execute] Begin execution
+2019-04-04 23:48:26.395763319 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:45 Execute] Size of execution plan vector: 12
+2019-04-04 23:48:26.396228981 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Convolution28
+2019-04-04 23:48:26.396580161 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Plus30
+2019-04-04 23:48:26.396623732 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 10
+2019-04-04 23:48:26.396878822 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: ReLU32
+2019-04-04 23:48:26.397091882 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Pooling66
+2019-04-04 23:48:26.397126243 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 11
+2019-04-04 23:48:26.397772701 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Convolution110
+2019-04-04 23:48:26.397818174 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 13
+2019-04-04 23:48:26.398060592 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Plus112
+2019-04-04 23:48:26.398095300 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 14
+2019-04-04 23:48:26.398257563 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: ReLU114
+2019-04-04 23:48:26.398426740 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Pooling160
+2019-04-04 23:48:26.398466031 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 15
+2019-04-04 23:48:26.398542823 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Times212_reshape0
+2019-04-04 23:48:26.398599687 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Times212_reshape1
+2019-04-04 23:48:26.398692631 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Times212
+2019-04-04 23:48:26.398731471 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 17
+2019-04-04 23:48:26.398832735 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:156 Execute] Releasing node ML values after computing kernel: Plus214
+2019-04-04 23:48:26.398873229 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:197 ReleaseNodeMLValues] Releasing mlvalue with index: 19
+2019-04-04 23:48:26.398922929 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:160 Execute] Fetching output.
+2019-04-04 23:48:26.398956560 [V:VLOG1:72b68108-18a4-493c-ac75-d0abd82f0a11, sequential_executor.cc:163 Execute] Done with execution.
+```
