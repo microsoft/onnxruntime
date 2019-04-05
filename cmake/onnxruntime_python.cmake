@@ -84,16 +84,19 @@ set(onnxruntime_pybind11_state_dependencies
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 if (MSVC)
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
+          ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES} ${ONNXRUNTIME_SO_LINK_FLAG})
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES}
+          ${ONNXRUNTIME_SO_LINK_FLAG})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY} ${ONNXRUNTIME_SO_LINK_FLAG} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY}
+          ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-Xlinker -rpath=\$ORIGIN")
 endif()
 

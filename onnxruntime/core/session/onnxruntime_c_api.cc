@@ -1062,11 +1062,11 @@ static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, int num_values, Ort
 
   if (key_type == DataTypeImpl::GetType<std::string>()) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, out);
-  } else if (key_type == DataTypeImpl::GetType<int64_t>()) {
-    return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
-  } else {
-    return OrtCreateStatus(ORT_FAIL, "Key type is not supported yet.");
   }
+  if (key_type == DataTypeImpl::GetType<int64_t>()) {
+    return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
+  }
+  return OrtCreateStatus(ORT_FAIL, "Key type is not supported yet.");
 }
 
 static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum ONNXType value_type,
@@ -1076,11 +1076,11 @@ static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum O
   }
   if (value_type == ONNX_TYPE_MAP) {
     return OrtCreateValueImplMap(in, num_values, out);
-  } else if (value_type == ONNX_TYPE_SEQUENCE) {
-    return OrtCreateValueImplSeq(in, num_values, out);
-  } else {
-    return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
   }
+  if (value_type == ONNX_TYPE_SEQUENCE) {
+    return OrtCreateValueImplSeq(in, num_values, out);
+  }
+  return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
 }
 
 ORT_API_STATUS_IMPL(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
