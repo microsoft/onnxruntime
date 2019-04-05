@@ -227,10 +227,10 @@ struct MyCustomOp : onnxruntime::CustomOpBase<MyCustomOp, MyCustomKernel> {
   const char* GetName() const { return "Foo"; };
 
   size_t GetInputTypeCount() const { return 2; };
-  ONNXTensorElementDataType GetInputType(size_t index) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
   size_t GetOutputTypeCount() const { return 1; };
-  ONNXTensorElementDataType GetOutputType(size_t index) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
 
 TEST_F(CApiTest, custom_op_handler) {
