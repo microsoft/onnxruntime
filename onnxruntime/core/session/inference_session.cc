@@ -11,6 +11,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <list>
+#include <string>
 
 #include "core/common/logging/logging.h"
 #include "core/common/task_thread_pool.h"
@@ -58,6 +59,7 @@ using namespace ONNX_NAMESPACE;
 constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtKernelInfoGetAttribute_float,
     &OrtKernelInfoGetAttribute_int64,
+    &OrtKernelInfoGetAttribute_string,
 
     &OrtGetTensorShapeAndType,
 
@@ -83,6 +85,23 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
   if (status.IsOK())
     return nullptr;
+  return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t *size) {
+  std::string value;
+  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
+  if (status.IsOK()) {
+    if (*size >= value.size() + 1) {
+      std::memcpy(out, value.data(), value.size());
+      out[value.size()] = '\0';
+      *size = value.size();
+      return nullptr;
+    } else {
+      *size = value.size() + 1;
+      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+    }
+  }
   return onnxruntime::ToOrtStatus(status);
 }
 
