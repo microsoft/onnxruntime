@@ -1,6 +1,6 @@
-# How to Use ONNX Hosting Application Provide REST API for Prediction
+# How to Use ONNX Hosting Application REST API for Prediction
 
-ONNX hosting application is designed to provide REST API for prediction service. The command line is quite simple as below. Only `model_path` is MUST-HAVE to start a server.
+The ONNX hosting application is designed to provide a REST API for a prediction service. The command line is quite simple as below. Only `model_path` is MUST-HAVE to start a server.
 
 ```
 ~./onnxruntime_hosting --help
@@ -25,26 +25,26 @@ To host an ONNX model as REST API server, you simply need to run as:
 ./onnxruntime_hosting -m /<your>/<model>/<path>
 ```
 
-The prediction request is in this format:
+The prediction URL is in this format:
 
 ```
 http://<your_ip_address>:<port>/v1/models/<your-model-name>/versions/<your-version>:predict
 ```
 
-**Note**: Since we currently only support one model, the model name and version could be any string length > 0.
+**Note**: Since we currently only support one model, the model name and version can be any string length > 0.
 
 ## Request and Response Payload
 
-The HTTP request could be ProtoBuf message in binary format or JSON format. The HTTP request header field `Content-Type` will tell the server how to handle the request payload. It is a MUST-HAVE field in request headers. Requests missing `Content-Type` will be rejected as `400 Bad Request`.
+The HTTP request can be a protobuf message in binary format or JSON format. The HTTP request header field `Content-Type` will tell the server how to handle the request payload. It is a MUST-HAVE field in request headers. Requests missing `Content-Type` will be rejected as `400 Bad Request`.
 
 * For `"Content-Type: application/json"`, the payload will be deserialized as JSON string in UTF-8 format
 * For `"Content-Type: application/vnd.google.protobuf"`, `"Content-Type: application/x-protobuf"` or `"Content-Type: application/octet-stream"`, the payload will be consumed as protobuf message directly.
 
-The ProtoBuf definition could be found [here](https://github.com/Microsoft/onnxruntime/blob/master/onnxruntime/hosting/protobuf/predict.proto). You could use it for your preferred programming language.
+The protobuf definition can be found [here](https://github.com/Microsoft/onnxruntime/blob/master/onnxruntime/hosting/protobuf/predict.proto). You can use it for your preferred programming language.
 
 ## Inferencing
 
-To send the request to the HTTP sever, you could use any your preferred tool. Here we use `curl` as example:
+To send the request to the HTTP server, you can use any of your preferred tools. Here we use `curl` as example:
 
 ```
 curl  -X POST -d "@predict_request_0.json" -H "Content-Type: application/json" http://127.0.0.1:8001/v1/models/mymodel/versions/3:predict
@@ -56,7 +56,7 @@ or
 curl -X POST --data-binary "@predict_request_0.pb" -H "Content-Type: application/octet-stream" -H "Foo: 1234"  http://127.0.0.1:8001/v1/models/mymodel/versions/3:predict
 ```
 
-To control the response data type, we allow the client sending request with `Accept` header field to indicate what kind of serialization to be expected. It has the same choices and meanings as `Content-Type` header field.
+To control the response data type, we allow the client to send the request with `Accept` header field to indicate what kind of serialization to be expected. It has the same choices and meanings as `Content-Type` header field.
 
 ## Advanced Topics
 
