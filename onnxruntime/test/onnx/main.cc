@@ -221,12 +221,63 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       return -1;
 #endif
     }
+    size_t total_models;
+    size_t total_cases;
     LoadTestAndRun(data_dirs, whitelisted_test_cases, [&] (ITestCase* l) {
-        RunSingleTestCase(l, sf, 1, 1, GetDefaultThreadPool(Env::Default()), nullptr,
-            [] (std::shared_ptr<TestCaseResult>, ORT_CALLBACK_INSTANCE){
-                return Status::OK();
+        try {
+            stat.total_model_count += 1;
+            stat.total_test_case_count += l->GetDataCount();
+            RunSingleTestCase(l, sf, 1, 1, GetDefaultThreadPool(Env::Default()), nullptr,
+                [&stat, l] (std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE){
+                        const TestCaseResult& r = *result;
+                        for (const EXECUTE_RESULT res : r.GetExcutionResult()) {
+                          if (res != EXECUTE_RESULT::SUCCESS && res != EXECUTE_RESULT::NOT_SUPPORT) {
+                            stat.AddFailedTest(l->GetTestCaseName());
+                          }
+                          switch (res) {
+                            case EXECUTE_RESULT::SUCCESS:
+                              stat.succeeded++;
+                              break;
+                            case EXECUTE_RESULT::INVALID_ARGUMENT:
+                            case EXECUTE_RESULT::UNKNOWN_ERROR:
+                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
+                              break;
+                            case EXECUTE_RESULT::INVALID_GRAPH:
+                              stat.invalid_graph++;
+                              break;
+                            case EXECUTE_RESULT::WITH_EXCEPTION:
+                              stat.throwed_exception++;
+                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
+                              break;
+                            case EXECUTE_RESULT::RESULT_DIFFERS:
+                              stat.result_differs++;
+                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
+                              break;
+                            case EXECUTE_RESULT::MODEL_SHAPE_MISMATCH:
+                            case EXECUTE_RESULT::SHAPE_MISMATCH:
+                            case EXECUTE_RESULT::MODEL_TYPE_MISMATCH:
+                            case EXECUTE_RESULT::TYPE_MISMATCH:
+                              stat.result_differs++;
+                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
+                              break;
+                            case EXECUTE_RESULT::NOT_SUPPORT:
+                              stat.not_implemented++;
+                              if (!r.node_name.empty()) stat.AddNotImplementedKernels(r.node_name);
+                              break;
+                            case EXECUTE_RESULT::LOAD_MODEL_FAILED:
+                              stat.load_model_failed++;
+                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
+                              break;
+                            default:
+                              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown result");
+                          }
+                        }
+                    return Status::OK();
+                });
+            } catch (...) {
+                stat.AddFailedTest(l->GetTestCaseName());
+                stat.throwed_exception += l->GetDataCount();
             }
-        );
     });
 /*
     TestEnv args(tests, stat, sf);
@@ -236,9 +287,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
+*/
 
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
+/*
     for (ITestCase* l : tests) {
       delete l;
     }
