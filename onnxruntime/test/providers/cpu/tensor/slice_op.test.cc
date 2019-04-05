@@ -237,6 +237,21 @@ TEST(SliceTest, Slice1D_WithPositiveSteps) {
 	                  true);
 }
 
+// In numpy:
+// x = np.array([1, 2, 3, 4])
+// y = x[-1:-4:-1]
+TEST(SliceTest, Slice1D_WithNegativeSteps_Regular) {
+  RunSliceTest<float>({4},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {-1},
+                      {-4},
+                      {0},
+                      {-1},
+                      {3},
+                      {4.0f, 3.0f, 2.0f},
+                      true);
+}
+
 TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_1) {
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
@@ -401,11 +416,39 @@ TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_2) {
 }
 
 // Slice for Reversing
-TEST(SliceTest, Slice1D_ReverseAllAxes) {
+// With numeric_limit_max, it means slice to the end of a dimension 
+// (whichever direction we are stepping) 
+TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
                       {std::numeric_limits<int32_t>::max()},
+                      {0},
+                      {-1},
+                      {4},
+                      {4.0f, 3.0f, 2.0f, 1.0f},
+                      true);
+}
+
+// With numeric_limit_min, the end value should be clamped to -1
+TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
+  RunSliceTest<float>({4},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {-1},
+                      {std::numeric_limits<int32_t>::min()},
+                      {0},
+                      {-1},
+                      {4},
+                      {4.0f, 3.0f, 2.0f, 1.0f},
+                      true);
+}
+
+// giving an end value < -{dim_value} should also clamp it to -1
+TEST(SliceTest, Slice1D_ReverseAllAxes_3) {
+  RunSliceTest<float>({4},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {-1},
+                      {-5},
                       {0},
                       {-1},
                       {4},
