@@ -6,19 +6,28 @@
 
 #include <thread>
 #include <fstream>
+#include <unordered_map>
 
 #include "boost/program_options.hpp"
-
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace hosting {
 
-enum class Result { ExitSuccess = 1,
-                    ExitFailure,
-                    ContinueSuccess };
-
 namespace po = boost::program_options;
+
+enum class Result {
+  ExitSuccess = 1,
+  ExitFailure,
+  ContinueSuccess
+};
+
+static std::unordered_map<std::string, onnxruntime::logging::Severity> supported_log_levels{
+    {"verbose", onnxruntime::logging::Severity::kVERBOSE},
+    {"info", onnxruntime::logging::Severity::kINFO},
+    {"warning", onnxruntime::logging::Severity::kWARNING},
+    {"error", onnxruntime::logging::Severity::kERROR},
+    {"fatal", onnxruntime::logging::Severity::kFATAL}};
 
 // Wrapper around Boost program_options and should provide all the functionality for options parsing
 // Provides sane default values
@@ -61,8 +70,13 @@ class ServerConfiguration {
       return Result::ExitFailure;
     }
 
-    logging_level = GetSeverity(logging_level_str);
-    return ValidateOptions();
+    Result result = ValidateOptions();
+
+    if (result == Result::ContinueSuccess) {
+      logging_level = supported_log_levels[logging_level_str];
+    }
+
+    return result;
   }
 
  private:
@@ -73,7 +87,7 @@ class ServerConfiguration {
   // Print help and return if there is a bad value
   Result ValidateOptions() {
     if (vm.count("logging_level") &&
-        (!(logging_level_str == "verbose" || logging_level_str == "info") || logging_level_str == "warning" || logging_level_str == "error" || logging_level_str == "fatal")) {
+        supported_log_levels.find(logging_level_str) == supported_log_levels.end()) {
       PrintHelp(std::cerr, "logging_level must be one of verbose, info, warning, error, or fatal");
       return Result::ExitFailure;
     } else if (num_http_threads <= 0) {
@@ -93,15 +107,6 @@ class ServerConfiguration {
   // Checks if program options contains help
   bool ContainsHelp() const {
     return vm.count("help") || vm.count("h");
-  }
-
-  onnxruntime::logging::Severity GetSeverity(const std::string& level) const {
-    if (level == "verbose") return onnxruntime::logging::Severity::kVERBOSE;
-    if (level == "info") return onnxruntime::logging::Severity::kINFO;
-    if (level == "warning") return onnxruntime::logging::Severity::kWARNING;
-    if (level == "error") return onnxruntime::logging::Severity::kERROR;
-    if (level == "fatal") return onnxruntime::logging::Severity::kFATAL;
-    return onnxruntime::logging::Severity::kVERBOSE;
   }
 
   // Prints a helpful message (param: what) to the user and then the program options
