@@ -9,6 +9,7 @@
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
 #include "core/graph/graph_viewer.h"
+#include "core/framework/customregistry.h"
 
 namespace onnxruntime {
 struct KernelCreateInfo;
