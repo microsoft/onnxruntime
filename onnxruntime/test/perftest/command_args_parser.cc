@@ -35,6 +35,7 @@ namespace perftest {
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
       "\t-x [thread_size]: Use parallel executor, default (without -x): sequential executor.\n"
+      "\t-o [optimization level]: 0: No transformer optimization, 1:basic optimization, 2: full optimization"
       "\t-h: help\n");
 }
 
@@ -94,6 +95,13 @@ namespace perftest {
         test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.session_thread_pool_size <= 0) {
           return false;
+        }
+        break;
+      case 'o':
+        test_config.run_config.optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+        // Valid values are: 0, 1, 2.
+        if (test_config.run_config.optimization_level > 2 ) {
+            return false;
         }
         break;
       case '?':
