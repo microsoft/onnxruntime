@@ -68,7 +68,7 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
-    debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+    ${onnxruntime_EXTERNAL_LIBRARIES})
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG})
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})

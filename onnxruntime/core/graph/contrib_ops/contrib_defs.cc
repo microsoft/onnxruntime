@@ -286,6 +286,65 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
 
+  static const char* ThresholdedRelu_ver1_doc = R"DOC( 
+ThresholdedRelu takes one input data (Tensor<T>) and produces one output data 
+(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise, 
+is applied to the tensor elementwise. )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ThresholdedRelu)
+      .SinceVersion(1)
+      .SetDoc(ThresholdedRelu_ver1_doc)
+      .Attr("alpha", "Threshold value", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "X", "Input tensor", "T")
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput); 
+
+  static const char* DynamicSlice_ver1_doc = R"DOC(
+Produces a slice of the input tensor along multiple axes. Similar to numpy:
+https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
+Slices uses `axes`, `starts` and `ends` inputs to specify the start and end
+dimension for each axis in the list of axes, it uses this information to
+slice the input `data` tensor. If a negative value is passed for any of the
+start or end indices, it represent number of elements before the end of that
+dimension. If the value passed to start or end is larger than the `n` (the
+number of elements in this dimension), it represents `n`. For slicing to the
+end of a dimension with unknown size, it is recommended to pass in `INT_MAX`.
+If `axes` are omitted, they are set to `[0, ..., ndim-1]`.
+Example 1:
+  data = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+  ]
+  axes = [0, 1]
+  starts = [1, 0]
+  ends = [2, 3]
+  result = [
+      [5, 6, 7],
+  ]
+Example 2:
+  data = [
+      [1, 2, 3, 4],
+      [5, 6, 7, 8],
+  ]
+  starts = [0, 1]
+  ends = [-1, 1000]
+  result = [
+      [2, 3, 4],
+  ]
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
+      .SinceVersion(1)
+      .SetDoc(DynamicSlice_ver1_doc)
+      .Input(0, "data", "Tensor of data to extract slices from.", "T")
+      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`", "Tind")
+      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes", "Tind")
+      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to.", "Tind", OpSchema::Optional)
+      .Output(0, "output", "Sliced data tensor.", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
       .SinceVersion(10)
       .Deprecate()
@@ -331,6 +390,18 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
+      .SinceVersion(10)
+      .Deprecate()
+      .SetDoc(DynamicSlice_ver1_doc)
+      .Input(0, "data", "Tensor of data to extract slices from.", "T")
+      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`", "Tind")
+      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes", "Tind")
+      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to.", "Tind", OpSchema::Optional)
+      .Output(0, "output", "Sliced data tensor.", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
 
   // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
 
@@ -385,7 +456,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -447,7 +518,7 @@ activation.)DOC")
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)

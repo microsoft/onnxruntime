@@ -191,7 +191,22 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 }
 
-InferenceSession::~InferenceSession() = default;
+InferenceSession::~InferenceSession() {
+  if (session_options_.enable_profiling) {
+    try {
+      EndProfiling();
+    } catch (std::exception& e) {
+      // TODO: Currently we have no way to transport this error to the API user
+      // Maybe this should be refactored, so that profiling must be explicitly
+      // started and stopped via C-API functions.
+      // And not like now a session option and therefore profiling must be started
+      // and stopped implicitly.
+      LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
+    } catch (...) {
+      LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
+    }
+  }
+}
 
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
   if (p_exec_provider == nullptr) {
@@ -205,7 +220,7 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
   return Status::OK();
 }
 
-common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,                                                          
+common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                           TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
@@ -279,11 +294,13 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
   }
 
+  custom_registries_.push_back(custom_registry);
+
   // Insert session-level customized kernel registry.
-  kernel_registry_manager_.RegisterKernelRegistry(custom_registry);
+  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
   //    if (custom_schema_registries_.empty())
   //      custom_schema_registries_.push_back();
-  custom_schema_registries_.push_back(custom_registry);
+  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
   return Status::OK();
 }
 
@@ -915,10 +932,9 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   // save required inputs
   const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
-  required_input_def_list_.reserve(required_inputs.size());
+  required_input_def_list_ = required_inputs;       // A direct copy of required inputs
   required_model_input_names_.reserve(required_inputs.size());
   for (const auto& elem : required_inputs) {
-    required_input_def_list_.push_back(elem);
     required_model_input_names_.insert(elem->Name());
   }
 
@@ -933,10 +949,9 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   // save outputs
   const auto& outputs = graph.GetOutputs();
-  output_def_list_.reserve(outputs.size());
+  output_def_list_ = outputs;  // A direct copy of outputs
   model_output_names_.reserve(outputs.size());
   for (const auto& elem : outputs) {
-    output_def_list_.push_back(elem);
     model_output_names_.insert(elem->Name());
   }
 
