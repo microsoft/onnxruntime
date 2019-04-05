@@ -139,12 +139,15 @@ bool PerformanceRunner::Initialize() {
     sf.EnableCpuMemArena();
   else
     sf.DisableCpuMemArena();
+
   if (performance_test_config_.run_config.enable_sequential_execution)
     sf.EnableSequentialExecution();
   else
+  {
     sf.DisableSequentialExecution();
-  fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config_.run_config.session_thread_pool_size);
-  sf.SetSessionThreadPoolSize(performance_test_config_.run_config.session_thread_pool_size);
+    fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config_.run_config.session_thread_pool_size);
+    sf.SetSessionThreadPoolSize(performance_test_config_.run_config.session_thread_pool_size);
+  }
 
   // Set optimization level.
   sf.SetSessionGraphOptimizationLevel(performance_test_config_.run_config.optimization_level);
