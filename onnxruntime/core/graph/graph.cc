@@ -658,6 +658,18 @@ Graph::Graph(GraphProto* graph_proto,
     // Copy initial tensors to a map.
     for (auto& tensor : graph_proto_->initializer()) {
       name_to_initial_tensor_[tensor.name()] = &tensor;
+
+      // v4 does not require initializers to be inputs, so we need to ensure there is a NodeArg created for all
+      // initializers in that case
+      if (ir_version > 3) {
+        TypeProto t;
+        t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+        auto shape = t.mutable_tensor_type()->mutable_shape();
+        for (auto dim : tensor.dims())
+          shape->add_dim()->set_dim_value(dim);
+
+        GetOrCreateNodeArg(tensor.name(), &t);
+      }
     }
 
     // Collect all node arg name, type, shape information in the graph.
@@ -873,7 +885,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   if (src_arg != dst_arg) {
     // The edge ends specified by source and destination arg slot are not referring to same node arg.
     // It means there was no edge between these two slots before.
-    ORT_THROW("Argument type mismatch when removing edge.");
+    ORT_THROW("Argument mismatch when removing edge.");
   }
 
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
