@@ -51,6 +51,24 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Enable Sequential Execution. By default, it is enabled.
+        /// </summary>
+        /// </param>
+        public void EnableSequentialExecution()
+        {
+                NativeMethods.OrtEnableSequentialExecution(_nativePtr);
+        }
+
+        /// <summary>
+        /// Disable Sequential Execution and enable Parallel Execution.
+        /// </summary>
+        /// </param>
+        public void DisableSequentialExecution()
+        {
+            NativeMethods.OrtDisableSequentialExecution(_nativePtr);
+        }
+
+        /// <summary>
         /// Default instance
         /// </summary>
         public static SessionOptions Default

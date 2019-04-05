@@ -31,10 +31,9 @@ function(AddTest)
   if(_UT_DYN)
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime ${CMAKE_DL_LIBS} Threads::Threads)
   else()
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG}
-            optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
-  onnxruntime_add_include_to_target(${_UT_TARGET} gsl eigen)
+  onnxruntime_add_include_to_target(${_UT_TARGET} date_interface gsl eigen)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
 
   if (WIN32)
@@ -220,6 +219,9 @@ file(GLOB onnxruntime_test_framework_src ${onnxruntime_test_framework_src_patter
 #with auto initialize onnxruntime
 add_library(onnxruntime_test_utils_for_framework ${onnxruntime_test_utils_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils_for_framework onnxruntime_framework gtest gsl onnx onnx_proto)
+if (onnxruntime_USE_MKLDNN)
+  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_MKLDNN=1)
+endif()
 add_dependencies(onnxruntime_test_utils_for_framework ${onnxruntime_EXTERNAL_DEPENDENCIES} eigen)
 target_include_directories(onnxruntime_test_utils_for_framework PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
 # Add the define for conditionally using the framework Environment class in TestEnvironment
@@ -229,6 +231,9 @@ set_target_properties(onnxruntime_test_utils_for_framework PROPERTIES FOLDER "ON
 #without auto initialize onnxruntime
 add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework gtest gsl onnx onnx_proto)
+if (onnxruntime_USE_MKLDNN)
+  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_MKLDNN=1)
+endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES} eigen)
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -404,7 +409,7 @@ set(onnx_test_libs
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto)
 
-list(APPEND onnx_test_libs debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
+list(APPEND onnx_test_libs ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
 
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})

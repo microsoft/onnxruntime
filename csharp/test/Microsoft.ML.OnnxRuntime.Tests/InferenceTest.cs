@@ -51,15 +51,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Theory]
-        [InlineData(0)]
-        [InlineData(2)]
-        private void CanRunInferenceOnAModel(uint graphOptimizationLevel)
+        [InlineData(0, true)]
+        [InlineData(0, false)]
+        [InlineData(2, true)]
+        [InlineData(2, false)]
+        private void CanRunInferenceOnAModel(uint graphOptimizationLevel, bool disableSequentialExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
             Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+            if(disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))
             {
@@ -219,11 +222,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             foreach (var opset in opsets)
             {
                 var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opset));
-                //var cwd = Directory.GetCurrentDirectory();
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
-
+        
                     if (skipModels.Contains(modelDir.Name))
                         continue;
 
