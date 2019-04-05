@@ -424,8 +424,8 @@ TEST(ConvTest, Conv2D_AutoPad3) {
   vector<int64_t> Y_shape = {1, 1, 7, 5};
   auto expected_vals = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 1.0f, 6.0f, 7.0f, 0.0f,
-	                    0.0f, 33.0f, 63.0f, 51.0f, 0.0f,
-	                    0.0f, 93.0f, 153.0f, 111.0f, 0.0f,
+                        0.0f, 33.0f, 63.0f, 51.0f, 0.0f,
+                        0.0f, 93.0f, 153.0f, 111.0f, 0.0f,
                         0.0f, 153.0f, 243.0f, 171.0f, 0.0f,
                         0.0f, 61.0f, 96.0f, 67.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
@@ -610,5 +610,6 @@ TEST(ConvTest, Conv2D_group) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
+
 }  // namespace test
 }  // namespace onnxruntime
