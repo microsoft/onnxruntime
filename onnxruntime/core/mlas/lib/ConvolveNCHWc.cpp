@@ -31,16 +31,16 @@ struct MLAS_CONV2_WORK_BLOCK {
 #define TIDS (MlasPlatform.GetMaximumThreadCount())
 
 void
-MlasConvReorderInput(
-    const MLAS_CONV_PARAMETERS* Parameters,
+MlasReorderInput(
+    const int64_t* InputShape,
     const float* S,
-    float* D,
-    size_t InputChannels
+    float* D
     )
 {
     const size_t NCHWC = MlasPlatform.NchwcBlockSize;
 
-    const size_t InputSize = Parameters->InputSize;
+    const size_t InputChannels = size_t(InputShape[1]);
+    const size_t InputSize = size_t(InputShape[2]) * size_t(InputShape[3]);
 
     for (size_t c = 0; c < InputChannels; c += NCHWC) {
 
@@ -82,6 +82,61 @@ MlasConvReorderInput(
         }
 
         S += NCHWC * InputSize;
+    }
+}
+
+void
+MlasReorderOutput(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    )
+{
+    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+
+    const size_t OutputChannels = size_t(OutputShape[1]);
+    const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
+
+    for (size_t c = 0; c < OutputChannels; c += NCHWC) {
+
+        const float* s = S;
+
+        for (size_t z = 0; z < NCHWC; z++) {
+
+            const float* ss = s;
+            size_t i = OutputSize;
+
+            while (i >= 8) {
+
+                __m128 v1 = _mm_load_ss(&ss[0]);
+                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 1]), 0x10);
+                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 2]), 0x20);
+                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 3]), 0x30);
+
+                __m128 v2 = _mm_load_ss(&ss[NCHWC * 4]);
+                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 5]), 0x10);
+                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 6]), 0x20);
+                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 7]), 0x30);
+
+                _mm_storeu_ps(&D[0], v1);
+                _mm_storeu_ps(&D[4], v2);
+
+                D += 8;
+                ss += NCHWC * 8;
+                i -= 8;
+            }
+
+            while (i > 0) {
+                *D = *ss;
+                D += 1;
+                ss += NCHWC;
+                i -= 1;
+            }
+
+            s += 1;
+        }
+
+        S += NCHWC * OutputSize;
     }
 }
 
@@ -234,61 +289,6 @@ MlasConvReorderFilter2(
         }
 
         S += NCHWC * InputStride;
-    }
-}
-
-void
-MlasConvReorderOutput(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* S,
-    float* D,
-    size_t OutputChannels
-    )
-{
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
-
-    const size_t OutputSize = Parameters->OutputSize;
-
-    for (size_t c = 0; c < OutputChannels; c += NCHWC) {
-
-        const float* s = S;
-
-        for (size_t z = 0; z < NCHWC; z++) {
-
-            const float* ss = s;
-            size_t i = OutputSize;
-
-            while (i >= 8) {
-
-                __m128 v1 = _mm_load_ss(&ss[0]);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 1]), 0x10);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 2]), 0x20);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 3]), 0x30);
-
-                __m128 v2 = _mm_load_ss(&ss[NCHWC * 4]);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 5]), 0x10);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 6]), 0x20);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 7]), 0x30);
-
-                _mm_storeu_ps(&D[0], v1);
-                _mm_storeu_ps(&D[4], v2);
-
-                D += 8;
-                ss += NCHWC * 8;
-                i -= 8;
-            }
-
-            while (i > 0) {
-                *D = *ss;
-                D += 1;
-                ss += NCHWC;
-                i -= 1;
-            }
-
-            s += 1;
-        }
-
-        S += NCHWC * OutputSize;
     }
 }
 

@@ -36,15 +36,8 @@ template <typename T>
 Status ReorderInput<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
-  const int64_t N = X_shape[0];
-  const int64_t C = X_shape[1];
-  const int64_t H = X_shape[2];
-  const int64_t W = X_shape[3];
-  Tensor* Y = context->Output(0, {N, C, H, W});
-  MLAS_CONV_PARAMETERS params = { };
-  params.InputSize = H * W;
-  // BUGBUG: ignores N...
-  MlasConvReorderInput(&params, X->template Data<T>(), Y->template MutableData<T>(), static_cast<size_t>(C));
+  Tensor* Y = context->Output(0, X_shape);
+  MlasReorderInput(X_shape.GetDims().data(), X->template Data<T>(), Y->template MutableData<T>());
   return Status::OK();
 }
 
@@ -52,15 +45,8 @@ template <typename T>
 Status ReorderOutput<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
-  const int64_t N = X_shape[0];
-  const int64_t C = X_shape[1];
-  const int64_t H = X_shape[2];
-  const int64_t W = X_shape[3];
-  Tensor* Y = context->Output(0, {N, C, H, W});
-  MLAS_CONV_PARAMETERS params = { };
-  params.OutputSize = H * W;
-  // BUGBUG: ignores N...
-  MlasConvReorderOutput(&params, X->template Data<T>(), Y->template MutableData<T>(), static_cast<size_t>(C));
+  Tensor* Y = context->Output(0, X_shape);
+  MlasReorderOutput(X_shape.GetDims().data(), X->template Data<T>(), Y->template MutableData<T>());
   return Status::OK();
 }
 

@@ -224,11 +224,17 @@ MlasConvertHalfToFloatBuffer(
 //
 
 void
-MlasConvReorderInput(
-    const MLAS_CONV_PARAMETERS* Parameters,
+MlasReorderInput(
+    const int64_t* InputShape,
     const float* S,
-    float* D,
-    size_t InputChannels
+    float* D
+    );
+
+void
+MlasReorderOutput(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
     );
 
 void
@@ -243,14 +249,6 @@ MlasConvReorderFilter2(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* S,
     float* D
-    );
-
-void
-MlasConvReorderOutput(
-    const MLAS_CONV_PARAMETERS* Parameters,
-    const float* S,
-    float* D,
-    size_t OutputChannels
     );
 
 void
