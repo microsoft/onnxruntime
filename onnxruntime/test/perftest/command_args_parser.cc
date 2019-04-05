@@ -35,13 +35,13 @@ namespace perftest {
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
       "\t-x [thread_size]: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: 0: No transformer optimization, 1:basic optimization, 2: full optimization"
+      "\t-o [optimization level]: 0: No transformer optimization, 1:basic optimization, 2: full optimization. \n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:vhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:o:vhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
