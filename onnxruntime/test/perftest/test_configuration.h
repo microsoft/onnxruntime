@@ -42,6 +42,7 @@ struct RunConfig {
   bool f_verbose{false};
   bool enable_sequential_execution{true};
   int session_thread_pool_size{6};
+  uint32_t optimization_level{2};
 };
 
 struct PerformanceTestConfig {
