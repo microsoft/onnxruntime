@@ -6,8 +6,6 @@ project(onnxruntime_hosting)
 # Generate .h and .cc files from protobuf file
 add_library(hosting_proto
   ${ONNXRUNTIME_ROOT}/hosting/protobuf/predict.proto
-  ${ONNXRUNTIME_ROOT}/hosting/protobuf/model_metadata.proto
-  ${ONNXRUNTIME_ROOT}/hosting/protobuf/model_status.proto
   ${ONNXRUNTIME_ROOT}/hosting/protobuf/error_code.proto)
 target_include_directories(hosting_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 target_compile_definitions(hosting_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)

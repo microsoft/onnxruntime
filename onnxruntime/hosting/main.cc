@@ -24,12 +24,24 @@ int main(int argc, char* argv[]) {
   auto logger = env->GetAppLogger();
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
   LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
+
   auto status = env->GetSession()->Load(config.model_path);
-  LOGS(logger, VERBOSE) << "Load Model Status: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
-  LOGS(logger, VERBOSE) << "Session Initialized: " << env->GetSession()->Initialize();
+  if (!status.IsOK()) {
+    LOGS(logger, FATAL) << "Load Model Failed: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
+    exit(EXIT_FAILURE);
+  } else {
+    LOGS(logger, VERBOSE) << "Load Model Successfully!";
+  }
+
+  status = env->GetSession()->Initialize();
+  if (!status.IsOK()) {
+    LOGS(logger, FATAL) << "Session Initialization Failed:" << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
+    exit(EXIT_FAILURE);
+  } else {
+    LOGS(logger, VERBOSE) << "Initialize Session Successfully!";
+  }
 
   auto const boost_address = boost::asio::ip::make_address(config.address);
-
   hosting::App app{};
 
   app.RegisterStartup(
