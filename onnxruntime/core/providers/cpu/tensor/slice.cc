@@ -60,7 +60,7 @@ ADD_TYPED_DYNAMIC_SLICE_OP(string);
 #define ADD_TYPED_SLICE_V10_OP(data_type)                                                    \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                            \
       Slice,                                                                                 \
-      10,                                                                                    \
+      9,                                                                                    \
       data_type,                                                                             \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())       \
                         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),     \
