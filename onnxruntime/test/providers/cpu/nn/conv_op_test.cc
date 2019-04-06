@@ -155,7 +155,8 @@ TEST(ConvTest, Conv1D_AutoPad1_StridesDefault) {
   vector<int64_t> W_shape = {1, 1, 2};
   vector<int64_t> Y_shape = {1, 1, 5};
   auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 9.0f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false, true); // asymmetric padding is not supported by cudnn
+                                                                                      // pads will be computed to be {1, 0}
 }
 
 TEST(ConvTest, Conv1D_AutoPad2_StridesNonDefault) {
@@ -173,7 +174,8 @@ TEST(ConvTest, Conv1D_AutoPad2_StridesNonDefault) {
   vector<int64_t> W_shape = {1, 1, 2};
   vector<int64_t> Y_shape = {1, 1, 5};
   auto expected_vals = {0.0f, 3.0f, 7.0f, 5.0f, 0.0f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false, true); // asymmetric padding is not supported by cudnn
+                                                                                      // pads will be computed to be {0, 1}
 }
 
 
