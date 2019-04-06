@@ -178,7 +178,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     data_dirs.emplace_back(argv[i]);
   }
   {
-    //std::vector<ITestCase*> tests = LoadTests(data_dirs, whitelisted_test_cases);
     SessionOptionsWrapper sf(env);
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
@@ -221,65 +220,20 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       return -1;
 #endif
     }
-    size_t total_models;
-    size_t total_cases;
-    LoadTestAndRun(data_dirs, whitelisted_test_cases, [&] (ITestCase* l) {
-        try {
-            stat.total_model_count += 1;
-            stat.total_test_case_count += l->GetDataCount();
-            RunSingleTestCase(l, sf, 1, 1, GetDefaultThreadPool(Env::Default()), nullptr,
-                [&stat, l] (std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE){
-                        const TestCaseResult& r = *result;
-                        for (const EXECUTE_RESULT res : r.GetExcutionResult()) {
-                          if (res != EXECUTE_RESULT::SUCCESS && res != EXECUTE_RESULT::NOT_SUPPORT) {
-                            stat.AddFailedTest(l->GetTestCaseName());
-                          }
-                          switch (res) {
-                            case EXECUTE_RESULT::SUCCESS:
-                              stat.succeeded++;
-                              break;
-                            case EXECUTE_RESULT::INVALID_ARGUMENT:
-                            case EXECUTE_RESULT::UNKNOWN_ERROR:
-                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
-                              break;
-                            case EXECUTE_RESULT::INVALID_GRAPH:
-                              stat.invalid_graph++;
-                              break;
-                            case EXECUTE_RESULT::WITH_EXCEPTION:
-                              stat.throwed_exception++;
-                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
-                              break;
-                            case EXECUTE_RESULT::RESULT_DIFFERS:
-                              stat.result_differs++;
-                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
-                              break;
-                            case EXECUTE_RESULT::MODEL_SHAPE_MISMATCH:
-                            case EXECUTE_RESULT::SHAPE_MISMATCH:
-                            case EXECUTE_RESULT::MODEL_TYPE_MISMATCH:
-                            case EXECUTE_RESULT::TYPE_MISMATCH:
-                              stat.result_differs++;
-                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
-                              break;
-                            case EXECUTE_RESULT::NOT_SUPPORT:
-                              stat.not_implemented++;
-                              if (!r.node_name.empty()) stat.AddNotImplementedKernels(r.node_name);
-                              break;
-                            case EXECUTE_RESULT::LOAD_MODEL_FAILED:
-                              stat.load_model_failed++;
-                              if (!r.node_name.empty()) stat.AddFailedKernels(r.node_name);
-                              break;
-                            default:
-                              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown result");
-                          }
-                        }
-                    return Status::OK();
-                });
-            } catch (...) {
-                stat.AddFailedTest(l->GetTestCaseName());
-                stat.throwed_exception += l->GetDataCount();
-            }
+
+#if defined (_WIN32) || (defined(__GNUG__) && !defined(__LP64__))
+    //Minimize mem consumption
+    LoadTests (data_dirs, whitelisted_test_cases, [&] (ITestCase* l) {
+        TestResultStat per_case_stat;
+        std::vector<ITestCase*> per_case_tests = {l};
+        TestEnv per_case_args(per_case_tests, per_case_stat, sf);
+        RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
+        stat += per_case_stat;
+        delete l;
     });
-/*
+#else
+    std::vector<ITestCase*> tests;
+    LoadTests(data_dirs, whitelisted_test_cases, [&] (ITestCase* l) { tests.push_back(l); });
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -287,15 +241,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
-*/
-
-    std::string res = stat.ToString();
-    fwrite(res.c_str(), 1, res.size(), stdout);
-/*
     for (ITestCase* l : tests) {
       delete l;
     }
-*/
+#endif
+    std::string res = stat.ToString();
+    fwrite(res.c_str(), 1, res.size(), stdout);
   }
   // clang-format off
   std::map<std::string, std::string> broken_tests{
@@ -398,16 +349,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #ifdef _WIN32
   broken_tests["vgg19"] = "failed: bad allocation";
-  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
-  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
-  broken_tests["zfnet512"] = "failed: bad allocation";
-#endif
-
-#ifdef __GNUG__
-#ifndef __LP64__
-  broken_tests["nonzero_example"] = "failed: type mismatch";
   broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
+
+#if defined(__GNUG__) && !defined(__LP64__)
+  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
 
   int result = 0;

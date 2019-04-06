@@ -246,45 +246,9 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
   return common::Status::OK();
 }
 
-void LoadTestAndRun (const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                     const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                     const std::function<void(ITestCase*)>& Run) {
-  std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
-  while (!paths.empty()) {
-    std::basic_string<PATH_CHAR_TYPE> node_data_root_path = paths.back();
-    paths.pop_back();
-    std::basic_string<PATH_CHAR_TYPE> my_dir_name = GetLastComponent(node_data_root_path);
-    LoopDir(node_data_root_path, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
-      if (filename[0] == '.') return true;
-      if (f_type == OrtFileType::TYPE_DIR) {
-        std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename);
-        paths.push_back(p);
-        return true;
-      }
-      std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
-      if (!HasExtensionOf(filename_str, ORT_TSTR("onnx"))) return true;
-
-      std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
-      if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
-      if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(), test_case_name) == whitelisted_test_cases.end()) {
-        return true;
-      }
-      std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
-
-      ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name));
-      auto status = l->SetModelPath(p.c_str());
-      if (status.IsOK()) {
-        Run(l);
-      }
-      delete l;
-      return status.IsOK();
-    });
-  }
-}
-
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases) {
-  std::vector<ITestCase*> tests;
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
     std::basic_string<PATH_CHAR_TYPE> node_data_root_path = paths.back();
@@ -314,11 +278,10 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
         delete l;
         return true;
       }
-      tests.push_back(l);
+      process_function(l);
       return true;
     });
   }
-  return tests;
 }
 
 SeqTestRunner::SeqTestRunner(OrtSession* session1,

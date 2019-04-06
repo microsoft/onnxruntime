@@ -128,12 +128,10 @@ struct DataTask {
   const size_t task_id;
 };
 
-void LoadTestAndRun (const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                     const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                     const std::function<void(ITestCase*)>& Run);
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               const std::function<void(ITestCase*)>& process_function);
 
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases);
 //Do not run this function in the thread pool passed in
 ::onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);
