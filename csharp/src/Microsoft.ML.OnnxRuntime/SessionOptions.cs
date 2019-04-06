@@ -8,17 +8,6 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Various providers of ONNX operators
-    /// </summary>
-    public enum ExecutionProvider
-    {
-        Cpu,
-        MklDnn,
-        Cuda
-        //TODO: add more providers gradually
-    };
-
-    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions:IDisposable
@@ -56,7 +45,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </param>
         public void EnableSequentialExecution()
         {
-                NativeMethods.OrtEnableSequentialExecution(_nativePtr);
+            NativeMethods.OrtEnableSequentialExecution(_nativePtr);
         }
 
         /// <summary>
