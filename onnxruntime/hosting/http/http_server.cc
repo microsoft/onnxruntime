@@ -57,9 +57,19 @@ App& App::RegisterError(const ErrorFn& fn) {
 App& App::Run() {
   net::io_context ioc{http_details.threads};
   // Create and launch a listening port
-  std::make_shared<Listener>(routes_, ioc, tcp::endpoint{http_details.address, http_details.port})->Run();
+  auto listener = std::make_shared<Listener>(routes_, ioc, tcp::endpoint{http_details.address, http_details.port});
 
-  // Run user on start function
+  auto initialized = listener->Init();
+  if (!initialized) {
+    exit(EXIT_FAILURE);
+  }
+
+  auto started = listener->Run();
+  if (!started) {
+    exit(EXIT_FAILURE);
+  }
+
+  // Run user on_start function
   on_start_(http_details);
 
   // Run the I/O service on the requested number of threads

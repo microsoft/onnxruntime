@@ -22,12 +22,16 @@ class Listener : public std::enable_shared_from_this<Listener> {
   const std::shared_ptr<Routes> routes_;
   tcp::acceptor acceptor_;
   tcp::socket socket_;
+  const tcp::endpoint endpoint_;
 
  public:
   Listener(std::shared_ptr<Routes> routes, net::io_context& ioc, const tcp::endpoint& endpoint);
 
+  // Initialize the HTTP server
+  bool Init();
+
   // Start accepting incoming connections
-  void Run();
+  bool Run();
 
   // Asynchronously accepts the socket
   void DoAccept();

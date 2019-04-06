@@ -20,7 +20,7 @@ static std::unordered_set<std::string> protobuf_mime_types{
 
 // Report a failure
 void ErrorHandling(beast::error_code ec, char const* what) {
-  std::cerr << what << ": " << ec.message() << "\n";
+  std::cerr << what << " failed: " << ec.value() << " : " << ec.message() << "\n";
 }
 
 boost::beast::http::status GetHttpStatusCode(const protobufutil::Status& status) {

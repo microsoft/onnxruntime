@@ -12,28 +12,31 @@ namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
 Listener::Listener(std::shared_ptr<Routes> routes, net::io_context& ioc, const tcp::endpoint& endpoint)
-    : routes_(std::move(routes)), acceptor_(ioc), socket_(ioc) {
+    : routes_(std::move(routes)), acceptor_(ioc), socket_(ioc), endpoint_(endpoint) {
+}
+
+bool Listener::Init() {
   beast::error_code ec;
 
   // Open the acceptor
-  acceptor_.open(endpoint.protocol(), ec);
+  acceptor_.open(endpoint_.protocol(), ec);
   if (ec) {
     ErrorHandling(ec, "open");
-    return;
+    return false;
   }
 
   // Allow address reuse
   acceptor_.set_option(net::socket_base::reuse_address(true), ec);
   if (ec) {
     ErrorHandling(ec, "set_option");
-    return;
+    return false;
   }
 
   // Bind to the routes address
-  acceptor_.bind(endpoint, ec);
+  acceptor_.bind(endpoint_, ec);
   if (ec) {
     ErrorHandling(ec, "bind");
-    return;
+    return false;
   }
 
   // Start listening for connections
@@ -41,15 +44,19 @@ Listener::Listener(std::shared_ptr<Routes> routes, net::io_context& ioc, const t
       net::socket_base::max_listen_connections, ec);
   if (ec) {
     ErrorHandling(ec, "listen");
-    return;
+    return false;
   }
+
+  return true;
 }
 
-void Listener::Run() {
+bool Listener::Run() {
   if (!acceptor_.is_open()) {
-    return;
+    return false;
   }
   DoAccept();
+
+  return true;
 }
 
 void Listener::DoAccept() {
