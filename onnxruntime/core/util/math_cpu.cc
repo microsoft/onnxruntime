@@ -44,10 +44,6 @@
 #include "core/mlas/inc/mlas.h"
 #endif
 
-#ifdef USE_MKLDNN
-#include "mkldnn.h"
-#endif
-
 namespace onnxruntime {
 namespace math {
 
@@ -110,7 +106,7 @@ void GemmEigen(
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-// when USE_MKLDNN and USE_MKLML are defined, use cblas APIs for MKLML
+// when USE_MKLML is defined, use cblas APIs for MKLML
 #if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
@@ -142,23 +138,7 @@ void Gemm<float, CPUMathUtil>(
     float* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-#if defined(USE_MKLDNN)
-  int lda = (int)((TransA == CblasTrans) ? M : K);
-  int ldb = (int)((TransB == CblasTrans) ? K : N);
-  int M_ = (int)M;
-  int N_ = (int)N;
-  int K_ = (int)K;
-  // mkldnn_sgemm expects col major matrices, so we need to swap the operands A and B
-  auto status = mkldnn_sgemm(TransB == CblasNoTrans ? "N" : "T",
-                             TransA == CblasNoTrans ? "N" : "T",
-                             &N_, &M_, &K_,
-                             &alpha, B, &ldb,
-                             A, &lda,
-                             &beta, C, &N_);
-  if (status != mkldnn_success) {
-    ORT_THROW("mkldnn_sgemm failed with status: ", status);
-  }
-#elif defined(USE_MLAS)
+#if defined(USE_MLAS)
   int lda = (int)((TransA == CblasNoTrans) ? K : M);
   int ldb = (int)((TransB == CblasNoTrans) ? N : K);
   MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
@@ -273,18 +253,7 @@ void GemmEx<float, CPUMathUtil>(
     float* C,
     const int ldc,
     CPUMathUtil*) {
-#if defined(USE_MKLDNN)
-  // mkldnn_sgemm expects col major matrices, so we need to swap the operands A and B
-  auto status = mkldnn_sgemm(TransB == CblasNoTrans ? "N" : "T",
-                             TransA == CblasNoTrans ? "N" : "T",
-                             &N, &M, &K,
-                             &alpha, B, &ldb,
-                             A, &lda,
-                             &beta, C, &ldc);
-  if (status != mkldnn_success) {
-    ORT_THROW("mkldnn_sgemm failed with status: ", status);
-  }
-#elif defined(USE_MLAS)
+#if defined(USE_MLAS)
   MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
 #else
   using OuterStride = Eigen::OuterStride<Eigen::Dynamic>;
