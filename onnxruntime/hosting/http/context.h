@@ -29,11 +29,11 @@ class HttpContext {
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   http::response<http::string_body> response{};
 
-  std::string uuid;
+  std::string request_id;
   http::status error_code;
   std::string error_message;
 
-  HttpContext() : uuid(boost::uuids::to_string(boost::uuids::random_generator()())),
+  HttpContext() : request_id(boost::uuids::to_string(boost::uuids::random_generator()())),
                   error_code(http::status::internal_server_error),
                   error_message("An unknown server error has occurred") {}
 

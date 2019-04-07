@@ -12,7 +12,7 @@ namespace hosting {
 
 namespace protobufutil = google::protobuf::util;
 
-protobufutil::Status GenerateProtoBufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
+protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
   protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
   switch (onnx_status.Code()) {
     case onnxruntime::common::StatusCode::OK:

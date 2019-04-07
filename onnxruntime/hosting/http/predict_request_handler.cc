@@ -36,7 +36,7 @@ void Predict(const std::string& name,
              const std::string& action,
              /* in, out */ HttpContext& context,
              std::shared_ptr<HostingEnvironment> env) {
-  auto logger = env->GetLogger(context.uuid);
+  auto logger = env->GetLogger(context.request_id);
   LOGS(*logger, VERBOSE) << "Name: " << name << " Version: " << version << " Action: " << action;
 
   // We need to persist the "x-ms-client-request-id" field for the user to track the request from client side
@@ -50,7 +50,7 @@ void Predict(const std::string& name,
   SupportedContentType request_type = GetRequestContentType(context);
   SupportedContentType response_type = GetResponseContentType(context);
   if (response_type == SupportedContentType::Unknown) {
-    GenerateErrorResponse(logger, http::status::bad_request, "Unknown 'Accept' header field in the request", context, context.uuid, client_request_id);
+    GenerateErrorResponse(logger, http::status::bad_request, "Unknown 'Accept' header field in the request", context, context.request_id, client_request_id);
   }
 
   // Deserialize the payload
@@ -60,17 +60,17 @@ void Predict(const std::string& name,
   std::string error_message;
   bool parse_succeeded = ParseRequestPayload(context, request_type, predict_request, error_code, error_message);
   if (!parse_succeeded) {
-    GenerateErrorResponse(logger, error_code, error_message, context, context.uuid, client_request_id);
+    GenerateErrorResponse(logger, error_code, error_message, context, context.request_id, client_request_id);
     return;
   }
 
   // Run Prediction
   protobufutil::Status status;
-  Executor executor(env);
+  Executor executor(env, context.request_id);
   PredictResponse predict_response{};
-  status = executor.Predict(name, version, context.uuid, predict_request, predict_response);
+  status = executor.Predict(name, version, predict_request, predict_response);
   if (!status.ok()) {
-    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context, context.uuid, client_request_id);
+    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context, context.request_id, client_request_id);
     return;
   }
 
@@ -79,7 +79,7 @@ void Predict(const std::string& name,
   if (response_type == SupportedContentType::Json) {
     status = GenerateResponseInJson(predict_response, response_body);
     if (!status.ok()) {
-      GenerateErrorResponse(logger, http::status::internal_server_error, status.error_message(), context, context.uuid, client_request_id);
+      GenerateErrorResponse(logger, http::status::internal_server_error, status.error_message(), context, context.request_id, client_request_id);
       return;
     }
     context.response.set(http::field::content_type, "application/json");
@@ -89,7 +89,7 @@ void Predict(const std::string& name,
   }
 
   // Build HTTP response
-  context.response.insert("x-ms-request-id", context.uuid);
+  context.response.insert("x-ms-request-id", context.request_id);
   if (!client_request_id.empty()) {
     context.response.insert("x-ms-client-request-id", client_request_id);
   }

@@ -9,30 +9,29 @@
 #include "core/framework/environment.h"
 #include "core/common/logging/logging.h"
 #include "core/session/inference_session.h"
-#include "log_sink.h"
 
 namespace onnxruntime {
 namespace hosting {
 
+namespace logging = logging;
+
 class HostingEnvironment {
  public:
-  explicit HostingEnvironment(onnxruntime::logging::Severity severity);
-  // TODO: cleanly dispose session
+  explicit HostingEnvironment(logging::Severity severity);
   ~HostingEnvironment() = default;
   HostingEnvironment(const HostingEnvironment&) = delete;
 
-  const onnxruntime::logging::Logger& GetAppLogger();
-  std::shared_ptr<onnxruntime::logging::Logger> GetLogger(const std::string& id);
-  std::shared_ptr<onnxruntime::InferenceSession> GetSession() const;
+  const logging::Logger& GetAppLogger();
+  std::shared_ptr<logging::Logger> GetLogger(const std::string& id);
 
+  std::unique_ptr<onnxruntime::InferenceSession> session;
  private:
-  std::string logger_id_;
-  onnxruntime::hosting::LogSink sink_;
-  onnxruntime::logging::LoggingManager default_logging_manager_;
+  const logging::Severity severity_;
+  const std::string logger_id_;
+  logging::LoggingManager default_logging_manager_;
 
   std::unique_ptr<onnxruntime::Environment> runtime_environment_;
   onnxruntime::SessionOptions options_;
-  std::shared_ptr<onnxruntime::InferenceSession> session_;
 };
 
 }  // namespace hosting

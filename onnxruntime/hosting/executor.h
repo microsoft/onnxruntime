@@ -1,3 +1,5 @@
+#include <utility>
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -14,16 +16,29 @@ namespace hosting {
 
 class Executor {
  public:
-  explicit Executor(std::shared_ptr<HostingEnvironment> hosting_env) : env_(std::move(hosting_env)) {}
+  Executor(std::shared_ptr<HostingEnvironment> hosting_env, std::string request_id) : env_(std::move(hosting_env)),
+                                                                                      request_id_(std::move(request_id)),
+                                                                                      using_raw_data(true) {}
 
   // Prediction method
-  google::protobuf::util::Status Predict(const std::string& model_name, const std::string& model_version, const std::string& request_id,
+  google::protobuf::util::Status Predict(const std::string& model_name,
+                                         const std::string& model_version,
                                          onnxruntime::hosting::PredictRequest& request,
                                          /* out */ onnxruntime::hosting::PredictResponse& response);
 
  private:
   const std::shared_ptr<HostingEnvironment> env_;
+  const std::string request_id_;
+  bool using_raw_data;
+
+  google::protobuf::util::Status SetMLValue(const onnx::TensorProto& input_tensor,
+                                            OrtAllocatorInfo* cpu_allocator_info,
+                                            /* out */ MLValue& ml_value);
+
+  google::protobuf::util::Status SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map, const onnxruntime::hosting::PredictRequest& request);
+
 };
+
 }  // namespace hosting
 }  // namespace onnxruntime
 
