@@ -59,7 +59,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Concat", GetConcatGradient);
   REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);
   REGISTER_GRADIENT_BUILDER("Gemm", GetGemmGradient);
-  REGISTER_GRADIENT_BUILDER("AveragePool", GetPoolGradient);
   REGISTER_GRADIENT_BUILDER("MaxPool", GetMaxPoolGradient);
   REGISTER_GRADIENT_BUILDER("LRN", GetLRNGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient);
@@ -67,6 +66,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);
   REGISTER_GRADIENT_BUILDER("GlobalAveragePool", GetGlobalAveragePoolGradient);
+  REGISTER_GRADIENT_BUILDER("AveragePool", GetAveragePoolGradient);
 };
 
 }  // namespace training

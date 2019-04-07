@@ -199,6 +199,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetAveragePoolGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("AveragePoolGrad",
+              {GO(0)},
+              {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetMaxPoolGradient) {
   return std::vector<NodeDef>{
       NodeDef("MaxPoolGrad",

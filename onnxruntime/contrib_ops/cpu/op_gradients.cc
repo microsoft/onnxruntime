@@ -359,5 +359,6 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
 }  // namespace contrib
 }  // namespace onnxruntime

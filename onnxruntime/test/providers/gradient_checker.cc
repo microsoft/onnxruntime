@@ -121,7 +121,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
           continue;
         }
         const int64_t x_size = x_infos[x_idx].shape.Size();
-        auto dx_flat = gradients[x_idx].Get<Tensor>().Data<Y_T>();
+        auto dx_flat = gradients[x_idx].Get<Tensor>().Data<X_T>();
+
         for (int r = 0; r < x_size; ++r) {
           auto calc_index = CalculateJacobianTransposeIndex(
               x_infos,
