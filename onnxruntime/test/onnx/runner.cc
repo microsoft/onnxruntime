@@ -244,6 +244,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
 
 void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
                const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {

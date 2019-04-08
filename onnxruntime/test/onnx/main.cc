@@ -181,8 +181,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
-    std::vector<ITestCase*> tests =
-        LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance);
     SessionOptionsWrapper sf(env);
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
@@ -228,7 +226,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #if defined (_WIN32) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests (data_dirs, whitelisted_test_cases, [&] (ITestCase* l) {
+    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&] (ITestCase* l) {
         TestResultStat per_case_stat;
         std::vector<ITestCase*> per_case_tests = {l};
         TestEnv per_case_args(per_case_tests, per_case_stat, sf);
@@ -238,7 +236,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, [&] (ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&] (ITestCase* l) { tests.push_back(l); });
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
