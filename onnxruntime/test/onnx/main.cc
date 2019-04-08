@@ -224,19 +224,19 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
     }
 
-#if defined (_WIN32) || (defined(__GNUG__) && !defined(__LP64__))
+#if (defined (_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&] (ITestCase* l) {
+    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf] (ITestCase* l) {
+        std::unique_ptr<ITestCase> test_case_ptr(l);
         TestResultStat per_case_stat;
         std::vector<ITestCase*> per_case_tests = {l};
         TestEnv per_case_args(per_case_tests, per_case_stat, sf);
         RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
         stat += per_case_stat;
-        delete l;
     });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&] (ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests] (ITestCase* l) { tests.push_back(l); });
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -342,7 +342,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
   // clang-format on
 
-#ifdef _WIN32
+#if defined (_WIN32) && !defined(_WIN64)
   broken_tests["vgg19"] = "failed: bad allocation";
   broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
