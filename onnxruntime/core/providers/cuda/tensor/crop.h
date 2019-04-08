@@ -10,9 +10,9 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-class Crop final : public CropBase, public CudaKernel {
+class Crop final : public contrib::CropBase, public CudaKernel {
  public:
-  Crop(const OpKernelInfo& info) : CropBase(info), CudaKernel(info) {
+  Crop(const OpKernelInfo& info) : contrib::CropBase(info), CudaKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
