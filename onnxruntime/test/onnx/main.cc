@@ -225,6 +225,20 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       return -1;
 #endif
     }
+
+#if defined (_WIN32) || (defined(__GNUG__) && !defined(__LP64__))
+    //Minimize mem consumption
+    LoadTests (data_dirs, whitelisted_test_cases, [&] (ITestCase* l) {
+        TestResultStat per_case_stat;
+        std::vector<ITestCase*> per_case_tests = {l};
+        TestEnv per_case_args(per_case_tests, per_case_stat, sf);
+        RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
+        stat += per_case_stat;
+        delete l;
+    });
+#else
+    std::vector<ITestCase*> tests;
+    LoadTests(data_dirs, whitelisted_test_cases, [&] (ITestCase* l) { tests.push_back(l); });
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -232,12 +246,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
-
-    std::string res = stat.ToString();
-    fwrite(res.c_str(), 1, res.size(), stdout);
     for (ITestCase* l : tests) {
       delete l;
     }
+#endif
+    std::string res = stat.ToString();
+    fwrite(res.c_str(), 1, res.size(), stdout);
   }
   // clang-format off
   std::map<std::string, std::string> broken_tests{
@@ -331,23 +345,13 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   // clang-format on
 
 #ifdef _WIN32
-  broken_tests["tf_inception_resnet_v2"] = "failed: type mismatch";
-  broken_tests["tf_inception_v4"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
   broken_tests["vgg19"] = "failed: bad allocation";
-  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
-  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
-  broken_tests["zfnet512"] = "failed: bad allocation";
-#endif
-
-#ifdef __GNUG__
-#ifndef __LP64__
-  broken_tests["nonzero_example"] = "failed: type mismatch";
   broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
+
+#if defined(__GNUG__) && !defined(__LP64__)
+  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
 
   int result = 0;

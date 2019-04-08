@@ -274,6 +274,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       return true;
     });
   }
+  return tests;
 }
 
 SeqTestRunner::SeqTestRunner(OrtSession* session1,
