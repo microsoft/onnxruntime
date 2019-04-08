@@ -417,5 +417,10 @@ class InferenceSession {
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
   InsertCastTransformer insert_cast_transformer_;
+
+  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner. 
+  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+
 };
 }  // namespace onnxruntime
