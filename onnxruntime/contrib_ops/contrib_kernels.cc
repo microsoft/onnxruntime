@@ -85,7 +85,7 @@ void RegisterContribKernels(KernelRegistry& kernel_registry) {
 
 
   // These ops were experimental ops in onnx domain which have been removed now. We add them here as 
-  // contrib ops to main backward compatibility
+  // contrib ops to maintain backward compatibility
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, Affine)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, Crop)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 1, bool, DynamicSlice)>());
