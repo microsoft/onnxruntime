@@ -51,15 +51,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Theory]
-        [InlineData(0)]
-        [InlineData(2)]
-        private void CanRunInferenceOnAModel(uint graphOptimizationLevel)
+        [InlineData(0, true)]
+        [InlineData(0, false)]
+        [InlineData(2, true)]
+        [InlineData(2, false)]
+        private void CanRunInferenceOnAModel(uint graphOptimizationLevel, bool disableSequentialExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
             Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+            if(disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))
             {
@@ -149,7 +152,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<float>(inputData, new int[] { 1, 3 });
             container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:Fail] X num_dims does not match W num_dims. X: {1,3} W: {64,3,3,3}", ex.Message);
+            Assert.True(
+            !string.IsNullOrEmpty(ex.Message) &&
+            ex.Message.StartsWith("[ErrorCode:Fail]") &&
+            ex.Message.Contains("X num_dims does not match W num_dims. X: {1,3} W: {64,3,3,3}")
+            );
             session.Dispose();
         }
 
@@ -215,11 +222,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             foreach (var opset in opsets)
             {
                 var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opset));
-                //var cwd = Directory.GetCurrentDirectory();
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
-
+        
                     if (skipModels.Contains(modelDir.Name))
                         continue;
 

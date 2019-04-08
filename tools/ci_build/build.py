@@ -320,7 +320,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf else "OFF"),
+                  # TensorRT provider currently only supports full_protobuf option.
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_tensorrt else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  ]
     if args.use_brainslice:

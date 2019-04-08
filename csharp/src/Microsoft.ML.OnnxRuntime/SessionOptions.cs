@@ -8,17 +8,6 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Various providers of ONNX operators
-    /// </summary>
-    public enum ExecutionProvider
-    {
-        Cpu,
-        MklDnn,
-        Cuda
-        //TODO: add more providers gradually
-    };
-
-    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions:IDisposable
@@ -48,6 +37,24 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var result = NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level);
             return result == 0;
+        }
+
+        /// <summary>
+        /// Enable Sequential Execution. By default, it is enabled.
+        /// </summary>
+        /// </param>
+        public void EnableSequentialExecution()
+        {
+            NativeMethods.OrtEnableSequentialExecution(_nativePtr);
+        }
+
+        /// <summary>
+        /// Disable Sequential Execution and enable Parallel Execution.
+        /// </summary>
+        /// </param>
+        public void DisableSequentialExecution()
+        {
+            NativeMethods.OrtDisableSequentialExecution(_nativePtr);
         }
 
         /// <summary>
