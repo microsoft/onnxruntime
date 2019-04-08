@@ -79,7 +79,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   const T* dYdata = dY->template Data<T>();
 
   // Pre-setting the gradients to zero.
-  math::Set<T, CPUMathUtil>(dW->Size(), 0, dWdata, &CPUMathUtil::Instance());
+  math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, dWdata, &CPUMathUtil::Instance());
 
   BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
@@ -87,7 +87,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   T* dBdata = nullptr;
   if (dB) {
     dBdata = dB->template MutableData<T>();
-    math::Set<T, CPUMathUtil>(dB->Size(), static_cast<T>(0), dBdata, &CPUMathUtil::Instance());
+    math::Set<T, CPUMathUtil>(dB->Shape().Size(), static_cast<T>(0), dBdata, &CPUMathUtil::Instance());
 
     bias_multiplier_data = static_cast<T*>(bias_multiplier.get());
     math::Set<T, CPUMathUtil>(output_image_size,
@@ -170,6 +170,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, X->Shape());
   if (dX) {
     T* dXdata = dX->template MutableData<T>();
+    dYdata = dY->template Data<T>();
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < group_; ++group_id) {
         // Compute gradient into col_buffer.

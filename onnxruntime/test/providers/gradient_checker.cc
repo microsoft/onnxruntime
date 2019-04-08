@@ -265,12 +265,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
       op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
 
+  // Compute the maximum error between theoretical and numeric Jacobians.
+  *max_error = 0.0;
   for (int i = 0; i < jacobian_ts.size(); i++) {
-    // Compute the maximum error between theoretical and numeric Jacobians.
-    *max_error = 0.0;
     auto jac_t = jacobian_ts[i];
     auto jac_n = jacobian_ns[i];
-
     for (int r = 0; r < jacobian_ts[i].size(); ++r) {
       auto cur_error = std::fabs(jac_t[r] - jac_n[r]);
       // Treat any NaN as max_error and immediately return.

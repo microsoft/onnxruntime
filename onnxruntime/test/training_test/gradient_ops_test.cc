@@ -220,7 +220,7 @@ TEST(GradientCheckerTest, DISABLED_ConvGrad) {
     gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})});
-    EXPECT_TRUE(max_error <= 1e-2);
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
   }
 
   //conv_with_strides
@@ -233,7 +233,7 @@ TEST(GradientCheckerTest, DISABLED_ConvGrad) {
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
                                            MakeAttribute("strides", std::vector<int64_t>{2, 2})});
-    EXPECT_TRUE(max_error <= 1e-2);
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
   }
 }
 
@@ -270,16 +270,17 @@ TEST(GradientCheckerTest, ConcatGrad) {
   }
 }
 
-TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
+// TODO: label should adds up to one, enable this when test framework accepts assigned test data
+TEST(GradientCheckerTest, DISABLED_SoftmaxCrossEntropyGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
   const float error_tolerance = 1e-3f;
 
   {
-    TensorShape input_shape({2, 10});
+    TensorShape input_shape({1, 100});
     gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error);
-    EXPECT_TRUE(max_error <= error_tolerance);
+    EXPECT_TRUE(max_error <= error_tolerance) << "max_error: " << max_error;
   }
 }
 
