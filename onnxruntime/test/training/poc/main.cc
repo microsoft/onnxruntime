@@ -39,12 +39,11 @@ int main(int /*argc*/, char* /*args*/[]) {
   unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(env).IsOK());
 
-  TrainingRunner::TrainingData trainingData;
-  TrainingRunner::TestData testData;
+  DataSet trainingData({"X", "labels"});
+  DataSet testData({"X", "labels"});
   PrepareMNISTData(MNIST_DATA_PATH, trainingData, testData);
 
   TrainingRunner::Parameters params;
-  int true_count = 0;
 
   // Init params.
   params.model_path_ = ORIGINAL_MODEL_PATH;
@@ -53,13 +52,16 @@ int main(int /*argc*/, char* /*args*/[]) {
   params.model_trained_path_ = TRAINED_MODEL_PATH;
   params.model_trained_with_loss_func_path_ = TRAINED_MODEL_WITH_COST_PATH;
   params.loss_func_info_ = {"SoftmaxCrossEntropy", "predictions", "labels", "loss", kMSDomain};
+  params.model_prediction_name_ = "predictions";
   params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};
   params.batch_size_ = BATCH_SIZE;
   params.num_of_epoch_ = NUM_OF_EPOCH;
   params.learning_rate_ = LEARNING_RATE;
   params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
 
-  params.error_function_ = [&true_count](const MLValue& predict, const MLValue& label) {
+  int true_count = 0;
+  float total_loss = 0.0f;
+  params.error_function_ = [&true_count, &total_loss](const MLValue& predict, const MLValue& label, const MLValue& loss) {
     const float* prediction_data = predict.Get<Tensor>().template Data<float>();
 
     auto max_class_index = std::distance(prediction_data,
@@ -70,15 +72,20 @@ int main(int /*argc*/, char* /*args*/[]) {
     if (static_cast<int>(label_data[max_class_index]) == 1) {
       true_count++;
     }
+
+    total_loss += *(loss.Get<Tensor>().Data<float>());
   };
 
-  params.post_evaluation_callback_ = [&true_count](size_t num_of_test_run) {
+  params.post_evaluation_callback_ = [&true_count, &total_loss](size_t num_of_test_run) {
     float precision = float(true_count) / num_of_test_run;
-    printf("#examples: %d, #correct: %d, precision: %0.04f \n\n",
+    printf("");
+    printf("#examples: %d, #correct: %d, precision: %0.04f, loss:%0.04f \n\n",
            static_cast<int>(num_of_test_run),
            true_count,
-           precision);
+           precision,
+           total_loss / num_of_test_run);
     true_count = 0;
+    total_loss = 0.0f;
   };
 
   TrainingRunner runner(trainingData, testData, params);

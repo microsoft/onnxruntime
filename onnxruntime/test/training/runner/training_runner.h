@@ -6,21 +6,13 @@
 #include <vector>
 #include "core/framework/ml_value.h"
 #include "core/training/training_session.h"
+#include "test/training/runner/training_util.h"
 
 namespace onnxruntime {
 namespace training {
 
-struct DataPerRun {
-  std::vector<std::string> names_;
-  std::vector<MLValue> values_;
-  size_t label_index_;  // which one is the label in the above vectors.
-};
-
 class TrainingRunner {
  public:
-  typedef std::vector<std::unique_ptr<DataPerRun>> TrainingData;
-  typedef std::vector<std::unique_ptr<DataPerRun>> TestData;
-
   struct Parameters {
     std::string model_path_;
     std::string model_with_loss_func_path_;
@@ -28,7 +20,17 @@ class TrainingRunner {
     std::string model_trained_path_;
     std::string model_trained_with_loss_func_path_;
     LossFunctionInfo loss_func_info_;
+
+    // For some model, loss function's input "prediction" is not the model output.
+    // So model_prediction_name must be specified.
+    std::string model_prediction_name_;
+
+    // The weights to train, exclusive with weights_not_to_train_.
     std::vector<std::string> weights_to_train_;
+
+    // The weights not to train. If not empty, all the initializers not in the vector will be trained.
+    // exclusive with weights_not_to_train_.
+    std::vector<std::string> weights_not_to_train_;
 
     size_t batch_size_;
     size_t num_of_epoch_;
@@ -38,13 +40,13 @@ class TrainingRunner {
     size_t num_of_samples_for_evaluation_;
 
     // error_function_ is called when evaluating the error for a single sample.
-    std::function<void(const MLValue& /*predict*/, const MLValue& /*label*/)> error_function_;
+    std::function<void(const MLValue& /*predict*/, const MLValue& /*label*/, const MLValue& /*loss*/)> error_function_;
 
     // post_evaluation_callback_ is called when a batch of evaluation is done.
     std::function<void(size_t /*num_of_test_sample_run*/)> post_evaluation_callback_;
   };
 
-  TrainingRunner(TrainingData& trainingData, TestData& testData, const Parameters& params);
+  TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params);
 
   common::Status Initialize();
 
@@ -55,8 +57,8 @@ class TrainingRunner {
   Status EndTraining();
   Status Evaluate(InferenceSession& session, bool use_full_set = false);
 
-  TrainingData& training_data_;
-  TrainingData& test_data_;
+  DataSet& training_data_;
+  DataSet& test_data_;
   Parameters params_;
   TrainingSession session_;
 };

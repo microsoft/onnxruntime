@@ -37,7 +37,7 @@ pair<vector<vector<float>>, vector<vector<float>>> NormalizeData(const vector<Im
 
 void ConvertData(const vector<vector<float>>& images,
                  const vector<vector<float>>& labels,
-                 vector<unique_ptr<DataPerRun>>& data_for_training) {
+                 DataSet& data_set) {
   const static vector<int64_t> image_dims = {1, 784};
   const static vector<int64_t> label_dims = {1, 10};
 
@@ -47,17 +47,13 @@ void ConvertData(const vector<vector<float>>& images,
     MLValue labelMLValue;
     TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), label_dims, labels[i], &labelMLValue);
 
-    auto data_per_run = make_unique<DataPerRun>();
-    data_per_run->names_ = {"X", "labels"};
-    data_per_run->values_ = {imageMLValue, labelMLValue};
-    data_per_run->label_index_ = 1;
-    data_for_training.emplace_back(move(data_per_run));
+    data_set.AddData(make_unique<vector<MLValue>>(vector<MLValue>{imageMLValue, labelMLValue}));
   }
 }
 
 void PrepareMNISTData(const string& data_folder,
-                      TrainingRunner::TrainingData& training_data,
-                      TrainingRunner::TestData& test_data) {
+                      DataSet& training_data,
+                      DataSet& test_data) {
   printf("Loading MNIST data ...\n");
   mnist::MNIST_dataset<std::vector, Image, Label> dataset =
       mnist::read_dataset<std::vector, std::vector, uint8_t, uint8_t>(data_folder);

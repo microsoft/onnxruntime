@@ -37,9 +37,12 @@ GraphAugmenter::GraphDefs LossFunctionBuilder::Build(const Graph& graph,
   // Generate GraphDefs, without worrying about label's TypeProto.
   auto graph_defs = loss_func->GetDefs(loss_func_info);
 
-  // Now let's set label's TypeProto from pridiction's.
+  // Now let's set label's TypeProto from prediction's.
   // TODO: see if we want to relax this.
-  const auto* prediction_type_proto = graph.GetNodeArg(loss_func_info.prediction_name_)->TypeAsProto();
+  const auto* node_arg = graph.GetNodeArg(loss_func_info.prediction_name_);
+  ORT_ENFORCE(node_arg != nullptr,
+              "Fail to get prediction's node arg", loss_func_info.prediction_name_);
+  const auto* prediction_type_proto = node_arg->TypeAsProto();
 
   for (auto& node : graph_defs.NodeDefs()) {
     for (auto& arg_def : node.input_args) {
