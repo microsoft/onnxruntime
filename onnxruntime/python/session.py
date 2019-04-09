@@ -5,6 +5,7 @@
 
 import sys
 import os
+import pickle
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -79,3 +80,26 @@ class InferenceSession:
         :meth:`onnxruntime.SessionOptions.enable_profiling`.
         """
         return self._sess.end_profiling()
+
+    def to_onnx(self):
+        """
+        Serialize the model into ONNX.
+        """
+        return self._sess.to_bytes()
+
+    def __getstate__(self):
+        """
+        Define what to pickle.
+        """
+        onx = self.to_onnx()
+        opts = self._sess.session_options
+        opts_bytes = pickle.dumps(opts)
+        return {'onnx': onx, 'options': opts_bytes}
+    
+    def __setstate__(self, state):
+        """
+        Instantiate a pickle object.
+        """
+        content = state['onnx']
+        opts = pickle.loads(state['options']) if 'options' in state else None
+        self.__init__(content, opts)

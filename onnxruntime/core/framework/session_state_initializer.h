@@ -40,7 +40,8 @@ class SessionStateInitializer {
 
   // initialize tensors, and save. save kernels and input/output node mappings
   // \param implicit_inputs could be NULL
-  common::Status InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs);
+  // \param clean_initializers clean initializers to save space
+  common::Status InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs, bool clean_initializers);
 
  private:
   const std::basic_string<PATH_CHAR_TYPE>& graph_loc_;

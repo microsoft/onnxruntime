@@ -71,6 +71,9 @@ struct SessionOptions {
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
+
+  // clean initializers from the ONNX graph to save space
+  bool clean_initializers = true;
 };
 
 /**
@@ -122,6 +125,11 @@ class InferenceSession {
                             logging::LoggingManager* logging_manager = nullptr);
 
   virtual ~InferenceSession();
+
+  /**
+  Return the session options.
+  */
+  const SessionOptions& GetSessionOptions() const;
 
   /**
     * Register an execution provider. If you've one to register, call this before invoking Initialize().
@@ -178,6 +186,22 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Load(std::istream& model_istream);
+
+  /**
+    * Save as an ONNX model.
+    * The model must not have been initialized as it removes all
+    * initializers.
+    * @param ostream object which receives the serialized object.
+    * @return OK if success.
+    */
+  common::Status Save(std::ostream& model_ostream);
+
+  /**
+    * Serialize to model into ONNX format.
+    * @param output result
+    * @return OK if success.
+    */
+  common::Status SerializeToString(std::string& output);
 
   /**
     * Initializes a previously loaded model. Initialization includes but is not
@@ -419,8 +443,7 @@ class InferenceSession {
   InsertCastTransformer insert_cast_transformer_;
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
-  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner. 
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
-
 };
 }  // namespace onnxruntime

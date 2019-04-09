@@ -322,6 +322,31 @@ TEST(InferenceSessionTests, NoTimeout) {
   RunModel(session_object, run_options);
 }
 
+TEST(InferenceSessionTests, LoadAndSave) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.LoadAndSave";
+  so.clean_initializers = false;
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+  RunOptions run_options;
+  RunModel(session_object, run_options);
+
+  std::ostringstream ostream(ios::binary);
+  ASSERT_TRUE(session_object.Save(ostream).IsOK());
+
+  auto content = ostream.str();
+
+  std::istringstream istream2(content, ios::binary);
+  ASSERT_TRUE(istream2.good());
+  InferenceSession session_object2{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object2.Load(istream2).IsOK());
+  ASSERT_TRUE(session_object2.Initialize().IsOK());
+  RunModel(session_object2, run_options);
+}
+
 TEST(InferenceSessionTests, DisableCPUArena) {
   SessionOptions so;
 

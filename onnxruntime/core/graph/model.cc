@@ -395,4 +395,29 @@ Status Model::Save(Model& model, int p_fd) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
   }
 }
+
+Status Model::Save(Model& model, std::ostream& model_ostream) {
+  ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
+
+  auto model_proto = model.ToProto();
+  google::protobuf::io::OstreamOutputStream output(&model_ostream);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output);
+  if (result) {
+    return Status::OK();
+  } else {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+  }
+}
+
+Status Model::SaveONNXModel(std::ostream& model_ostream) {
+  ORT_RETURN_IF_ERROR(MainGraph().Resolve());
+
+  google::protobuf::io::OstreamOutputStream output(&model_ostream);
+  const bool result = model_proto_->SerializeToZeroCopyStream(&output);
+  if (result) {
+    return Status::OK();
+  } else {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+  }
+}
 }  // namespace onnxruntime

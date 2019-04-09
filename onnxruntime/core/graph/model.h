@@ -97,6 +97,10 @@ class Model {
 
   static common::Status Save(Model& model, int fd);
 
+  static common::Status Save(Model& model, std::ostream& model_ostream);
+
+  common::Status SaveONNXModel(std::ostream& model_ostream);
+
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
   static common::Status Load(const std::string& file_path,

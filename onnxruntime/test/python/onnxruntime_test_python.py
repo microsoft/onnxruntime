@@ -5,9 +5,12 @@
 import unittest
 import os
 import sys
+import pickle
+from io import StringIO
 import numpy as np
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import onnxruntime_ostream_redirect
+from onnxruntime.capi._pybind_state import SessionOptions
 
 
 class TestInferenceSession(unittest.TestCase):
@@ -56,6 +59,24 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+    def testRunModelPickle(self):
+        with open(self.get_name("matmul_1.pb"), "rb") as f:
+            content = f.read()
+        options = SessionOptions()
+        options.clean_initializers = False
+        sess = onnxrt.InferenceSession(content, options)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = sess.get_inputs()[0].name
+        output_name = sess.get_outputs()[0].name
+        res1 = sess.run([output_name], {input_name: x})
+
+        content2 = sess.to_onnx()
+        state = sess.__getstate__()
+        pkl = pickle.dumps(sess)
+        sess2 = pickle.loads(pkl)
+        res2 = sess2.run([output_name], {input_name: x})
+        assert list(res1[0].ravel()) == list(res2[0].ravel())
 
     def testRunModel2(self):
         sess = onnxrt.InferenceSession(self.get_name("matmul_1.pb"))

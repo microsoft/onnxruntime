@@ -103,7 +103,7 @@ common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
   return Status::OK();
 }
 
-common::Status SessionStateInitializer::InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs) {
+common::Status SessionStateInitializer::InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs, bool clean_initializers) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
@@ -123,7 +123,8 @@ common::Status SessionStateInitializer::InitializeAndSave(const std::vector<Node
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
-  graph_.CleanAllInitializedTensors();
+  if (clean_initializers)
+    graph_.CleanAllInitializedTensors();
 
   ORT_RETURN_IF_ERROR(SaveKernels(execution_providers_, session_state_, kernel_registry_manager_, logger_));
   ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_,

@@ -46,7 +46,7 @@ TEST(MemcpyTest, copy1) {
                                               kernel_registry_manager};
   st = session_initializer.CreatePlan(nullptr, {}, true);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  st = session_initializer.InitializeAndSave(nullptr);
+  st = session_initializer.InitializeAndSave(nullptr, true);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);

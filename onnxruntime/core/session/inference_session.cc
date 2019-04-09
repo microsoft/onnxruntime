@@ -141,6 +141,10 @@ InferenceSession::~InferenceSession() {
   }
 }
 
+const SessionOptions& InferenceSession::GetSessionOptions() const {
+  return session_options_;
+}
+
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
   if (p_exec_provider == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
@@ -286,6 +290,38 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   return Load(loader, "model_loading_istream");
 }
 
+common::Status InferenceSession::Save(std::ostream& model_ostream) {
+  if (session_options_.clean_initializers) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_GRAPH,
+                          "Model cannot be saved as ONNX from if option clean_initializers is true.");
+  }
+  common::Status status = common::Status::OK();
+  auto tp = session_profiler_.StartTime();
+  try {
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    if (!is_model_loaded_) {  // already loaded
+      LOGS(*session_logger_, ERROR) << "This session does not contain any loaded model.";
+      return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED,
+                            "This session does not contain any loaded model.");
+    }
+
+    status = model_->SaveONNXModel(model_ostream);
+
+    ORT_RETURN_IF_ERROR(status);
+  } catch (const std::exception& ex) {
+    status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during saving: " + std::string(ex.what()));
+  } catch (...) {
+    LOGS(*session_logger_, ERROR) << "Unknown exception in Save()";
+    status = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Save()");
+  }
+
+  if (session_profiler_.FEnabled()) {
+    session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "Save", tp);
+  }
+
+  return status;
+}
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                                 const ExecutionProviders& providers,
@@ -387,7 +423,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, node.ImplicitInputDefs(),
                                                  session_options_.enable_sequential_execution));
 
-      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&node.ImplicitInputDefs()));
+      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&node.ImplicitInputDefs(), session_options_.clean_initializers));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -456,7 +492,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, {}, session_options_.enable_sequential_execution));
-    ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
+    ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr, session_options_.clean_initializers));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
