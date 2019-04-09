@@ -7,14 +7,18 @@
 
 namespace onnxruntime {
 
+/**
+@Class EliminateSlice
+
+Rewrite rule that eliminates an unsqueeze operator that takes as input an initializer.
+
+It is attempted to be triggered only on nodes with op type "Unsqueeze".
+*/
 class UnsqueezeElimination : public RewriteRule {
  public:
-  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination", "Eliminate unsqueeze node") {}
+  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination", "Eliminate unsqueeze node", {"Unsqueeze"}) {}
 
  private:
-  /** Apply rule when op type is the following. */
-  const std::string included_op_type_ = "Unsqueeze";
-
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;

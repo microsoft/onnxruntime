@@ -23,14 +23,16 @@ class DummyGraphTransformer : public GraphTransformer {
   Status ApplyImpl(Graph& /*graph*/, bool& /*modified*/, int /*graph_level*/) const override {
     transformer_invoked_ = true;
     return Status::OK();
-  }  
+  }
 };
 
 // Dummy graph transformer that does nothing, but just sets the modified value
 // This is currently used to test custom transformer selection feature
 class DummyRewriteRule : public RewriteRule {
  public:
-  DummyRewriteRule(const std::string& name) noexcept : RewriteRule(name, "Dummy transformer for testing"),
+  DummyRewriteRule(const std::string& name) noexcept : RewriteRule(name,
+                                                                   "Dummy transformer for testing",
+                                                                   std::unordered_set<std::string>()),
                                                        rewrite_rule_invoked_(false) {}
 
   bool IsRewriteRuleInvoked() const {
@@ -38,17 +40,16 @@ class DummyRewriteRule : public RewriteRule {
   }
 
  private:
-  const std::string included_op_type_ = "Dummy";
   bool rewrite_rule_invoked_;
 
   bool SatisfyCondition(const Graph& /*graph*/, const Node& /*node*/) override {
-      return true;
-  }  
+    return true;
+  }
 
   Status Apply(Graph& /*graph*/, Node& /*node*/, bool& /*modified*/, bool& /*deleted*/) override {
     rewrite_rule_invoked_ = true;
     return Status::OK();
-  } 
+  }
 };
 
 }  // namespace test

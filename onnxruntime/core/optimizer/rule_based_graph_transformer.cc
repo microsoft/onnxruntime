@@ -9,7 +9,15 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
-  rules_.push_back(std::move(rule));
+  const auto& op_types = rule->TargetOpTypes();
+  // If the target op types are empty, this rule will be evaluated for all op types.
+  if (op_types.empty()) {
+    any_op_type_rules_.push_back(std::move(rule));
+  } else {
+    for (auto& op_type : rule->TargetOpTypes()) {
+      op_type_to_rules_[op_type].push_back(std::move(rule));
+    }
+  }
   return Status::OK();
 }
 
@@ -40,10 +48,23 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-    // Apply rewrite rules on current node, then recursively apply rules to subgraphs (if any).
+    // First apply rewrite rules that are registered for the op type of the current node; then apply rules that are
+    // registered to be applied regardless of the op type; then recursively apply rules to subgraphs (if any).
     // Stop further rule application for the current node, if the node gets removed by a rule.
     bool deleted = false;
-    ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, GetRewriteRules(), modified, deleted));
+    const std::vector<std::unique_ptr<RewriteRule>>* rules = nullptr;
+
+    rules = GetRewriteRulesForOpType(node->OpType());
+    if (rules) {
+      ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, modified, deleted));
+    }
+
+    if (!deleted) {
+      rules = GetAnyOpRewriteRules();
+      if (rules) {
+        ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, modified, deleted));
+      }
+    }
 
     if (!deleted) {
       ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
