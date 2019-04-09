@@ -16,7 +16,7 @@ done
 if [ $BUILD_DEVICE = "gpu" ]; then
     _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
     python3 $SCRIPT_DIR/../../build.py --build_dir /build \
-        --config Debug Release \
+        --config Debug RelWithDebInfo \
         --skip_submodule_sync --enable_onnx_tests \
         --parallel --build_shared_lib \
         --use_cuda --use_openmp \
@@ -25,7 +25,7 @@ if [ $BUILD_DEVICE = "gpu" ]; then
 elif [ $BUILD_DEVICE = "tensorrt" ]; then
     _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
     python3 $SCRIPT_DIR/../../build.py --build_dir /build \
-        --config Release \
+        --config RelWithDebInfo \
         --enable_onnx_tests \
         --parallel --build_shared_lib \
         --use_tensorrt --tensorrt_home /workspace/tensorrt \
@@ -34,7 +34,7 @@ elif [ $BUILD_DEVICE = "tensorrt" ]; then
         --cudnn_home /usr/local/cuda --build_shared_lib $BUILD_EXTR_PAR
 else
     python3 $SCRIPT_DIR/../../build.py --build_dir /build \
-        --config Debug Release --build_shared_lib \
+        --config Debug RelWithDebInfo --build_shared_lib \
         --skip_submodule_sync --enable_onnx_tests \
         --build_wheel \
         --parallel --use_openmp --build_shared_lib $BUILD_EXTR_PAR
