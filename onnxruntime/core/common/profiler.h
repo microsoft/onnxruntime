@@ -75,7 +75,7 @@ class Profiler {
     ORT_ENFORCE(instance_ != nullptr);
     return *instance_;
 #else
-    ORT_THROW("Static profiler instance is not enabled, please compile with -DENABLE_STATIC_PROFILER_INSTANCE")
+    ORT_THROW("Static profiler instance is not enabled, please compile with -DENABLE_STATIC_PROFILER_INSTANCE");
 #endif
   }
 
