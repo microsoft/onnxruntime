@@ -12,7 +12,6 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
-
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -226,8 +225,8 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
     }
   } else if (strcmp(src.Location().name, CUDA) == 0) {
     if (strcmp(dst.Location().name, CUDA_PINNED) == 0) {
-      // copying from GPU to pinned memory, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, streams_[exec_queue_id]));
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+
     } else {
       // copying from GPU to CPU memory, this is blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
