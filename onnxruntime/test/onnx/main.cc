@@ -349,7 +349,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #if defined(__GNUG__) && !defined(__LP64__)
   broken_tests["nonzero_example"] = "failed: type mismatch";
-  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
 
   int result = 0;
