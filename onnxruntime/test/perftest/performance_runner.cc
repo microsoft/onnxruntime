@@ -140,6 +140,10 @@ bool PerformanceRunner::Initialize() {
     sf.DisableSequentialExecution();
   fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config_.run_config.session_thread_pool_size);
   sf.SetSessionThreadPoolSize(performance_test_config_.run_config.session_thread_pool_size);
+
+  // Set optimization level.
+  sf.SetSessionGraphOptimizationLevel(performance_test_config_.run_config.optimization_level);
+
   session_object_ = sf.OrtCreateSession(test_case->GetModelUrl());
 
   auto provider_type = performance_test_config_.machine_config.provider_type_name;

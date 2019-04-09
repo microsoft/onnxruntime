@@ -119,8 +119,9 @@ _Side note: If you have multiple versions of CUDA installed on a Windows machine
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\. 
 If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
 
-### MKL-DNN
-To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn --use_mklml`
+### MKL-DNN/MKLML
+To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
+To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
 
 ### TensorRT
 ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
@@ -131,12 +132,11 @@ The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9
  - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
  - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. 
 - The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
-- There are two kind of protobufs: protobuf and protobuf-lite. Currently TensorRT execution provider only supports protobuf by using `--use_full_protobuf` option.
 
 You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
 
 ```
-./build.sh --use_full_protobuf --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
+./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
 

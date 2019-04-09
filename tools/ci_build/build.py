@@ -335,7 +335,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_HOSTING=" + ("ON" if args.build_hosting else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf else "OFF"),
+                  # TensorRT provider currently only supports full_protobuf option.
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_tensorrt else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  ]
     if args.use_brainslice:
@@ -502,7 +503,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
-        dll_path = os.path.join(build_dir, config, "external", "tvm", config) if enable_tvm else None
+        if enable_tvm:
+          dll_path = os.path.join(build_dir, config, "external", "tvm", config)
+        elif enable_tensorrt:
+          dll_path = os.path.join(args.tensorrt_home, 'lib')
+        else:
+          dll_path = None
         run_subprocess([ctest_path, "--build-config", config, "--verbose"],
                        cwd=cwd, dll_path=dll_path)
 

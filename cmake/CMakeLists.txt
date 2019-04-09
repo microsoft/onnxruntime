@@ -282,8 +282,6 @@ add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-add_library(date ALIAS tz)
-set_target_properties(tz PROPERTIES FOLDER "External/tz")
 add_library(gsl ALIAS GSL)
 
 # bounds checking behavior.
@@ -297,7 +295,7 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
 # mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz re2)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf re2)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -470,7 +468,6 @@ if (onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_MKLDNN)
-  add_definitions(-DUSE_MKLDNN=1)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
@@ -573,13 +570,12 @@ include(onnxruntime_mlas.cmake)
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
-  set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
-  set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars

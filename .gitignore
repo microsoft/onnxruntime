@@ -32,6 +32,7 @@ onnxruntime_profile*.json
 /docs/python/*_LICENSE
 /csharp/**/obj/
 /csharp/**/bin/
+/csharp/Directory.Build.props
 docs/python/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json

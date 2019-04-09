@@ -5,6 +5,10 @@ jobs:
     CUDA_VERSION: '10.0'
   steps:
     - template: templates/set-test-data-variables-step.yml
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 4.3
+      inputs:
+        versionSpec: 4.3.0
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:
