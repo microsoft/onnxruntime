@@ -62,9 +62,8 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build Hosting Application on Linux
 
-1. Besides dependencies needed for ONNX Runtime, to build the hosting application, `g++-7` is needed to build `vcpkg`.
-2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_hosting  --use_openmp --parallel --use_full_protobuf`
-3. The hosting application will be generated as `./build/Linux/RelWithDebInfo/onnxruntime_hosting`
+1. Besides ONNX Runtime dependences, `g++-7` or greater is needed to build vcpkg.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_hosting  --use_openmp --parallel`
 
 ## Build/Test Flavors for CI
 
