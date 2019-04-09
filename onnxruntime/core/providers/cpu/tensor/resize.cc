@@ -13,7 +13,14 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     10,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    UpResizesample<float>);
+    Resize<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Resize,
+    10,
+    int32_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
+    Resize<int32_t>);
 
 template <typename T>
 Status Resize<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const {
@@ -38,7 +45,7 @@ Status Resize<T>::BaseCompute(OpKernelContext* context, const std::vector<float>
       //What's the correct behavior of linear mode is not clear right now,
       //Only support bilinear with 4D tensor to keep consistent with previous behavior
       if (dims.size() != 4)
-        return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
+        return Status(ONNXRUNTIME, FAIL, "Resize: linear mode upsample only support 4-D tensor with NCHW layout");
 
       const int64_t batch_size = dims[0], num_channels = dims[1];
       const int64_t input_height = dims[2], input_width = dims[3];
@@ -48,7 +55,7 @@ Status Resize<T>::BaseCompute(OpKernelContext* context, const std::vector<float>
       return Status::OK();
     }
     default:
-      return Status(ONNXRUNTIME, FAIL, "Upsample: unexpected mode");
+      return Status(ONNXRUNTIME, FAIL, "Resize: unexpected mode");
   }
 }
 
