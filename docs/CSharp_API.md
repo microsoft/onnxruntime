@@ -117,15 +117,6 @@ Enable Sequential Execution. By default, it is enabled.
     DisableSequentialExecution();
 Disable Sequential Execution and enable Parallel Execution.
 
-    AppendExecutionProvider(ExecutionProvider provider);
-Appends execution provider to the session. For any operator in the graph the first execution provider that implements the operator will be user. ExecutionProvider is defined as the following enum.
-
-    enum ExecutionProvider
-    {
-        Cpu,
-        MklDnn
-    }
-
 ### NodeMetadata
 Container of metadata for a model graph node, used for communicating the shape and type of the input and output nodes.
 

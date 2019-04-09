@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 // onnxruntime dependencies
-#include <core/common/logging/sinks/clog_sink.h>
-#include <core/common/logging/logging.h>
-#include <core/framework/environment.h>
-#include <core/platform/env.h>
+#include <core/session/onnxruntime_c_api.h>
 
 #include "command_args_parser.h"
 #include "performance_runner.h"
@@ -36,7 +33,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   perftest::PerformanceRunner perf_runner(env, test_config);
   auto status = perf_runner.Run();
   if (!status.IsOK()) {
-    LOGF_DEFAULT(ERROR, "Run failed:%s", status.ErrorMessage().c_str());
+    printf("Run failed:%s\n", status.ErrorMessage().c_str());
     return -1;
   }
 
@@ -60,8 +57,6 @@ int main(int argc, char* argv[]) {
   }
   if (env) {
     OrtReleaseEnv(env);
-  } else {
-    ::google::protobuf::ShutdownProtobufLibrary();
   }
   return retval;
 }

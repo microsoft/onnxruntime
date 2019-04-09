@@ -5,7 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
-#include "core/providers/trt/trt_execution_provider.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
