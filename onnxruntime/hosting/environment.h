@@ -22,7 +22,7 @@ class HostingEnvironment {
   HostingEnvironment(const HostingEnvironment&) = delete;
 
   const logging::Logger& GetAppLogger();
-  std::shared_ptr<logging::Logger> GetLogger(const std::string& id);
+  std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
 
   std::unique_ptr<onnxruntime::InferenceSession> session;
  private:

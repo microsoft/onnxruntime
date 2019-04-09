@@ -17,7 +17,7 @@ void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
              /* in, out */ HttpContext& context,
-             std::shared_ptr<HostingEnvironment> env);
+             HostingEnvironment& env);
 
 }  // namespace hosting
 }  // namespace onnxruntime

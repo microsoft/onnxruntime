@@ -28,7 +28,7 @@ const logging::Logger& HostingEnvironment::GetAppLogger() {
   return default_logging_manager_.DefaultLogger();
 }
 
-std::shared_ptr<logging::Logger> HostingEnvironment::GetLogger(const std::string& id) {
+std::unique_ptr<logging::Logger> HostingEnvironment::GetLogger(const std::string& id) {
   if (id.empty()) {
     LOGS(GetAppLogger(), WARNING) << "Request id is null or empty string";
   }

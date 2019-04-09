@@ -43,7 +43,7 @@ http::status Routes::ParseUrl(http::verb method,
                               /* out */ std::string& model_name,
                               /* out */ std::string& model_version,
                               /* out */ std::string& action,
-                              /* out */ HandlerFn& func) {
+                              /* out */ HandlerFn& func) const {
   std::vector<std::pair<std::string, HandlerFn>> func_table;
   switch (method) {
     case http::verb::get:

@@ -20,12 +20,12 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  auto env = std::make_shared<hosting::HostingEnvironment>(config.logging_level);
-  auto logger = env->GetAppLogger();
+  hosting::HostingEnvironment env(config.logging_level);
+  auto logger = env.GetAppLogger();
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
   LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
 
-  auto status = env->session->Load(config.model_path);
+  auto status = env.session->Load(config.model_path);
   if (!status.IsOK()) {
     LOGS(logger, FATAL) << "Load Model Failed: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
     exit(EXIT_FAILURE);
@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
     LOGS(logger, VERBOSE) << "Load Model Successfully!";
   }
 
-  status = env->session->Initialize();
+  status = env.session->Initialize();
   if (!status.IsOK()) {
     LOGS(logger, FATAL) << "Session Initialization Failed:" << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
     exit(EXIT_FAILURE);
@@ -45,15 +45,15 @@ int main(int argc, char* argv[]) {
   hosting::App app{};
 
   app.RegisterStartup(
-      [env](const auto& details) -> void {
-        auto logger = env->GetAppLogger();
+      [&env](const auto& details) -> void {
+        auto logger = env.GetAppLogger();
         LOGS(logger, VERBOSE) << "Listening at: "
                               << "http://" << details.address << ":" << details.port;
       });
 
   app.RegisterError(
-      [env](auto& context) -> void {
-        auto logger = env->GetLogger(context.request_id);
+      [&env](auto& context) -> void {
+        auto logger = env.GetLogger(context.request_id);
         LOGS(*logger, VERBOSE) << "Error code: " << context.error_code;
         LOGS(*logger, VERBOSE) << "Error message: " << context.error_message;
 
@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
 
   app.RegisterPost(
       R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))",
-      [env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
+      [&env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
         hosting::Predict(name, version, action, context, env);
       });
 

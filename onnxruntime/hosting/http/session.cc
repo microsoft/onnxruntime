@@ -10,7 +10,7 @@ namespace net = boost::asio;       // from <boost/asio.hpp>
 namespace beast = boost::beast;    // from <boost/beast.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
-HttpSession::HttpSession(std::shared_ptr<Routes> routes, tcp::socket socket)
+HttpSession::HttpSession(const Routes& routes, tcp::socket socket)
     : routes_(std::move(routes)), socket_(std::move(socket)), strand_(socket_.get_executor()) {
 }
 
@@ -99,7 +99,7 @@ void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator
   auto status = ExecuteUserFunction(context);
 
   if (status != http::status::ok) {
-    routes_->on_error(context);
+    routes_.on_error(context);
   }
 
   context.response.keep_alive(context.request.keep_alive());
@@ -112,7 +112,7 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
   std::string model_name, model_version, action;
   HandlerFn func;
 
-  auto status = routes_->ParseUrl(context.request.method(), path, model_name, model_version, action, func);
+  auto status = routes_.ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 
   if (status != http::status::ok) {
     context.error_code = status;

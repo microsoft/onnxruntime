@@ -45,12 +45,12 @@ App& App::RegisterStartup(const StartFn& on_start) {
 }
 
 App& App::RegisterPost(const std::string& route, const HandlerFn& fn) {
-  routes_->RegisterController(http::verb::post, route, fn);
+  routes_.RegisterController(http::verb::post, route, fn);
   return *this;
 }
 
 App& App::RegisterError(const ErrorFn& fn) {
-  routes_->RegisterErrorCallback(fn);
+  routes_.RegisterErrorCallback(fn);
   return *this;
 }
 

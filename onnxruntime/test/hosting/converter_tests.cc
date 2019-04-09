@@ -23,7 +23,7 @@ IExecutionProvider* TestCPUExecutionProvider() {
 }
 
 TEST(PositiveTests, MLDataTypeToTensorProtoDataTypeTests) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   MLDataType ml_data_type = DataTypeImpl::GetType<float>();
   onnx::TensorProto_DataType result = onnxruntime::hosting::MLDataTypeToTensorProtoDataType(ml_data_type);
@@ -87,7 +87,7 @@ TEST(PositiveTests, MLDataTypeToTensorProtoDataTypeTests) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_FloatToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -95,7 +95,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_FloatToRaw) {
   onnxruntime::test::CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -126,7 +126,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_FloatToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_FloatToFloatData) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -134,7 +134,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_FloatToFloatData) {
   onnxruntime::test::CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -161,7 +161,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_FloatToFloatData) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int32ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -169,7 +169,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int32ToRaw) {
   onnxruntime::test::CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -200,7 +200,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int32ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int32ToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -208,7 +208,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int32ToInt32Data) {
   onnxruntime::test::CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -235,7 +235,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int32ToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt8ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -243,7 +243,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt8ToRaw) {
   onnxruntime::test::CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -274,7 +274,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt8ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt8ToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -282,7 +282,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt8ToInt32Data) {
   onnxruntime::test::CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -311,7 +311,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt8ToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int8ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -319,7 +319,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int8ToRaw) {
   onnxruntime::test::CreateMLValue<int8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -350,7 +350,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int8ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int8ToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -358,7 +358,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int8ToInt32Data) {
   onnxruntime::test::CreateMLValue<int8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -387,7 +387,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int8ToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt16ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -395,7 +395,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt16ToRaw) {
   onnxruntime::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -426,7 +426,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt16ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt16ToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -434,7 +434,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt16ToInt32Data) {
   onnxruntime::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -463,7 +463,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt16ToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int16ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -471,7 +471,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int16ToRaw) {
   onnxruntime::test::CreateMLValue<int16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -502,7 +502,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int16ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int16ToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -510,7 +510,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int16ToInt32Data) {
   onnxruntime::test::CreateMLValue<int16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -539,7 +539,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int16ToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_BoolToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
@@ -547,7 +547,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BoolToRaw) {
   CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -578,7 +578,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BoolToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_BoolToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
@@ -586,7 +586,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BoolToInt32Data) {
   CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -615,7 +615,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BoolToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Float16ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::MLFloat16> values_mul_x{
@@ -629,7 +629,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Float16ToRaw) {
   onnxruntime::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -660,7 +660,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Float16ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_FloatToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::MLFloat16> values_mul_x{
@@ -674,7 +674,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_FloatToInt32Data) {
   onnxruntime::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -703,7 +703,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_FloatToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_BFloat16ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::BFloat16> values_mul_x{
@@ -717,7 +717,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BFloat16ToRaw) {
   onnxruntime::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -748,7 +748,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BFloat16ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_BFloatToInt32Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::BFloat16> values_mul_x{
@@ -762,7 +762,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BFloatToInt32Data) {
   onnxruntime::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -791,7 +791,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_BFloatToInt32Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_StringToStringData) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<std::string> values_mul_x{"A", "BC", "DEF", "123", "45", "6"};
@@ -805,7 +805,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_StringToStringData) {
   }
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -833,7 +833,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_StringToStringData) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int64ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -841,7 +841,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int64ToRaw) {
   onnxruntime::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -872,7 +872,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int64ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_Int64ToInt64Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -880,7 +880,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int64ToInt64Data) {
   onnxruntime::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -907,7 +907,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_Int64ToInt64Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt32ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -915,7 +915,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt32ToRaw) {
   onnxruntime::test::CreateMLValue<uint32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -946,7 +946,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt32ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt32ToUint64Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -954,7 +954,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt32ToUint64Data) {
   onnxruntime::test::CreateMLValue<uint32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -984,7 +984,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt32ToUint64Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt64ToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -992,7 +992,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt64ToRaw) {
   onnxruntime::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -1023,7 +1023,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt64ToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_UInt64ToInt64Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -1031,7 +1031,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt64ToInt64Data) {
   onnxruntime::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -1058,7 +1058,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_UInt64ToInt64Data) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_DoubleToRaw) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
@@ -1066,7 +1066,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_DoubleToRaw) {
   onnxruntime::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ true, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type
@@ -1097,7 +1097,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_DoubleToRaw) {
 }
 
 TEST(PositiveTests, MLValueToTensorProtoTests_DoubleToInt64Data) {
-  auto logger = std::make_shared<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
@@ -1105,7 +1105,7 @@ TEST(PositiveTests, MLValueToTensorProtoTests_DoubleToInt64Data) {
   onnxruntime::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
-  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, logger, tp);
+  common::Status status = onnxruntime::hosting::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp);
   EXPECT_TRUE(status.IsOK());
 
   // Verify data type

@@ -46,7 +46,7 @@ class App {
   App& Run();
 
  private:
-  const std::shared_ptr<Routes> routes_ = std::make_shared<Routes>();
+  Routes routes_{};
   StartFn on_start_ = {};
   Details http_details{};
 };

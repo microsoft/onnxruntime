@@ -30,7 +30,7 @@ class Routes {
                         /* out */ std::string& model_name,
                         /* out */ std::string& model_version,
                         /* out */ std::string& action,
-                        /* out */ HandlerFn& func);
+                        /* out */ HandlerFn& func) const;
 
  private:
   std::vector<std::pair<std::string, HandlerFn>> post_fn_table;

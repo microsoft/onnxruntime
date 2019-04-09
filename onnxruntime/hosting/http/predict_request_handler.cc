@@ -35,8 +35,8 @@ void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
              /* in, out */ HttpContext& context,
-             std::shared_ptr<HostingEnvironment> env) {
-  auto logger = env->GetLogger(context.request_id);
+             HostingEnvironment& env) {
+  auto logger = env.GetLogger(context.request_id);
   LOGS(*logger, VERBOSE) << "Name: " << name << " Version: " << version << " Action: " << action;
 
   // We need to persist the "x-ms-client-request-id" field for the user to track the request from client side
@@ -66,7 +66,7 @@ void Predict(const std::string& name,
 
   // Run Prediction
   protobufutil::Status status;
-  Executor executor(env, context.request_id);
+  Executor executor(std::move(env), context.request_id);
   PredictResponse predict_response{};
   status = executor.Predict(name, version, predict_request, predict_response);
   if (!status.ok()) {

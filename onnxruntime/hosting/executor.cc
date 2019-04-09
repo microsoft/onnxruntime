@@ -27,7 +27,7 @@ namespace protobufutil = google::protobuf::util;
 protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
                                           OrtAllocatorInfo* cpu_allocator_info,
                                           /* out */ MLValue& ml_value) {
-  auto logger = env_->GetLogger(request_id_);
+  auto logger = env_.GetLogger(request_id_);
 
   size_t cpu_tensor_length = 0;
   auto status = onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
@@ -52,7 +52,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
 }
 
 protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map, const onnxruntime::hosting::PredictRequest& request) {
-  auto logger = env_->GetLogger(request_id_);
+  auto logger = env_.GetLogger(request_id_);
 
   OrtAllocatorInfo* cpu_allocator_info = nullptr;
   auto ort_status = OrtCreateAllocatorInfo("Cpu", OrtArenaAllocator, 0, OrtMemTypeDefault, &cpu_allocator_info);
@@ -86,7 +86,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
                                        const std::string& model_version,
                                        onnxruntime::hosting::PredictRequest& request,
                                        /* out */ onnxruntime::hosting::PredictResponse& response) {
-  auto logger = env_->GetLogger(request_id_);
+  auto logger = env_.GetLogger(request_id_);
 
   // Convert PredictRequest to NameMLValMap
   onnxruntime::NameMLValMap name_ml_value_map{};
@@ -106,7 +106,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   OrtRunOptions run_options{};
   run_options.run_tag = request_id_;
 
-  auto status = env_->session->Run(run_options, name_ml_value_map, output_names, &outputs);
+  auto status = env_.session->Run(run_options, name_ml_value_map, output_names, &outputs);
 
   if (!status.IsOK()) {
     LOGS(*logger, ERROR) << "Run() failed." << ". Error Message: " << status.ToString();
@@ -116,7 +116,9 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   // Build the response
   for (size_t i = 0; i < outputs.size(); ++i) {
     onnx::TensorProto output_tensor{};
-    status = MLValueToTensorProto(outputs[i], using_raw_data, logger, output_tensor);
+    status = MLValueToTensorProto(outputs[i], using_raw_data, std::move(logger), output_tensor);
+    logger = env_.GetLogger(request_id_);
+
     if (!status.IsOK()) {
       LOGS(*logger, ERROR) << "MLValueToTensorProto() failed. Output name: " << output_names[i] << ". Error Message: " << status.ToString();
       return GenerateProtobufStatus(status, "MLValueToTensorProto() failed: " + status.ToString());

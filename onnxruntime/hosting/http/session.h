@@ -27,7 +27,7 @@ namespace http = beast::http;
 // Used by a listener to hand off the work and async write back to a socket
 class HttpSession : public std::enable_shared_from_this<HttpSession> {
  public:
-  HttpSession(std::shared_ptr<Routes> routes, tcp::socket socket);
+  HttpSession(const Routes& routes, tcp::socket socket);
 
   // Start the asynchronous operation
   // The entrypoint for the class
@@ -36,7 +36,7 @@ class HttpSession : public std::enable_shared_from_this<HttpSession> {
   }
 
  private:
-  const std::shared_ptr<Routes> routes_;
+  const Routes routes_;
   tcp::socket socket_;
   net::strand<net::io_context::executor_type> strand_;
   beast::flat_buffer buffer_;
