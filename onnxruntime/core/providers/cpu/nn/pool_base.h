@@ -192,16 +192,14 @@ class PoolBase {
           *out_size = (in_size - kernel) / stride + 1;
           break;
         case AutoPadType::SAME_LOWER: {
-          int64_t legacy_target_size = (in_size + stride - 1) / stride;
-          int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
+          int64_t pad_needed = (in_size - 1) * stride + kernel - in_size;
           *pad_head = (pad_needed + 1) / 2;
           *pad_tail = pad_needed - *pad_head;
           *out_size = (in_size + pad_needed - kernel) / stride + 1;
           break;
         }
         case AutoPadType::SAME_UPPER: {
-          int64_t legacy_target_size = (in_size + stride - 1) / stride;
-          int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
+          int64_t pad_needed = (in_size - 1) * stride + kernel - in_size;
           *pad_head = pad_needed / 2;
           *pad_tail = pad_needed - *pad_head;
           *out_size = (in_size + pad_needed - kernel) / stride + 1;
