@@ -18,11 +18,6 @@ static std::unordered_set<std::string> protobuf_mime_types{
     "application/vnd.google.protobuf",
     "application/x-protobuf"};
 
-// Report a failure
-void ErrorHandling(beast::error_code ec, char const* what) {
-  std::cerr << what << " failed: " << ec.value() << " : " << ec.message() << "\n";
-}
-
 boost::beast::http::status GetHttpStatusCode(const protobufutil::Status& status) {
   switch (status.error_code()) {
     case protobufutil::error::Code::OK:

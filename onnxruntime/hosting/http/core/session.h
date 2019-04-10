@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_HTTP_SESSION_H
-#define ONNXRUNTIME_HOSTING_HTTP_HTTP_SESSION_H
+#ifndef ONNXRUNTIME_HOSTING_HTTP_CORE_HTTP_SESSION_H
+#define ONNXRUNTIME_HOSTING_HTTP_CORE_HTTP_SESSION_H
 
 #include <memory>
 #include <boost/beast/version.hpp>

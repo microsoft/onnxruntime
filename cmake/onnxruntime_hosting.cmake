@@ -25,8 +25,10 @@ find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRE
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
 # Setup source code
-file(GLOB_RECURSE onnxruntime_hosting_lib_srcs
-  "${ONNXRUNTIME_ROOT}/hosting/http/*.cc"
+set(onnxruntime_hosting_lib_srcs
+  "${ONNXRUNTIME_ROOT}/hosting/http/json_handling.cc"
+  "${ONNXRUNTIME_ROOT}/hosting/http/predict_request_handler.cc"
+  "${ONNXRUNTIME_ROOT}/hosting/http/util.cc"
   "${ONNXRUNTIME_ROOT}/hosting/environment.cc"
   "${ONNXRUNTIME_ROOT}/hosting/executor.cc"
   "${ONNXRUNTIME_ROOT}/hosting/converter.cc"
@@ -42,8 +44,25 @@ if(NOT WIN32)
   endif()
 endif()
 
+file(GLOB_RECURSE onnxruntime_hosting_http_core_lib_srcs
+  "${ONNXRUNTIME_ROOT}/hosting/http/core/*.cc"
+  )
+
 file(GLOB_RECURSE onnxruntime_hosting_srcs
   "${ONNXRUNTIME_ROOT}/hosting/main.cc"
+)
+
+# HTTP core library
+add_library(onnxruntime_hosting_http_core_lib STATIC
+  ${onnxruntime_hosting_http_core_lib_srcs})
+target_include_directories(onnxruntime_hosting_http_core_lib
+  PUBLIC
+  ${ONNXRUNTIME_ROOT}/hosting/http/core
+  ${Boost_INCLUDE_DIR}
+  ${re2_src}
+)
+target_link_libraries(onnxruntime_hosting_http_core_lib PRIVATE
+  ${Boost_LIBRARIES}
 )
 
 # Hosting library
@@ -62,6 +81,7 @@ target_include_directories(onnxruntime_hosting_lib PRIVATE
 target_link_libraries(onnxruntime_hosting_lib PRIVATE
   hosting_proto
   ${Boost_LIBRARIES}
+  onnxruntime_hosting_http_core_lib
   onnxruntime_session
   onnxruntime_optimizer
   onnxruntime_providers
@@ -95,6 +115,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
+    onnxruntime_hosting_http_core_lib
     onnxruntime_hosting_lib
 )
 

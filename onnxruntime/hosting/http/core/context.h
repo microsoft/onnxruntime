@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_CONTEXT_H
-#define ONNXRUNTIME_HOSTING_HTTP_CONTEXT_H
+#ifndef ONNXRUNTIME_HOSTING_HTTP_CORE_CONTEXT_H
+#define ONNXRUNTIME_HOSTING_HTTP_CORE_CONTEXT_H
 
 // boost random is using a deprecated header in 1.69
 // See: https://github.com/boostorg/random/issues/49

@@ -8,7 +8,7 @@
 #include <boost/beast/http/status.hpp>
 #include <google/protobuf/stubs/status.h>
 
-#include "context.h"
+#include "hosting/http/core/context.h"
 
 namespace onnxruntime {
 namespace hosting {
@@ -20,9 +20,6 @@ enum class SupportedContentType : int {
   Json,
   PbByteArray
 };
-
-// Report a failure
-void ErrorHandling(beast::error_code ec, char const* what);
 
 // Mapping protobuf status to http status
 boost::beast::http::status GetHttpStatusCode(const google::protobuf::util::Status& status);

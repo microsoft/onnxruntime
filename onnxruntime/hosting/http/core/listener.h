@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_LISTENER_H
-#define ONNXRUNTIME_HOSTING_HTTP_LISTENER_H
+#ifndef ONNXRUNTIME_HOSTING_HTTP_CORE_LISTENER_H
+#define ONNXRUNTIME_HOSTING_HTTP_CORE_LISTENER_H
 
 #include <memory>
 
