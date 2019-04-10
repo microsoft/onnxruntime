@@ -6,6 +6,7 @@
 #include <fstream>
 #include <cmath>
 
+#include <core/external_ops/pyop.h>
 #include <core/common/logging/logging.h>
 #include <core/graph/constants.h>
 #include <core/platform/env.h>
@@ -486,6 +487,13 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
+  auto pyOp = new PyCustomOp ("testpyop",
+                              "compute",
+                              "shape",
+                              {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+                              {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
+  auto pyOpDomain = OrtCreateCustomOpDomain("");
+  ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyOpDomain, pyOp));
   try {
     DataRunner* r = nullptr;
     std::string node_name;
@@ -496,6 +504,9 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
       goto end;
     }
     auto sf2 = sf.clone();
+    ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(sf2, pyOpDomain));
+    //auto session_option = (OrtSessionOptions*)sf2;
+    //session_option->custom_op_domain.emplace_back(pyOpDomain);
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());
     std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> session_object(
         sf2.OrtCreateSession(info->GetModelUrl()), OrtReleaseSession);

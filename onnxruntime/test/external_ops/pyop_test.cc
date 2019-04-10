@@ -12,20 +12,7 @@
 
 using namespace std;
 using namespace onnxruntime;
-/*
-typedef bool INIT();
-typedef bool PYFUNC(const char*,
-                    const char*,
-                    const vector<const void*>&,
-                    const vector<int32_t>&,
-                    const vector<vector<int64_t>>&,
-                    vector<const void*>&,
-                    vector<int32_t>&,
-                    vector<vector<int64_t>>&);
 
-typedef const char* LASTERR();
-typedef void SETPATH(const wchar_t*);
-*/
 TEST(PyOpTest, unittest_numpy_input_output)
 {
     ofstream fs("test.py");

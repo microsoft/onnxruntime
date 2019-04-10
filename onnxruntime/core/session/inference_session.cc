@@ -51,6 +51,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/external_ops/pyop.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -194,6 +195,26 @@ class InferenceSession::Impl {
     if (session_options.enable_profiling) {
       StartProfiling(session_options.profile_file_prefix);
     }
+
+
+
+    ////////////////////////////////////////////////////
+/*
+    auto pyOp = new PyCustomOp ("testpyop",
+                                "computo pyOp = new PyCustomOp ("testpyop",
+                                "compute",
+                                "shape",
+                                {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+                                {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
+    auto pyOpDomain = OrtCreateCustomOpDomain("pyop");
+ute",
+                                "shape",
+                                {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+                                {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
+    auto pyOpDomain = OrtCreateCustomOpDomain("pyop");
+    pyOpDomain->custom_ops_.emplace_back(pyOp);
+    if (AddCustomOpDomains({pyOpDomain}).IsOK()) std::cout << "PyOp registered!" << std::endl;
+*/
   }
 
   common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
@@ -223,6 +244,7 @@ class InferenceSession::Impl {
 
     return Status::OK();
   }
+
 
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
     auto custom_registry = std::make_shared<CustomRegistry>();
@@ -491,6 +513,25 @@ class InferenceSession::Impl {
     return Status::OK();
   }
 
+  common::Status RegisterExternalOps(const onnxruntime::Graph& graph,
+                                     KernelRegistryManager&)
+  {
+    for (auto& node: graph.Nodes()) {
+      if (node.OpType() == "PyOp") {
+        auto attrs = node.GetAttributes();
+        auto pyOp = new PyCustomOp(attrs["module"].strings(0).c_str(),
+                                   attrs["compute"].strings(0).c_str(),
+                                   attrs["shape_inference"].strings(0).c_str(),
+                                   {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+                                   {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
+        auto pyOpDomain = OrtCreateCustomOpDomain("pyop");
+        pyOpDomain->custom_ops_.emplace_back(pyOp);
+        AddCustomOpDomains({pyOpDomain});
+      }
+    }
+    return Status::OK();
+  }
+
   common::Status Initialize() {
     Status status = Status::OK();
     auto tp = session_profiler_.StartTime();
@@ -520,6 +561,8 @@ class InferenceSession::Impl {
       AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level, transformers_to_enable_);
 
       onnxruntime::Graph& graph = model_->MainGraph();
+
+      //ORT_RETURN_IF_ERROR(RegisterExternalOps(graph, kernel_registry_manager_));
 
       // Collect the kernel registries from execution provider instances;
       // There are 2 kinds of kernel registries with priority from high to low as below,

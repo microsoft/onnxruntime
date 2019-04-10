@@ -1,5 +1,6 @@
 #pragma once
 #include "dlfcn.h"
+#include "core/framework/ml_value.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <iostream>
 #include <vector>
@@ -28,7 +29,7 @@ struct PythonWrapper {
 
     PythonWrapper() {
 
-        void* handle = dlopen("libonnxruntime_pyop.so", RTLD_NOW | RTLD_GLOBAL);
+        handle = dlopen("./libonnxruntime_pyop.so", RTLD_NOW | RTLD_GLOBAL);
         ORT_ENFORCE(nullptr != handle, dlerror());
 
         init = (INIT*)dlsym(handle, "Initialize");
@@ -40,17 +41,18 @@ struct PythonWrapper {
         lastErr = (LASTERR*)dlsym(handle, "GetLastErrorMessage"); 
         ORT_ENFORCE(nullptr != lastErr, dlerror());
 
-        setPath = (SETPATH*) dlsym(handle, "SetSysPath");
+        setPath = (SETPATH*)dlsym(handle, "SetSysPath");
         ORT_ENFORCE(nullptr != setPath, dlerror());
 
         ORT_ENFORCE(init(), lastErr());
+        setPath(L".");      
     }
 
     ~PythonWrapper() {
         dlclose(handle);
     }
 
-    void*       handle  = nullptr;
+    void* handle  = nullptr;
     INIT*       init    = nullptr;
     PYFUNC*     pyFunc  = nullptr;
     LASTERR*    lastErr = nullptr;
@@ -78,14 +80,14 @@ struct PyCustomKernel {
         std::vector<std::vector<int64_t>>   input_dim,  output_dim;
 
         for (size_t i = 0; i < ort_input_count; ++i) {
-            input.push_back(ort_input[i]);
+            input.push_back(((MLValue*)ort_input[i])->Get<Tensor>().DataRaw());
             input_type.push_back(GetType(ort_input[i]));
             input_dim.push_back(((MLValue*)ort_input[i])->Get<Tensor>().Shape().GetDims());
         }
 
-        ORT_ENFORCE (pyWrapper_.pyFunc(module_.c_str(), shape_inference_.c_str(), input, input_type, input_dim, output, output_size, output_dim), pyWrapper_.lastErr());
+        ORT_ENFORCE (GetPyWrapper().pyFunc(module_.c_str(), shape_inference_.c_str(), input, input_type, input_dim, output, output_size, output_dim), GetPyWrapper().lastErr());
         ORT_ENFORCE (output.size() > ort_output_index, "output count is less then ort output index");
-        ORT_ENFORCE (ort_.SetDims(ort_info, (const int64_t*)output[ort_output_index], output_dim[ort_output_index][0]), "Failed to set output shape");
+        ORT_THROW_ON_ERROR(ort_.SetDims(ort_info, (const int64_t*)output[ort_output_index], output_dim[ort_output_index][0]));
         for (auto mem: output) {
             free(const_cast<void*>(mem));
         }
@@ -98,18 +100,19 @@ struct PyCustomKernel {
         std::vector<std::vector<int64_t>>   input_dim,  output_dim;
 
         for (size_t i = 0; i < ort_input_count; ++i) {
-            input.push_back(ort_input[i]);
+            input.push_back(((MLValue*)ort_input[i])->Get<Tensor>().DataRaw());
             input_type.push_back(GetType(ort_input[i]));
             input_dim.push_back(((MLValue*)ort_input[i])->Get<Tensor>().Shape().GetDims());
         }
 
-        ORT_ENFORCE (pyWrapper_.pyFunc(module_.c_str(), compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim), pyWrapper_.lastErr());
+        ORT_ENFORCE (GetPyWrapper().pyFunc(module_.c_str(), compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim), GetPyWrapper().lastErr());
         ORT_ENFORCE (ort_output_count == output.size(), "Expected output count and actual output count mismatch");
 
         for (size_t i = 0; i < ort_output_count; ++i) {
             void* output_mem_addr;
             ORT_THROW_ON_ERROR(ort_.GetTensorMutableData(ort_output[i], reinterpret_cast<void**>(&output_mem_addr)));
-            memcpy(output_mem_addr, output[i], output_size[i]);
+            auto output_len = std::accumulate(begin(output_dim[i]), end(output_dim[i]), output_size[i], std::multiplies<int64_t>());
+            memcpy(output_mem_addr, output[i], output_len);
             ((MLValue*)ort_output[i])->GetMutable<Tensor>()->Reshape(output_dim[i]);
             free(const_cast<void*>(output[i]));
         }
@@ -118,28 +121,29 @@ struct PyCustomKernel {
     int32_t GetType(OrtValue* input) const
     {
         int32_t numpy_type;
-        auto tensor_type = ((MLValue*)input)->Get<Tensor>().DataType();
-        if (tensor_type == DataTypeImpl::GetTensorType<bool>()) {
+        ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input is not tensor");
+        auto data_type = ((MLValue*)input)->Get<Tensor>().DataType();
+        if (data_type == DataTypeImpl::GetType<bool>()) {
             numpy_type = 0;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<int8_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<int8_t>()) {
             numpy_type = 1;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<uint8_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<uint8_t>()) {
             numpy_type = 2;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<int16_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<int16_t>()) {
             numpy_type = 3;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<uint16_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<uint16_t>()) {
             numpy_type = 4;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<int32_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
             numpy_type = 5;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<uint32_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<uint32_t>()) {
             numpy_type = 6;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<int64_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
             numpy_type = 9;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<uint64_t>()) {
+        } else if (data_type == DataTypeImpl::GetType<uint64_t>()) {
             numpy_type = 10;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<float>()) {
+        } else if (data_type == DataTypeImpl::GetType<float>()) {
             numpy_type = 11;
-        } else if (tensor_type == DataTypeImpl::GetTensorType<double>()) {
+        } else if (data_type == DataTypeImpl::GetType<double>()) {
             numpy_type = 12;
         } else ORT_ENFORCE(false, "Input type not supported");
 
@@ -147,8 +151,14 @@ struct PyCustomKernel {
     }
 
 private:
+
+    PythonWrapper& GetPyWrapper()
+    {
+        static PythonWrapper pyWrapper;
+        return pyWrapper;
+    }
+
     const OrtCustomOpApi& ort_;
-    static PythonWrapper pyWrapper_;
     std::string module_;
     std::string compute_;
     std::string shape_inference_;
@@ -168,7 +178,7 @@ struct PyCustomOp: OrtCustomOp {
                op_shape_inference_(shape_inference) {
 
         OrtCustomOp::version = ORT_API_VERSION;
-        op_name_ = op_module_ + "_" + op_compute_; 
+        op_name_ = "PyOp"; //op_module_ + "_" + op_compute_; 
    
         OrtCustomOp::CreateKernel      = [] (OrtCustomOp* op,
                                              const OrtCustomOpApi* api,

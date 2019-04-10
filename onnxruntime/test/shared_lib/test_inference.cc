@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/external_ops/pyop.h"
 #include "providers.h"
 #include <memory>
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include <atomic>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
@@ -241,6 +243,35 @@ TEST_F(CApiTest, custom_op_handler) {
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, dims_x, values_x, expected_dims_y, expected_values_y, 0, custom_op_domain);
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
+
+/*
+TEST_F(CApiTest, python_op_handler) {
+
+  std::ofstream ofs("testpyop.py");
+  ofs << "def compute(x):"  << std::endl;
+  ofs << "    return x * 2" << std::endl;
+  ofs << "def shape(x):"    << std::endl;
+  ofs << "    return x"     << std::endl;
+  ofs.close();
+
+  std::cout << "Running custom op inference" << std::endl;
+  std::vector<size_t>    dims_x   = {2, 2};
+  std::vector<float>   values_x = {1, 2, 3, 4};
+  std::vector<int64_t>    dims_y   = {2, 2};
+  std::vector<float>   values_y = {2, 4, 6, 8};
+
+  auto python_op = new PyCustomOp ("testpyop",
+                                   "compute",
+                                   "shape",
+                                   {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+                                   {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
+
+  auto python_op_domain = OrtCreateCustomOpDomain("python_op");
+  ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(python_op_domain, python_op));
+  TestInference<PATH_TYPE>(env, TSTR("~/pymodel/pyop/model.onnx"), dims_x, values_x, dims_y, values_y, 0, python_op_domain);
+  OrtReleaseCustomOpDomain(python_op_domain);
+}
+*/
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
