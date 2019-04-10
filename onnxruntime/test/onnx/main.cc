@@ -208,7 +208,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       // caused random segfault in CUDA 9.1. 
       // TODO: remove this list once we fully moved to CUDA10
       // clang-format off
-      std::unordered_set<std::string, std::string> cuda_flaky_tests = {
+      std::unordered_set<std::string> cuda_flaky_tests = {
         "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"
       };
       for (auto it = tests.begin(); it != tests.end();) {
