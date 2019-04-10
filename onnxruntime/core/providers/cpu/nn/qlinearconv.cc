@@ -11,16 +11,7 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-ONNX_OPERATOR_KERNEL_EX(
-    QLinearConv,
-    kOnnxDomain,
-    10,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
-    QLinearConv);
+namespace contrib {
 
 Status QLinearConv::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
@@ -187,4 +178,16 @@ void QLinearConv::ScaleAndZeropointPairValidationHelper(const Tensor* scale, con
                   (zeropoint->Shape().NumDimensions() == 1 && zeropoint->Shape().GetDims().size() == 1),
               "zeropoint must be a scalar");
 }
+
+ONNX_OPERATOR_KERNEL_EX(
+    QLinearConv,
+	kMSDomain,
+    1,
+	kCpuExecutionProvider,
+    KernelDefBuilder()
+	.TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+	.TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+	.TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
+    QLinearConv);
+}  // namespace contrib
 }  // namespace onnxruntime

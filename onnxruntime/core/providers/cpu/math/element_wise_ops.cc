@@ -306,15 +306,11 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Affine<float>);
 
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
 ONNX_CPU_OPERATOR_KERNEL(
     Scale,
     1,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Scale<float>);
-}
-#endif
 
 ONNX_CPU_OPERATOR_KERNEL(
     Erf,
@@ -1005,12 +1001,12 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REG_EXPAND_KERNEL(TYPE)                                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
-      Expand,                                                                      \
-      8,                                                                           \
-      TYPE,                                                                        \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
+#define REG_EXPAND_KERNEL(TYPE)                                                     \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                   \
+      Expand,                                                                       \
+      8,                                                                            \
+      TYPE,                                                                         \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),  \
       Expand_8<TYPE>);
 
 REG_EXPAND_KERNEL(float)
@@ -1026,8 +1022,6 @@ REG_EXPAND_KERNEL(uint64_t)
 REG_EXPAND_KERNEL(bool)
 REG_EXPAND_KERNEL(MLFloat16)
 
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib{
 template <>
 Status Scale<float>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
@@ -1035,8 +1029,6 @@ Status Scale<float>::Compute(OpKernelContext* ctx) const {
   EigenMap<float>(Y) = scale_ * EigenMap<float>(X);
   return Status::OK();
 }
-}
-#endif
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {

@@ -7,6 +7,7 @@
 #include "core/util/gemmlowp_common_wrapper.h"
 
 namespace onnxruntime {
+namespace contrib {
 class QLinearConv : public OpKernel, public ConvBase {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
@@ -51,5 +52,6 @@ MakeOutputPipelineWithOutBias(std::int32_t result_offset,
   quantize_down_stage.result_shift = result_shift;
   gemmlowp::OutputStageSaturatingCastToUint8 saturating_cast_stage;
   return std::make_tuple(quantize_down_stage, saturating_cast_stage);
+}
 }
 }  // namespace onnxruntime

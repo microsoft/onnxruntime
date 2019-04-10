@@ -6,6 +6,7 @@
 #include "core/providers/cpu/nn/conv_base.h"
 
 namespace onnxruntime {
+namespace contrib {
 class ConvInteger : public OpKernel, public ConvBase {
  public:
   explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
@@ -13,4 +14,5 @@ class ConvInteger : public OpKernel, public ConvBase {
 
   Status Compute(OpKernelContext* context) const override;
 };
+}
 }  // namespace onnxruntime
