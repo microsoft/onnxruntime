@@ -104,7 +104,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     std::vector<int64_t>& output_dims) const {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
-  if (axes.empty() == 0) {
+  if (axes.empty()) {
     //axes are omitted, they are set to[0, ..., ndim - 1]
     axes.resize(starts.size());
     std::iota(axes.begin(), axes.end(), 0);
