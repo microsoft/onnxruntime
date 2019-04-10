@@ -7,7 +7,6 @@ using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
-
 #define ADD_TYPED_SLICE_OP(data_type)                                                   \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                       \
       Slice,                                                                            \
@@ -30,6 +29,8 @@ ADD_TYPED_SLICE_OP(MLFloat16);
 ADD_TYPED_SLICE_OP(bool);
 ADD_TYPED_SLICE_OP(string);
 
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib {
 #define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                              \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                          \
       DynamicSlice,                                                                        \
@@ -54,6 +55,8 @@ ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
 ADD_TYPED_DYNAMIC_SLICE_OP(bool);
 ADD_TYPED_DYNAMIC_SLICE_OP(string);
 
+}  // namespace contrib
+#endif
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>
