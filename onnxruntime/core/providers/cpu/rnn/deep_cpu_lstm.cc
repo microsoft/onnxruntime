@@ -369,6 +369,17 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   TensorShape Y_c_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_c = context.Output(/*index*/ 2, Y_c_dims);
 
+  // Reset output and return if max sequence length is 0
+  if (sequence_lens != nullptr) {
+    int32_t max_sequence_length = *std::max_element(sequence_lens->Data<int32_t>(), sequence_lens->Data<int32_t>() + sequence_lens->Shape().Size());
+    if (max_sequence_length == 0) {
+      if (Y != nullptr) std::fill_n(Y->MutableData<T>(), Y_dims.Size(), T{});
+      if (Y_h != nullptr) std::fill_n(Y_h->MutableData<T>(), Y_h_dims.Size(), T{});
+      if (Y_c != nullptr) std::fill_n(Y_c->MutableData<T>(), Y_c_dims.Size(), T{});
+      return Status::OK();
+    }
+  }
+
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
@@ -876,6 +887,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
             gsl::span<T> dst = final_cell_state.subspan(lrow * hidden_size_, hidden_size_);
             gsl::copy(src, dst);
           }
+          if (step == 0 && sequence_lengths[lrow] == 0) {
+            auto final_cell_state_dst = final_cell_state.begin() + lrow * hidden_size_;
+            std::fill_n(final_cell_state_dst, hidden_size_, T{});
+          }
         }
 
         if (output_sequence) {
@@ -945,6 +960,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
           gsl::copy(batched_internal_memory_prev_.subspan(lrow * hidden_size_, hidden_size_),
                     final_cell_state.subspan(lrow * hidden_size_, hidden_size_));
         }
+        if (step == 0 && sequence_lengths[lrow] == 0) {
+          auto final_cell_state_dst = final_cell_state.begin() + lrow * hidden_size_;
+          std::fill_n(final_cell_state_dst, hidden_size_, T{});
+        }
       }
 
       if (output_sequence) {
@@ -962,19 +981,22 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     }
   }
 
-  if (output_sequence) {
-    // copy last output to final_hidden_state
-    for (int i = 0; i < batch_size_; i++) {
-      const int seq_len = sequence_lengths[i];
+  for (int i = 0; i < batch_size_; i++) {
+    const int seq_len = sequence_lengths[i];
+    if (seq_len == 0) {  // zero out final_hidden_state if seq_len == 0
+      auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
+      std::fill_n(final_hidden_state_dst, hidden_size_, T{});
+      continue;
+    } else if (output_sequence) {  // copy last output to final_hidden_state
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
     }
-
-    if (direction_ == Direction::kReverse)
-      ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_,
-                         batch_size_, hidden_size_, num_directions);
   }
+
+  if (output_sequence && direction_ == Direction::kReverse)
+    ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_,
+                       batch_size_, hidden_size_, num_directions);
 }
 
 // #define PREVIOUS_BROKEN_VERSION

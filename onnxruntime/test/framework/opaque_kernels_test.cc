@@ -296,7 +296,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   auto shape_def = ConstructFetchSparseShape();
   EXPECT_TRUE(registry->RegisterCustomKernel(shape_def, [](const OpKernelInfo& info) { return new FetchSparseTensorShape(info); }).IsOK());
 
-  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry};
+  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
   Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version);

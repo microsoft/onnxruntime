@@ -658,6 +658,18 @@ Graph::Graph(GraphProto* graph_proto,
     // Copy initial tensors to a map.
     for (auto& tensor : graph_proto_->initializer()) {
       name_to_initial_tensor_[tensor.name()] = &tensor;
+
+      // v4 does not require initializers to be inputs, so we need to ensure there is a NodeArg created for all
+      // initializers in that case
+      if (ir_version > 3) {
+        TypeProto t;
+        t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+        auto shape = t.mutable_tensor_type()->mutable_shape();
+        for (auto dim : tensor.dims())
+          shape->add_dim()->set_dim_value(dim);
+
+        GetOrCreateNodeArg(tensor.name(), &t);
+      }
     }
 
     // Collect all node arg name, type, shape information in the graph.
@@ -869,7 +881,13 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
   if (nullptr == dst_arg) {
     ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
-  
+
+  if (src_arg != dst_arg) {
+    // The edge ends specified by source and destination arg slot are not referring to same node arg.
+    // It means there was no edge between these two slots before.
+    ORT_THROW("Argument mismatch when removing edge.");
+  }
+
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
   nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
@@ -881,6 +899,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
+    const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
+
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
         std::vector<std::string> node_args_consumed;
@@ -932,6 +952,17 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             AddEdge(output_node.Index(), node->Index(), entry->second.second, input_slot_index);
 
             inner_nodes.insert(&output_node);
+            
+            // If this Graph was built manually, remove the implicit input from the graph outputs if it is present there
+            // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
+            // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
+            if (!loaded_from_model_file) {
+              auto in_ordered_graph_outputs = find(graph_output_order_.cbegin(), graph_output_order_.cend(), node_arg);
+              if (in_ordered_graph_outputs == graph_output_order_.cend()) {
+                graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
+                                     graph_outputs_.end());
+              }
+            }
           }
         }
       }
@@ -1677,7 +1708,7 @@ Status Graph::VerifyNodeAndOpMatch() {
     // default value defined in operator definition if needed.
     // Fill node attribute with default value specified in operator definition if any.
     auto node_attributes = node.GetAttributes();
-    for (auto attr_def : p_op->attributes()) {
+    for (const auto& attr_def : p_op->attributes()) {
       auto node_attr_iter = node_attributes.find(attr_def.first);
       if (node_attributes.end() == node_attr_iter) {
         // The attribute was not specified in the node.

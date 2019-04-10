@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"3a9a87871021a02d6b970c1e26ffa4c0dd720677",
+               "commitHash":"079c2639f9bb79b1774d1e3bfa05b0c093816ca7",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -285,8 +285,8 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"3ad2bd19d6f0a2475805e9aa5ae8734a0d60fbaa",
-               "repositoryUrl":"https://github.com/stevenlix/onnx-tensorrt.git"
+               "commitHash":"c8ebe0da0776c1a6347139b074a901bd57fae499",
+               "repositoryUrl":"https://github.com/onnx/onnx-tensorrt.git"
             }
          }
       }

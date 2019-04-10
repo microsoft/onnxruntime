@@ -146,5 +146,15 @@ INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
                         ::testing::Values("bvlc_alexnet", "bvlc_googlenet", "bvlc_reference_caffenet", "bvlc_reference_rcnn_ilsvrc13", "densenet121", "emotion_ferplus", "inception_v1", "inception_v2", "mnist", "resnet50", "shufflenet", "squeezenet", "tiny_yolov2", "vgg19", "zfnet512"));
 
 #endif
+
+// test a model that conforms to ONNX IR v4 where there are initializers that are not graph inputs.
+// a NodeArg should be created for all initializers in this case.
+// the test model contains initializers that are used as implicit inputs in a subgraph, and the NodeArg is required
+// for Graph::Resolve to succeed when processing the subgraph.
+TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model).IsOK());
+  EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
+}
 }  // namespace test
 }  // namespace onnxruntime
