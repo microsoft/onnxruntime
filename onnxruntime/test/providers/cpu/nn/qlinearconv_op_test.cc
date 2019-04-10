@@ -8,7 +8,9 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
-
+// There is a bug in onnx shapeinference for this op.
+// TODO Enable this test after bug fix
+/*
 void FindMinMax(const vector<float>& vec, float* min,
                 float* max) {
   *min = *max = 0;
@@ -35,9 +37,7 @@ void Quantize(float scale, uint8_t zero_point,
     (*input_quantized)[i] = static_cast<uint8_t>(clamped_val);
   }
 }
-// There is a bug in onnx shapeinference for this op. 
-// TODO Enable this test after bug fix
-/*
+
 TEST(ConvTest, QLinearConv2DTest) {
   OpTester test("QLinearConv", 10);
 
