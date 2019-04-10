@@ -4,49 +4,11 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - task: NuGetToolInstaller@0
-      displayName: Use Nuget 4.3
-      inputs:
-        versionSpec: 4.3.0
-    - task: NuGetCommand@2
-      displayName: 'NuGet restore'
-      inputs:
-        restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        feedsToUse: config
-        nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
-        restoreDirectory: '$(Build.SourcesDirectory)\csharp'
-    - task: UniversalPackages@0
-      displayName: 'Download python'
-      inputs:
-        command: download
-        vstsFeed: '$(System.TeamProject)'
-        vstsFeedPackage: 'miniconda3_win64'
-        vstsPackageVersion: '4.5.11'
-        downloadDirectory: '$(Build.BinariesDirectory)\python'
-    - task: CmdLine@1
-      displayName: 'Run python installer'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\python\installer.exe'
-        arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
-      timeoutInMinutes: 10
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
-    - task: CmdLine@1
-      displayName: 'Install conda modules'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
-        arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
-      timeoutInMinutes: 10
-
-    - task: CmdLine@1
-      displayName: 'Download cmake'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'x64'
+        setVcvars: false
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
       inputs:
