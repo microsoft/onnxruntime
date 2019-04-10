@@ -42,7 +42,7 @@ namespace contrib {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())     \
                         .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),   \
                                                  DataTypeImpl::GetTensorType<int64_t>()}), \
-                        Slice<data_type, true>);
+      Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
 ADD_TYPED_DYNAMIC_SLICE_OP(uint16_t);
