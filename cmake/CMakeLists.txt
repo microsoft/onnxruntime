@@ -584,12 +584,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
 endif()
 
-if (onnxruntime_BUILD_CSHARP)
-  message(STATUS "CSharp Build is enabled")
-#  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
-  include(onnxruntime_csharp.cmake)
-endif()
-
 # some of the tests rely on the shared libs to be
 # built; hence the ordering
 if (onnxruntime_BUILD_UNIT_TESTS)
@@ -609,4 +603,10 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
   set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
   include(onnxruntime_unittests.cmake)
+endif()
+
+if (onnxruntime_BUILD_CSHARP)
+  message(STATUS "CSharp Build is enabled")
+#  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
+  include(onnxruntime_csharp.cmake)
 endif()
