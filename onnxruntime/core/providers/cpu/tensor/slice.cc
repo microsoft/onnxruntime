@@ -113,8 +113,8 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   // Iterate through the provided axes and override the start/end ranges
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
-  for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
-    auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
+  for (size_t axis_index = 0; axis_index < axes.size(); axis_index++) {
+    auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
     if (unique_axes.find(axis) != unique_axes.end())
@@ -122,13 +122,13 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     unique_axes.insert(axis);
 
     // process start
-    auto start = raw_starts[axesIndex];
+    auto start = raw_starts[axis_index];
     if (start < 0)
       start += input_dimensions[axis];
     starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
     // process end
-    auto end = raw_ends[axesIndex];
+    auto end = raw_ends[axis_index];
     if (end < 0)
       end += input_dimensions[axis];
 
@@ -163,8 +163,8 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   // Iterate through the provided axes and override the start/end/steps ranges
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
-  for (size_t axesIndex = 0, axes_end = axes.size(); axesIndex < axes_end; ++axesIndex) {
-    auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
+  for (size_t axis_index = 0, axes_end = axes.size(); axis_index < axes_end; ++axis_index) {
+    auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
     if (unique_axes.find(axis) != unique_axes.end())
@@ -172,13 +172,13 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     unique_axes.insert(axis);
 
 	// process step
-    auto step = axesIndex < raw_steps.size() ? raw_steps[axesIndex] : 1;
+    auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
     if (step == 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
     steps[axis] = step;
 
     // process start
-    auto start = raw_starts[axesIndex];
+    auto start = raw_starts[axis_index];
     if (start < 0)
       start += input_dimensions[axis];
     if (step < 0)
@@ -187,7 +187,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
       starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
     // process end
-    auto end = raw_ends[axesIndex];
+    auto end = raw_ends[axis_index];
     // INT_MAX has a special meaning for end according to spec
     // equivalent to 'None' in numpy
     // it represent slicing to the end of the dimension
