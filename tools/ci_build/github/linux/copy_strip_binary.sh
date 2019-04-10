@@ -15,6 +15,7 @@ done
 
 EXIT_CODE=1
 
+uname -a
 mkdir $BINARY_DIR/$ARTIFACT_NAME
 mkdir $BINARY_DIR/$ARTIFACT_NAME/lib
 mkdir $BINARY_DIR/$ARTIFACT_NAME/include
@@ -26,9 +27,9 @@ then
     dsymutil $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dSYM
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
 else
-    /usr/bin/objcopy --only-keep-debug $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dbg
-    /usr/bin/objcopy --add-gnu-debuglink=$BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dbg $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
-    /usr/bin/strip -g $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
+    objcopy --only-keep-debug $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dbg
+    objcopy --add-gnu-debuglink=$BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dbg $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
+    strip -g $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
 fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 # copy the README, licence and TPN
