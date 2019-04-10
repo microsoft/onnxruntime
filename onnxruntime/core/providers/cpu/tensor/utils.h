@@ -131,8 +131,9 @@ struct SliceSkips : std::vector<int64_t> {
     
     int64_t inner_most_dim = dims.size() - 1;
     // assume step == 1 if not present
+    ptrdiff_t steps_size = steps.size();
     int64_t steps_i = 1;
-    if (inner_most_dim >= 0 && static_cast<ptrdiff_t>(inner_most_dim) < steps.size())
+    if (inner_most_dim >= 0 && static_cast<ptrdiff_t>(inner_most_dim) < steps_size)
       steps_i = steps[inner_most_dim];
 
     size_t pitch = 1;
@@ -142,7 +143,7 @@ struct SliceSkips : std::vector<int64_t> {
       
       // assume step == 1 if not present
       int64_t steps_i_minus_1 = 1;
-      if (i > 0 && static_cast<ptrdiff_t>(i)-1 < steps.size())
+      if (i > 0 && static_cast<ptrdiff_t>(i) - 1 < steps_size)
          steps_i_minus_1 =  steps[i - 1];
 
       // first "revert" back to the old starting position (term with -ve sign)

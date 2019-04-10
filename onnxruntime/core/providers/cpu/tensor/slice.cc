@@ -150,7 +150,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     std::vector<int64_t>& output_dims) const {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
-  if (axes.size() == 0) {
+  if (axes.empty()) {
     // axes are omitted, they are set to[0, ..., ndim - 1]
     axes.resize(starts.size());
     std::iota(axes.begin(), axes.end(), 0);
@@ -159,7 +159,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   // Iterate through the provided axes and override the start/end/steps ranges
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
-  for (size_t axesIndex = 0; axesIndex < axes.size(); axesIndex++) {
+  for (size_t axesIndex = 0, end = axes.size(); axesIndex < end; ++axesIndex) {
     auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
