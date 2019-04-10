@@ -299,13 +299,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     8,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Mean_8<float>);
-
-ONNX_CPU_OPERATOR_KERNEL(
-    Affine,
-    1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Affine<float>);
-
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
 ONNX_CPU_OPERATOR_KERNEL(
@@ -661,14 +654,6 @@ Status Mean_8<float>::Compute(OpKernelContext* context) const {
 
   // Now divide by the input count to get the mean
   EigenMap<float>(*context->Output<Tensor>(0)) *= 1.0f / static_cast<float>(Node().InputArgCount().front());
-  return Status::OK();
-}
-
-template <>
-Status Affine<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-  MakeEigenArrayMap<float>(Y) = alpha_ * MakeEigenArrayMap<float>(X) + beta_;
   return Status::OK();
 }
 
