@@ -10,7 +10,6 @@ using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
-
 #define ADD_TYPED_SLICE_V9_OP(data_type)                                                \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                             \
       Slice,                                                                            \
@@ -33,15 +32,17 @@ ADD_TYPED_SLICE_V9_OP(MLFloat16);
 ADD_TYPED_SLICE_V9_OP(bool);
 ADD_TYPED_SLICE_V9_OP(string);
 
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                             \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                         \
-      DynamicSlice,                                                                       \
-      1,                                                                                  \
-      data_type,                                                                          \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())    \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),  \
-                        DataTypeImpl::GetTensorType<int64_t>()}),                         \
-      Slice<data_type, true>);
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib {
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                              \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                          \
+      DynamicSlice,                                                                        \
+      1,                                                                                   \
+      data_type,                                                                           \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())     \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),   \
+                                                 DataTypeImpl::GetTensorType<int64_t>()}), \
+                        Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
 ADD_TYPED_DYNAMIC_SLICE_OP(uint16_t);
@@ -56,6 +57,9 @@ ADD_TYPED_DYNAMIC_SLICE_OP(double);
 ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
 ADD_TYPED_DYNAMIC_SLICE_OP(bool);
 ADD_TYPED_DYNAMIC_SLICE_OP(string);
+
+}  // namespace contrib
+#endif
 
 #define ADD_TYPED_SLICE_V10_OP(data_type)                                                    \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                            \
@@ -159,7 +163,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   // Iterate through the provided axes and override the start/end/steps ranges
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
-  for (size_t axesIndex = 0, end = axes.size(); axesIndex < end; ++axesIndex) {
+  for (size_t axesIndex = 0, axes_end = axes.size(); axesIndex < axes_end; ++axesIndex) {
     auto axis = axes[axesIndex] < 0 ? axes[axesIndex] + static_cast<int64_t>(dimension_count) : axes[axesIndex];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");

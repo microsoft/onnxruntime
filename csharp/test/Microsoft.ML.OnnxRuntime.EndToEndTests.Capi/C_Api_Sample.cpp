@@ -29,15 +29,15 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
 
   // initialize session options if needed
-  OrtSessionOptions* session_option = OrtCreateSessionOptions();
-  OrtSetSessionThreadPoolSize(session_option, 1);
+  OrtSessionOptions* session_options = OrtCreateSessionOptions();
+  OrtSetSessionThreadPoolSize(session_options, 1);
 
   // Sets graph optimization level
-  // Available levels are 
+  // Available levels are
   // 0 -> To disable all optimizations
   // 1 -> To enable basic optimizations (Such as redundant node removals)
   // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
-  OrtSetSessionGraphOptimizationLevel(session_option, 1);
+  OrtSetSessionGraphOptimizationLevel(session_options, 1);
 
   //*************************************************************************
   // create session and load model into memory
@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
   // URL = https://github.com/onnx/models/tree/master/squeezenet
   OrtSession* session;
   const wchar_t* model_path = L"squeezenet.onnx";
-  CHECK_STATUS(OrtCreateSession(env, model_path, session_option, &session));
+  CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************
   // print model input layer (node names, types, shape etc.)
@@ -149,6 +149,7 @@ int main(int argc, char* argv[]) {
   OrtReleaseValue(output_tensor);
   OrtReleaseValue(input_tensor);
   OrtReleaseSession(session);
+  OrtReleaseSessionOptions(session_options);
   OrtReleaseEnv(env);
   printf("Done!\n");
   return 0;

@@ -111,14 +111,11 @@ Sets the graph optimization level for the session. Default is set to 1. Availabl
  * 1 -> Enable basic optimizations such as redundant node removals and constant folding
  * 2 -> Enable all optimizations (includes Level1 and more complex optimizations such as node fusions)
 
-    AppendExecutionProvider(ExecutionProvider provider);
-Appends execution provider to the session. For any operator in the graph the first execution provider that implements the operator will be user. ExecutionProvider is defined as the following enum.
+    EnableSequentialExecution();
+Enable Sequential Execution. By default, it is enabled.
 
-    enum ExecutionProvider
-    {
-        Cpu,
-        MklDnn
-    }
+    DisableSequentialExecution();
+Disable Sequential Execution and enable Parallel Execution.
 
 ### NodeMetadata
 Container of metadata for a model graph node, used for communicating the shape and type of the input and output nodes.
