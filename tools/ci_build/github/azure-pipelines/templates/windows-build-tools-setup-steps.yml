@@ -5,6 +5,10 @@ parameters:
   buildArch: amd64
   setVcvars: false
 steps:
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 4.3
+      inputs:
+        versionSpec: 4.3.0
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:

@@ -43,8 +43,8 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/framework/custom_ops_author.h"
 #include "core/session/IOBinding.h"
+#include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -54,37 +54,6 @@
 #endif
 
 using namespace ONNX_NAMESPACE;
-
-constexpr OrtCustomOpApi g_custom_op_api = {
-    &OrtKernelInfoGetAttribute_float,
-    &OrtKernelInfoGetAttribute_int64,
-
-    &OrtGetTensorShapeAndType,
-
-    &OrtGetNumOfDimensions,
-    &OrtGetDimensions,
-    &OrtSetDims,
-
-    &OrtGetTensorMutableData,
-
-    &OrtReleaseTensorTypeAndShapeInfo,
-};
-
-ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
-
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
-  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
-  if (status.IsOK())
-    return nullptr;
-  return onnxruntime::ToOrtStatus(status);
-}
-
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
-  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
-  if (status.IsOK())
-    return nullptr;
-  return onnxruntime::ToOrtStatus(status);
-}
 
 namespace onnxruntime {
 namespace {
@@ -121,42 +90,6 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 }  // namespace
-struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version != 1)
-      throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
-  }
-
-  ~CustomOpKernel() {
-    op_.KernelDestroy(op_kernel_);
-  }
-
-  Status Compute(OpKernelContext* ctx) const override {
-    auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
-    std::vector<OrtValue*> input_tensors;
-    auto input_count = ictx->InputCount();
-    for (int i = 0; i < input_count; i++)
-      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ictx->GetInputMLValue(i))));
-
-    std::vector<OrtValue*> output_tensors;
-    auto output_count = ictx->OutputCount();
-    for (int i = 0; i < output_count; i++) {
-      OrtTensorTypeAndShapeInfo info;
-      op_.KernelGetOutputShape(op_kernel_, input_tensors.data(), input_tensors.size(), i, &info);
-      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ictx->OutputMLValue(0, info.shape)));
-    }
-
-    op_.KernelCompute(op_kernel_, input_tensors.data(), input_tensors.size(), output_tensors.data(), output_tensors.size());
-    return Status::OK();
-  }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
-
-  OrtCustomOp& op_;
-  void* op_kernel_;
-};
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
     : session_state_{execution_providers_},
@@ -236,55 +169,8 @@ common::Status InferenceSession::AddCustomTransformerList(const std::vector<std:
 }
 
 common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
-  auto custom_registry = std::make_shared<CustomRegistry>();
-
-  for (auto& domain : op_domains) {
-    SchemasContainer schemas_container;
-
-    schemas_container.domain = domain->domain_;
-    schemas_container.baseline_opset_version = 1;
-    schemas_container.opset_version = 1000;
-
-    for (auto& op : domain->custom_ops_) {
-      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
-
-      auto input_count = op->GetInputTypeCount(op);
-      for (size_t i = 0; i < input_count; i++) {
-        auto type = op->GetInputType(op, i);
-
-        schema.Input(i, "A", "Description",
-                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
-
-      auto output_count = op->GetOutputTypeCount(op);
-      for (size_t i = 0; i < output_count; i++) {
-        auto type = op->GetOutputType(op, i);
-
-        schema.Output(i, "A", "Description",
-                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
-
-      schema.SinceVersion(1);
-      schema.AllowUncheckedAttributes();
-
-      schemas_container.schemas_list.push_back(schema);
-
-      KernelDefBuilder def_builder;
-      def_builder.SetName(op->GetName(op))
-          .SetDomain(onnxruntime::kOnnxDomain)
-          .SinceVersion(1)
-          .Provider(onnxruntime::kCpuExecutionProvider);
-      KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
-      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-
-      custom_registry->RegisterCustomKernel(create_info);
-    }
-
-    ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container.schemas_list,
-                                                       schemas_container.domain,
-                                                       schemas_container.baseline_opset_version,
-                                                       schemas_container.opset_version));
-  }
+  std::shared_ptr<CustomRegistry> custom_registry;
+  ORT_RETURN_IF_ERROR(CreateCustomRegistry(op_domains, custom_registry));
   RegisterCustomRegistry(custom_registry);
   return Status::OK();
 }
@@ -1054,4 +940,5 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime
