@@ -11,8 +11,8 @@
 
 namespace onnxruntime {
 
-static const int kMaxBatchSize = 1;
-static const int kMaxWorkSpaceSize = 1 << 30;
+static const int kMaxBatchSize = 13;
+static const int kMaxWorkSpaceSize = 1 << 24;
     
 class TensorrtLogger : public nvinfer1::ILogger {
     nvinfer1::ILogger::Severity verbosity_;
