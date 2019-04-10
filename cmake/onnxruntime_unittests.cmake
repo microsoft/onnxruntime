@@ -444,6 +444,7 @@ add_test(NAME onnx_test_pytorch_converted
 add_test(NAME onnx_test_pytorch_operator
   COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
 
+#perf test runner
 set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
 set(onnxruntime_perf_test_src_patterns
 "${onnxruntime_perf_test_src_dir}/*.cc"
@@ -460,16 +461,30 @@ else ()
 endif()
 
 file(GLOB onnxruntime_perf_test_src ${onnxruntime_perf_test_src_patterns})
-add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
+add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/framework/path_lib.cc)
 
 target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
         ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
         ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
+  SET(SYS_PATH_LIB shlwapi)
 endif()
 onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
-target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+
+if (onnxruntime_BUILD_SHARED_LIB)
+  target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
+          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
+          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS} Threads::Threads)
+  if(tensorflow_C_PACKAGE_PATH)
+    target_include_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/include)
+    target_link_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/lib)
+    target_link_libraries(onnxruntime_perf_test PRIVATE tensorflow)
+    target_compile_definitions(onnxruntime_perf_test PRIVATE HAVE_TENSORFLOW)
+  endif()
+else()
+  target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+endif()
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 # shared lib

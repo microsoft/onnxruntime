@@ -222,7 +222,11 @@ void convPoolShapeInference(
 }
 
 void RegisterContribSchemas() {
-  // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
+  // Register removed experimental ops for backward compatibility.
+  // Experimental operators do not have version history. However, RS5 takes bunch of experimental operators
+  // as production ops. In order to maintain backward compatibility when the experimental ops are removed from ONNX
+  // they need to be added in onnxruntime as contrib ops.
+  // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
   static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
 (Tensor<T>) where the affine function, y = alpha * x + beta,
@@ -344,6 +348,36 @@ Example 2:
       .Output(0, "output", "Sliced data tensor.", "T")
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
+  
+  ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
+      .Attr("across_channels", "If 1, mean and variance are computed across channels. Default is 0.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("normalize_variance", "If 0, normalize the mean only.  Default is 1.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_OPERATOR_SCHEMA(ScaledTanh)
+      .SinceVersion(1)
+      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+      .Input(0, "input", "Input tensor", "T")
+      .Output(
+          0,
+          "output",
+          "The scaled hyperbolic tangent values of the input tensor "
+          "computed element-wise",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
       .SinceVersion(10)
@@ -403,7 +437,25 @@ Example 2:
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
 
-  // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler) old version history maintainance
+  ONNX_OPERATOR_SCHEMA(ScaledTanh)
+      .SinceVersion(10)
+      .Deprecate()
+      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL)
+      .Input(0, "input", "Input tensor", "T")
+      .Output(
+          0,
+          "output",
+          "The scaled hyperbolic tangent values of the input tensor "
+          "computed element-wise",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+  
+  // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
       .SetDomain(kMSDomain)
