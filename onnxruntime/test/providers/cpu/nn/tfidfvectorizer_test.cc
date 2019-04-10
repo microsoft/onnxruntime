@@ -70,6 +70,117 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Fail) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{0};
+  std::vector<int32_t> input = {};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{0};
+  std::vector<float> output = {};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Success) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{0};
+  std::vector<int32_t> input = {};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{1, 0};
+  std::vector<int32_t> input = {};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip01_Empty_Dim2) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{0, 1};
+  std::vector<int32_t> input = {};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{7};
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2N) {
+  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  // s=0, Min=Max=2, weights empty, int32
+  InitTestAttr(test, "TF", 2, 2, 0,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},  //7 output indexes
+               {},
+               {2, 3, 5, 4,         //1-grams
+                5, 6, 7, 8, 6, 7},  //bi-grams
+               {});
+
+  std::vector<int64_t> dims{2, 0};
+  std::vector<int32_t> input = {};
+  test.AddInput<int32_t>("T", dims, input);
+
+  std::vector<int64_t> out_dims{2, 7};
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0, 
+                               0, 0, 0, 0, 0, 0, 0};
+  test.AddOutput<float>("Y", out_dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip0) {
   OpTester test("TfIdfVectorizer", opset_ver, domain);
   // s=0, Min=Max=2, weights empty, int32
