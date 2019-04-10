@@ -113,7 +113,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   // Iterate through the provided axes and override the start/end ranges
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
-  for (size_t axis_index = 0, axes_end = axes.size(); axis_index < axes_end; ++axis_index) {
+  for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
     auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
@@ -163,7 +163,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   // Iterate through the provided axes and override the start/end/steps ranges
   std::unordered_set<int64_t> unique_axes;
   const auto& dimension_count = input_dimensions.size();
-  for (size_t axis_index = 0, axes_end = axes.size(); axis_index < axes_end; ++axis_index) {
+  for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
     auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
