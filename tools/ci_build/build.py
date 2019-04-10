@@ -484,7 +484,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
-        dll_path = os.path.join(build_dir, config, "external", "tvm", config) if enable_tvm else None
+        if enable_tvm:
+          dll_path = os.path.join(build_dir, config, "external", "tvm", config)
+        elif enable_tensorrt:
+          dll_path = os.path.join(args.tensorrt_home, 'lib')
+        else:
+          dll_path = None
         run_subprocess([ctest_path, "--build-config", config, "--verbose"],
                        cwd=cwd, dll_path=dll_path)
 
