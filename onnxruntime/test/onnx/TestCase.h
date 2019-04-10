@@ -37,7 +37,14 @@ class ITestCase {
 class TestModelInfo {
  public:
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
-  virtual std::basic_string<PATH_CHAR_TYPE> GetDir() const = 0;
+  virtual std::basic_string<PATH_CHAR_TYPE> GetDir() const {
+    std::basic_string<PATH_CHAR_TYPE> test_case_dir;
+    auto st = onnxruntime::GetDirNameFromFilePath(GetModelUrl(), test_case_dir);
+    if (!st.IsOK()) {
+      ORT_THROW("GetDirNameFromFilePath failed");
+    }
+    return test_case_dir;
+  }
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
   virtual int GetInputCount() const = 0;
