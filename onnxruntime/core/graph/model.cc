@@ -202,15 +202,23 @@ ModelProto Model::ToProto() {
 
 common::Status Model::UpdateWeights(const NameMLValMap& weights) {
   // MLValue -> TensorProto
-  // TODO: support more other types than float
   for (const auto& name_and_ml_value : weights) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
     if (graph_->GetInitializedTensor(name_and_ml_value.first, tensor_proto)) {
-      auto mutable_tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(tensor_proto);
-      const auto& tensor = name_and_ml_value.second.Get<Tensor>();
-      const float* tensor_data = tensor.Data<float>();
-      for (int i = 0; i < mutable_tensor_proto->float_data_size(); ++i) {
-        mutable_tensor_proto->set_float_data(i, tensor_data[i]);
+      const auto& src_tensor = name_and_ml_value.second.Get<Tensor>();
+      auto* dst_tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(tensor_proto);
+
+      if (dst_tensor_proto->has_raw_data()) {
+        auto tensor_shape_size = src_tensor.Shape().Size();
+        auto data_size = src_tensor.DataType()->Size() * tensor_shape_size;
+        dst_tensor_proto->set_raw_data(src_tensor.DataRaw(src_tensor.DataType()), data_size);
+      } else {
+        // TODO: support more types than float
+        ORT_ENFORCE(dst_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT);
+        const float* tensor_data = src_tensor.Data<float>();
+        for (int i = 0; i < dst_tensor_proto->float_data_size(); ++i) {
+          dst_tensor_proto->set_float_data(i, tensor_data[i]);
+        }
       }
     }
   }
