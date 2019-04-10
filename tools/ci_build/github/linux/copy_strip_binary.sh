@@ -26,10 +26,6 @@ if [[ $LIB_NAME == *.dylib ]]
 then
     dsymutil $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dSYM
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
-else
-    objcopy --only-keep-debug $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dbg
-    objcopy --add-gnu-debuglink=$BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dbg $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
-    strip -g $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
 fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 # copy the README, licence and TPN
