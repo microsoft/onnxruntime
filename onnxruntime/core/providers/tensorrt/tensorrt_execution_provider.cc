@@ -333,6 +333,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         dim_size *= dimensions.d[j];
       }
       output_dim_sizes[bindingIndex] = dim_size;
+      
+      const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
+      if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
+        output_shapes[bindingIndex].pop_back();
+      }      
     }
 
     ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));
