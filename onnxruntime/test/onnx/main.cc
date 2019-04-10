@@ -204,6 +204,23 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     if (enable_cuda) {
 #ifdef USE_CUDA
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
+      // Filter out some flaky tests from cuda test runs. Those tests
+      // caused random segfault in CUDA 9.1. 
+      // TODO: remove this list once we fully moved to CUDA10
+      // clang-format off
+      std::unordered_set<std::string> cuda_flaky_tests = {
+        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"
+      };
+      for (auto it = tests.begin(); it != tests.end();) {
+        auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
+        if (iter != cuda_flaky_tests.end()) {
+          delete *it;
+          it = tests.erase(it);
+        }
+        else {
+          ++it;
+        }
+      }
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -225,6 +242,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       return -1;
 #endif
     }
+
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
