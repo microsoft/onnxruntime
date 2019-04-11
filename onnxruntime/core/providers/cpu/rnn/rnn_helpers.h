@@ -238,7 +238,8 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
   }
 
   int totalTasks = (int)max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  while (done != totalTasks);
+  while (done != totalTasks)
+    ;
 #endif
 }
 

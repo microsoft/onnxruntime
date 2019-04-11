@@ -1172,19 +1172,18 @@ static const PMLAS_POOL_KERNEL_ROUTINE MlasPoolVectorKernels[][2] =
 };
 
 void
-MLASCALL
-MlasPool(
-    MLAS_POOLING_KIND PoolingKind,
-    size_t Dimensions,
-    const int64_t* InputShape,
-    const int64_t* KernelShape,
-    const int64_t* Padding,
-    const int64_t* StrideShape,
-    const int64_t* OutputShape,
-    const float* Input,
-    float* Output,
-    ThreadPool *ExternalThreadPool
-    )
+    MLASCALL
+    MlasPool(
+        MLAS_POOLING_KIND PoolingKind,
+        size_t Dimensions,
+        const int64_t* InputShape,
+        const int64_t* KernelShape,
+        const int64_t* Padding,
+        const int64_t* StrideShape,
+        const int64_t* OutputShape,
+        const float* Input,
+        float* Output,
+        ThreadPool* ExternalThreadPool)
 /*++
 
 Routine Description:
@@ -1218,118 +1217,115 @@ Return Value:
 
 --*/
 {
-    MLAS_WORK_BLOCK WorkBlock;
+  MLAS_WORK_BLOCK WorkBlock;
 
-    WorkBlock.PoolingKind = PoolingKind;
+  WorkBlock.PoolingKind = PoolingKind;
 
-    //
-    // Compute the total number of channels to process and advance the input
-    // and output shapes over the batch and channel counts.
-    //
+  //
+  // Compute the total number of channels to process and advance the input
+  // and output shapes over the batch and channel counts.
+  //
 
-    size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
+  size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
 
-    InputShape += 2;
-    OutputShape += 2;
+  InputShape += 2;
+  OutputShape += 2;
 
-    //
-    // Save the pooling parameters.
-    //
+  //
+  // Save the pooling parameters.
+  //
 
-    size_t InputSize = 1;
-    size_t OutputSize = 1;
+  size_t InputSize = 1;
+  size_t OutputSize = 1;
 
-    bool InputAndKernelShapeMatch = true;
-    bool AllStridesAreOne = true;
-    bool AllPaddingIsZero = true;
-    bool AllKernelsAreSmall = true;
+  bool InputAndKernelShapeMatch = true;
+  bool AllStridesAreOne = true;
+  bool AllPaddingIsZero = true;
+  bool AllKernelsAreSmall = true;
 
-    for (size_t dim = 0; dim < Dimensions; dim++) {
+  for (size_t dim = 0; dim < Dimensions; dim++) {
+    WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
+    WorkBlock.OutputShape[dim] = size_t(OutputShape[dim]);
 
-        WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
-        WorkBlock.OutputShape[dim] = size_t(OutputShape[dim]);
-
-        if (KernelShape != nullptr) {
-            WorkBlock.KernelShape[dim] = KernelShape[dim];
-        } else {
-            WorkBlock.KernelShape[dim] = InputShape[dim];
-        }
-
-        if (Padding != nullptr) {
-            WorkBlock.Padding[dim] = Padding[dim];
-            WorkBlock.Padding[dim + Dimensions] = Padding[dim + Dimensions];
-        } else {
-            WorkBlock.Padding[dim] = 0;
-            WorkBlock.Padding[dim + Dimensions] = 0;
-        }
-
-        if (StrideShape != nullptr) {
-            WorkBlock.StrideShape[dim] = StrideShape[dim];
-        } else {
-            WorkBlock.StrideShape[dim] = 1;
-        }
-
-        InputSize *= WorkBlock.InputShape[dim];
-        OutputSize *= WorkBlock.OutputShape[dim];
-
-        InputAndKernelShapeMatch &= (WorkBlock.KernelShape[dim] == int64_t(WorkBlock.InputShape[dim]));
-        AllStridesAreOne &= (WorkBlock.StrideShape[dim] == 1);
-        AllPaddingIsZero &= (WorkBlock.Padding[dim] == 0 && WorkBlock.Padding[dim + Dimensions] == 0);
-        AllKernelsAreSmall &= (WorkBlock.KernelShape[dim] <= 32);
+    if (KernelShape != nullptr) {
+      WorkBlock.KernelShape[dim] = KernelShape[dim];
+    } else {
+      WorkBlock.KernelShape[dim] = InputShape[dim];
     }
 
-    WorkBlock.InputSize = InputSize;
-
-    //
-    // Determine which pooling kernel routine to use.
-    //
-    // The vectorized kernels only support strides of 1 or 2. The kernel size
-    // should be kept low in order to keep the divisors for average pooling to
-    // be exactly representable as float. The input width plus padding must fit
-    // in the reduction buffer.
-    //
-
-    PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
-
-    if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
-
-        PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
-
-    } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
-
-        int64_t ReductionBufferRemaining = MLAS_POOL_REDUCTION_BUFFER_STACK - MLAS_POOL_REDUCTION_BUFFER_PADDING;
-
-        if (ReductionBufferRemaining >= WorkBlock.Padding[Dimensions - 1]) {
-            ReductionBufferRemaining -= WorkBlock.Padding[Dimensions - 1];
-        } else {
-            ReductionBufferRemaining = 0;
-        }
-
-        if (ReductionBufferRemaining >= WorkBlock.Padding[Dimensions * 2 - 1]) {
-            ReductionBufferRemaining -= WorkBlock.Padding[Dimensions * 2 - 1];
-        } else {
-            ReductionBufferRemaining = 0;
-        }
-
-        if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
-            PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
-        }
+    if (Padding != nullptr) {
+      WorkBlock.Padding[dim] = Padding[dim];
+      WorkBlock.Padding[dim + Dimensions] = Padding[dim + Dimensions];
+    } else {
+      WorkBlock.Padding[dim] = 0;
+      WorkBlock.Padding[dim + Dimensions] = 0;
     }
 
-    //
-    // Use an external thread pool if one is provided.
-    // TODO: change to use MlasExecuteThreaded
-
-    if (!(ExternalThreadPool == nullptr)) {
-      std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
-      ExternalThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
-
-      return;
+    if (StrideShape != nullptr) {
+      WorkBlock.StrideShape[dim] = StrideShape[dim];
+    } else {
+      WorkBlock.StrideShape[dim] = 1;
     }
 
-    //
-    // Execute the pooling kernel routine.
-    //
+    InputSize *= WorkBlock.InputShape[dim];
+    OutputSize *= WorkBlock.OutputShape[dim];
+
+    InputAndKernelShapeMatch &= (WorkBlock.KernelShape[dim] == int64_t(WorkBlock.InputShape[dim]));
+    AllStridesAreOne &= (WorkBlock.StrideShape[dim] == 1);
+    AllPaddingIsZero &= (WorkBlock.Padding[dim] == 0 && WorkBlock.Padding[dim + Dimensions] == 0);
+    AllKernelsAreSmall &= (WorkBlock.KernelShape[dim] <= 32);
+  }
+
+  WorkBlock.InputSize = InputSize;
+
+  //
+  // Determine which pooling kernel routine to use.
+  //
+  // The vectorized kernels only support strides of 1 or 2. The kernel size
+  // should be kept low in order to keep the divisors for average pooling to
+  // be exactly representable as float. The input width plus padding must fit
+  // in the reduction buffer.
+  //
+
+  PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
+
+  if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
+    PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
+
+  } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
+    int64_t ReductionBufferRemaining = MLAS_POOL_REDUCTION_BUFFER_STACK - MLAS_POOL_REDUCTION_BUFFER_PADDING;
+
+    if (ReductionBufferRemaining >= WorkBlock.Padding[Dimensions - 1]) {
+      ReductionBufferRemaining -= WorkBlock.Padding[Dimensions - 1];
+    } else {
+      ReductionBufferRemaining = 0;
+    }
+
+    if (ReductionBufferRemaining >= WorkBlock.Padding[Dimensions * 2 - 1]) {
+      ReductionBufferRemaining -= WorkBlock.Padding[Dimensions * 2 - 1];
+    } else {
+      ReductionBufferRemaining = 0;
+    }
+
+    if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
+      PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
+    }
+  }
+
+  //
+  // Use an external thread pool if one is provided.
+  // TODO: change to use MlasExecuteThreaded
+
+  if (!(ExternalThreadPool == nullptr)) {
+    std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
+    ExternalThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+
+    return;
+  }
+
+  //
+  // Execute the pooling kernel routine.
+  //
 
 #if defined(MLAS_USE_OPENMP)
 
@@ -1343,5 +1339,4 @@ Return Value:
     PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
 
 #endif
-
 }

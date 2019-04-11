@@ -69,33 +69,30 @@ Return Value:
 
 #endif
 
-void
-MlasExecuteThreaded(
+void MlasExecuteThreaded(
     MLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
     int32_t Iterations,
-    ThreadPool* ExternalThreadPool
-    )
-{
-    //
-    // Execute the routine directly if only one iteration is specified.
-    //
+    ThreadPool* ExternalThreadPool) {
+  //
+  // Execute the routine directly if only one iteration is specified.
+  //
 
-    if (Iterations == 1) {
-        ThreadedRoutine(Context, 0);
-        return;
-    }
+  if (Iterations == 1) {
+    ThreadedRoutine(Context, 0);
+    return;
+  }
 
-    //
-    // Use an external thread pool if one is provided.
-    //
+  //
+  // Use an external thread pool if one is provided.
+  //
 
-    if (!(ExternalThreadPool == nullptr)) {
-      std::function<void(int)> WorkObject = [&](int32_t tid) { ThreadedRoutine(Context, tid); };
-      ExternalThreadPool->ParallelFor(Iterations, WorkObject);
+  if (!(ExternalThreadPool == nullptr)) {
+    std::function<void(int)> WorkObject = [&](int32_t tid) { ThreadedRoutine(Context, tid); };
+    ExternalThreadPool->ParallelFor(Iterations, WorkObject);
 
-      return;
-    }
+    return;
+  }
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
 

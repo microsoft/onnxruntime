@@ -56,7 +56,7 @@ struct PerformanceResult {
 
       outfile << std::endl;
       outfile << "Min Latency is " << sorted_time[0] << "sec" << std::endl;
-      outfile << "Max Latency is " << sorted_time[total-1] << "sec" << std::endl;
+      outfile << "Max Latency is " << sorted_time[total - 1] << "sec" << std::endl;
       outfile << "P50 Latency is " << sorted_time[n50] << "sec" << std::endl;
       outfile << "P90 Latency is " << sorted_time[n90] << "sec" << std::endl;
       outfile << "P95 Latency is " << sorted_time[n95] << "sec" << std::endl;

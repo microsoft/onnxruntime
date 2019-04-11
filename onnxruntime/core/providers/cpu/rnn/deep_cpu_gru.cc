@@ -417,9 +417,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   }
 
   if (!output.empty())
-    DumpMatrix("Y", output.data(), seq_length* num_directions_* batch_size, hidden_size_);
+    DumpMatrix("Y", output.data(), seq_length * num_directions_ * batch_size, hidden_size_);
 
-  DumpMatrix("Y_h", hidden_output.data(), num_directions_* batch_size, hidden_size_);
+  DumpMatrix("Y_h", hidden_output.data(), num_directions_ * batch_size, hidden_size_);
 
   return Status::OK();
 }

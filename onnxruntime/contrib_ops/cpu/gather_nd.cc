@@ -103,7 +103,7 @@ Status GatherND::Compute(OpKernelContext* context) const {
   return nullptr == p.input_str_base ? GatherNumber(p, thread_pool) : GatherString(p, thread_pool);
 }
 
-Status GatherND::GatherNumber(const Prepare& p, const ThreadPool *ttp) const {
+Status GatherND::GatherNumber(const Prepare& p, const ThreadPool* ttp) const {
   std::function<void(int32_t)> work_object = [&](int32_t i) {
     memcpy(p.output_base + i * p.bytes_to_copy,
            p.input_base + p.element_offsets[i] * p.element_bytes,
@@ -124,6 +124,5 @@ Status GatherND::GatherString(const Prepare& p, const ThreadPool* ttp) const {
 
   return Status::OK();
 }
-
 }
 }

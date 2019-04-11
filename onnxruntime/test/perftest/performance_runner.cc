@@ -18,7 +18,6 @@
 #endif
 using onnxruntime::Status;
 
-
 // TODO: Temporary, while we bring up the threadpool impl...
 #include "core/platform/threadpool.h"
 #include <unsupported/Eigen/CXX11/ThreadPool>

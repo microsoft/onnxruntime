@@ -1065,8 +1065,7 @@ Return Value:
         WorkBlock->ldc);
 }
 
-inline
-bool
+inline bool
 MlasSgemmTryMultithread(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -1081,8 +1080,7 @@ MlasSgemmTryMultithread(
     float beta,
     float* C,
     size_t ldc,
-    ThreadPool* ExternalThreadPool
-    )
+    ThreadPool* ExternalThreadPool)
 /*++
 
 Routine Description:
@@ -1126,7 +1124,6 @@ Return Value:
 
 --*/
 {
-
 #if defined(MLAS_HAS_THREADING_SUPPORT)
 
     MLAS_SGEMM_WORK_BLOCK WorkBlock;
@@ -1260,27 +1257,25 @@ Return Value:
     return false;
 
 #endif
-
 }
 
 void
-MLASCALL
-MlasSgemm(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const float* A,
-    size_t lda,
-    const float* B,
-    size_t ldb,
-    float beta,
-    float* C,
-    size_t ldc,
-    ThreadPool* ExternalThreadPool
-    )
+    MLASCALL
+    MlasSgemm(
+        CBLAS_TRANSPOSE TransA,
+        CBLAS_TRANSPOSE TransB,
+        size_t M,
+        size_t N,
+        size_t K,
+        float alpha,
+        const float* A,
+        size_t lda,
+        const float* B,
+        size_t ldb,
+        float beta,
+        float* C,
+        size_t ldc,
+        ThreadPool* ExternalThreadPool)
 /*++
 
 Routine Description:
@@ -1323,12 +1318,12 @@ Return Value:
 
 --*/
 {
-    //
-    // Try to run the operation across multiple threads or fall back to a
-    // single thread based on the GEMM parameters and system configuration.
-    //
+  //
+  // Try to run the operation across multiple threads or fall back to a
+  // single thread based on the GEMM parameters and system configuration.
+  //
 
-    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ExternalThreadPool)) {
-        MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
+  if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ExternalThreadPool)) {
+    MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+  }
 }

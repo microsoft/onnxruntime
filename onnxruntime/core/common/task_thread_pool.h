@@ -119,7 +119,7 @@ class TaskThreadPool {
   }
 
   int NumThreads() const {
-    return (int) threads_.size();
+    return (int)threads_.size();
   }
 
   // This thread pool does not support ids

@@ -85,7 +85,7 @@ class ThreadPool::Impl : public Eigen::NonBlockingThreadPool {
   void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
-    Barrier barrier(static_cast<unsigned int>(last-first+1));
+    Barrier barrier(static_cast<unsigned int>(last - first + 1));
     std::function<void(int64_t, int64_t)> handle_range;
     handle_range = [=, &handle_range, &barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
@@ -153,7 +153,7 @@ ThreadPool::ThreadPool(const std::string& name, int num_threads)
 
 void ThreadPool::Schedule(std::function<void()> fn) { impl_->Schedule(fn); }
 
-void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) { 
+void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
   if (total <= 0) {
     return;
   }
@@ -161,7 +161,7 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
   impl_->ParallelFor(total, fn);
 }
 
-void ThreadPool::ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) { 
+void ThreadPool::ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
   if (last <= first) {
     fn(first, last);
     return;

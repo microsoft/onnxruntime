@@ -439,7 +439,7 @@ ReferenceConv2D(
             }
 
             MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
-                filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, nullptr);
+                      filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, nullptr);
 
             //
             // Apply the bias.

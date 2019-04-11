@@ -59,7 +59,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
 
-        std::function<void(int32_t)> work_object = [&](int32_t c) { 
+        std::function<void(int32_t)> work_object = [&](int32_t c) {
           const float* x_d = X_data + c * x_step;
           const int32_t* m_d = M_data + (c * x_step) % total_mask_channels;
           float* y_d = Y_data + c * y_step;

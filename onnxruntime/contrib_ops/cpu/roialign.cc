@@ -165,7 +165,7 @@ void ROIAlignForward(
     int64_t roi_cols,
     T* top_data,
     const std::string& mode,
-    const ThreadPool *ttp) {
+    const ThreadPool* ttp) {
   int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
 
   std::function<void(int32_t)> work_object = [&](int32_t n) {
