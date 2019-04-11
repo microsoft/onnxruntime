@@ -6,18 +6,17 @@
 #pragma warning(disable : 4267)
 #endif
 
-#include "contrib_ops/cpu/matmul_integer.h"
+#include "core/providers/cpu/math/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/gemmlowp_common_wrapper.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 // only register this operator if low precision computation is enabled.
 ONNX_OPERATOR_KERNEL_EX(
     MatMulInteger,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    10,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
@@ -84,5 +83,4 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
 
   return Status::OK();
 }
-}  // namespace contrib
 }  // namespace onnxruntime
