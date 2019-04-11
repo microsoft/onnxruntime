@@ -316,7 +316,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   c_->LoadTestData(task_id, holder, feeds, true);
 
   // Create output feed
-  size_t output_count;
+  size_t output_count = 0;
   ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
