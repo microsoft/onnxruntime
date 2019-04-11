@@ -26,8 +26,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const KernelDef& kernel_def,
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, MLValue>& initialized_tensors,
-	                    const MLValueNameIdxMap& mlvalue_name_idx_map,
-	                    const FuncManager& funcs_mgr,
+                        const MLValueNameIdxMap& mlvalue_name_idx_map,
+                        const FuncManager& funcs_mgr,
                         const std::vector<AllocatorPtr>& output_allocators);
 
   OpKernelInfo(const OpKernelInfo& other);
