@@ -550,11 +550,11 @@ struct OrtCustomOpApi {
   size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
   void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
-  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, void** data);
+  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Out_ void** data);
 
   void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
 
-  OrtValue*(ORT_API_CALL* KernelContext_GetInput)(OrtKernelContext* context, _In_ size_t index);
+  const OrtValue*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index);
   OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;

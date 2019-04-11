@@ -166,7 +166,7 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(onnxruntime::CustomOpApi ort, OrtValue* value) {
+  OrtTensorDimensions(onnxruntime::CustomOpApi ort, const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info = ort.GetTensorShapeAndType(value);
     auto dimensionCount = ort.GetDimensionCount(info);
     resize(dimensionCount);
@@ -191,17 +191,17 @@ struct MyCustomKernel {
   }
 
   void GetOutputShape(OrtKernelContext* context, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
-    OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     OrtTensorDimensions dimensions(ort_, input_X);
     ort_.SetDimensions(info, dimensions.data(), dimensions.size());
   }
 
   void Compute(OrtKernelContext* context) {
     // Setup inputs
-    OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    float* X = ort_.GetTensorMutableData<float>(input_X);
-    float* Y = ort_.GetTensorMutableData<float>(input_Y);
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+    const float* X = ort_.GetTensorData<float>(input_X);
+    const float* Y = ort_.GetTensorData<float>(input_Y);
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);

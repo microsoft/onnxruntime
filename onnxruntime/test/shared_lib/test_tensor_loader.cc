@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/common.h"
 #include "onnx_protobuf.h"
 
 #include "test_fixture.h"

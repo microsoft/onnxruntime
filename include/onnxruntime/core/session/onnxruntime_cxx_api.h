@@ -7,24 +7,19 @@
 #include <string>
 #include <stdexcept>
 #include <memory>
-#include "core/common/exceptions.h"
 
 //TODO: encode error code in the message?
-#define ORT_THROW_ON_ERROR(expr)                                                 \
-  do {                                                                           \
-    OrtStatus* onnx_status = (expr);                                             \
-    if (onnx_status != nullptr) {                                                \
-      std::string ort_error_message = OrtGetErrorMessage(onnx_status);           \
-      OrtErrorCode error_code = OrtGetErrorCode(onnx_status);                    \
-      OrtReleaseStatus(onnx_status);                                             \
-      switch (error_code) {                                                      \
-        case ORT_NOT_IMPLEMENTED:                                                \
-          throw onnxruntime::NotImplementedException(ort_error_message);         \
-        default:                                                                 \
-          throw onnxruntime::OnnxRuntimeException(ORT_WHERE, ort_error_message); \
-      }                                                                          \
-    }                                                                            \
+#define ORT_THROW_ON_ERROR(expr)                                       \
+  do {                                                                 \
+    OrtStatus* onnx_status = (expr);                                   \
+    if (onnx_status != nullptr) {                                      \
+      std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
+      OrtReleaseStatus(onnx_status);                                   \
+      throw std::exception(ort_error_message.c_str());                 \
+    }                                                                  \
   } while (0);
+
+//     OrtErrorCode error_code = OrtGetErrorCode(onnx_status);
 
 #define ORT_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \
   decltype(Ort##NAME(value.get())) NAME() {     \
@@ -112,23 +107,16 @@ class SessionOptionsWrapper {
   }
 
   SessionOptionsWrapper clone() const {
-    OrtSessionOptions* p = OrtCloneSessionOptions(value.get());
-    return SessionOptionsWrapper(env_, p);
+    return SessionOptionsWrapper(env_, OrtCloneSessionOptions(value.get()));
   }
-#ifdef _WIN32
-  OrtSession* OrtCreateSession(_In_ const wchar_t* model_path) {
+
+  OrtSession* OrtCreateSession(_In_ const ORTCHAR_T* model_path) {
     OrtSession* ret = nullptr;
     ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
     return ret;
   }
-#else
-  OrtSession* OrtCreateSession(_In_ const char* model_path) {
-    OrtSession* ret = nullptr;
-    ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
-    return ret;
-  }
-#endif
 };
+
 inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   OrtValue* ret;
   ORT_THROW_ON_ERROR(::OrtCreateTensorAsOrtValue(env, shape.data(), shape.size(), type, &ret));
@@ -183,11 +171,16 @@ struct CustomOpApi {
     return data;
   }
 
+  template <typename T>
+  const T* GetTensorData(_Inout_ const OrtValue* value) {
+    return GetTensorMutableData<T>(const_cast<OrtValue*>(value));
+  }
+
   void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input) {
     api_.ReleaseTensorTypeAndShapeInfo(input);
   }
 
-  OrtValue* KernelContext_GetInput(OrtKernelContext* context, _In_ size_t index) {
+  const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index) {
     return api_.KernelContext_GetInput(context, index);
   }
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
