@@ -50,7 +50,7 @@ class IExecutionFrame {
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
   Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, MLValue*& p_mlvalue);
-
+  
   /**
    * write the output values to the 'fetches' vector
    * Don't access the values after SessionState is destroyed 

@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 class MLValueNameIdxMap;
 class FuncManager;
-    /**
+/**
    A very light-weight class, which works as an aggregated
    view of all data needed for constructing a Kernel instance.
    NOTE: it does not own/hold any objects.
@@ -26,8 +26,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const KernelDef& kernel_def,
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, MLValue>& initialized_tensors,
-                        const MLValueNameIdxMap& mlvalue_name_idx_map,
-                        const FuncManager& funcs_mgr);
+                        const SessionState& session_state);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -45,6 +44,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
 
+  // find the allocator for i-th output tensor, based on the allocation plan
+  common::Status GetOutputTensorAllocator(int output_id, AllocatorPtr& allocator) const;
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -55,8 +57,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   // will delegate kernel compute call to <execution_provider> compute call.
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
   const std::unordered_map<int, MLValue>& initialized_tensors_;
-  const MLValueNameIdxMap& mlvalue_name_idx_map_;
-  const FuncManager& funcs_mgr_;
+  const SessionState& session_state_;
   ProtoHelperNodeContext proto_helper_context_;
 };
 

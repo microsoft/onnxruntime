@@ -23,9 +23,18 @@ class FunctionKernel : public OpKernel {
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     if (create_func) {
       //TODO: we are only provide host allocate method in compute context.
-      //Do we need to hold the ref-counting here?
-      host_allocator_ = info.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
-      ComputeContext context = {allocate_helper_func, release_helper_func, host_allocator_.get(), info.node().Name().c_str()};
+      std::set<AllocatorPtr> output_allocators;
+      for (auto i = 0; i < info.GetOutputCount(); ++i) {
+        AllocatorPtr alloc;
+        //If get output tensor's allocator failed, means the output is a non-tensor value, or its memory is reused by other tensors.
+        //We don't support it now.
+        ORT_ENFORCE(info.GetOutputTensorAllocator(i, alloc).IsOK());
+        output_allocators.insert(alloc);
+      }
+      // currently in function api, we only pass in 1 allocator. need further extension if the outputs are located at different allocators.
+      ORT_ENFORCE(output_allocators.size() == 1);
+      output_allocator_ = *output_allocators.begin();
+      ComputeContext context = {allocate_helper_func, release_helper_func, output_allocator_.get(), info.node().Name().c_str()};
       ORT_ENFORCE(create_func(&context, &func_state_) == 0);
     }
   }
@@ -57,15 +66,13 @@ class FunctionKernel : public OpKernel {
       return Status(common::ONNXRUNTIME, common::FAIL, "FuncKernel call failed with error code: " + std::to_string(ret));
 
     for (int i = 0; i < num_outputs_; i++) {
+	  //since we don't want to re-allocate te output buffer, create a tensor with empty buffer in execution frame first.
+      Tensor* output = context->Output(i, {0});
       TensorShape output_shape(std::vector<int64_t>(output_tensors[i].shape, output_tensors[i].shape + output_tensors[i].ndim));
-      Tensor* output = context->Output(i, output_shape);
       auto data = output->MutableDataRaw();
-      //TODO: for string tensors, this copy is not correct.
-      ORT_ENFORCE(output->DataType() != DataTypeImpl::GetType<std::string>());
-      memcpy(data, output_tensors[i].data, output->DataType()->Size() * output_shape.Size());
-      //Release output tensors (buffer, shape).
-      host_allocator_->Free(output_tensors[i].data);
-      // for shape, becauset the TempSpaceAllocator we use could be a device allocator, if the kernel is assigned to a device like gpu.
+	  //swap the buffer created by compute method into the output tensor.
+      ORT_RETURN_IF_ERROR(output->ReplaceBuffer(data, output_shape, output_allocator_));
+      // for shape, becauset the output_allocator_ we use could be a device allocator, if the kernel is assigned to a device like gpu.
       // so we prefer to directly allocate shape on heap. otherwise we need pass in multile allocator function for host and device.
       delete[] output_tensors[i].shape;
     }
@@ -79,6 +86,6 @@ class FunctionKernel : public OpKernel {
   FunctionState func_state_;
   size_t num_inputs_;
   size_t num_outputs_;
-  AllocatorPtr host_allocator_;
+  AllocatorPtr output_allocator_;
 };
 }  // namespace onnxruntime

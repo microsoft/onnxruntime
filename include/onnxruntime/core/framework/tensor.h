@@ -182,6 +182,14 @@ class Tensor final {
     return ret;
   }
 
+  /**
+  Replace the tensor's buffer with another buffer. The original buffer will be released!!!
+    p:  the replacement buffer
+	shape: the replacement buffer's shape
+	allocator:  the allocator for replacement buffer
+  */
+  Status ReplaceBuffer(void* p, const TensorShape& shape, AllocatorPtr allocator, int64_t offset = 0);
+
   // More API methods.
  private:
   void Init(MLDataType p_type,

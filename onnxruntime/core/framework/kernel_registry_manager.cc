@@ -24,7 +24,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
     std::lock_guard<OrtMutex> lock(lock_);
     for (auto& registry : custom_kernel_registries_) {
       status = registry->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
-                                         session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+                                         session_state, op_kernel);
       if (status.IsOK()) {
         return status;
       }

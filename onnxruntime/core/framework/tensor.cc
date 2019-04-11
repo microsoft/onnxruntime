@@ -98,4 +98,14 @@ void Tensor::ReleaseBuffer() {
   }
 }
 
+Status Tensor::ReplaceBuffer(void* p, const TensorShape& shape, AllocatorPtr allocator, int64_t offset) {
+  if (!buffer_deleter_ || buffer_deleter_ != allocator)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "The replacement buffer is not allocated at the same allocator");
+  ReleaseBuffer();
+  p_data_ = p;
+  shape_ = shape;
+  byte_offset_ = offset;
+  return Status::OK();
+}
+
 }  // namespace onnxruntime
