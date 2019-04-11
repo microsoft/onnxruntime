@@ -213,13 +213,14 @@ struct SliceIterator {
     }
   }
 
-  // postfix iterator
+  // postfix iterator increment
   const T* operator++(int) {
     const T* input = input_;
     IncrementInnerDimension();
     return input;
   }
 
+  // prefix iterator increment
   const T* operator++() {
     IncrementInnerDimension();
     return input_;
