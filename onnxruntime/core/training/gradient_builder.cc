@@ -287,11 +287,140 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
               {GI(0)})};
 }
 
+void ComputeBroadcastBackwardAxes(
+    const std::vector<int>& A_dims,
+    const std::vector<int>& B_dims,
+    std::vector<int>* A_axes,
+    std::vector<int>* B_axes) {
+  A_axes->clear();
+  B_axes->clear();
+
+  int ndim = int(std::max(A_dims.size(), B_dims.size()));
+  int i = int(A_dims.size() - 1);
+  int j = int(B_dims.size() - 1);
+  int k = ndim - 1;
+
+  for (; i >= 0 && j >= 0; --k) {
+    ORT_ENFORCE(A_dims[i] == B_dims[j] || A_dims[i] == 1 || B_dims[j] == 1);
+
+    if (A_dims[i] != B_dims[j]) {
+      if (A_dims[i] == 1) {
+        A_axes->push_back(gsl::narrow_cast<int>(k));
+      }
+
+      if (B_dims[j] == 1) {
+        B_axes->push_back(gsl::narrow_cast<int>(k));
+      }
+    }
+
+    --i;
+    --j;
+  }
+
+  if (i < 0) {
+    for (; k >= 0; --k) {
+      A_axes->push_back(gsl::narrow_cast<int>(k));
+    }
+
+  } else {
+    for (; k >= 0; --k) {
+      B_axes->push_back(gsl::narrow_cast<int>(k));
+    }
+  }
+
+  std::reverse(A_axes->begin(), A_axes->end());
+  std::reverse(B_axes->begin(), B_axes->end());
+}
 IMPLEMENT_GRADIENT_BUILDER(GetAddGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("AddGrad",
-              {GO(0)},
-              {GI(0), GI(1)})};
+  std::vector<int> a_axes;
+  std::vector<int> b_axes;
+
+  const ArgDef& a = I(0);
+  const auto& a_dim = a.type_proto->tensor_type().shape().dim();
+
+  std::vector<int> a_dims;
+  for (auto dim = a_dim.begin(); dim < a_dim.end(); dim++) {
+    if (dim->has_dim_value()) {
+      a_dims.push_back(gsl::narrow_cast<int>(dim->dim_value()));
+    } else {
+      ORT_ENFORCE(false, "Dimension missing");
+    }
+  }
+
+  const ArgDef& b = I(1);
+  const auto& b_dim = b.type_proto->tensor_type().shape().dim();
+
+  std::vector<int> b_dims;
+  for (auto dim = b_dim.begin(); dim < b_dim.end(); dim++) {
+    if (dim->has_dim_value()) {
+      b_dims.push_back(gsl::narrow_cast<int>(dim->dim_value()));
+    } else {
+      ORT_ENFORCE(false, "Dimension missing");
+    }
+  }
+
+  ComputeBroadcastBackwardAxes(a_dims, b_dims, &a_axes, &b_axes);
+
+  std::vector<NodeDef> output;
+
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    if (a_axes.size() > 0) {
+      std::vector<int64_t> input_dims;
+      input_dims.resize(a_axes.size());
+      input_dims.assign(a_axes.begin(), a_axes.end());
+      output.push_back(
+          NodeDef("ReduceSum",
+                  {GO(0)},
+                  {IA("ReduceSum")},
+                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
+                   {"axes", MakeAttribute("axes", input_dims)}}));
+
+      output.push_back(
+          NodeDef("Shape",
+                  {a},
+                  {IA("a_shape")}));
+
+      output.push_back(
+          NodeDef("Reshape",
+                  {IA("ReduceSum"), IA("a_shape")},
+                  {GI(0)}));
+    } else {
+      output.push_back(
+          NodeDef("Identity",
+                  {GO(0)},
+                  {GI(0)}));
+    }
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(1)) {
+    if (b_axes.size() > 0) {
+      std::vector<int64_t> input_dims;
+      input_dims.resize(b_axes.size());
+      input_dims.assign(b_axes.begin(), b_axes.end());
+      output.push_back(
+          NodeDef("ReduceSum",
+                  {GO(0)},
+                  {IA("ReduceSum_2")},
+                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
+                   {"axes", MakeAttribute("axes", input_dims)}}));
+
+      output.push_back(
+          NodeDef("Shape",
+                  {b},
+                  {IA("b_shape")}));
+
+      output.push_back(
+          NodeDef("Reshape",
+                  {IA("ReduceSum_2"), IA("b_shape")},
+                  {GI(1)}));
+    } else {
+      output.push_back(
+          NodeDef("Identity",
+                  {GO(0)},
+                  {GI(1)}));
+    }
+  }
+  return output;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSubGradient) {

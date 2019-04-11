@@ -72,21 +72,6 @@ class ReluGrad final : public OpKernel {
 };
 
 template <typename T>
-class AddGrad final : public OpKernel {
- public:
-  explicit AddGrad(const OpKernelInfo& info) : OpKernel(info) {
-    output_tensor_shapes_ = InferOutputShapes(info);
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AddGrad);
-
-  std::vector<VectorInt64> output_tensor_shapes_;
-};
-
-template <typename T>
 class MatMulGrad final : public OpKernel {
  public:
   explicit MatMulGrad(const OpKernelInfo& info) : OpKernel(info) {

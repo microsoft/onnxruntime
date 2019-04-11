@@ -45,6 +45,57 @@ TEST(GradientCheckerTest, AddGrad) {
   EXPECT_TRUE(max_error <= 1e-2);
 }
 
+TEST(GradientCheckerTest, AddGrad_WithBroadcast) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Add"};
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 6}, {6}}, {{2, 6}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{3, 3}, {3, 1}}, {{3, 3}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{}, {}}, {{}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{}, {1}}, {{1}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{1}, {}}, {{1}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{1}, {1}}, {{1}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{3, 2}, {3, 1}}, {{3, 2}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 4}, {1, 3, 1}}, {{2, 3, 4}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 1}, {3, 4}}, {{2, 3, 4}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+}
+
 TEST(GradientCheckerTest, SubGrad) {
   TensorShape shape({1});
   float max_error;

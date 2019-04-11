@@ -132,39 +132,6 @@ Status ReluGrad<T>::Compute(OpKernelContext* context) const {
 }
 
 ONNX_CPU_OPERATOR_KERNEL(
-    AddGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    AddGrad<float>);
-
-// The Current implementation assumes X1.Shape() == X2.Shape()
-// TODO: Implement Grad for BroadCastAdd
-template <typename T>
-Status AddGrad<T>::Compute(OpKernelContext* context) const {
-  auto dY = context->Input<Tensor>(0);
-
-  if (!output_tensor_shapes_[0].empty()) {
-    auto dX1 = context->Output(0, TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]));
-
-    auto out = gsl::make_span(dX1->template MutableData<float>(), dX1->Shape().Size());
-    auto in = gsl::make_span(dY->Data<float>(), dY->Shape().Size());
-
-    auto iter = out.begin();
-    auto iter2 = in.begin();
-    for (; iter != out.end() && iter2 != in.end(); iter++, iter2++) {
-      *iter = static_cast<float>(*iter2);
-    }
-  }
-
-  if (!output_tensor_shapes_[1].empty()) {
-    auto dX2 = context->Output(1, TensorShape::ReinterpretBaseType(output_tensor_shapes_[1]));
-    MakeEigenArrayMap<float>(dX2) = MakeEigenArrayMap<float>(dY);
-  }
-
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
     MatMulGrad,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
