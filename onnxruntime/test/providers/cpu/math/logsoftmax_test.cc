@@ -14,7 +14,8 @@ static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<int64_t>& dimensions,
                     int64_t axis = 1,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& error_msg = "") {
+                    const std::string& error_msg = "",
+                    const std::unordered_set<std::string>& excluded_provider_types) {
   OpTester tester("LogSoftmax");
 
   if (axis != 1) {
@@ -24,7 +25,7 @@ static void RunTest(const std::vector<float>& x_vals,
   tester.AddInput("X", dimensions, x_vals);
   tester.AddOutput("Y", dimensions, expected_vals);
 
-  tester.Run(expect_result, error_msg);
+  tester.Run(expect_result, error_msg, excluded_provider_types);
 }
 
 TEST(LogSoftmaxOperator, Simple) {
@@ -96,7 +97,7 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis0) {
       -4.042971f, -4.2982683f, -3.5933442f, -4.538994f, -5.307373f,
       -4.2677402f, -4.44635f, -3.5821702f, -3.8414123f, -4.267664f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis1) {
@@ -188,7 +189,8 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
           dimensions,
           /* invalid axis */ -7,
           OpTester::ExpectResult::kExpectFailure,
-          "-7 is not in valid range [-2,1]");
+          "-7 is not in valid range [-2,1]",
+          {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
