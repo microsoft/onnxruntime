@@ -10,6 +10,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/common/callback.h"
 #include "core/optimizer/optimizer_execution_frame.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 
@@ -62,11 +63,15 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   for (auto* node : nodes) {
     std::unique_ptr<OpKernel> op_kernel;
     std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
+    OrtAllocatorInfo cpu_default_allocator(CPU, OrtArenaAllocator, 0);
+    auto default_allocator = GetAllocator(cpu_default_allocator);
+    std::vector<AllocatorPtr> output_allocatos(node->OutputDefs().size(), default_allocator);
     auto status = kernel_registry->TryCreateKernel(*node,
                                                    *cpu_execution_provider_,
                                                    initializers_,
                                                    mlvalue_name_idx_map_,
                                                    FuncManager(),
+                                                   output_allocatos,
                                                    op_kernel);
     kernels_[node->Index()] = std::move(op_kernel);
   }

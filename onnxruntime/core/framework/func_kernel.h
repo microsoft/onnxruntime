@@ -24,12 +24,14 @@ class FunctionKernel : public OpKernel {
     if (create_func) {
       //TODO: we are only provide host allocate method in compute context.
       std::set<AllocatorPtr> output_allocators;
-      for (auto i = 0; i < info.GetOutputCount(); ++i) {
+      for (size_t i = 0; i < info.GetOutputCount(); ++i) {
         AllocatorPtr alloc;
         //If get output tensor's allocator failed, means the output is a non-tensor value, or its memory is reused by other tensors.
         //We don't support it now.
         ORT_ENFORCE(info.GetOutputTensorAllocator(i, alloc).IsOK());
-        output_allocators.insert(alloc);
+        //if i-th output is optional, the alloc will be nullptr. ignore it.
+        if (alloc)
+          output_allocators.insert(alloc);
       }
       // currently in function api, we only pass in 1 allocator. need further extension if the outputs are located at different allocators.
       ORT_ENFORCE(output_allocators.size() == 1);
@@ -66,12 +68,11 @@ class FunctionKernel : public OpKernel {
       return Status(common::ONNXRUNTIME, common::FAIL, "FuncKernel call failed with error code: " + std::to_string(ret));
 
     for (int i = 0; i < num_outputs_; i++) {
-	  //since we don't want to re-allocate te output buffer, create a tensor with empty buffer in execution frame first.
+      //since we don't want to re-allocate te output buffer, create a tensor with empty buffer in execution frame first.
       Tensor* output = context->Output(i, {0});
       TensorShape output_shape(std::vector<int64_t>(output_tensors[i].shape, output_tensors[i].shape + output_tensors[i].ndim));
-      auto data = output->MutableDataRaw();
-	  //swap the buffer created by compute method into the output tensor.
-      ORT_RETURN_IF_ERROR(output->ReplaceBuffer(data, output_shape, output_allocator_));
+      //swap the buffer created by compute method into the output tensor.
+      ORT_RETURN_IF_ERROR(output->ReplaceBuffer(&output_tensors[i], output_allocator_));
       // for shape, becauset the output_allocator_ we use could be a device allocator, if the kernel is assigned to a device like gpu.
       // so we prefer to directly allocate shape on heap. otherwise we need pass in multile allocator function for host and device.
       delete[] output_tensors[i].shape;

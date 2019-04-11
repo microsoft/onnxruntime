@@ -13,6 +13,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
+#include "core/framework/func_api.h"
 
 namespace onnxruntime {
 
@@ -183,12 +184,11 @@ class Tensor final {
   }
 
   /**
-  Replace the tensor's buffer with another buffer. The original buffer will be released!!!
-    p:  the replacement buffer
-	shape: the replacement buffer's shape
+  Replace the tensor's buffer with a ONNXRuntime C-Tenosr. The original buffer will be released!!!
+    p:  the replacement tensor
 	allocator:  the allocator for replacement buffer
   */
-  Status ReplaceBuffer(void* p, const TensorShape& shape, AllocatorPtr allocator, int64_t offset = 0);
+  Status ReplaceBuffer(ONNXRunTimeTensor* p, AllocatorPtr allocator, int64_t offset = 0);
 
   // More API methods.
  private:

@@ -26,7 +26,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const KernelDef& kernel_def,
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, MLValue>& initialized_tensors,
-                        const SessionState& session_state);
+	                    const MLValueNameIdxMap& mlvalue_name_idx_map,
+	                    const FuncManager& funcs_mgr,
+                        const std::vector<AllocatorPtr>& output_allocators);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -45,7 +47,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
 
   // find the allocator for i-th output tensor, based on the allocation plan
-  common::Status GetOutputTensorAllocator(int output_id, AllocatorPtr& allocator) const;
+  common::Status GetOutputTensorAllocator(size_t output_id, AllocatorPtr& allocator) const;
 
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
@@ -57,7 +59,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   // will delegate kernel compute call to <execution_provider> compute call.
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
   const std::unordered_map<int, MLValue>& initialized_tensors_;
-  const SessionState& session_state_;
+  const MLValueNameIdxMap& mlvalue_name_idx_map_;
+  const FuncManager& funcs_mgr_;
+  std::vector<AllocatorPtr> output_allocators_;
   ProtoHelperNodeContext proto_helper_context_;
 };
 

@@ -241,7 +241,9 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
 
 Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
                                        const std::unordered_map<int, MLValue>& initialized_tensors,
-                                       const SessionState& session_state,
+                                       const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                       const FuncManager& funcs_mgr,
+                                       const std::vector<AllocatorPtr>& output_allocators,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
@@ -253,7 +255,9 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExe
                            *kernel_create_info->kernel_def,
                            execution_provider,
                            initialized_tensors,
-                           session_state);
+                           mlvalue_name_idx_map,
+                           funcs_mgr,
+                           output_allocators);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }
