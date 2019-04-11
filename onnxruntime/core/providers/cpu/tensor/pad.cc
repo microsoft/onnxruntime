@@ -48,26 +48,23 @@ static void PadAxisConstant(T* output, T constant, size_t size) {
 }
 
 // Flatten no padding inner most Axis, so one memcpy cover multiple Axis.
-// For example, for a shape of [1,224,224,3] with padding [0,3,3,0,0,3,3,0], can be flatten as 
+// For example, for a shape of [1,224,224,3] with padding [0,3,3,0,0,3,3,0], can be flatten as
 // [1,224,224*3] with padding [0,3,3*3,0,3,3*3].
-static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& pads, 
-                              const std::vector<int64_t>& slices, std::vector<int64_t>& reshaped_dims)
-{
+static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& pads,
+                              const std::vector<int64_t>& slices, std::vector<int64_t>& reshaped_dims) {
   size_t dims_count = input_dims.size();
   size_t inner_axis = dims_count - 1;
   size_t inner_size = 1;
 
   // Find all inner most dimensions that can be flattened.
-  do
-  {
+  do {
     inner_size *= input_dims[inner_axis];
 
     if (inner_axis == 0)
       break;
 
     // Break on first Axis that has padding
-    if (!(pads[inner_axis] == 0 && pads[inner_axis + dims_count] == 0
-        && slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
+    if (!(pads[inner_axis] == 0 && pads[inner_axis + dims_count] == 0 && slices[inner_axis] == 0 && slices[inner_axis + dims_count] == 0))
       break;
 
   } while (inner_axis-- > 0);
@@ -79,13 +76,12 @@ static void FlattenInnerShape(const std::vector<int64_t>& input_dims, const std:
   reshaped_dims[inner_axis] = inner_size;
 }
 
-static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_count, size_t new_dim_count, 
+static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_count, size_t new_dim_count,
                         size_t inner_no_pad_size, std::vector<int64_t>& reshaped_pad) {
-
   size_t inner_axis = new_dim_count - 1;
   std::copy(src_pad.begin(), src_pad.begin() + inner_axis, reshaped_pad.begin());
   std::copy(src_pad.begin() + src_dim_count, src_pad.begin() + src_dim_count + inner_axis, reshaped_pad.begin() + new_dim_count);
-    
+
   // Flatten inner axis.
   reshaped_pad[inner_axis] = src_pad[inner_axis] * inner_no_pad_size;
   reshaped_pad[inner_axis + new_dim_count] = src_pad[inner_axis + src_dim_count] * inner_no_pad_size;
