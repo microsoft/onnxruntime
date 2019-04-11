@@ -23,8 +23,9 @@ void TestConvOp(const ConvOpAttributes& attributes,
                 const vector<vector<int64_t>>& input_shapes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
+                bool is_tensorrt_supported = true,
                 bool is_cuda_supported = true,
-                bool is_mkldnn_supported = true,
+                bool is_mkldnn_supported = true,                
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "") {
   OpTester test("Conv");
@@ -50,6 +51,9 @@ void TestConvOp(const ConvOpAttributes& attributes,
   if (!is_mkldnn_supported) {
     excluded_providers.insert(kMklDnnExecutionProvider);
   }
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }  
   test.Run(expect_result, err_str, excluded_providers);
 }
 
@@ -74,7 +78,7 @@ TEST(ConvTest, Conv1D_1) {
   auto expected_vals = {-0.052761781960725784f, 0.11481902748346329f, 0.10833403468132019f, -0.11055534332990646f,
                         -0.012766072526574135f, 0.07113571465015411f, 0.061429332941770554f};
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv3
@@ -106,7 +110,7 @@ TEST(ConvTest, Conv1D_2) {
                         -0.042245108634233475f, -0.08389100432395935f, -0.2509208619594574f, -0.18825212121009827f,
                         -0.18779152631759644f, -0.11083387583494186f};
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv1
@@ -137,7 +141,7 @@ TEST(ConvTest, Conv1D_Bias) {
   vector<int64_t> Y_shape = {2, 1, 4};
   auto expected_vals = {0.37892162799835205f, 0.4625728130340576f, 0.4934738576412201f, 0.44801419973373413f,
                         0.37892162799835205f, 0.2499445676803589f, 0.31682088971138f, 0.32773756980895996f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv47
@@ -161,7 +165,7 @@ TEST(ConvTest, Conv2D_1) {
   vector<int64_t> Y_shape = {2, 2, 1, 2};
   auto expected_vals = {-0.012311071157455444f, 0.02822777070105076f, -0.028432954102754593f, -0.037657227367162704f,
                         -0.04396762326359749f, 0.10081233829259872f, -0.10154513269662857f, -0.13448859751224518f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false, true);  // asymmetric padding is not supported by cudnn
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false, false, true);  // asymmetric padding is not supported by cudnn
 }
 
 TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
@@ -177,7 +181,7 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> X_shape = {1, 1, 1};
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false, true, true,
              OpTester::ExpectResult::kExpectFailure, "Invalid input shape: {1}");
 }
 
@@ -195,7 +199,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {2, 2, 1, 2};
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false, true, true,
              OpTester::ExpectResult::kExpectFailure, "Input channels C is not equal to kernel channels * group.");
 }
 
@@ -240,7 +244,7 @@ TEST(ConvTest, Conv2D_2) {
                         0.15021422505378723f, -0.0028631272725760937f, -0.19993697106838226f, -0.03527900204062462f,
                         0.06516310572624207f, -0.015176207758486271f, 0.14682966470718384f, -0.02665453404188156f,
                         -0.18779225647449493f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 TEST(ConvTest, Conv2D_Bias_1) {
@@ -261,7 +265,7 @@ TEST(ConvTest, Conv2D_Bias_1) {
   vector<int64_t> B_shape = {2};
   auto expected_vals = {13.0f, 17.0f, 25.0f, 29.0f, 11.0f, 15.0f, 23.0f, 27.0f};
 
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv48
@@ -307,7 +311,7 @@ TEST(ConvTest, Conv2D_Bias_2) {
   vector<int64_t> Y_shape = {1, 1, 4, 2};
   auto expected_vals = {-0.3419531583786011f, -0.6116723418235779f, -0.39677709341049194f, -0.7316848039627075f,
                         -0.5647197365760803f, 0.02788025140762329f, -0.30450713634490967f, -0.6786775588989258f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, true);  // asymmetric padding is not supported by cudnn
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, false, true);  // asymmetric padding is not supported by cudnn
 }
 
 TEST(ConvTest, Conv2D_AutoPad1) {
@@ -332,7 +336,7 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 TEST(ConvTest, Conv2D_AutoPad2) {
@@ -361,7 +365,7 @@ TEST(ConvTest, Conv2D_AutoPad2) {
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv10
@@ -396,7 +400,7 @@ TEST(ConvTest, Conv3D_1) {
                         0.10670476406812668f, -0.054437506943941116f, -0.014473143965005875f,
                         -0.13092079758644104f, 0.10221172869205475f, -0.1479327529668808f,
                         -0.011351631954312325f, -0.10867488384246826f, -0.05184098333120346f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv22
@@ -437,7 +441,7 @@ TEST(ConvTest, Conv3D_2) {
                         0.0f, 0.09152615070343018f, 0.08054415881633759f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                         0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 // Conv23
@@ -520,7 +524,7 @@ TEST(ConvTest, Conv3D_Bias) {
                         -0.47542816400527954f, -0.5078460574150085f, -0.4205915927886963f, -0.5584549903869629f,
                         -0.39770257472991943f, -0.45317384600639343f, -0.5598302483558655f, -0.2542789578437805f,
                         -0.5359901785850525f, -0.48090484738349915f, -0.38603779673576355f, -0.4991581439971924f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
 }
 
 TEST(ConvTest, Conv2D_group) {
@@ -539,7 +543,7 @@ TEST(ConvTest, Conv2D_group) {
   vector<int64_t> Y_shape = {1, 2, 3, 3};
   auto expected_vals = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 34.0f};
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
 }
 
 }  // namespace test
