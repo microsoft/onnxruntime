@@ -291,7 +291,11 @@ Status SliceImpl(OpKernelContext* ctx,
 
   SliceIterator<T> input_iterator(input_tensor, starts, output_dims, steps);
   while (output != output_end)
-    *output++ = *input_iterator++;
+  {
+    *output = *input_iterator;
+    ++output;
+    ++input_iterator;
+  }
 
   return Status::OK();
 }
