@@ -52,7 +52,7 @@ set +e
 mkdir -p ~/.cache/onnxruntime
 mkdir -p ~/.onnx
 
-if [ -n "$NIGHTLY_BUILD" ]; then
+if [ -z "$NIGHTLY_BUILD" ]; then
 set NIGHTLY_BUILD=0
 fi
 
@@ -64,7 +64,7 @@ if [ $BUILD_DEVICE = "cpu" ]; then
         --volume "$BUILD_DIR:/build" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
-        -e NIGHTLY_BUILD='$NIGHTLY_BUILD' \
+        -e NIGHTLY_BUILD \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
@@ -77,7 +77,7 @@ else
         --volume "$BUILD_DIR:/build" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
-        -e NIGHTLY_BUILD='$NIGHTLY_BUILD' \
+        -e NIGHTLY_BUILD \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
