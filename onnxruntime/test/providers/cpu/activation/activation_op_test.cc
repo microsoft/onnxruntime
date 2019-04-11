@@ -10,8 +10,9 @@ namespace test {
 
 void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
-                            const std::unordered_map<std::string, float> attribs = {}) {
-  OpTester test(szOp);
+                            const std::unordered_map<std::string, float> attribs = {},
+                            int opset_version = 7) {
+  OpTester test(szOp, opset_version);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
@@ -92,17 +93,7 @@ TEST(ActivationOpTest, ThresholdedRelu) {
   TestUnaryElementwiseOp("ThresholdedRelu",
                          input_vals,
                          [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}});
-}
-
-TEST(ActivationOpTest, ScaledTanh) {
-  static constexpr float alpha = 2.0f;
-  static constexpr float beta = 1.5f;
-
-  TestUnaryElementwiseOp("ScaledTanh",
-                         input_vals,
-                         [](float x) { return alpha * tanh(beta * x); },
-                         {{"alpha", alpha}, {"beta", beta}});
+                         {{"alpha", alpha}}, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -183,6 +174,25 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
   test.Run();
 }
 
+#ifndef DISABLE_CONTRIB_OPS
+TEST(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
+  float alpha = 0.1f;
+  TestUnaryElementwiseOp("ThresholdedRelu",
+                         input_vals,
+                         [alpha](float x) { return (x >= alpha) ? x : 0; },
+                         {{"alpha", alpha}}, 1);
+}
+
+TEST(ActivationOpTest, ScaledTanh) {
+  static constexpr float alpha = 2.0f;
+  static constexpr float beta = 1.5f;
+
+  TestUnaryElementwiseOp("ScaledTanh",
+                         input_vals,
+                         [](float x) { return alpha * tanh(beta * x); },
+                         {{"alpha", alpha}, {"beta", beta}});
+}
+
 TEST(ActivationOpTest, ParametricSoftplus) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
@@ -198,6 +208,7 @@ TEST(ActivationOpTest, ParametricSoftplus) {
                          },
                          {{"alpha", alpha}, {"beta", beta}});
 }
+#endif
 
 TEST(ActivationOpTest, Softplus) {
   TestUnaryElementwiseOp("Softplus",

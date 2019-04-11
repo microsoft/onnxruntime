@@ -44,44 +44,13 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/framework/custom_ops_author.h"
 #include "core/session/IOBinding.h"
+#include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
 
 using namespace ONNX_NAMESPACE;
-
-constexpr OrtCustomOpApi g_custom_op_api = {
-    &OrtKernelInfoGetAttribute_float,
-    &OrtKernelInfoGetAttribute_int64,
-
-    &OrtGetTensorShapeAndType,
-
-    &OrtGetNumOfDimensions,
-    &OrtGetDimensions,
-    &OrtSetDims,
-
-    &OrtGetTensorMutableData,
-
-    &OrtReleaseTensorTypeAndShapeInfo,
-};
-
-ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(const onnxruntime::DataTypeImpl* cpp_type);
-
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
-  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
-  if (status.IsOK())
-    return nullptr;
-  return onnxruntime::ToOrtStatus(status);
-}
-
-ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
-  auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
-  if (status.IsOK())
-    return nullptr;
-  return onnxruntime::ToOrtStatus(status);
-}
 
 namespace onnxruntime {
 namespace {
@@ -118,42 +87,6 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 }  // namespace
-struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version != 1)
-      throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)), &op_kernel_);
-  }
-
-  ~CustomOpKernel() {
-    op_.KernelDestroy(op_kernel_);
-  }
-
-  Status Compute(OpKernelContext* ctx) const override {
-    auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
-    std::vector<OrtValue*> input_tensors;
-    auto input_count = ictx->InputCount();
-    for (int i = 0; i < input_count; i++)
-      input_tensors.emplace_back(const_cast<OrtValue*>(reinterpret_cast<const OrtValue*>(ictx->GetInputMLValue(i))));
-
-    std::vector<OrtValue*> output_tensors;
-    auto output_count = ictx->OutputCount();
-    for (int i = 0; i < output_count; i++) {
-      OrtTensorTypeAndShapeInfo info;
-      op_.KernelGetOutputShape(op_kernel_, input_tensors.data(), input_tensors.size(), i, &info);
-      output_tensors.emplace_back(reinterpret_cast<OrtValue*>(ictx->OutputMLValue(0, info.shape)));
-    }
-
-    op_.KernelCompute(op_kernel_, input_tensors.data(), input_tensors.size(), output_tensors.data(), output_tensors.size());
-    return Status::OK();
-  }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
-
-  OrtCustomOp& op_;
-  void* op_kernel_;
-};
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
     : session_state_{execution_providers_},
@@ -184,7 +117,22 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 }
 
-InferenceSession::~InferenceSession() = default;
+InferenceSession::~InferenceSession() {
+  if (session_options_.enable_profiling) {
+    try {
+      EndProfiling();
+    } catch (std::exception& e) {
+      // TODO: Currently we have no way to transport this error to the API user
+      // Maybe this should be refactored, so that profiling must be explicitly
+      // started and stopped via C-API functions.
+      // And not like now a session option and therefore profiling must be started
+      // and stopped implicitly.
+      LOGS(*session_logger_, ERROR) << "Error during EndProfiling(): " << e.what();
+    } catch (...) {
+      LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
+    }
+  }
+}
 
 common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) {
   if (p_exec_provider == nullptr) {
@@ -199,12 +147,11 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
 }
 
 common::Status InferenceSession::RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                                          const std::vector<std::string>& providers,
                                                           TransformerLevel level) {
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
-  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level, providers);
+  return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
 common::Status InferenceSession::AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) {
@@ -215,55 +162,8 @@ common::Status InferenceSession::AddCustomTransformerList(const std::vector<std:
 }
 
 common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
-  auto custom_registry = std::make_shared<CustomRegistry>();
-
-  for (auto& domain : op_domains) {
-    SchemasContainer schemas_container;
-
-    schemas_container.domain = domain->domain_;
-    schemas_container.baseline_opset_version = 1;
-    schemas_container.opset_version = 1000;
-
-    for (auto& op : domain->custom_ops_) {
-      ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "unknown", 0);
-
-      auto input_count = op->GetInputTypeCount(op);
-      for (size_t i = 0; i < input_count; i++) {
-        auto type = op->GetInputType(op, i);
-
-        schema.Input(i, "A", "Description",
-                     DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
-
-      auto output_count = op->GetOutputTypeCount(op);
-      for (size_t i = 0; i < output_count; i++) {
-        auto type = op->GetOutputType(op, i);
-
-        schema.Output(i, "A", "Description",
-                      DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)));
-      }
-
-      schema.SinceVersion(1);
-      schema.AllowUncheckedAttributes();
-
-      schemas_container.schemas_list.push_back(schema);
-
-      KernelDefBuilder def_builder;
-      def_builder.SetName(op->GetName(op))
-          .SetDomain(onnxruntime::kOnnxDomain)
-          .SinceVersion(1)
-          .Provider(onnxruntime::kCpuExecutionProvider);
-      KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
-      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-
-      custom_registry->RegisterCustomKernel(create_info);
-    }
-
-    ORT_RETURN_IF_ERROR(custom_registry->RegisterOpSet(schemas_container.schemas_list,
-                                                       schemas_container.domain,
-                                                       schemas_container.baseline_opset_version,
-                                                       schemas_container.opset_version));
-  }
+  std::shared_ptr<CustomRegistry> custom_registry;
+  ORT_RETURN_IF_ERROR(CreateCustomRegistry(op_domains, custom_registry));
   RegisterCustomRegistry(custom_registry);
   return Status::OK();
 }
@@ -273,11 +173,13 @@ common::Status InferenceSession::RegisterCustomRegistry(std::shared_ptr<CustomRe
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for custom registry");
   }
 
+  custom_registries_.push_back(custom_registry);
+
   // Insert session-level customized kernel registry.
-  kernel_registry_manager_.RegisterKernelRegistry(custom_registry);
+  kernel_registry_manager_.RegisterKernelRegistry(custom_registry->GetKernelRegistry());
   //    if (custom_schema_registries_.empty())
   //      custom_schema_registries_.push_back();
-  custom_schema_registries_.push_back(custom_registry);
+  custom_schema_registries_.push_back(custom_registry->GetOpschemaRegistry());
   return Status::OK();
 }
 
@@ -909,10 +811,9 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   // save required inputs
   const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
-  required_input_def_list_.reserve(required_inputs.size());
+  required_input_def_list_ = required_inputs;       // A direct copy of required inputs
   required_model_input_names_.reserve(required_inputs.size());
   for (const auto& elem : required_inputs) {
-    required_input_def_list_.push_back(elem);
     required_model_input_names_.insert(elem->Name());
   }
 
@@ -927,10 +828,9 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   // save outputs
   const auto& outputs = graph.GetOutputs();
-  output_def_list_.reserve(outputs.size());
+  output_def_list_ = outputs;  // A direct copy of outputs
   model_output_names_.reserve(outputs.size());
   for (const auto& elem : outputs) {
-    output_def_list_.push_back(elem);
     model_output_names_.insert(elem->Name());
   }
 
@@ -1003,35 +903,25 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
-                                                 const std::vector<std::string>& custom_list) {
-  auto add_transformers = [&](TransformerLevel level, std::vector<std::string>&& providers, std::string t_name) {
-    // Generate and register rewrite rules for level
-    auto rewrite_rules_to_register =
-        transformer_utils::GenerateRewriteRules(level, &custom_list);
-    if (!rewrite_rules_to_register.empty()) {
-      std::unique_ptr<RuleBasedGraphTransformer> graph_rewrite_rules =
-          std::make_unique<TopDownRuleBasedTransformer>(t_name + "_RuleBasedTransformer",
-                                                        "Apply rewrite rules for " + t_name);
-      for (auto& entry : rewrite_rules_to_register) {
-        graph_rewrite_rules->Register(std::move(entry));
-      }
-      transformer_manager.Register(std::move(graph_rewrite_rules), level,
-                                   std::move(providers));
-    }
-
+                                                 std::vector<std::string>& custom_list) {
+  auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
     auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
     for (auto& entry : transformers_to_register) {
-      transformer_manager.Register(std::move(entry.first), level, std::move(entry.second));
+      transformer_manager.Register(std::move(entry), level);
     }
   };
 
+  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
+              "Allowed values are 1 and 2. Current level is set to " +
+                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+
   if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1, {}, "Level1");
+    add_transformers(TransformerLevel::Level1);
   }
 
   if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2, {onnxruntime::kCpuExecutionProvider}, "Level2");
+    add_transformers(TransformerLevel::Level2);
   }
 }
 
@@ -1043,4 +933,5 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

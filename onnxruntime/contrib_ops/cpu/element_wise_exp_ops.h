@@ -9,15 +9,20 @@
 
 namespace onnxruntime {
 namespace contrib {
-
-template <typename T1, typename T2, typename T3>
-class QLinearMatMul final : public OpKernel {
+template <typename T>
+class Affine final : public OpKernel {
  public:
-  QLinearMatMul(const OpKernelInfo& info) : OpKernel(info) {
+  Affine(const OpKernelInfo& info) : OpKernel(info) {
+    // Either model-supplied or default values should be returned for alpha and beta
+    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
+    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
-  
+
+ private:
+  float alpha_;
+  float beta_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime
