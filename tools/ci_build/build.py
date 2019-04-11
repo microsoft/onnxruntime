@@ -135,7 +135,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
-    parser.add_argument("--skip_tests", action='store_true', help="Explicitly disable all tests")
+    parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -636,7 +636,9 @@ def main():
         args.update = True
         args.build = True
         if args.arm or args.arm64:
-            args.skip_tests = True
+            args.test = False
+        else:
+            args.test = True
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -683,7 +685,7 @@ def main():
             # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
             if args.test:
                 log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
-                args.skip_tests = True
+                args.test = False
           else:
             toolset = 'host=x64'
             if (args.msvc_toolset):
@@ -724,10 +726,12 @@ def main():
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
-    if args.test and not args.skip_tests:
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm, args.use_tensorrt)
+    if args.test :
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
+                              args.enable_pybind if not args.skip_onnx_tests else False,
+                              args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
-        if (args.enable_onnx_tests):
+        if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
             onnx_test_data_dir = '/data/onnx'
             if is_windows() or not os.path.exists(onnx_test_data_dir):
