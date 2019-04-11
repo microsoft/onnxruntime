@@ -310,7 +310,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   test.AddOutput<float>("scan_output_2", output_shape, output_2);
   test.AddOutput<float>("scan_output_3", output_shape, output_3);
 
-  test.Run(expect_result, failure_message);
+  test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});
 }
 
 static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
@@ -403,9 +403,9 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});
   }
 }
 
