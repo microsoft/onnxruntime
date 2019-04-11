@@ -226,7 +226,7 @@ struct SliceIterator {
     return input_;
   }
 
-  const T& operator*() {
+  const T& operator*() const {
     return *input_;
   }
 
