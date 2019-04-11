@@ -8,7 +8,6 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 template <typename T1, typename T2, typename T3>
 class MatMulInteger final : public OpKernel {
@@ -30,5 +29,4 @@ class MatMulInteger final : public OpKernel {
   bool has_a_zero_point_;
   bool has_b_zero_point_;
 };
-}  // namespace contrib
 }  // namespace onnxruntime

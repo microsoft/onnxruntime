@@ -9,6 +9,7 @@
 #include "gsl/gsl_util"
 
 namespace onnxruntime {
+namespace contrib {
 
 class CropBase {
  protected:
@@ -131,4 +132,5 @@ class Crop final : public CropBase, public OpKernel {
   }
 };
 
+}
 }  //namespace onnxruntime

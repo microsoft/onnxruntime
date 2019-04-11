@@ -131,7 +131,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
   TensorShape output_shape(output_dims);
 
   TensorShape input_shape(reshaped_input_dims);
-  SliceIterator<float> input(input_tensor, input_shape, input_starts, input_extents);
+  SliceIterator<float> input(input_tensor, input_shape, input_starts, input_extents, {});
 
   // output_shape need to keep original.
   auto& output_tensor = *ctx->Output(0, output_shape);
@@ -155,7 +155,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
         output += alignSkip;
         {
           float* axisStart = output;
-          output = input.CopyInnermostAxis(output);
+          output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
@@ -186,7 +186,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
         output += alignSkip;
         {
           float* axisStart = output;
-          output = input.CopyInnermostAxis(output);
+          output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
@@ -217,7 +217,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
         output += alignSkip;
         {
           float* axisStart = output;
-          output = input.CopyInnermostAxis(output);
+          output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];

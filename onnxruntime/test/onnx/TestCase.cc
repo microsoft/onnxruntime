@@ -222,14 +222,6 @@ class OnnxModelInfo : public TestModelInfo {
 
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
 
-  std::basic_string<PATH_CHAR_TYPE> GetDir() const override {
-    std::basic_string<PATH_CHAR_TYPE> test_case_dir;
-    auto st = GetDirNameFromFilePath(model_url_, test_case_dir);
-    if (!st.IsOK()) {
-      ORT_THROW("GetDirNameFromFilePath failed");
-    }
-    return test_case_dir;
-  }
   const std::string& GetNodeName() const override { return node_name_; }
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
     return &output_value_info_[i];
