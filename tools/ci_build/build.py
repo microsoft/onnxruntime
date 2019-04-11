@@ -560,15 +560,23 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-        extra_args = '' if not nightly_build else '--nightly_build'
+
         if is_windows():
             cwd = os.path.join(cwd, config)
-        if use_tensorrt:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt', extra_args], cwd=cwd)
-        elif use_cuda:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda', extra_args], cwd=cwd)
+        if nightly_build:
+            if use_tensorrt:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt', '--nightly_build'], cwd=cwd)
+            elif use_cuda:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda', '--nightly_build'], cwd=cwd)
+            else:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--nightly_build'], cwd=cwd)
         else:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', extra_args], cwd=cwd)
+            if use_tensorrt:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
+            elif use_cuda:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
+            else:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
         if is_ubuntu_1604():
             run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
 
