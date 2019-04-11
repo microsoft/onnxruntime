@@ -319,9 +319,9 @@ void RunTest(int64_t max_iterations,
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});
   }
 }
 
@@ -478,7 +478,7 @@ TEST(Loop, InfiniteLoopTermination) {
   std::future<void> terminator_result = task.get_future();
   std::thread terminator_thread{std::move(task)};
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {},
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {kTensorrtExecutionProvider},
            &session_run_options);
 
   // call get to propagate any exception
