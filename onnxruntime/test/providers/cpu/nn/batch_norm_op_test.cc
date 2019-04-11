@@ -23,7 +23,8 @@ void TestBatchNorm(const InputDataMap& input_data_map,
                    const vector<int64_t>& expected_output_shape,
                    int64_t spatial_mode = 1,
                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                   const std::string& err_str = "") {
+                   const std::string& err_str = "",
+                   const std::unordered_set<std::string>& excluded_provider_types) {
   OpTester test("BatchNormalization");
   if (epsilon.has_value()) {
     test.AddAttribute("epsilon", epsilon.value());
@@ -35,7 +36,7 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   test.AddInput<float>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
   test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
   test.AddOutput<float>("output", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str);
+  test.Run(expect_result, err_str, excluded_provider_types);
 }
 
 TEST(BatchNormTest, PositiveTestCase) {
@@ -72,7 +73,7 @@ TEST(BatchNormTest, PositiveTestCase) {
                           1.03375f, 0.707961f, 0.968646f, 0.621757f, 0.973095f, 0.700301f, 0.916723f, 0.807602f, 0.692598f,
                           0.621972f, 0.707334f, 0.63723f, 0.63062f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, PositiveTestCaseDefaultEpsilon) {
@@ -109,7 +110,7 @@ TEST(BatchNormTest, PositiveTestCaseDefaultEpsilon) {
                           1.03375f, 0.707961f, 0.968646f, 0.621757f, 0.973095f, 0.700301f, 0.916723f, 0.807602f, 0.692598f,
                           0.621972f, 0.707334f, 0.63723f, 0.63062f};
   optional<float> epsilon;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
@@ -149,7 +150,7 @@ TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
                           0.0703226f, -0.695826f, -0.126787f, 0.0703623f, -1.93658f, 0.208342f, 0.634363f, 0.0158351f,
                           0.0586101f, -0.0839879f, 0.018984f, 0.00415736f, 0.108476f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, BatchNorm2d_Pytorch) {
@@ -226,7 +227,7 @@ TEST(BatchNormTest, BatchNorm2d_Pytorch) {
                           0.278465f, -0.280928f, -0.0415335f, 0.115429f, -0.625263f, 0.110212f, -0.195976f, -0.29027f,
                           -0.0989828f, -0.160014f, 0.362077f, 0.0649763f, -0.371465f, 0.727401f, 0.0320011f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, BatchNorm3d_Pytorch) {
@@ -342,7 +343,7 @@ TEST(BatchNormTest, BatchNorm3d_Pytorch) {
                           0.172888f, -0.954402f, -0.197366f, 0.0550898f, 0.175624f, 0.150908f, 0.251761f, 0.704209f,
                           0.354458f, -0.779221f, 0.107141f, 0.560244f, 0.625814f, -0.635675f, -0.0480064f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, InvalidScaleDim) {
@@ -384,7 +385,8 @@ TEST(BatchNormTest, InvalidScaleDim) {
                 expected_output,
                 expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
-                "Invalid input scale");
+                "Invalid input scale",
+                {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, InvalidBDim) {
@@ -426,7 +428,8 @@ TEST(BatchNormTest, InvalidBDim) {
                 expected_output,
                 expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
-                "Invalid input B");
+                "Invalid input B",
+                {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, InvalidMeanDim) {
@@ -468,7 +471,8 @@ TEST(BatchNormTest, InvalidMeanDim) {
                 expected_output,
                 expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
-                "Invalid input mean");
+                "Invalid input mean",
+                {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, InvalidVarDim) {
@@ -510,7 +514,8 @@ TEST(BatchNormTest, InvalidVarDim) {
                 expected_output,
                 expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
-                "Invalid input var");
+                "Invalid input var",
+                {kTensorrtExecutionProvider});
 }
 
 // Only CUDA kernel has float 16 support
@@ -601,7 +606,7 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.AddInput<MLFloat16>("mean", {3}, f_mean);
   test.AddInput<MLFloat16>("var", {3}, f_var);
   test.AddOutput<MLFloat16>("output", input_shape, f_output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
