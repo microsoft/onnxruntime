@@ -1126,11 +1126,16 @@ Return Value:
 
     *WorkingBufferSize = 0;
 
+    // Take the thread count either limited by the available pool or the platform limit
+    int32_t MaximumThreadCount = (ThreadPoolLimit > 0) ? ThreadPoolLimit : MlasPlatform.GetMaximumThreadCount();
+
     if (AllStridesAreOne && AllPaddingIsZero) {
 
         //
         // Detect a pointwise convolution.
         //
+
+        Parameters->ThreadCount = MaximumThreadCount;
 
         if (K == InputChannels) {
 
@@ -1199,9 +1204,6 @@ Return Value:
         } else {
             TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
         }
-
-        // Take the thread count either limited by the available pool or the platform limit
-        int32_t MaximumThreadCount = (ThreadPoolLimit > 0) ? ThreadPoolLimit : MlasPlatform.GetMaximumThreadCount();
 
         if (TargetThreadCount >= MaximumThreadCount) {
             TargetThreadCount = MaximumThreadCount;
