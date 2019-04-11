@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D) {
-  OpTester test("QLinearMatMul", 1, onnxruntime::kMSDomain);
+  OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("T1", {2, 2, 4},
                          {208, 236, 0, 238,
                           3, 214, 255, 29,
@@ -46,7 +46,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul) {
-  OpTester test("QLinearMatMul", 1, onnxruntime::kMSDomain);
+  OpTester test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("T1", {2, 4}, {208, 236, 0, 238, 3, 214, 255, 29});
   test.AddInput<float>("a_scale", {}, {0.0066f});
   test.AddInput<uint8_t>("a_zero_point", {}, {113});

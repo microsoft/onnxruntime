@@ -8,7 +8,6 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 template <typename T1, typename T2, typename T3>
 class QLinearMatMul final : public OpKernel {
@@ -19,5 +18,4 @@ class QLinearMatMul final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
   
 };
-}  // namespace contrib
 }  // namespace onnxruntime
