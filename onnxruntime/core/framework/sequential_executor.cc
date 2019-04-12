@@ -80,6 +80,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
         if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
           execution_provider_type = kCpuExecutionProvider;
         }
+        /*        if (execution_provider_type == kCudaExecutionProvider && OrtMemTypeCPUInput != p_op_kernel->KernelDef().InputMemoryType(input_index)) {
+          queue_id = 1;
+        }
+  */
         fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
     }

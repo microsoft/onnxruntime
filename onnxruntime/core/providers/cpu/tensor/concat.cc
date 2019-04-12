@@ -84,7 +84,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   for (int input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = ctx->Input<Tensor>(input_index);
     auto& data_n = *data_n_ptr;
-
+    //auto* data = data_n.Data<int>();
     ORT_RETURN_IF_NOT(data_n.DataType() == concat_result.DataType());
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input

@@ -987,12 +987,12 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REG_EXPAND_KERNEL(TYPE)                                                     \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                   \
-      Expand,                                                                       \
-      8,                                                                            \
-      TYPE,                                                                         \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),  \
+#define REG_EXPAND_KERNEL(TYPE)                                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      Expand,                                                                      \
+      8,                                                                           \
+      TYPE,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);
 
 REG_EXPAND_KERNEL(float)
