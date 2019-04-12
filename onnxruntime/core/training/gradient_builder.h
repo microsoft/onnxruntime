@@ -42,5 +42,13 @@ DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGemmGradient)
 
+void ComputeBroadcastBackwardAxes(
+    const std::vector<int64_t>& A_dims,
+    const std::vector<int64_t>& B_dims,
+    std::vector<int64_t>* A_axes,
+    std::vector<int64_t>* B_axes);
+
+std::vector<int64_t> GetShape(const ArgDef& arg_def);
+
 }  // namespace training
 }  // namespace onnxruntime

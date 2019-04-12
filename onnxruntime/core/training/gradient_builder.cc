@@ -53,6 +53,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   return result;
 };
 
+std::vector<int64_t> GetShape(const ArgDef& arg_def) {
+  const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
+  std::vector<int64_t> shape;
+  for (auto dim = dims.begin(); dim < dims.end(); dim++) {
+    if (dim->has_dim_value()) {
+      shape.push_back(dim->dim_value());
+    } else {
+      ORT_ENFORCE(false, "Dimension missing");
+    }
+  }
+  return shape;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   auto attributes = SrcNodeAttributes();
 
@@ -75,14 +88,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   std::vector<AttributeProto> shared_attributes;
   if (has_alpha && alpha != 1.0f) {
     ORT_ENFORCE(alpha != 0.0f);
-    AttributeProto alpha_attr = MakeAttribute("alpha", 1 / alpha);
+    AttributeProto alpha_attr = MakeAttribute("alpha", alpha);
     shared_attributes.push_back(alpha_attr);
   }
 
   if (transA) {
     if (transB) {
       // Y = alpha * A' * B'
-      // dA = (1 / alpha) * B' * dY', dB = (1 / alpha) *  dY' * A'
+      // dA = alpha * B' * dY', dB = alpha *  dY' * A'
       if (IsGradientRequiredForSrcNodeInput(0)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_first_input);
@@ -98,9 +111,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       }
     } else {
       // Y = alpha * A' * B
-      // dA = (1 / alpha) * B * dY, dB = (1 / alpha) * A * dY
+      // dA = alpha * B * dY', dB = alpha * A * dY
       if (IsGradientRequiredForSrcNodeInput(0)) {
-        result.push_back(NodeDef("Gemm", {B, dY, ZERO}, {dA}, shared_attributes));
+        std::vector<AttributeProto> attrs(shared_attributes);
+        attrs.push_back(transpose_second_input);
+        result.push_back(NodeDef("Gemm", {B, dY, ZERO}, {dA}, attrs));
       }
 
       if (IsGradientRequiredForSrcNodeInput(1)) {
@@ -110,7 +125,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   } else {
     if (transB) {
       // Y = alpha * A * B'
-      // dA = (1 / alpha) * dY * B, dB = (1 / alpha) * dY' * A
+      // dA = alpha * dY * B, dB = alpha * dY' * A
       if (IsGradientRequiredForSrcNodeInput(0)) {
         result.push_back(NodeDef("Gemm", {dY, B, ZERO}, {dA}, shared_attributes));
       }
@@ -122,7 +137,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       }
     } else {
       // Y = alpha * A * B
-      // dA = (1 / alpha) * dY * B', dB = (1 / alpha) * A' * dY
+      // dA = alpha * dY * B', dB = alpha * A' * dY
       if (IsGradientRequiredForSrcNodeInput(0)) {
         std::vector<AttributeProto> attrs(shared_attributes);
         attrs.push_back(transpose_second_input);
@@ -139,20 +154,60 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
   if (IsGradientRequiredForSrcNodeInput(2)) {
     // Y = beta * C
-    //dC = 1 / beta * dY
+    // dC = beta * dY
     bool has_beta = attributes.at("beta").has_f();
     float beta = attributes.at("beta").f();
+    ORT_ENFORCE(beta != 0.0f);
 
-    //TODO : handle boradcast!!!
-    if (has_beta && beta != 1.0f) {
-      ORT_ENFORCE(beta != 0.0f);
-      AttributeProto scale_attr = MakeAttribute("scale", 1 / beta);
-      result.push_back(NodeDef("Scale", {dY}, {dC}, {scale_attr}));
+    std::vector<int64_t> C_shape = GetShape(C);
+    std::vector<int64_t> dY_shape = GetShape(dY);
+
+    std::vector<int64_t> C_axes, dY_axes;
+    ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
+
+    if (C_axes.size() > 0) {
+      result.push_back(
+          NodeDef("ReduceSum",
+                  {dY},
+                  {IA("dY_ReduceSum")},
+                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
+                   {"axes", MakeAttribute("axes", C_axes)}}));
+      result.push_back(
+          NodeDef("Shape",
+                  {C},
+                  {IA("c_shape")}));
+
+      if (has_beta && beta != 1.0f) {
+        result.push_back(
+            NodeDef("Reshape",
+                    {IA("dY_ReduceSum"), IA("c_shape")},
+                    {IA("dC_reshaped")}));
+        result.push_back(
+            NodeDef("Scale",
+                    {IA("dC_reshaped")},
+                    {dC},
+                    {MakeAttribute("scale", beta)}));
+      } else {
+        result.push_back(
+            NodeDef("Reshape",
+                    {IA("dY_ReduceSum"), IA("c_shape")},
+                    {dC}));
+      }
     } else {
-      result.push_back(NodeDef("Squeeze", {dY}, {dC}, {MakeAttribute("axes", std::vector<int64_t>{0})}));
+      if (has_beta && beta != 1.0f) {
+        result.push_back(
+            NodeDef("Scale",
+                    {dY},
+                    {dC},
+                    {MakeAttribute("scale", beta)}));
+      } else {
+        result.push_back(
+            NodeDef("Identity",
+                    {dY},
+                    {dC}));
+      }
     }
   }
-
   return result;
 }
 
@@ -288,10 +343,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 }
 
 void ComputeBroadcastBackwardAxes(
-    const std::vector<int>& A_dims,
-    const std::vector<int>& B_dims,
-    std::vector<int>* A_axes,
-    std::vector<int>* B_axes) {
+    const std::vector<int64_t>& A_dims,
+    const std::vector<int64_t>& B_dims,
+    std::vector<int64_t>* A_axes,
+    std::vector<int64_t>* B_axes) {
   A_axes->clear();
   B_axes->clear();
 
@@ -305,11 +360,11 @@ void ComputeBroadcastBackwardAxes(
 
     if (A_dims[i] != B_dims[j]) {
       if (A_dims[i] == 1) {
-        A_axes->push_back(gsl::narrow_cast<int>(k));
+        A_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
 
       if (B_dims[j] == 1) {
-        B_axes->push_back(gsl::narrow_cast<int>(k));
+        B_axes->push_back(gsl::narrow_cast<int64_t>(k));
       }
     }
 
@@ -319,61 +374,35 @@ void ComputeBroadcastBackwardAxes(
 
   if (i < 0) {
     for (; k >= 0; --k) {
-      A_axes->push_back(gsl::narrow_cast<int>(k));
+      A_axes->push_back(gsl::narrow_cast<int64_t>(k));
     }
 
   } else {
     for (; k >= 0; --k) {
-      B_axes->push_back(gsl::narrow_cast<int>(k));
+      B_axes->push_back(gsl::narrow_cast<int64_t>(k));
     }
   }
-
-  std::reverse(A_axes->begin(), A_axes->end());
-  std::reverse(B_axes->begin(), B_axes->end());
 }
+
 IMPLEMENT_GRADIENT_BUILDER(GetAddGradient) {
-  std::vector<int> a_axes;
-  std::vector<int> b_axes;
+  const ArgDef &a = I(0), b = I(1);
 
-  const ArgDef& a = I(0);
-  const auto& a_dim = a.type_proto->tensor_type().shape().dim();
+  std::vector<int64_t> a_shape = GetShape(a);
+  std::vector<int64_t> b_shape = GetShape(b);
 
-  std::vector<int> a_dims;
-  for (auto dim = a_dim.begin(); dim < a_dim.end(); dim++) {
-    if (dim->has_dim_value()) {
-      a_dims.push_back(gsl::narrow_cast<int>(dim->dim_value()));
-    } else {
-      ORT_ENFORCE(false, "Dimension missing");
-    }
-  }
-
-  const ArgDef& b = I(1);
-  const auto& b_dim = b.type_proto->tensor_type().shape().dim();
-
-  std::vector<int> b_dims;
-  for (auto dim = b_dim.begin(); dim < b_dim.end(); dim++) {
-    if (dim->has_dim_value()) {
-      b_dims.push_back(gsl::narrow_cast<int>(dim->dim_value()));
-    } else {
-      ORT_ENFORCE(false, "Dimension missing");
-    }
-  }
-
-  ComputeBroadcastBackwardAxes(a_dims, b_dims, &a_axes, &b_axes);
+  std::vector<int64_t> a_axes, b_axes;
+  ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
 
   std::vector<NodeDef> output;
 
   if (IsGradientRequiredForSrcNodeInput(0)) {
     if (a_axes.size() > 0) {
-      std::vector<int64_t> input_dims;
-      input_dims.resize(a_axes.size());
-      input_dims.assign(a_axes.begin(), a_axes.end());
       output.push_back(
           NodeDef("ReduceSum",
                   {GO(0)},
                   {IA("ReduceSum")},
                   {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", input_dims)}}));
+                   {"axes", MakeAttribute("axes", a_axes)}}));
 
       output.push_back(
           NodeDef("Shape",
@@ -394,15 +423,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddGradient) {
 
   if (IsGradientRequiredForSrcNodeInput(1)) {
     if (b_axes.size() > 0) {
-      std::vector<int64_t> input_dims;
-      input_dims.resize(b_axes.size());
-      input_dims.assign(b_axes.begin(), b_axes.end());
       output.push_back(
           NodeDef("ReduceSum",
                   {GO(0)},
                   {IA("ReduceSum_2")},
                   {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", input_dims)}}));
+                   {"axes", MakeAttribute("axes", b_axes)}}));
 
       output.push_back(
           NodeDef("Shape",

@@ -36,27 +36,48 @@ TEST(GradientCheckerTest, SinGrad) {
 }
 
 TEST(GradientCheckerTest, AddGrad) {
-  TensorShape shape({2, 6});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Add"};
 
-  gradient_checker.ComputeGradientError(op_def, {shape, shape}, {shape}, &max_error);
-  EXPECT_TRUE(max_error <= 1e-2);
-}
-
-TEST(GradientCheckerTest, AddGrad_WithBroadcast) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Add"};
-
+  //shape(A) = (2, 3, 4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 6}, {6}}, {{2, 6}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {2, 3, 4, 5}}, {{2, 3, 4, 5}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+  //shape(A) = (2, 3, 4, 5), shape(B) = (,), i.e. B is a scalar ==> shape(result) = (2, 3, 4, 5)
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {}}, {{2, 3, 4, 5}}, &max_error);
     EXPECT_TRUE(max_error <= 1e-2);
   }
 
+  //shape(A) = (2, 3, 4, 5), shape(B) = (5,), ==> shape(result) = (2, 3, 4, 5)
   {
-    gradient_checker.ComputeGradientError(op_def, {{3, 3}, {3, 1}}, {{3, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {5}}, {{2, 3, 4, 5}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  //shape(A) = (4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 5}, {2, 3, 4, 5}}, {{2, 3, 4, 5}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  //shape(A) = (1, 4, 5), shape(B) = (2, 3, 1, 1), ==> shape(result) = (2, 3, 4, 5)
+  {
+    gradient_checker.ComputeGradientError(op_def, {{1, 4, 5}, {2, 3, 1, 1}}, {{2, 3, 4, 5}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  //shape(A) = (3, 4, 5), shape(B) = (2, 1, 1, 1), ==> shape(result) = (2, 3, 4, 5)
+  {
+    gradient_checker.ComputeGradientError(op_def, {{3, 4, 5}, {2, 1, 1, 1}}, {{2, 3, 4, 5}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  //shape(A) = (2, 1, 1, 5), shape(B) = (1, 3, 4, 1), ==> shape(result) = (2, 3, 4, 5)
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 1, 5}, {1, 3, 4, 1}}, {{2, 3, 4, 5}}, &max_error);
     EXPECT_TRUE(max_error <= 1e-2);
   }
 
@@ -74,30 +95,10 @@ TEST(GradientCheckerTest, AddGrad_WithBroadcast) {
     gradient_checker.ComputeGradientError(op_def, {{1}, {}}, {{1}}, &max_error);
     EXPECT_TRUE(max_error <= 1e-2);
   }
-
-  {
-    gradient_checker.ComputeGradientError(op_def, {{1}, {1}}, {{1}}, &max_error);
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
-
-  {
-    gradient_checker.ComputeGradientError(op_def, {{3, 2}, {3, 1}}, {{3, 2}}, &max_error);
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
-
-  {
-    gradient_checker.ComputeGradientError(op_def, {{2, 1, 4}, {1, 3, 1}}, {{2, 3, 4}}, &max_error);
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
-
-  {
-    gradient_checker.ComputeGradientError(op_def, {{2, 1, 1}, {3, 4}}, {{2, 3, 4}}, &max_error);
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
 }
 
 TEST(GradientCheckerTest, SubGrad) {
-  TensorShape shape({1});
+  TensorShape shape({2, 3, 4, 5});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Sub"};
@@ -128,15 +129,74 @@ TEST(GradientCheckerTest, MatMulGrad) {
 }
 
 #ifndef USE_CUDA
-// There is a bug in the impl. Lets fix it and enable it
-TEST(GradientCheckerTest, DISABLED_GemmGrad) {
+TEST(GradientCheckerTest, GemmGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Gemm"};
 
-  gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {1, 3}}, {{1, 3}}, &max_error);
-  EXPECT_TRUE(max_error <= 1e-2);
+  // Single Batch with Scalar Bias
+  {
+    gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {3}}, {{1, 3}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // Non-Single Batch with Scalar Bias
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // Non-Single Batch with Broadcast Bias
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {1, 3}}, {{2, 3}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // Non-Single Batch with Non-BroadcastBias
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // TransA
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 2}, {4, 3}, {3}}, {{2, 3}}, &max_error,
+                                          {MakeAttribute("transA", int64_t(1))});
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // TransB
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {3, 4}, {3}}, {{2, 3}}, &max_error,
+                                          {MakeAttribute("transB", int64_t(1))});
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // TransA and TransB
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 2}, {3, 4}, {3}}, {{2, 3}}, &max_error,
+                                          {MakeAttribute("transA", int64_t(1)),
+                                           MakeAttribute("transB", int64_t(1))});
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // alpha and beta + no_broadcast
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error,
+                                          {MakeAttribute("alpha", 0.7f),
+                                           MakeAttribute("beta", 5.0f)});
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
+
+  // alpha and beta + broadcast
+  {
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error,
+                                          {MakeAttribute("alpha", 0.7f),
+                                           MakeAttribute("beta", 5.0f)});
+    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+  }
 }
+
 #endif
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
@@ -181,7 +241,7 @@ TEST(GradientCheckerTest, SoftMaxGrad) {
     gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))});
     EXPECT_TRUE(max_error <= 1e-2);
   }
-}  // namespace test
+}
 
 TEST(GradientCheckerTest, SplitGrad) {
   TensorShape shape({9, 5});
@@ -201,14 +261,14 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
 
   //maxpool_1d_default
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 2, 9}}, {{1, 2, 8}}, &max_error,
+    gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2})});
     EXPECT_TRUE(max_error <= error_tolerance);
   }
 
   //maxpool_2d_default
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 3, 5, 5}}, {{1, 3, 4, 4}}, &max_error,
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 4, 4}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
                                            MakeAttribute("strides", std::vector<int64_t>{1, 1})});
     EXPECT_TRUE(max_error <= error_tolerance);
@@ -232,7 +292,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
 
   //maxpool_3d_default
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 1, 3, 3, 3}}, {{1, 1, 2, 2, 2}}, &max_error,
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3, 3}}, {{2, 1, 2, 2, 2}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})});
     EXPECT_TRUE(max_error <= error_tolerance);
   }
@@ -246,45 +306,45 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
 
   //globalaveragepool
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 3, 5, 5}}, {{1, 3, 1, 1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error);
     EXPECT_TRUE(max_error <= error_tolerance);
   }
 
   //globalaveragepool_precomputed
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 1, 3, 3}}, {{1, 1, 1, 1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error);
     EXPECT_TRUE(max_error <= error_tolerance);
   }
 }
 
-TEST(GradientCheckerTest, DISABLED_ConvGrad) {
+TEST(GradientCheckerTest, ConvGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Conv"};
 
   //conv
   {
-    TensorShape x_shape({1, 1, 5, 5});
+    TensorShape x_shape({2, 1, 5, 5});
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
-    TensorShape y_shape({1, 1, 5, 5});
+    TensorShape y_shape({2, 1, 5, 5});
     gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})});
-    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+    EXPECT_TRUE(max_error <= 1e-1) << "max_error: " << max_error;
   }
 
   //conv_with_strides
   {
-    TensorShape x_shape({1, 1, 7, 5});
+    TensorShape x_shape({2, 1, 7, 5});
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
-    TensorShape y_shape({1, 1, 4, 3});
+    TensorShape y_shape({2, 1, 4, 3});
     gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
                                            MakeAttribute("strides", std::vector<int64_t>{2, 2})});
-    EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
+    EXPECT_TRUE(max_error <= 1e-1) << "max_error: " << max_error;
   }
 }
 
@@ -343,7 +403,7 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
 
   //averagepool - 1D
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 3, 8}}, {{1, 3, 4}}, &max_error,
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 8}}, {{2, 3, 4}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2}),
                                            MakeAttribute("strides", std::vector<int64_t>{2})});
     EXPECT_TRUE(max_error <= error_tolerance);
@@ -351,7 +411,7 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
 
   //averagepool - 2D
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 3, 8, 8}}, {{1, 3, 7, 7}}, &max_error,
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8}}, {{2, 3, 7, 7}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
                                            MakeAttribute("strides", std::vector<int64_t>{1, 1})});
     EXPECT_TRUE(max_error <= error_tolerance);
@@ -359,7 +419,7 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
 
   //averagepool - 3D
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 3, 8, 8, 8}}, {{1, 3, 4, 4, 4}}, &max_error,
+    gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8, 8}}, {{2, 3, 4, 4, 4}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2}),
                                            MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})});
     EXPECT_TRUE(max_error <= error_tolerance);
@@ -412,5 +472,8 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
     EXPECT_TRUE(max_error <= error_tolerance);
   }
 }
+
+// TODO: Reshape missing
+
 }  // namespace test
 }  // namespace onnxruntime
