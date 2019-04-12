@@ -61,7 +61,8 @@ Status UpsampleNearest(const T* input,
                        T* output,
                        const TensorShape& input_shape,
                        const TensorShape& output_shape,
-                       const vector<float>& scales) {
+                       const vector<float>& scales,
+                       bool is_resize = false) {
   if (!input || !output)
     return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
@@ -77,7 +78,13 @@ Status UpsampleNearest(const T* input,
       int64_t base = 1;
       for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
         auto tmp = cur_idx % output_shape[j];
-        old_idx += (std::min(static_cast<int64_t>(tmp / scales[j]), input_shape[j] - 1)) * base;
+        //old_idx += (std::min(static_cast<int64_t>(tmp / scales[j]), input_shape[j] - 1)) * base;
+
+        if (is_resize) {
+          old_idx += (std::min(static_cast<int64_t>(std::ceil(tmp / scales[j])), input_shape[j] - 1)) * base;
+        } else {
+          old_idx += (std::min(static_cast<int64_t>(tmp / scales[j]), input_shape[j] - 1)) * base;
+        }
         base *= input_shape[j];
         cur_idx /= output_shape[j];
       }
@@ -220,7 +227,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales);
+      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, is_resize);
     case UpsampleMode::LINEAR: {
       //What's the correct behavior of linear mode is not clear right now,
       //Only support bilinear with 4D tensor to keep consistent with previous behavior
