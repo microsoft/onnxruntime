@@ -266,7 +266,7 @@ TEST(NonMaxSuppressionOpTest, InconsistentBoxAndScoreShapes) {
   test.AddInput<int32_t>("max_output_boxes_per_class", {}, {30L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<int32_t>("selected_indices", {0}, {});
+  test.AddOutput<int32_t>("selected_indices", {0, 3}, {});
   test.Run(OpTester::ExpectResult::kExpectFailure, "boxes and scores should have same spatial_dimention.");
 }
 
@@ -277,7 +277,7 @@ TEST(NonMaxSuppressionOpTest, InvalidIOUThreshold) {
   test.AddInput<int32_t>("max_output_boxes_per_class", {}, {3L});
   test.AddInput<float>("iou_threshold", {}, {1.2f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<int32_t>("selected_indices", {0}, {});
+  test.AddOutput<int32_t>("selected_indices", {0, 3}, {});
   test.Run(OpTester::ExpectResult::kExpectFailure, "iou_threshold must be in range [0, 1]");
 }
 
@@ -288,6 +288,23 @@ TEST(NonMaxSuppressionOpTest, EmptyInput) {
   test.AddInput<int32_t>("max_output_boxes_per_class", {}, {30L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
+  test.AddOutput<int32_t>("selected_indices", {0, 3}, {});
+  test.Run();
+}
+
+TEST(NonMaxSuppressionOpTest, ZeroMaxOutputPerClass) {
+  OpTester test("NonMaxSuppression", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("boxes", {1, 6, 4},
+                       {0.0f, 0.0f, 1.0f, 1.0f,
+                        0.0f, 0.1f, 1.0f, 1.1f,
+                        0.0f, -0.1f, 1.0f, 0.9f,
+                        0.0f, 10.0f, 1.0f, 11.0f,
+                        0.0f, 10.1f, 1.0f, 11.1f,
+                        0.0f, 100.0f, 1.0f, 101.0f});
+  test.AddInput<float>("scores", {1, 1, 6}, {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
+  test.AddInput<int32_t>("max_output_boxes_per_class", {}, {0L});
+  test.AddInput<float>("iou_threshold", {}, {0.5f});
+  test.AddInput<float>("score_threshold", {}, {0.4f});
   test.AddOutput<int32_t>("selected_indices", {0, 3}, {});
   test.Run();
 }
