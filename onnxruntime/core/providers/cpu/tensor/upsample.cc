@@ -78,7 +78,6 @@ Status UpsampleNearest(const T* input,
       int64_t base = 1;
       for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
         auto tmp = cur_idx % output_shape[j];
-        //old_idx += (std::min(static_cast<int64_t>(tmp / scales[j]), input_shape[j] - 1)) * base;
 
         if (is_resize) {
           old_idx += (std::min(static_cast<int64_t>(std::ceil(tmp / scales[j])), input_shape[j] - 1)) * base;
