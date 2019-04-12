@@ -5,11 +5,28 @@
 namespace onnxruntime {
 
 common::Status CustomRegistry::RegisterCustomKernel(KernelDefBuilder& kernel_def_builder, const KernelCreateFn& kernel_creator) {
-  return Register(kernel_def_builder, kernel_creator);
+  return kernel_registry_->Register(kernel_def_builder, kernel_creator);
 }
 
 common::Status CustomRegistry::RegisterCustomKernel(KernelCreateInfo& create_info) {
-  return Register(std::move(create_info));
+  return kernel_registry_->Register(std::move(create_info));
+}
+
+common::Status CustomRegistry::RegisterOpSet(
+    std::vector<ONNX_NAMESPACE::OpSchema>& schemas,
+    const std::string& domain,
+    int baseline_opset_version,
+    int opset_version) {
+
+  return opschema_registry_->RegisterOpSet(schemas, domain, baseline_opset_version, opset_version);
+}
+
+const std::shared_ptr<KernelRegistry>& CustomRegistry::GetKernelRegistry() {
+  return kernel_registry_;
+}
+
+const std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry>& CustomRegistry::GetOpschemaRegistry() {
+  return opschema_registry_;
 }
 
 }  // namespace onnxruntime

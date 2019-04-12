@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(MatmulIntegerOpTest, MatMulInteger1) {
-  OpTester test("MatMulInteger", 1, onnxruntime::kMSDomain);  
+  OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {4, 3}, {11, 7, 3, 10, 6, 2, 9, 5, 1, 8, 4, 0});  
   test.AddInput<uint8_t>("T2", {3, 2}, {1, 4, 2, 5, 3, 6});
   test.AddInput<uint8_t>("a_zero_point", {}, {12});
@@ -22,7 +22,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger1) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger) {
-  OpTester test("MatMulInteger", 1, onnxruntime::kMSDomain);
+  OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {1, 1}, {11});
   test.AddInput<uint8_t>("T2", {1, 1}, {13});
   test.AddInput<uint8_t>("a_zero_point", {}, {12});

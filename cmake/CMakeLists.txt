@@ -71,6 +71,7 @@ option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stabl
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -149,6 +150,20 @@ if (MSVC)
   if (NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GL")
+  endif()
+  check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
+  if (HAS_QSPECTRE)
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
+  endif()
+  SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
+  check_cxx_compiler_flag(-guard:cf HAS_GUARD_CF)
+  if (HAS_GUARD_CF)
+    SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /guard:cf")
+    SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
+    SET(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
+    SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
+    SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
   if(onnxruntime_BUILD_FOR_NATIVE_MACHINE)
@@ -267,8 +282,6 @@ add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-add_library(date ALIAS tz)
-set_target_properties(tz PROPERTIES FOLDER "External/tz")
 add_library(gsl ALIAS GSL)
 
 # bounds checking behavior.
@@ -282,7 +295,7 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
 # mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf tz re2)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf re2)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -455,7 +468,6 @@ if (onnxruntime_USE_MKLML)
 endif()
 
 if (onnxruntime_USE_MKLDNN)
-  add_definitions(-DUSE_MKLDNN=1)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
@@ -558,25 +570,18 @@ include(onnxruntime_mlas.cmake)
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
-  set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES} Dbghelp)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
-  set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
 if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
-endif()
-
-if (onnxruntime_BUILD_CSHARP)
-  message(STATUS "CSharp Build is enabled")
-#  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
-  include(onnxruntime_csharp.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be
@@ -598,4 +603,10 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
   set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
   include(onnxruntime_unittests.cmake)
+endif()
+
+if (onnxruntime_BUILD_CSHARP)
+  message(STATUS "CSharp Build is enabled")
+#  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
+  include(onnxruntime_csharp.cmake)
 endif()

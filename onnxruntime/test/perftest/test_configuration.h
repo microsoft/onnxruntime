@@ -42,12 +42,14 @@ struct RunConfig {
   bool f_verbose{false};
   bool enable_sequential_execution{true};
   int session_thread_pool_size{6};
+  uint32_t optimization_level{2};
 };
 
 struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  std::basic_string<ORTCHAR_T> backend = ORT_TSTR("ort");
 };
 
 }  // namespace perftest
