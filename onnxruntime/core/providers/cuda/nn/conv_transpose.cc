@@ -22,6 +22,11 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
+  return DoConvTranspose(context, false);
+}
+
+template <typename T>
+Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* X = context->Input<Tensor>(0);

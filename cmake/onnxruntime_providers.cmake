@@ -6,11 +6,13 @@ file(GLOB_RECURSE onnxruntime_providers_srcs
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
-file(GLOB_RECURSE onnxruntime_contrib_ops_srcs
+file(GLOB onnxruntime_contrib_ops_srcs
   "${ONNXRUNTIME_ROOT}/contrib_ops/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.cc"
 )
 
 file(GLOB onnxruntime_providers_common_srcs
@@ -41,15 +43,18 @@ set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_CUDA)
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/contrib_kernels_cuda.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
   file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"

@@ -35,7 +35,6 @@ Status Environment::Initialize() {
       contrib::RegisterContribSchemas();
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
-      RegisterOnnxFunctionBuilder();
     });
     //TODO:put all of the following things into call_once
     // Register MVN operator for backward compatibility.

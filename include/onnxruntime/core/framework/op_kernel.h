@@ -213,6 +213,13 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
+namespace contrib {
+namespace cuda {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}
+}  // namespace contrib
+
 // Naming convention for operator kernel classes
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
   provider##_##name##_##domain##_ver##ver
