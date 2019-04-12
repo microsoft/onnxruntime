@@ -272,9 +272,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     return True
 
 def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
-    """Sets up the test data, downloading it if needed."""
-    if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
-        raise BuildError("Failed to set up test data.")
+    if test_data_url is not None:
+        """Sets up the test data, downloading it if needed."""
+        if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
+            raise BuildError("Failed to set up test data.")
 
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
@@ -706,8 +707,9 @@ def main():
             update_submodules(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
-            if not args.test_data_url or not args.test_data_checksum:
-               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            if args.download_test_data:
+                if not args.test_data_url or not args.test_data_checksum:
+                   raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         path_to_protoc_exe = None
