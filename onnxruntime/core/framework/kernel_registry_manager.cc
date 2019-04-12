@@ -23,7 +23,6 @@ static void FindOutputAllocators(const onnxruntime::Node& node,
       ORT_ENFORCE(ml_index >= 0 && ml_index < alloc_plan.size());
       const auto& per_alloc_plan = alloc_plan[ml_index];
 
-      auto alloc_info = per_alloc_plan.location;
       auto ml_type = per_alloc_plan.value_type;
       if (ml_type == nullptr ||
           !ml_type->IsTensorType()) {
