@@ -38,7 +38,7 @@ template <typename Tin>
 Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
                       const size_t element_bytes, const int64_t block_size, const int64_t M,
                       const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
-                      const TensorShape& input_data_shape, const int64_t axis, const ThreadPool *ttp) {
+                      const TensorShape& input_data_shape, const int64_t axis, const ThreadPool* ttp) {
   const Tin* indices_data = indices_tensor->template Data<Tin>();
 
   // Check the indices first in case there's a out of bound index.

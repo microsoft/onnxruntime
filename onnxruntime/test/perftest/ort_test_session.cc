@@ -25,7 +25,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run(const OrtValue* const*
   return duration_seconds;
 }
 
-OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, PerformanceTestConfig& performance_test_config,
+OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo* m)
     : input_names_(m->GetInputCount()) {
   SessionOptionsWrapper sf(env);
