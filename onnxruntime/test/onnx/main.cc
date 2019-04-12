@@ -362,7 +362,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #if defined (_WIN32) && !defined(_WIN64)
   broken_tests["vgg19"] = "failed: bad allocation";
-  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
