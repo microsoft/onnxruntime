@@ -153,6 +153,7 @@ TEST(TopKOperator, InvalidKOpset9) {
           expected_vals,
           expected_indices,
           expected_dimensions,
+          true,
           1,
           OpTester::ExpectResult::kExpectFailure,
           "Invalid value for attribute k");
