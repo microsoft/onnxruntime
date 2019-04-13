@@ -87,9 +87,12 @@ Return Value:
     this->KernelZeroRoutine = MlasSgemmKernelZeroSse;
     this->KernelAddRoutine = MlasSgemmKernelAddSse;
 #if defined(MLAS_TARGET_AMD64)
+    this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->SconvKernelNchwRoutine = MlasConvKernelNchwSse;
     this->SconvKernelNchwcRoutine = MlasConvKernelNchwcSse;
-    this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
+    this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelSse;
+    this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelSse;
+    this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelSse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->NchwcBlockSize = 8;
@@ -123,6 +126,18 @@ Return Value:
 
 #else
 
+            this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
+            this->KernelAddRoutine = MlasSgemmKernelAddAvx;
+            this->KernelM1Routine = MlasSgemmKernelM1Avx;
+            this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
+            this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
+            this->SconvKernelNchwRoutine = MlasConvKernelNchwAvx;
+            this->SconvKernelNchwcRoutine = MlasConvKernelNchwcAvx;
+            this->SconvKernel1x1Routine = MlasConvKernel1x1NchwcAvx;
+            this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelAvx;
+            this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelAvx;
+            this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelAvx;
+
             //
             // Check if the processor supports AVX512F (and the operating
             // system supports saving AVX512F state) or AVX2/FMA3 features.
@@ -144,6 +159,9 @@ Return Value:
                     this->SconvKernelNchwRoutine = MlasConvKernelNchwAvx512F;
                     this->SconvKernelNchwcRoutine = MlasConvKernelNchwcAvx512F;
                     this->SconvKernel1x1Routine = MlasConvKernel1x1NchwcAvx512F;
+                    this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelAvx512F;
+                    this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelAvx512F;
+                    this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->NchwcBlockSize = 16;
 
                 } else {
@@ -157,19 +175,7 @@ Return Value:
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
-
-            } else {
-
-                this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
-                this->KernelAddRoutine = MlasSgemmKernelAddAvx;
-                this->SconvKernelNchwRoutine = MlasConvKernelNchwAvx;
-                this->SconvKernelNchwcRoutine = MlasConvKernelNchwcAvx;
-                this->SconvKernel1x1Routine = MlasConvKernel1x1NchwcAvx;
             }
-
-            this->KernelM1Routine = MlasSgemmKernelM1Avx;
-            this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
-            this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
 
 #endif
 

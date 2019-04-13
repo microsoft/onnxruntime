@@ -200,6 +200,27 @@ typedef MLAS_SCONV_KERNEL_1X1_ROUTINE* PMLAS_SCONV_KERNEL_1X1_ROUTINE;
 
 typedef
 void
+(MLASCALL MLAS_POOL_FLOAT_KERNEL)(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    size_t ActualKernelSize,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountPadLeft,
+    size_t OutputCountPadNone,
+    size_t OutputCountPadRight
+    );
+
+typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
+
+typedef
+void
 (MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
@@ -257,6 +278,15 @@ extern "C" {
     MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwAvx512F;
     MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcAvx512F;
     MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx512F;
 #endif
 
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
@@ -328,6 +358,9 @@ struct MLAS_PLATFORM {
     PMLAS_SCONV_KERNEL_ROUTINE SconvKernelNchwRoutine;
     PMLAS_SCONV_KERNEL_ROUTINE SconvKernelNchwcRoutine;
     PMLAS_SCONV_KERNEL_1X1_ROUTINE SconvKernel1x1Routine;
+    PMLAS_POOL_FLOAT_KERNEL PoolMaximumFloatKernel;
+    PMLAS_POOL_FLOAT_KERNEL PoolAverageExcludePadFloatKernel;
+    PMLAS_POOL_FLOAT_KERNEL PoolAverageIncludePadFloatKernel;
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     size_t NchwcBlockSize;

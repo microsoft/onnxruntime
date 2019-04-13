@@ -218,7 +218,6 @@ HandlePostProcessing:
 
         ENDM
 
-;++
 ;
 ; SconvKernelFunction
 ;
@@ -236,7 +235,6 @@ HandlePostProcessing:
 ;       should be biased to point to the middle of a OIhw8i8o block in order to
 ;       reduce the code size from relative byte offsets.
 ;
-;--
 
 SconvKernelFunction MACRO Format, BlockSize, Isa, BiasFilter
 
@@ -274,9 +272,11 @@ SconvKernelFunction MACRO Format, BlockSize, Isa, BiasFilter
 ;   OutputStride - Supplies the length in bytes to advance the output buffer
 ;       to the next output address associated with the next set of filters.
 ;
-;   KernelHeight - Supplies the length in bytes of the blocked kernel height.
+;   KernelHeight - Supplies the height of the kernel to apply. This height may
+;       be less than the original kernel height after removing any padding
+;       rows.
 ;
-;   KernelWidth - Supplies the length in bytes of the blocked kernel width.
+;   KernelWidth - Supplies the width of the kernel to apply.
 ;
 ;   InputBase - Supplies the address of the valid input buffer.
 ;
@@ -291,14 +291,14 @@ SconvKernelFunction MACRO Format, BlockSize, Isa, BiasFilter
 ;   DilatedInputWidth - Supplies the length in bytes to advance the input base
 ;       buffer to the next input row including dilation.
 ;
-;   OutputCountLeftPad - Supplies the number of output elements that include or
-;       or more padding elements from the left edge.
+;   OutputCountLeftPad - Supplies the number of output elements that include
+;       one or more padding elements from the left edge.
 ;
 ;   OutputCount - Supplies the number of output elements that do not include
 ;       any padding elements.
 ;
-;   OutputCountRightPad - Supplies the number of output elements that include or
-;       or more padding elements from the right edge.
+;   OutputCountRightPad - Supplies the number of output elements that include
+;       one or more padding elements from the right edge.
 ;
 ;   Bias - Supplies the address of the bias buffer.
 ;
