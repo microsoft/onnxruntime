@@ -48,10 +48,6 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
       .SetDomain(schema->domain())
       .SinceVersion(schema->SinceVersion())
       .Provider(node.GetExecutionProviderType());
-  auto& inputs = node.InputDefs();
-  for (auto input : inputs) {
-    builder.TypeConstraint(input->Name(), DataTypeImpl::TypeFromProto(*input->TypeAsProto()));
-  }
   return builder;
 }
 

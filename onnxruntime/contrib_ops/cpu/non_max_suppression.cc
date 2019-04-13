@@ -105,7 +105,7 @@ Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShap
   const Tensor* max_output_boxes_per_class_tensor = ctx->Input<Tensor>(2);
   if (max_output_boxes_per_class_tensor != nullptr) {
     max_output_boxes_per_class = *(max_output_boxes_per_class_tensor->Data<int32_t>());
-    ORT_RETURN_IF_NOT(max_output_boxes_per_class > 0, "max_output_boxes_per_class should be greater than 0.");
+    max_output_boxes_per_class = max_output_boxes_per_class > 0 ? max_output_boxes_per_class : 0;
   }
 
   const Tensor* iou_threshold_tensor = ctx->Input<Tensor>(3);
@@ -141,6 +141,11 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   auto ret = ParepareCompute(ctx, boxes_shape, scores_shape, max_output_boxes_per_class,
                              iou_threshold, score_threshold, has_score_threshold);
   ORT_RETURN_IF_NOT(ret.IsOK(), ret.ErrorMessage());
+
+  if (0 == max_output_boxes_per_class) {
+    ctx->Output(0, {0, 3});
+    return Status::OK();
+  }
 
   const float* boxes_data = boxes->Data<float>();
   const float* scores_data = scores->Data<float>();

@@ -6,18 +6,17 @@
 #pragma warning(disable : 4267)
 #endif
 
-#include "contrib_ops/cpu/quantize_linear_matmul.h"
+#include "core/providers/cpu/math/quantize_linear_matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/gemmlowp_common_wrapper.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 // only register this operator if low precision computation is enabled. 
 ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    10,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
@@ -121,5 +120,4 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
 
   return Status::OK();
 }
-}  // namespace contrib
 }  // namespace onnxruntime
