@@ -16,7 +16,7 @@
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
-    ONNX_NAMESPACE::InferenceContext& ctx, 
+    ONNX_NAMESPACE::InferenceContext& ctx,
     bool use_dilation, bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
@@ -96,9 +96,9 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
 
-  static const char* ThresholdedRelu_ver1_doc = R"DOC( 
-ThresholdedRelu takes one input data (Tensor<T>) and produces one output data 
-(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise, 
+  static const char* ThresholdedRelu_ver1_doc = R"DOC(
+ThresholdedRelu takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise,
 is applied to the tensor elementwise. )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ThresholdedRelu)
@@ -367,7 +367,7 @@ and op)DOC";
            "tensor(double)"},
           "Constrain output types to bool, int32, int64, float16, float, double tensors.");
 
-  
+
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)
       .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
@@ -473,7 +473,7 @@ and op)DOC";
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-  
+
   // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -528,14 +528,6 @@ Sample echo operator.)DOC");
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (ctx.getNumOutputs() > 1) {
-          // MaxPool with two outputs case.
-          auto output_type = ctx.getOutputType(1);
-          if (output_type->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType ||
-              output_type->value_case() == ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET) {
-            output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
-          }
-        }
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
@@ -607,7 +599,48 @@ Sample echo operator.)DOC");
       .Output(0, "Y", "","T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NchwcMaxPool)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "",
+          AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "storage_order",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "X", "", "T")
+      .Output(0, "Y", "","T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -670,15 +703,7 @@ activation.)DOC")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (ctx.getNumOutputs() > 1) {
-          // MaxPool with two outputs case.
-          auto output_type = ctx.getOutputType(1);
-          if (output_type->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType ||
-              output_type->value_case() == ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET) {
-            output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
-          }
-        }
-        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)

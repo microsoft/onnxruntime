@@ -46,7 +46,10 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
 
         const int64_t output_channels = conv_W_tensor_proto->dims(0);
         const int64_t input_channels = conv_W_tensor_proto->dims(1);
-        if (input_channels >= 8 && (input_channels % 8) != 0) {
+        if (input_channels >= 8 && (input_channels % 16) != 0) {
+          continue;
+        }
+        if ((output_channels % 16) != 0) {
           continue;
         }
 
@@ -127,6 +130,75 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
                       kMSDomain);
 
         removed_nodes.push_front(node.Index());
+        continue;
+      }
+
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 1) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 8) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 10)) {
+
+        auto& pool_inputs = node.MutableInputDefs();
+        auto& pool_outputs = node.MutableOutputDefs();
+
+        // Don't support the index tensor output.
+        if (pool_outputs.size() > 1) {
+          continue;
+        }
+
+        std::vector<Node::EdgeEnd> input_edges;
+        for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
+          input_edges.push_back(*it);
+        }
+        for (auto& edge : input_edges) {
+          graph.RemoveEdge(edge.GetNode().Index(), node.Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
+        }
+
+        std::vector<Node::EdgeEnd> output_edges;
+        for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
+          output_edges.push_back(*it);
+        }
+        for (auto& edge : output_edges) {
+          graph.RemoveEdge(node.Index(), edge.GetNode().Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
+        }
+
+        // Reorder the input tensor.
+        auto input_original_arg = pool_inputs[0];
+        std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
+        auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
+        graph.AddNode(graph.GenerateNodeName("ReorderInput"),
+                      "ReorderInput",
+                      "ReorderInput",
+                      std::vector<NodeArg*>{input_original_arg},
+                      std::vector<NodeArg*>{input_reorder_arg},
+                      nullptr,
+                      kMSDomain);
+        pool_inputs[0] = input_reorder_arg;
+
+        // Reorder the output tensor.
+        auto output_original_arg = pool_outputs[0];
+        std::string output_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
+        auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, output_original_arg->TypeAsProto());
+        graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
+                      "ReorderOutput",
+                      "ReorderOutput",
+                      std::vector<NodeArg*>{output_reorder_arg},
+                      std::vector<NodeArg*>{output_original_arg},
+                      nullptr,
+                      kMSDomain);
+        pool_outputs[0] = output_reorder_arg;
+
+        // Create the replacement NchwcConv node.
+        std::string nchwc_pool_name = graph.GenerateNodeName("NchwcMaxPool");
+        graph.AddNode(output_original_arg->Name() + "_nchwc",
+                      "NchwcMaxPool",
+                      nchwc_pool_name,
+                      pool_inputs,
+                      pool_outputs,
+                      &node.GetAttributes(),
+                      kMSDomain);
+
+        removed_nodes.push_front(node.Index());
+        continue;
       }
     }
 
