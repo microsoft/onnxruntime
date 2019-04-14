@@ -213,6 +213,8 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
+using BuildKernelCreateInfoFn = KernelCreateInfo(*)();
+
 // Naming convention for operator kernel classes
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \
   provider##_##name##_##domain##_ver##ver
