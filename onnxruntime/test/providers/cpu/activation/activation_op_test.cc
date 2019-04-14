@@ -11,9 +11,9 @@ namespace test {
 void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
                             const std::unordered_map<std::string, float> attribs = {},
-                            bool is_tensorrt_supported = true
-                            ) {
-  OpTester test(szOp);
+                            bool is_tensorrt_supported = true,
+                            int opset_version = 7) {
+  OpTester test(szOp, opset_version);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
