@@ -98,7 +98,7 @@ TEST(ActivationOpTest, ThresholdedRelu) {
   TestUnaryElementwiseOp("ThresholdedRelu",
                          input_vals,
                          [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, 10);
+                         {{"alpha", alpha}}, true, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -185,7 +185,7 @@ TEST(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
   TestUnaryElementwiseOp("ThresholdedRelu",
                          input_vals,
                          [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, 1);
+                         {{"alpha", alpha}}, true, 1);
 }
 
 TEST(ActivationOpTest, ScaledTanh) {
