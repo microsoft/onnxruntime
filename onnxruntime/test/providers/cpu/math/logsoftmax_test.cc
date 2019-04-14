@@ -12,8 +12,8 @@ namespace test {
 static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<float>& expected_vals,
                     const std::vector<int64_t>& dimensions,
-                    bool is_tensorrt_supported = true,
                     int64_t axis = 1,
+                    bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& error_msg = "") {
   OpTester tester("LogSoftmax");
@@ -28,7 +28,7 @@ static void RunTest(const std::vector<float>& x_vals,
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
-  }    
+  }
   tester.Run(expect_result, error_msg, excluded_providers);
 }
 
@@ -101,7 +101,7 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis0) {
       -4.042971f, -4.2982683f, -3.5933442f, -4.538994f, -5.307373f,
       -4.2677402f, -4.44635f, -3.5821702f, -3.8414123f, -4.267664f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, false, /*axis*/ 0);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);//TensorRT: axis!=0
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis1) {
@@ -127,7 +127,7 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis1) {
       -2.9822054f, -3.2375026f, -2.5325785f, -3.4782279f, -4.246608f,
       -3.2069747f, -3.3855844f, -2.5214045f, -2.7806466f, -3.206898f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, true, /*axis*/ 1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1, false);
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
@@ -153,7 +153,7 @@ TEST(LogSoftmaxOperator, ThreeDimsAxis2) {
       -1.4430928f, -1.6983899f, -0.9934659f, -1.9391153f, -2.7074947f,
       -1.8489327f, -2.027542f, -1.1633625f, -1.4226046f, -1.848856f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, true, /*axis*/ 2);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 2);
 }
 
 TEST(LogSoftmaxOperator, ThreeDimsNegativeAxis) {
@@ -180,7 +180,7 @@ TEST(LogSoftmaxOperator, ThreeDimsNegativeAxis) {
       -1.8489327f, -2.027542f, -1.1633625f, -1.4226046f, -1.848856f};
 
   // -1 is last axis so same as axis == 2
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, true, /*axis*/ -1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ -1);
 }
 
 TEST(LogSoftmaxOperator, InvalidAxis) {
@@ -191,10 +191,10 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
   RunTest(x_vals,
           expected_vals,
           dimensions,
-          false,
           /* invalid axis */ -7,
+          false,
           OpTester::ExpectResult::kExpectFailure,
-          "-7 is not in valid range [-2,1]");
+          "-7 is not in valid range [-2,1]");//TensorRT: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 }  // namespace test

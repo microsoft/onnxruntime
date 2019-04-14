@@ -67,7 +67,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_int32) {
       7, 7, 7, 9, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
@@ -98,7 +98,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
       7, 7, 7, 9, 9, 9};
 
   test.AddOutput<uint8_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: unsupported data type
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest) {
@@ -171,7 +171,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest222XTest) {
   };
 
   test.AddOutput<float>("Y", {N*2, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT parser: Assertion failed: scales[0] == 1 && scales[1] == 1
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest15XTest) {
@@ -233,7 +233,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
       7, 7, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
@@ -264,7 +264,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
       7.0f, 7.5f, 8.0f, 8.5f, 9.0f, 9.0f, 9.0f, 9.0f};
 
   test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT parser:Assertion failed:  mode == "nearest"
 }
 
 TEST(UpsampleOpTest, UpsampleOpBilinearTest2) {
@@ -295,7 +295,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest2) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT parser:Assertion failed:  mode == "nearest"
 }
 
 TEST(UpsampleOpTest, UpsampleOpBilinearTest_int32) {
@@ -326,7 +326,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest_int32) {
       7, 7, 8, 8, 9, 9, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT parser:Assertion failed:  mode == "nearest"
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_1D) {
@@ -348,7 +348,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_1D) {
       5.0f, 5.0f};
 
   test.AddOutput<float>("Y", {10}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT parser:Assertion failed: tensor.getDimensions().nbDims == 3
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
@@ -379,7 +379,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
       7, 7, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT parser:Assertion failed: scales_input.is_weights()
 }
 }  // namespace test
 }  // namespace onnxruntime

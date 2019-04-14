@@ -18,7 +18,7 @@ TEST(TensorOpTest, Reshape) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});  // Nuphar only supports reshape shape from initializer
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyDim) {
@@ -27,7 +27,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
   test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
   test.AddInput<int64_t>("shape", {0}, {}, true);
   test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithInitializer) {
@@ -36,7 +36,7 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Identity) {
@@ -52,7 +52,7 @@ TEST(TensorOpTest, IdentityString) {
   std::vector<std::string> X{"this", "is", "a", "test", "for", "identity"};
   test.AddInput<std::string>("input", {2, 3}, X);
   test.AddOutput<std::string>("output", {2, 3}, X);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ShapeTest2D) {
@@ -60,7 +60,7 @@ TEST(TensorOpTest, ShapeTest2D) {
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<int64_t>("shape", {2}, {2, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ShapeTest3D) {
@@ -68,7 +68,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 
   test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 template <typename SrcType,
@@ -77,13 +77,18 @@ void TestCastOp(const std::initializer_list<SrcType>& input,
                 const std::initializer_list<DstType>& output,
                 const std::vector<int64_t>& dimensions,
                 int64_t toType,
+                bool is_tensorrt_supported = true,
                 ExpectResult expect_result = ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "") {
   OpTester test("Cast", 9);
   test.AddAttribute("to", toType);
   test.AddInput<SrcType>("input", dimensions, input);
   test.AddOutput<DstType>("output", dimensions, output);
-  test.Run(expect_result, expected_failure_string);
+  std::unordered_set<std::string> excluded_providers;
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(expect_result, expected_failure_string, excluded_providers);
 }
 
 template <typename SrcType>
@@ -92,34 +97,34 @@ void TestCastFromSrc() {
   const std::vector<int64_t> shape{3, 2, 2};
 
   auto float_output = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
-  TestCastOp(input_data, float_output, shape, TensorProto::FLOAT);
+  TestCastOp(input_data, float_output, shape, TensorProto::FLOAT, false);
 
   auto double_output = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0};
-  TestCastOp(input_data, double_output, shape, TensorProto::DOUBLE);
+  TestCastOp(input_data, double_output, shape, TensorProto::DOUBLE, false);
 
   auto bool_output = {false, true, true, true, true, true, true, true, true, true, true, true};
-  TestCastOp(input_data, bool_output, shape, TensorProto::BOOL);
+  TestCastOp(input_data, bool_output, shape, TensorProto::BOOL, false);
 
   const std::initializer_list<uint8_t> uint8_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, uint8_t_output, shape, TensorProto::UINT8);
+  TestCastOp(input_data, uint8_t_output, shape, TensorProto::UINT8, false);
 
   const std::initializer_list<uint16_t> uint16_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, uint16_t_output, shape, TensorProto::UINT16);
+  TestCastOp(input_data, uint16_t_output, shape, TensorProto::UINT16, false);
 
   const std::initializer_list<uint32_t> uint32_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, uint32_t_output, shape, TensorProto::UINT32);
+  TestCastOp(input_data, uint32_t_output, shape, TensorProto::UINT32, false);
 
   const std::initializer_list<uint64_t> uint64_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, uint64_t_output, shape, TensorProto::UINT64);
+  TestCastOp(input_data, uint64_t_output, shape, TensorProto::UINT64, false);
 
   const std::initializer_list<int16_t> int16_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, int16_t_output, shape, TensorProto::INT16);
+  TestCastOp(input_data, int16_t_output, shape, TensorProto::INT16, false);
 
   const std::initializer_list<int32_t> int32_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, int32_t_output, shape, TensorProto::INT32);
+  TestCastOp(input_data, int32_t_output, shape, TensorProto::INT32, false);
 
   const std::initializer_list<int64_t> int64_t_output{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input_data, int64_t_output, shape, TensorProto::INT64);
+  TestCastOp(input_data, int64_t_output, shape, TensorProto::INT64, false);
 };
 
 TEST(TensorOpTest, Cast) {
@@ -140,34 +145,34 @@ TEST(TensorOpTest, CastFromBool) {
   const std::vector<int64_t> shape{3, 2, 2};
 
   const std::initializer_list<float> float_output = {0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f};
-  TestCastOp(bool_data, float_output, shape, TensorProto::FLOAT);
+  TestCastOp(bool_data, float_output, shape, TensorProto::FLOAT, false);
 
   const std::initializer_list<double> double_output = {0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0};
-  TestCastOp(bool_data, double_output, shape, TensorProto::DOUBLE);
+  TestCastOp(bool_data, double_output, shape, TensorProto::DOUBLE, false);
 
   auto bool_output = {false, true, true, true, true, true, true, true, true, true, false, true};
-  TestCastOp(bool_data, bool_output, shape, TensorProto::BOOL);
+  TestCastOp(bool_data, bool_output, shape, TensorProto::BOOL, false);
 
   const std::initializer_list<uint8_t> uint8_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, uint8_t_output, shape, TensorProto::UINT8);
+  TestCastOp(bool_data, uint8_t_output, shape, TensorProto::UINT8, false);
 
   const std::initializer_list<uint16_t> uint16_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, uint16_t_output, shape, TensorProto::UINT16);
+  TestCastOp(bool_data, uint16_t_output, shape, TensorProto::UINT16, false);
 
   const std::initializer_list<uint32_t> uint32_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, uint32_t_output, shape, TensorProto::UINT32);
+  TestCastOp(bool_data, uint32_t_output, shape, TensorProto::UINT32, false);
 
   const std::initializer_list<uint64_t> uint64_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, uint64_t_output, shape, TensorProto::UINT64);
+  TestCastOp(bool_data, uint64_t_output, shape, TensorProto::UINT64, false);
 
   const std::initializer_list<int16_t> int16_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, int16_t_output, shape, TensorProto::INT16);
+  TestCastOp(bool_data, int16_t_output, shape, TensorProto::INT16, false);
 
   const std::initializer_list<int32_t> int32_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, int32_t_output, shape, TensorProto::INT32);
+  TestCastOp(bool_data, int32_t_output, shape, TensorProto::INT32, false);
 
   const std::initializer_list<int64_t> int64_t_output{0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
-  TestCastOp(bool_data, int64_t_output, shape, TensorProto::INT64);
+  TestCastOp(bool_data, int64_t_output, shape, TensorProto::INT64, false);
 
   const std::initializer_list<MLFloat16> float16_output{
       MLFloat16(math::floatToHalf(0.0f)),
@@ -182,7 +187,7 @@ TEST(TensorOpTest, CastFromBool) {
       MLFloat16(math::floatToHalf(1.0f)),
       MLFloat16(math::floatToHalf(0.0f)),
       MLFloat16(math::floatToHalf(1.0f))};
-  TestCastOp(bool_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(bool_data, float16_output, shape, TensorProto::FLOAT16, false);
 }
 
 TEST(TensorOpTest, CastToFloat16) {
@@ -202,31 +207,31 @@ TEST(TensorOpTest, CastToFloat16) {
       MLFloat16(math::floatToHalf(10.0f)),
       MLFloat16(math::floatToHalf(11.0f))};
 
-  TestCastOp(float_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(float_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<uint8_t> uint8_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(uint8_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(uint8_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<uint16_t> uint16_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(uint16_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(uint16_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<uint32_t> uint32_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(uint32_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(uint32_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<uint64_t> uint64_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(uint64_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(uint64_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<int8_t> int8_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(int8_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(int8_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<int16_t> int16_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(int16_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(int16_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<int32_t> int32_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(int32_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(int32_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 
   std::initializer_list<int64_t> int64_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(int64_t_data, float16_output, shape, TensorProto::FLOAT16);
+  TestCastOp(int64_t_data, float16_output, shape, TensorProto::FLOAT16, false);
 }
 
 TEST(TensorOpTest, CastFromFloat16) {
@@ -246,60 +251,60 @@ TEST(TensorOpTest, CastFromFloat16) {
       MLFloat16(math::floatToHalf(10.0f)),
       MLFloat16(math::floatToHalf(11.0f))};
 
-  TestCastOp(input, float_output, shape, TensorProto::FLOAT);
+  TestCastOp(input, float_output, shape, TensorProto::FLOAT, false);
 
   auto bool_data = {false, true, true, true, true, true, true, true, true, true, true, true};
-  TestCastOp(input, bool_data, shape, TensorProto::BOOL);
+  TestCastOp(input, bool_data, shape, TensorProto::BOOL, false);
 
   std::initializer_list<uint8_t> uint8_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, uint8_t_data, shape, TensorProto::UINT8);
+  TestCastOp(input, uint8_t_data, shape, TensorProto::UINT8, false);
 
   std::initializer_list<uint16_t> uint16_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, uint16_t_data, shape, TensorProto::UINT16);
+  TestCastOp(input, uint16_t_data, shape, TensorProto::UINT16, false);
 
   std::initializer_list<uint32_t> uint32_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, uint32_t_data, shape, TensorProto::UINT32);
+  TestCastOp(input, uint32_t_data, shape, TensorProto::UINT32, false);
 
   std::initializer_list<uint64_t> uint64_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, uint64_t_data, shape, TensorProto::UINT64);
+  TestCastOp(input, uint64_t_data, shape, TensorProto::UINT64, false);
 
   std::initializer_list<int8_t> int8_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, int8_t_data, shape, TensorProto::INT8);
+  TestCastOp(input, int8_t_data, shape, TensorProto::INT8, false);
 
   std::initializer_list<int16_t> int16_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, int16_t_data, shape, TensorProto::INT16);
+  TestCastOp(input, int16_t_data, shape, TensorProto::INT16, false);
 
   std::initializer_list<int32_t> int32_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, int32_t_data, shape, TensorProto::INT32);
+  TestCastOp(input, int32_t_data, shape, TensorProto::INT32, false);
 
   std::initializer_list<int64_t> int64_t_data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-  TestCastOp(input, int64_t_data, shape, TensorProto::INT64);
+  TestCastOp(input, int64_t_data, shape, TensorProto::INT64, false);
 }
 
 TEST(TensorOpTest, CastFromString) {
   const std::vector<int64_t> shape{2, 2, 2};
   std::initializer_list<std::string> string_data = {"-inf", "+INF", "2.0f", "3.0f", "4.0f", "5.0f", "NaN", "nan"};
   const std::initializer_list<float> float_output = {-(std::numeric_limits<float>::infinity()), std::numeric_limits<float>::infinity(), 2.0f, 3.0f, 4.0f, 5.0f, NAN, NAN};
-  TestCastOp(string_data, float_output, shape, TensorProto::FLOAT);
+  TestCastOp(string_data, float_output, shape, TensorProto::FLOAT, false);
 
   std::initializer_list<std::string> int_16_string_data = {"0", "1", "2", "3", "4", "5", "-32768", "32767"};
   const std::initializer_list<int16_t> int_16_output = {0, 1, 2, 3, 4, 5, SHRT_MIN, SHRT_MAX};
-  TestCastOp(int_16_string_data, int_16_output, shape, TensorProto::INT16);
+  TestCastOp(int_16_string_data, int_16_output, shape, TensorProto::INT16, false);
 
   std::initializer_list<std::string> int_64_string_data = {"0", "1", "2", "3", "4", "5", "-9223372036854775808", "9223372036854775807"};
   const std::initializer_list<int64_t> int_64_output = {0, 1, 2, 3, 4, 5, LLONG_MIN, LLONG_MAX};
-  TestCastOp(int_64_string_data, int_64_output, shape, TensorProto::INT64);
+  TestCastOp(int_64_string_data, int_64_output, shape, TensorProto::INT64, false);
 }
 
 TEST(TensorOpTest, CastToString) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::initializer_list<float> float_input = {NAN, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
   std::initializer_list<std::string> string_output = {"NaN", "1", "2", "3", "4", "5", "-INF", "INF"};
-  TestCastOp(float_input, string_output, shape, TensorProto::STRING);
+  TestCastOp(float_input, string_output, shape, TensorProto::STRING, false);
 
   std::initializer_list<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
   const std::initializer_list<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
-  TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING);
+  TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING, false);
 }
 
 #ifndef DISABLE_CONTRIB_OPS

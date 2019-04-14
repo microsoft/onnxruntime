@@ -16,7 +16,7 @@ TEST(SliceTest, Slice1D) {
 
   test.AddInput<float>("data", {6}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddOutput<float>("output", {2}, {2.0f, 3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice1D_Perf) {
@@ -30,7 +30,7 @@ TEST(SliceTest, Slice1D_Perf) {
   std::vector<float> output(500, 2.0f);
   test.AddInput<float>("data", {1000}, input);
   test.AddOutput<float>("output", {500}, output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice2D_OutOfBounds) {
@@ -42,7 +42,7 @@ TEST(SliceTest, Slice2D_OutOfBounds) {
 
   test.AddInput<float>("data", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   test.AddOutput<float>("output", {2, 0}, {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice2D_OneAxis) {
@@ -62,7 +62,7 @@ TEST(SliceTest, Slice2D_OneAxis) {
   test.AddOutput<float>("output", {2, 4},
                         {10.0f, 11.0f, 12.0f, 13.0f,
                          20.0f, 21.0f, 22.0f, 23.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice2D_TwoAxes) {
@@ -82,7 +82,7 @@ TEST(SliceTest, Slice2D_TwoAxes) {
   test.AddOutput<float>("output", {2, 2},
                         {32.0f, 33.0f,
                          42.0f, 43.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice2D_TwoAxesEque) {
@@ -101,7 +101,7 @@ TEST(SliceTest, Slice2D_TwoAxesEque) {
                         50.0f, 51.0f, 52.0f, 53.0f});
   test.AddOutput<float>("output", {0, 2},
                         {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice3D) {
@@ -131,7 +131,7 @@ TEST(SliceTest, Slice3D) {
 
                          322.0f, 323.0f,
                          332.0f, 333.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: attrs.count("axes")
 }
 
 TEST(SliceTest, Slice1D_Int) {
@@ -143,7 +143,7 @@ TEST(SliceTest, Slice1D_Int) {
 
   test.AddInput<int32_t>("data", {6}, {0L, 1L, 2L, 3L, 4L, 5L});
   test.AddOutput<int32_t>("output", {2}, {2L, 3L});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 TEST(SliceTest, Slice1D_String) {
@@ -155,7 +155,7 @@ TEST(SliceTest, Slice1D_String) {
 
   test.AddInput<std::string>("data", {6}, {"0", "1", "2", "3", "4", "5"});
   test.AddOutput<std::string>("output", {2}, {"2", "3"});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Tensorrt parser: Unsupported data type
 }
 
 }  // namespace Test

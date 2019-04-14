@@ -78,7 +78,7 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
-  /* Subgraph looks like this. 
+  /* Subgraph looks like this.
 
     [constant_1]  loop_state_in_1             concat_in_0      concat_in_1
             \           |                                 \     /
@@ -889,7 +889,7 @@ TEST(Scan9, TransposeOutputDim2) {
   test.AddInput<float>("scan_input_1", input_shape, {1.0, 2.0});
   test.AddOutput<float>("scan_output_1", output_shape, {1.0, 2.0});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 static void InvalidInput(bool is_v8) {
@@ -1146,7 +1146,7 @@ void UnknownDimInSubgraphOutput(bool is_v8) {
   test.AddOutput<float>("final_state_1", state_shape, {3.0});
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST_8_AND_9(UnknownDimInSubgraphOutput);

@@ -29,7 +29,7 @@ void TestReduceOp(const std::string& op,
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReductionVariationTest) {
@@ -67,7 +67,7 @@ TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {78.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL1_do_not_keepdims) {
@@ -94,7 +94,7 @@ TEST(ReductionOpTest, ReduceL1_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {6.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL1_keepdims) {
@@ -127,7 +127,7 @@ TEST(ReductionOpTest, ReduceL1) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {33.0f, 45.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL1_int32) {
@@ -143,7 +143,7 @@ TEST(ReductionOpTest, ReduceL1_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
@@ -159,7 +159,7 @@ TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {25.49509757f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_do_not_keepdims) {
@@ -186,7 +186,7 @@ TEST(ReductionOpTest, ReduceL2_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.741657387f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_keepdims) {
@@ -220,7 +220,7 @@ TEST(ReductionOpTest, ReduceL2) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {2}, {15.71623325f, 20.07485962f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_int32) {
@@ -237,7 +237,7 @@ TEST(ReductionOpTest, ReduceL2_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {2}, {15, 20});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceLogSum) {
@@ -266,7 +266,7 @@ TEST(ReductionOpTest, ReduceLogSum_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {1.79175947f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
@@ -282,7 +282,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {60.00671387f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims) {
@@ -309,7 +309,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.40760596f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_keepdims) {
@@ -343,7 +343,7 @@ TEST(ReductionOpTest, ReduceLogSumExp) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {10.33174133f, 12.33174133f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_int32) {
@@ -360,7 +360,7 @@ TEST(ReductionOpTest, ReduceLogSumExp_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {10, 12});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMax_default_axes_keepdims) {
@@ -376,7 +376,7 @@ TEST(ReductionOpTest, ReduceMax_default_axes_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {60.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
@@ -393,7 +393,7 @@ TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {3, 2}, {20.0f, 2.0f, 40.0f, 2.0f, 60.0f, 2.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims_2) {
@@ -403,7 +403,7 @@ TEST(ReductionOpTest, ReduceMax_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {5.0f, 1.0f, 20.0f});
   test.AddOutput<float>("reduced", {}, {20.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMax_keepdims) {
@@ -454,7 +454,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
@@ -470,7 +470,7 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {18.25f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
@@ -497,7 +497,7 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {2.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_keepdims) {
@@ -531,7 +531,7 @@ TEST(ReductionOpTest, ReduceMean) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_int32) {
@@ -548,7 +548,7 @@ TEST(ReductionOpTest, ReduceMean_int32) {
                           90, 100,
                           110, 120});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {55, 75});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
@@ -564,7 +564,7 @@ TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {1.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_do_not_keepdims) {
@@ -591,7 +591,7 @@ TEST(ReductionOpTest, ReduceMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {5.0f, 1.0f, 20.0f});
   test.AddOutput<float>("reduced", {}, {1.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_keepdims) {
@@ -625,7 +625,7 @@ TEST(ReductionOpTest, ReduceMin) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {1.0f, 3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_int32) {
@@ -642,7 +642,7 @@ TEST(ReductionOpTest, ReduceMin_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {1, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum) {
@@ -659,7 +659,7 @@ TEST(ReductionOpTest, ReduceSum) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {33.0f, 45.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_axes01) {
@@ -710,7 +710,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
@@ -726,7 +726,7 @@ TEST(ReductionOpTest, ReduceSum_default_axes_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {78.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_do_not_keepdims) {
@@ -747,7 +747,7 @@ TEST(ReductionOpTest, ReduceSum_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {6.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_keepdims) {
@@ -781,7 +781,7 @@ TEST(ReductionOpTest, ReduceSumSquare) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {247.0f, 403.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_int32) {
@@ -798,7 +798,7 @@ TEST(ReductionOpTest, ReduceSumSquare_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {247, 403});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_default_axes_keepdims) {
@@ -814,7 +814,7 @@ TEST(ReductionOpTest, ReduceSumSquare_default_axes_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {650.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_do_not_keepdims) {
@@ -841,7 +841,7 @@ TEST(ReductionOpTest, ReduceSumSquare_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {14.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_keepdims) {
@@ -873,7 +873,7 @@ TEST(ReductionOpTest, ReduceProd_default_axes_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {479001600.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceProd_do_not_keepdims) {
@@ -900,7 +900,7 @@ TEST(ReductionOpTest, ReduceProd_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {6.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceProd_keepdims) {
@@ -933,7 +933,7 @@ TEST(ReductionOpTest, ReduceProd) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {5400.f, 88704.f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceProd_int32) {
@@ -949,7 +949,7 @@ TEST(ReductionOpTest, ReduceProd_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {5400, 88704});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax) {
@@ -969,7 +969,7 @@ TEST(ReductionOpTest, ArgMax) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
@@ -989,7 +989,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
@@ -1000,7 +1000,7 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {},
                           {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_int32) {
@@ -1020,7 +1020,7 @@ TEST(ReductionOpTest, ArgMax_int32) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax2D) {
@@ -1033,7 +1033,7 @@ TEST(ReductionOpTest, ArgMax2D) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin) {
@@ -1052,7 +1052,7 @@ TEST(ReductionOpTest, ArgMin) {
   test.AddOutput<int64_t>("reduced", {1, 2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims) {
@@ -1071,7 +1071,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
@@ -1081,7 +1081,7 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMin_int32) {
@@ -1100,7 +1100,7 @@ TEST(ReductionOpTest, ArgMin_int32) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

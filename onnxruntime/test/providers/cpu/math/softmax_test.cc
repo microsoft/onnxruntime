@@ -27,7 +27,7 @@ static void RunTest(const std::vector<float>& x_vals,
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
-  }    
+  }
   test.Run(expect_result, error_msg, excluded_providers);
 }
 
@@ -123,7 +123,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1, false);
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis2) {
@@ -187,7 +187,7 @@ TEST(SoftmaxOperator, InvalidAxis) {
   RunTest(x_vals,
           expected_vals,
           dimensions,
-          /* invalid axis */ -10, false, 
+          /* invalid axis */ -10, false,
           OpTester::ExpectResult::kExpectFailure,
           "-10 is not in valid range [-2,1]");
 }

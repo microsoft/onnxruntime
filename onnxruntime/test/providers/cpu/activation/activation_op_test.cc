@@ -10,7 +10,9 @@ namespace test {
 
 void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
-                            const std::unordered_map<std::string, float> attribs = {}) {
+                            const std::unordered_map<std::string, float> attribs = {},
+                            bool is_tensorrt_supported = true
+                            ) {
   OpTester test(szOp);
 
   for (auto attr : attribs)
@@ -24,7 +26,11 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   test.AddInput<float>("X", dims, input_vals);
   test.AddOutput<float>("Y", dims, expected_vals);
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 std::vector<float> input_vals = {
@@ -209,7 +215,7 @@ TEST(ActivationOpTest, Softplus) {
                              return x + logf(expf(-x) + 1);
                            else
                              return logf(expf(x) + 1);
-                         });
+                         }, {}, false);
 }
 
 TEST(ActivationOpTest, Softsign) {
