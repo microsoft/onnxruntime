@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/providers/cpu/tensor/crop.h"
+#include "contrib_ops/cpu/crop.h"
 #include "core/util/math.h"
 
 using namespace ONNX_NAMESPACE;
@@ -307,6 +307,33 @@ TEST(TensorOpTest, CastToString) {
   TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING, false);
 }
 
+std::pair<float, float> MeanStdev(std::vector<float>& v) {
+  float sum = std::accumulate(v.begin(), v.end(), 0.0f);
+  float mean = sum / v.size();
+
+  std::vector<float> diff(v.size());
+  std::transform(v.begin(), v.end(), diff.begin(),
+                 std::bind(std::minus<float>(), std::placeholders::_1, mean));
+  float sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0f);
+  float stdev = std::sqrt(sq_sum / v.size());
+
+  return std::make_pair(mean, stdev);
+}
+
+void Normalize(std::vector<float>& v,
+               std::pair<float, float>& mean_stdev, bool normalize_variance) {
+  float mean = mean_stdev.first;
+  float stdev = mean_stdev.second;
+
+  std::transform(v.begin(), v.end(), v.begin(),
+                 std::bind(std::minus<float>(), std::placeholders::_1, mean));
+
+  if (normalize_variance) {
+    std::transform(v.begin(), v.end(), v.begin(),
+                   std::bind(std::divides<float>(), std::placeholders::_1, stdev));
+  }
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST(TensorOpTest, CropBorderOnly) {
   const int N = 2, C = 1, H = 3, W = 4;
@@ -358,33 +385,32 @@ TEST(TensorOpTest, CropBorderAndScale) {
   test.AddOutput<float>("output", {N, C, scale[0], scale[1]}, output);
   test.Run();
 }
-#endif
 
-std::pair<float, float> MeanStdev(std::vector<float>& v) {
-  float sum = std::accumulate(v.begin(), v.end(), 0.0f);
-  float mean = sum / v.size();
+TEST(TensorOpTest, ImageScalerTest) {
+  const int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 3.0f,
+      3.0f, 5.0f,
 
-  std::vector<float> diff(v.size());
-  std::transform(v.begin(), v.end(), diff.begin(),
-                 std::bind(std::minus<float>(), std::placeholders::_1, mean));
-  float sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0f);
-  float stdev = std::sqrt(sq_sum / v.size());
+      3.0f, 5.0f,
+      7.0f, 9.0f};
 
-  return std::make_pair(mean, stdev);
-}
+  float scale = 2.0f;
+  std::vector<float> bias = {1.0f, 2.0f};
 
-void Normalize(std::vector<float>& v,
-               std::pair<float, float>& mean_stdev, bool normalize_variance) {
-  float mean = mean_stdev.first;
-  float stdev = mean_stdev.second;
+  std::vector<float> result = {
+      3.0f, 7.0f,
+      7.0f, 11.0f,
 
-  std::transform(v.begin(), v.end(), v.begin(),
-                 std::bind(std::minus<float>(), std::placeholders::_1, mean));
+      8.0f, 12.0f,
+      16.0f, 20.0f};
 
-  if (normalize_variance) {
-    std::transform(v.begin(), v.end(), v.begin(),
-                   std::bind(std::divides<float>(), std::placeholders::_1, stdev));
-  }
+  OpTester test("ImageScaler");
+  test.AddAttribute("scale", scale);
+  test.AddAttribute("bias", bias);
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, result);
+  test.Run();
 }
 
 void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
@@ -480,6 +506,21 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.Run();
 }
 
+TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
+  // across_channels: true, normalize_variance: true
+  MeanVarianceNormalizationAcrossChannels(true, true);
+
+  // across_channels: true, normalize_variance: false
+  MeanVarianceNormalizationAcrossChannels(true, false);
+
+  // across_channels: false, normalize_variance: false
+  MeanVarianceNormalizationPerChannel(false, false);
+
+  // across_channels: false, normalize_variance: true
+  MeanVarianceNormalizationPerChannel(false, true);  
+}
+#endif
+
 void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   const int64_t N = 2, C = 2, H = 2, W = 3;
 
@@ -567,18 +608,7 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
-  // across_channels: true, normalize_variance: true
-  MeanVarianceNormalizationAcrossChannels(true, true);
-
-  // across_channels: true, normalize_variance: false
-  MeanVarianceNormalizationAcrossChannels(true, false);
-
-  // across_channels: false, normalize_variance: false
-  MeanVarianceNormalizationPerChannel(false, false);
-
-  // across_channels: false, normalize_variance: true
-  MeanVarianceNormalizationPerChannel(false, true);
-
+  
   // axes: {0, 1, 2, 3} for across_channels
   MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
 
@@ -586,33 +616,5 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
   MeanVarianceNormalizationFunctionDefaultPerChannel();
 }
 
-#ifndef DISABLE_CONTRIB_OPS
-TEST(TensorOpTest, ImageScalerTest) {
-  const int64_t N = 1, C = 2, H = 2, W = 2;
-  std::vector<float> X = {
-      1.0f, 3.0f,
-      3.0f, 5.0f,
-
-      3.0f, 5.0f,
-      7.0f, 9.0f};
-
-  float scale = 2.0f;
-  std::vector<float> bias = {1.0f, 2.0f};
-
-  std::vector<float> result = {
-      3.0f, 7.0f,
-      7.0f, 11.0f,
-
-      8.0f, 12.0f,
-      16.0f, 20.0f};
-
-  OpTester test("ImageScaler");
-  test.AddAttribute("scale", scale);
-  test.AddAttribute("bias", bias);
-  test.AddInput<float>("input", {N, C, H, W}, X);
-  test.AddOutput<float>("output", {N, C, H, W}, result);
-  test.Run();
-}
-#endif
 }  // namespace test
 }  // namespace onnxruntime

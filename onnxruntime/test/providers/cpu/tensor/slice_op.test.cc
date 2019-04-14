@@ -416,8 +416,8 @@ TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_2) {
 }
 
 // Slice for Reversing
-// With numeric_limit_max, it means slice to the end of a dimension
-// (whichever direction we are stepping)
+// With numeric_limit_max, it means slice to the end of a dimension 
+// (whichever direction we are stepping) 
 TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -508,4 +508,4 @@ TEST(SliceTest, Slice2D_ImplicitCopyBySlicingADimensionFully) {
 }
 
 }  // namespace test
-} // namespace onnxruntime
+}  // namespace onnxruntime

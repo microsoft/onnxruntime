@@ -103,24 +103,6 @@ class Relu : public OpKernel {
 };
 
 template <typename T>
-class ScaledTanh final : public OpKernel {
- public:
-  ScaledTanh(const OpKernelInfo& info)
-      : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)), beta_(info.GetAttrOrDefault("beta", 1.0f)) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_Y = (T)alpha_ * (EIGEN_X * (T)beta_).tanh();
-    return Status::OK();
-  }
-
- private:
-  const float alpha_;
-  const float beta_;
-};
-
-template <typename T>
 class Selu final : public OpKernel {
  public:
   // TODO: I don't think float can represent such a long string(1.67326319217681884765625)
