@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace hosting {
 
-// Generate proper protobuf status from ONNX Runtime status
+// Generate protobuf status from ONNX Runtime status
 google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message);
 
 }  // namespace hosting
