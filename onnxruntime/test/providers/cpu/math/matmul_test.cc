@@ -81,7 +81,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases()
 }
 
 template <typename T>
-void RunMatMulTest(int32_t opset_version = 7, bool is_tensorrt_supported = true)
+void RunMatMulTest(int32_t opset_version = 7)
 {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateTestCases<T>()) {
@@ -96,36 +96,33 @@ void RunMatMulTest(int32_t opset_version = 7, bool is_tensorrt_supported = true)
     test.AddInput<T>("B", t.input1_dims, input1_vals);
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
-    std::unordered_set<std::string> excluded_providers;
-    if (!is_tensorrt_supported) {
-      excluded_providers.insert(kTensorrtExecutionProvider);
-    }      
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
 }
 
 TEST(MathOpTest, MatMulFloatType) {
-  RunMatMulTest<float>(7, false);
+  RunMatMulTest<float>(7);
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
-  RunMatMulTest<double>(7, false);
+  RunMatMulTest<double>(7);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
-  RunMatMulTest<int32_t>(9, false);
+  RunMatMulTest<int32_t>(9);
 }
 
 TEST(MathOpTest, MatMulUint32Type) {
-  RunMatMulTest<uint32_t>(9, false);
+  RunMatMulTest<uint32_t>(9);
 }
 
 TEST(MathOpTest, MatMulInt64Type) {
-  RunMatMulTest<int64_t>(9, false);
+  RunMatMulTest<int64_t>(9);
 }
 
 TEST(MathOpTest, MatMulUint64Type) {
-  RunMatMulTest<uint64_t>(9, false);
+  RunMatMulTest<uint64_t>(9);
 }
 
 }  // namespace test

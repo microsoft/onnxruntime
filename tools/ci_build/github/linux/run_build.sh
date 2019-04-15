@@ -29,6 +29,7 @@ elif [ $BUILD_DEVICE = "tensorrt" ]; then
         --enable_onnx_tests \
         --parallel --build_shared_lib \
         --use_tensorrt --tensorrt_home /workspace/tensorrt \
+        --tensorrt_max_batch_size 13 \
         --use_openmp \
         --cuda_home /usr/local/cuda \
         --cudnn_home /usr/local/cuda --build_shared_lib $BUILD_EXTR_PAR

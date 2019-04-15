@@ -24,7 +24,6 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          const vector<vector<int64_t>>& input_shapes,
                          const std::initializer_list<float>& expected_output,
                          const vector<int64_t>& expected_output_shape,
-                         bool is_tensorrt_supported = true,
                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                          const std::string& err_str = "") {
   OpTester test("ConvTranspose");
@@ -46,11 +45,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
     test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }    
-  test.Run(expect_result, err_str, excluded_providers);
+  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});
 }
 }  // namespace
 
@@ -79,7 +74,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D) {
                         -0.0270785f, -0.00680824f, -0.06650258f, 0.08004665f, 0.07918708f, -0.0724144f,
                         0.06256775f, -0.17838378f, -0.18863615f, 0.20064656f, 0.133717f, -0.06876295f,
                         -0.06398046f, -0.00864975f, 0.19289537f, -0.01490572f, -0.13673618f, 0.01949645f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
@@ -110,7 +105,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
                         0.07770107f, -0.09561026f, 0.13388641f, 0.30945939f, 0.14015588f,
                         0.13079405f, -0.00488365f, -0.06758944f, 0.45621645f, 0.01566098f,
                         0.00703105f, 0.12956856f, 0.0103332f, 0.04221053f, -0.21318194f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {
@@ -158,7 +153,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {
                         0.11266428f, 0.17892915f, 0.32709083f, 0.1860041f,
                         0.16902491f, 0.3129794f, -0.01718347f, 0.28917417f,
                         0.07588299f, 0.32025051f, 0.39891475f, -0.04581133f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
@@ -198,7 +193,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
                         18.0f, 27.0f, 27.0f, 18.0f,
                         18.0f, 27.0f, 27.0f, 18.0f,
                         12.0f, 18.0f, 18.0f, 12.0f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
@@ -219,7 +214,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   vector<int64_t> B_shape = {1};
   vector<int64_t> Y_shape = {1, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
@@ -242,7 +237,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   vector<int64_t> Y_shape = {2, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
@@ -265,7 +260,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
   vector<int64_t> Y_shape = {2, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, 
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, 
                       OpTester::ExpectResult::kExpectFailure,
                       "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,1,5}");
 }
@@ -297,7 +292,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx) {
       117.f, 270.f, 461.f, 350.f, 197.f,
       90.f, 201.f, 334.f, 247.f, 136.f};
 
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_onnx2) {
@@ -329,7 +324,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx2) {
       642.f, 1380.f, 1504.f, 806.f,
       390.f, 833.f, 899.f, 479.f};
 
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_onnx_group) {
@@ -348,7 +343,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx_group) {
   vector<int64_t> W_shape = {16, 2, 1, 1};
   vector<int64_t> Y_shape = {1, 8, 1, 1};
   auto expected_vals = {28.f, 34.f, 252.f, 274.f, 732.f, 770.f, 1468.f, 1522.f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_1) {
@@ -370,7 +365,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_1) {
                         21.0f,22.0f,21.0f,22.0f,
                         11.0f,12.0f,11.0f,12.0f,
                         21.0f,22.0f,21.0f,22.0f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_2) {
@@ -393,7 +388,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_2) {
                         0.0f, 0.0f, 0.0f,0.0f, 0.0f,
                         11.0f,12.0f,0.0f,11.0f,12.0f,
                         21.0f,22.0f,0.0f,21.0f,22.0f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_3) {
@@ -417,7 +412,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_3) {
                          9.0f,  5.0f, 88.0f, 45.0f, 63.0f,
                          3.0f,  2.0f, 33.0f, 18.0f, 54.0f};
 
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
@@ -442,7 +437,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
                         9.0f,  5.0f,  7.0f, 81.0f, 45.0f, 63.0f,
                         3.0f,  2.0f,  6.0f, 27.0f, 18.0f, 54.0f};
 
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_Group_1) {
@@ -471,7 +466,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_Group_1) {
                         0.0f,   0.0f,   40.0f,   16.0f,   24.0f,
                         0.0f,   0.0f,   72.0f,   0.0f,    16.0f};
 
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, false);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 

@@ -21,7 +21,6 @@ void TestBatchNorm(const InputDataMap& input_data_map,
                    optional<float> epsilon,
                    const std::initializer_list<float>& expected_output,
                    const vector<int64_t>& expected_output_shape,
-                   bool is_tensorrt_supported = true,
                    int64_t spatial_mode = 1,
                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                    const std::string& err_str = "") {
@@ -36,11 +35,7 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   test.AddInput<float>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
   test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
   test.AddOutput<float>("output", expected_output_shape, expected_output);
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }   
-  test.Run(expect_result, err_str, excluded_providers);
+  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});
 }
 
 TEST(BatchNormTest, PositiveTestCase) {
@@ -77,7 +72,7 @@ TEST(BatchNormTest, PositiveTestCase) {
                           1.03375f, 0.707961f, 0.968646f, 0.621757f, 0.973095f, 0.700301f, 0.916723f, 0.807602f, 0.692598f,
                           0.621972f, 0.707334f, 0.63723f, 0.63062f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, false);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
 }
 
 TEST(BatchNormTest, PositiveTestCaseDefaultEpsilon) {
@@ -114,7 +109,7 @@ TEST(BatchNormTest, PositiveTestCaseDefaultEpsilon) {
                           1.03375f, 0.707961f, 0.968646f, 0.621757f, 0.973095f, 0.700301f, 0.916723f, 0.807602f, 0.692598f,
                           0.621972f, 0.707334f, 0.63723f, 0.63062f};
   optional<float> epsilon;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, false);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
 }
 
 TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
@@ -154,7 +149,7 @@ TEST(BatchNormTest, BatchNorm1d_3d_Pytorch) {
                           0.0703226f, -0.695826f, -0.126787f, 0.0703623f, -1.93658f, 0.208342f, 0.634363f, 0.0158351f,
                           0.0586101f, -0.0839879f, 0.018984f, 0.00415736f, 0.108476f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, false);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
 }
 
 TEST(BatchNormTest, BatchNorm2d_Pytorch) {
@@ -231,7 +226,7 @@ TEST(BatchNormTest, BatchNorm2d_Pytorch) {
                           0.278465f, -0.280928f, -0.0415335f, 0.115429f, -0.625263f, 0.110212f, -0.195976f, -0.29027f,
                           -0.0989828f, -0.160014f, 0.362077f, 0.0649763f, -0.371465f, 0.727401f, 0.0320011f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, false);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
 }
 
 TEST(BatchNormTest, BatchNorm3d_Pytorch) {
@@ -347,7 +342,7 @@ TEST(BatchNormTest, BatchNorm3d_Pytorch) {
                           0.172888f, -0.954402f, -0.197366f, 0.0550898f, 0.175624f, 0.150908f, 0.251761f, 0.704209f,
                           0.354458f, -0.779221f, 0.107141f, 0.560244f, 0.625814f, -0.635675f, -0.0480064f};
   float epsilon = 1e-05f;
-  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape, false);
+  TestBatchNorm(input_data_map, input_shapes_map, epsilon, expected_output, input_shape);
 }
 
 TEST(BatchNormTest, InvalidScaleDim) {
@@ -387,7 +382,7 @@ TEST(BatchNormTest, InvalidScaleDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, false, 1,
+                expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input scale");
 }
@@ -429,7 +424,7 @@ TEST(BatchNormTest, InvalidBDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, false, 1,
+                expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input B");
 }
@@ -471,7 +466,7 @@ TEST(BatchNormTest, InvalidMeanDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, false, 1,
+                expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input mean");
 }
@@ -513,7 +508,7 @@ TEST(BatchNormTest, InvalidVarDim) {
                 input_shapes_map,
                 epsilon,
                 expected_output,
-                expected_output_shape, false, 1,
+                expected_output_shape, 1,
                 OpTester::ExpectResult::kExpectFailure,
                 "Invalid input var");
 }

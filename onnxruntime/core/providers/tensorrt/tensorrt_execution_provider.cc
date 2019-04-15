@@ -14,6 +14,7 @@
 #include "gsl/pointers"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
+#include <stdlib.h>
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -54,7 +55,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   for (const auto& node : graph.Nodes()) {
     graph_build.AddNode(node);
-  }  
+  }
   ORT_ENFORCE(graph_build.Resolve().IsOK());
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -80,7 +81,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       node_set.reserve(group.size());
       for (const auto& index : group) {
         node_set.insert(node_index[index]);
-      }      
+      }
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -279,13 +280,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     string string_buf;
     model_proto.SerializeToString(&string_buf);
-    
+
     TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
+
+#ifdef TENSORRT_MAX_BATCH_SIZE
+    trt_builder->setMaxBatchSize(TENSORRT_MAX_BATCH_SIZE);
+#else
     trt_builder->setMaxBatchSize(kMaxBatchSize);
+#endif
+
     trt_builder->setMaxWorkspaceSize(kMaxWorkSpaceSize);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
@@ -333,11 +340,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         dim_size *= dimensions.d[j];
       }
       output_dim_sizes[bindingIndex] = dim_size;
-      
+
       const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
       if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
         output_shapes[bindingIndex].pop_back();
-      }      
+      }
     }
 
     ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));
