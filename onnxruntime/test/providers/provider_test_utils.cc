@@ -315,7 +315,10 @@ void OpTester::ExecuteModel(Model& model,
     }
   } else {
     if (expect_result == ExpectResult::kExpectFailure) {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
+      if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
+        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      }
     } else {
       LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -411,6 +414,7 @@ void OpTester::Run(ExpectResult expect_result,
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kMklDnnExecutionProvider,
+        kNGraphExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
@@ -448,6 +452,8 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
           execution_provider = DefaultMkldnnExecutionProvider();
+        else if (provider_type == onnxruntime::kNGraphExecutionProvider)
+          execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
@@ -468,10 +474,13 @@ void OpTester::Run(ExpectResult expect_result,
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
           auto reg = execution_provider->GetKernelRegistry();
-          const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
-          if (!kci) {
-            valid = false;
-            break;
+          // nGraph EP doesn't have kernels registered
+          if (!reg->IsEmpty()) {
+            const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
+            if (!kci) {
+              valid = false;
+              break;
+            }
           }
         }
 

@@ -56,7 +56,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
 set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ]; then
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     docker run -h $HOSTNAME \
         --name "onnxruntime-$BUILD_DEVICE" \
@@ -82,7 +82,7 @@ else
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
 fi
-wait -n
+wait $!
 
 EXIT_CODE=$?
 
