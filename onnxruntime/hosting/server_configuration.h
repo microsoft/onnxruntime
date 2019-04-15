@@ -33,7 +33,7 @@ static std::unordered_map<std::string, onnxruntime::logging::Severity> supported
 // Provides sane default values
 class ServerConfiguration {
  public:
-  const std::string full_desc = "ONNX Hosting: host an ONNX model for inferencing with ONNXRuntime";
+  const std::string full_desc = "ONNX Hosting: host an ONNX model with ONNX Runtime";
   std::string model_path;
   std::string address = "0.0.0.0";
   int http_port = 8001;
