@@ -32,6 +32,7 @@ class ITestCase {
   virtual ::onnxruntime::common::Status GetPerSampleTolerance(double* value) = 0;
   virtual ::onnxruntime::common::Status GetRelativePerSampleTolerance(double* value) = 0;
   virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) = 0;
+  virtual void Release() = 0;
 };
 
 class TestModelInfo {

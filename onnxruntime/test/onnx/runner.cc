@@ -486,6 +486,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   }
   on_finished(ret, pci);
+  info->Release();
 }
 
 EXECUTE_RESULT StatusCodeToExecuteResult(int input) {
