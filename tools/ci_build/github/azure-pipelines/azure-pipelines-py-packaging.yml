@@ -22,7 +22,7 @@ jobs:
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/onnxruntime-*-manylinux1_x86_64.whl'
+        Contents: 'Release/dist/*-manylinux1_x86_64.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -59,7 +59,7 @@ jobs:
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/onnxruntime*-manylinux1_x86_64.whl'
+        Contents: 'Release/dist/*-manylinux1_x86_64.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -104,7 +104,7 @@ jobs:
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(buildDirectory)'
-        Contents: '**\dist\onnxruntime-*.whl'
+        Contents: '**\dist\*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -171,7 +171,7 @@ jobs:
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(buildDirectory)'
-        Contents: '**\dist\onnxruntime_gpu-*.whl'
+        Contents: '**\dist\*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -221,7 +221,7 @@ jobs:
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.SourcesDirectory)'
-        Contents: '**/dist/onnxruntime-*.whl'
+        Contents: '**/dist/*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1

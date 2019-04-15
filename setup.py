@@ -7,14 +7,29 @@ from setuptools import setup, find_packages
 from os import path, getcwd
 import platform
 import sys
+import datetime
 
+nightly_build = False
 package_name = 'onnxruntime'
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt'
     sys.argv.remove('--use_tensorrt')
+    if '--nightly_build' in sys.argv:
+        package_name = 'ort-trt-nightly'
+        nightly_build = True
+        sys.argv.remove('--nightly_build')
 elif '--use_cuda' in sys.argv:
     package_name = 'onnxruntime-gpu'
     sys.argv.remove('--use_cuda')
+    if '--nightly_build' in sys.argv:
+        package_name = 'ort-gpu-nightly'
+        nightly_build = True
+        sys.argv.remove('--nightly_build')
+
+if '--nightly_build' in sys.argv:
+    package_name = 'ort-nightly'
+    nightly_build = True
+    sys.argv.remove('--nightly_build')
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
@@ -52,9 +67,13 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
+
 version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
+if nightly_build:
+    date_suffix = str(datetime.datetime.now().date().strftime("%m%d"))
+    version_number = version_number + ".dev" + date_suffix
 
 # Setup
 setup(
