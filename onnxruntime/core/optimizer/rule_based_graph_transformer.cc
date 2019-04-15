@@ -9,14 +9,13 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
-  const auto& op_types = rule->TargetOpTypes();
+  auto op_types = rule->TargetOpTypes();
   // If the target op types are empty, this rule will be evaluated for all op types.
   if (op_types.empty()) {
     any_op_type_rules_.push_back(std::move(rule));
   } else {
-    for (auto& op_type : rule->TargetOpTypes()) {
-      op_type_to_rules_[op_type].push_back(std::move(rule));
-    }
+    std::for_each(op_types.begin(), op_types.end(),
+                  [&](const std::string& op_type) { op_type_to_rules_[op_type].push_back(std::move(rule)); });
   }
   return Status::OK();
 }

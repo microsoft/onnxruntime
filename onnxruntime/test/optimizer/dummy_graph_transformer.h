@@ -30,13 +30,15 @@ class DummyGraphTransformer : public GraphTransformer {
 // This is currently used to test custom transformer selection feature
 class DummyRewriteRule : public RewriteRule {
  public:
-  DummyRewriteRule(const std::string& name) noexcept : RewriteRule(name,
-                                                                   "Dummy transformer for testing",
-                                                                   std::unordered_set<std::string>()),
+  DummyRewriteRule(const std::string& name) noexcept : RewriteRule(name, "Dummy transformer for testing"),
                                                        rewrite_rule_invoked_(false) {}
 
   bool IsRewriteRuleInvoked() const {
     return rewrite_rule_invoked_;
+  }
+
+  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
+    return std::unordered_set<std::string>();
   }
 
  private:

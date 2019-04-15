@@ -16,7 +16,11 @@ It is attempted to be triggered only on nodes with op type "Slice".
 */
 class EliminateSlice : public RewriteRule {
  public:
-  EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node", {"Slice"}) {}
+  EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node") {}
+
+  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
+    return {"Slice"};
+  }
 
  private:
   bool SatisfyCondition(const Graph& graph, const Node& node) override;

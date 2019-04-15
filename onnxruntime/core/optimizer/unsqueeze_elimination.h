@@ -16,7 +16,11 @@ It is attempted to be triggered only on nodes with op type "Unsqueeze".
 */
 class UnsqueezeElimination : public RewriteRule {
  public:
-  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination", "Eliminate unsqueeze node", {"Unsqueeze"}) {}
+  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination", "Eliminate unsqueeze node") {}
+
+  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
+    return {"Unsqueeze"};
+  }
 
  private:
   bool SatisfyCondition(const Graph& graph, const Node& node) override;

@@ -16,7 +16,11 @@ It is attempted to be triggered only on nodes with op type "Identity".
 */
 class EliminateIdentity : public RewriteRule {
  public:
-  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node", {"Identity"}) {}
+  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node") {}
+
+  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
+    return {"Identity"};
+  }
 
  private:
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
