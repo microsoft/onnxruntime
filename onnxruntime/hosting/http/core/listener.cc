@@ -12,7 +12,7 @@ namespace net = boost::asio;       // from <boost/asio.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
 Listener::Listener(const Routes& routes, net::io_context& ioc, const tcp::endpoint& endpoint)
-    : routes_(std::move(routes)), acceptor_(ioc), socket_(ioc), endpoint_(endpoint) {
+    : routes_(routes), acceptor_(ioc), socket_(ioc), endpoint_(endpoint) {
 }
 
 bool Listener::Init() {
