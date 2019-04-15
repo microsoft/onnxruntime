@@ -30,7 +30,7 @@ in the Apply.
 
 In order to avoid evaluating the SatisfyCondition for each rule and each node of the graph, each rewrite rule
 should specify the target op types for which a rule will be evaluated, by overriding the TargetOpTypes() function.
-If the op type of a node is not included in the target op types of a rule, that rule would not be considered at all. 
+If the op type of a node is not included in the target op types of a rule, that rule would not be considered at all.
 If the list of op types is left empty, that rule will be triggered for every op type.
 */
 class RewriteRule {
@@ -49,8 +49,8 @@ class RewriteRule {
     return desc_;
   }
 
-  /** Returns the node op types for which this rule will be triggered. If the op type of a node is not included in the 
-      target op types of a rule, that rule would not be considered at all. Returning an empty list indicates that we 
+  /** Returns the node op types for which this rule will be triggered. If the op type of a node is not included in the
+      target op types of a rule, that rule would not be considered at all. Returning an empty list indicates that we
       will attempt to trigger the rule for every op type. */
   virtual std::unordered_set<std::string> TargetOpTypes() const noexcept = 0;
 
@@ -58,7 +58,7 @@ class RewriteRule {
       @param[in] graph The Graph.
       @param[in] node The Node to apply the rewrite to.
       @param[out] modified Set to indicate whether the node was modified or not.
-      @param[out] deleted Set to indicate if the node was deleted. 
+      @param[out] deleted Set to indicate if the node was deleted.
       @returns Status indicating success or providing error information */
   common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified, bool& deleted) {
     return SatisfyCondition(graph, node) ? Apply(graph, node, modified, deleted) : Status::OK();
