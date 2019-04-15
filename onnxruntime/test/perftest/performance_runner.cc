@@ -50,7 +50,7 @@ Status PerformanceRunner::Run() {
 }
 
 Status PerformanceRunner::RunOneIteration(bool isWarmup) {
-  std::chrono::duration<double> duration_seconds = session_->Run(input_values_.data());
+  std::chrono::duration<double> duration_seconds = session_->Run(inputs_.Data());
   if (!isWarmup) {
     performance_result_.time_costs.emplace_back(duration_seconds.count());
     performance_result_.total_time_cost += duration_seconds.count();
@@ -62,10 +62,35 @@ Status PerformanceRunner::RunOneIteration(bool isWarmup) {
   return Status::OK();
 }
 
-PerformanceRunner::~PerformanceRunner() = default;
+static TestModelInfo* CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
+  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
+    return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
+  }
+  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
+    return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
+  }
+  ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
+}
 
+static TestSession* CreateSession(OrtEnv* env, const PerformanceTestConfig& performance_test_config_,
+                                  TestModelInfo* test_model_info) {
+  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
+    return new OnnxRuntimeTestSession(env, performance_test_config_, test_model_info);
+  }
+#ifdef HAVE_TENSORFLOW
+  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
+    return new TensorflowTestSession(performance_test_config_, test_model_info);
+  }
+#endif
+  ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
+}
 PerformanceRunner::PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config)
-    : env_(env), performance_test_config_(test_config) {}
+    : performance_test_config_(test_config),
+      test_model_info_(CreateModelInfo(test_config)),
+      session_(CreateSession(env, test_config, test_model_info_)),
+      inputs_(test_model_info_->GetInputCount()) {}
+
+PerformanceRunner::~PerformanceRunner() = default;
 
 bool PerformanceRunner::Initialize() {
   std::basic_string<PATH_CHAR_TYPE> test_case_dir;
@@ -82,40 +107,23 @@ bool PerformanceRunner::Initialize() {
   std::string narrow_model_name = ToMBString(model_name);
   performance_result_.model_name = narrow_model_name;
 
-  TestModelInfo* p_model;
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    p_model = TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
-  } else if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    p_model = TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
-  } else {
-    ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
-  }
-  test_case_.reset(CreateOnnxTestCase(narrow_model_name, p_model, 0.0, 0.0));
+  test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
+  test_model_info_ = nullptr;
 
   // TODO: Place input tensor on cpu memory if mkldnn provider type to avoid CopyTensor logic in CopyInputAcrossDevices
   if (test_case_->GetDataCount() <= 0) {
     std::cout << "there is no test data for model " << test_case_->GetTestCaseName() << std::endl;
     return false;
   }
-
-  test_case_->LoadTestData(0 /* id */, b_, feeds_, true);
-  input_values_.resize(feeds_.size());
+  std::unordered_map<std::string, OrtValue*> feeds;
+  test_case_->LoadTestData(0 /* id */, b_, feeds, true);
+  // Discard the names in feeds
   size_t input_index = 0;
-  for (auto& kvp : feeds_) {
-    input_values_[input_index] = kvp.second;
+  for (auto& kvp : feeds) {
+    inputs_.Set(input_index, kvp.second);
     ++input_index;
   }
-
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    session_ = new OnnxRuntimeTestSession(env_, performance_test_config_, p_model);
-#ifdef HAVE_TENSORFLOW
-  } else if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    session_ = new TensorflowTestSession(performance_test_config_, p_model);
-#endif
-  } else {
-    ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
-  }
-
+  test_case_.reset(nullptr);
   return true;
 }
 
