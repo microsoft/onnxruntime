@@ -34,14 +34,14 @@ ADD_TYPED_SLICE_V9_OP(string);
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                              \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                          \
-      DynamicSlice,                                                                        \
-      1,                                                                                   \
-      data_type,                                                                           \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())     \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),   \
-                                                 DataTypeImpl::GetTensorType<int64_t>()}), \
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                               \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
+      DynamicSlice,                                                                         \
+      1,                                                                                    \
+      data_type,                                                                            \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),    \
+                                                 DataTypeImpl::GetTensorType<int64_t>()}),  \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -61,14 +61,14 @@ ADD_TYPED_DYNAMIC_SLICE_OP(string);
 }  // namespace contrib
 #endif
 
-#define ADD_TYPED_SLICE_V10_OP(data_type)                                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                            \
-      Slice,                                                                                 \
-      10,                                                                                    \
-      data_type,                                                                             \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())       \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),     \
-                        DataTypeImpl::GetTensorType<int64_t>()}),                            \
+#define ADD_TYPED_SLICE_V10_OP(data_type)                                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
+      Slice,                                                                                \
+      10,                                                                                   \
+      data_type,                                                                            \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
+                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),    \
+                                                 DataTypeImpl::GetTensorType<int64_t>()}),  \
       Slice<data_type, true>);
 
 ADD_TYPED_SLICE_V10_OP(uint8_t);
@@ -171,7 +171,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
     unique_axes.insert(axis);
 
-	// process step
+    // process step
     auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
     if (step == 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
@@ -191,7 +191,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     // INT_MAX has a special meaning for end according to spec
     // equivalent to 'None' in numpy
     // it represent slicing to the end of the dimension
-	if (end == std::numeric_limits<int32_t>::max() ||
+    if (end == std::numeric_limits<int32_t>::max() ||
         end == std::numeric_limits<int64_t>::max()) {
       end = step < 0 ? -1 : input_dimensions[axis];
     }
@@ -202,8 +202,8 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
       if (step < 0)
         end = clamp(end, int64_t{-1}, input_dimensions[axis]);
       else
-        end = clamp(end, int64_t{0}, input_dimensions[axis]); 
-	}
+        end = clamp(end, int64_t{0}, input_dimensions[axis]);
+    }
 
     // find output dim value for this axis
     auto temp = static_cast<int64_t>(ceil(1.0 * (end - starts[axis]) / step));
@@ -290,8 +290,11 @@ Status SliceImpl(OpKernelContext* ctx,
   const auto* output_end = output + output_tensor.Shape().Size();
 
   SliceIterator<T> input_iterator(input_tensor, starts, output_dims, steps);
-  while (output != output_end)
-    *output++ = *input_iterator++;
+  while (output != output_end) {
+    *output = *input_iterator;
+    ++output;
+    ++input_iterator;
+  }
 
   return Status::OK();
 }
