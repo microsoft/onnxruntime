@@ -528,14 +528,6 @@ Sample echo operator.)DOC");
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (ctx.getNumOutputs() > 1) {
-          // MaxPool with two outputs case.
-          auto output_type = ctx.getOutputType(1);
-          if (output_type->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType ||
-              output_type->value_case() == ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET) {
-            output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
-          }
-        }
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
@@ -599,15 +591,7 @@ activation.)DOC")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (ctx.getNumOutputs() > 1) {
-          // MaxPool with two outputs case.
-          auto output_type = ctx.getOutputType(1);
-          if (output_type->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType ||
-              output_type->value_case() == ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET) {
-            output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
-          }
-        }
-        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)
