@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace perftest {
 class OnnxRuntimeTestSession : public TestSession {
  public:
-  OnnxRuntimeTestSession(OrtEnv* env, PerformanceTestConfig& performance_test_config, const TestModelInfo* m);
+  OnnxRuntimeTestSession(OrtEnv* env, const PerformanceTestConfig& performance_test_config, const TestModelInfo* m);
 
   ~OnnxRuntimeTestSession() override {
     if (session_object_ != nullptr) OrtReleaseSession(session_object_);

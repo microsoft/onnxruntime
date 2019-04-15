@@ -40,7 +40,7 @@ class TensorflowTestSession : public TestSession {
   }
 
  public:
-  TensorflowTestSession(PerformanceTestConfig& performance_test_config, const TestModelInfo* m) {
+  TensorflowTestSession(const PerformanceTestConfig& performance_test_config, const TestModelInfo* m) {
     TF_Status* s = TF_NewStatus();
     tf_graph_ = TF_NewGraph();
     TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
