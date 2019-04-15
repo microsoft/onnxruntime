@@ -585,6 +585,10 @@ if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
 endif()
 
+if (onnxruntime_BUILD_HOSTING)
+  include(onnxruntime_hosting.cmake)
+endif()
+
 # some of the tests rely on the shared libs to be
 # built; hence the ordering
 if (onnxruntime_BUILD_UNIT_TESTS)
@@ -612,6 +616,3 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
-if (onnxruntime_BUILD_HOSTING)
-  include(onnxruntime_hosting.cmake)
-endif()

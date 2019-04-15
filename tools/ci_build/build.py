@@ -217,17 +217,6 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
-def install_hosting_deps(source_dir):
-    vcpkg_folder_path = os.path.join(source_dir, "cmake", "external", "vcpkg")
-    vcpkg_executable = os.path.join(vcpkg_folder_path, 'vcpkg')
-
-    if (not os.path.exists(vcpkg_executable)):
-        file_ending = '.bat' if is_windows() else '.sh'
-        boostrap_path = os.path.join(vcpkg_folder_path, 'bootstrap-vcpkg' + file_ending)
-        run_subprocess([boostrap_path])
-
-    run_subprocess([vcpkg_executable, 'install', 'boost-beast', 'boost-program-options', 'boost-uuid'])
-
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
         return False
@@ -361,10 +350,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
-    if args.build_hosting:
-        toolchain_path = os.path.join(cmake_dir, 'external', 'vcpkg', 'scripts', 'buildsystems', 'vcpkg.cmake')
-        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + toolchain_path]
-        
     if args.gen_doc:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
 
@@ -713,8 +698,6 @@ def main():
             install_python_deps(args.numpy_version)
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
-        if (args.build_hosting):
-            install_hosting_deps(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
             if not args.test_data_url or not args.test_data_checksum:

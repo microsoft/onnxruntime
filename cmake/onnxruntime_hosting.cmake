@@ -21,7 +21,7 @@ if(NOT WIN32)
 endif()
 
 # Setup dependencies
-find_package(Boost 1.69 COMPONENTS system context thread program_options REQUIRED)
+include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
 # Setup source code
@@ -61,6 +61,7 @@ target_include_directories(onnxruntime_hosting_http_core_lib
   ${Boost_INCLUDE_DIR}
   ${re2_src}
 )
+add_dependencies(onnxruntime_hosting_http_core_lib Boost)
 target_link_libraries(onnxruntime_hosting_http_core_lib PRIVATE
   ${Boost_LIBRARIES}
 )

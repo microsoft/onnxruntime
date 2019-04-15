@@ -25,9 +25,6 @@
 [submodule "cmake/external/re2"]
 	path = cmake/external/re2
 	url = https://github.com/google/re2.git
-[submodule "cmake/external/vcpkg"]
-	path = cmake/external/vcpkg
-	url = https://github.com/Microsoft/vcpkg.git
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git

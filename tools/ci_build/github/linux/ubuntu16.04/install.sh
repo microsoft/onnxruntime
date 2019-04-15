@@ -28,10 +28,8 @@ apt-get update && apt-get install -y --no-install-recommends \
         unzip \
         rsync libunwind8 \
         python3-setuptools python3-numpy python3-wheel python python3-pip \
-        software-properties-common
+        g++
 
-add-apt-repository ppa:ubuntu-toolchain-r/test
-apt-get update && apt-get install -y --no-install-recommends g++-7
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
