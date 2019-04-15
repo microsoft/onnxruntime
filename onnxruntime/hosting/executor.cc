@@ -100,13 +100,6 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   for (const auto& name : request.output_filter()) {
     output_names.push_back(name);
   }
-
-  // If output_filter is empty then use all outputs
-  if (request.output_filter().empty()) {
-    for (const auto& name : request.output_filter()) {
-      output_names.push_back(name);
-    }
-  }
   std::vector<onnxruntime::MLValue> outputs(output_names.size());
 
   // Run
