@@ -39,5 +39,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libiomp5md.dll"
+          Condition="'$(PlatformTarget)' == 'x64' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libiomp5md.dll')">
+      <Link>libiomp5md.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
   </ItemGroup>
 </Project>
