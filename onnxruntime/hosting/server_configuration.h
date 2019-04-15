@@ -52,9 +52,9 @@ class ServerConfiguration {
   // Parses argc and argv and sets the values for the class
   // Returns an enum with three options: ExitSuccess, ExitFailure, ContinueSuccess
   // ExitSuccess and ExitFailure means the program should exit but is left to the caller
-  Result ParseInput(int ac, char** av) {
+  Result ParseInput(int argc, char** argv) {
     try {
-      po::store(po::command_line_parser(ac, av).options(desc).run(), vm);  // can throw
+      po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);  // can throw
 
       if (ContainsHelp()) {
         PrintHelp(std::cout, full_desc);
