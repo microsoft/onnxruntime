@@ -136,6 +136,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
+    parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -272,9 +273,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     return True
 
 def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
-    """Sets up the test data, downloading it if needed."""
-    if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
-        raise BuildError("Failed to set up test data.")
+    if test_data_url is not None:
+        """Sets up the test data, downloading it if needed."""
+        if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
+            raise BuildError("Failed to set up test data.")
 
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
@@ -324,6 +326,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # TensorRT provider currently only supports full_protobuf option.
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_tensorrt else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
+                 "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -706,8 +709,9 @@ def main():
             update_submodules(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
-            if not args.test_data_url or not args.test_data_checksum:
-               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            if args.download_test_data:
+                if not args.test_data_url or not args.test_data_checksum:
+                   raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         path_to_protoc_exe = None
