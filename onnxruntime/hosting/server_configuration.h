@@ -15,6 +15,11 @@ namespace hosting {
 
 namespace po = boost::program_options;
 
+// Enumerates the different type of results which can occur
+// The three different types are:
+// 0. ExitSuccess which is when the program should exit with EXIT_SUCCESS
+// 1. ExitFailure when program should exit with EXIT_FAILURE
+// 2. No need for exiting the program, continue
 enum class Result {
   ExitSuccess,
   ExitFailure,
