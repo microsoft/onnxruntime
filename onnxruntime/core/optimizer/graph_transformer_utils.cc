@@ -81,7 +81,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level2: {
       std::unordered_set<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
 
-      // create rule based transformer consisting all the level2 rewrite rules
+      // create rule based transformer consisting of all the level2 rewrite rules
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l2_execution_providers);
 
       // create standalone transformers
