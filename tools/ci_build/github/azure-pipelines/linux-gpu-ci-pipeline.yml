@@ -5,6 +5,15 @@ jobs:
     - template: templates/set-test-data-variables-step.yml
 
     - task: CmdLine@2
+      displayName: 'Clean untagged docker images'
+      inputs:
+        script: |
+          docker rmi $(docker images | grep "^<none>" | awk "{print $3}")
+        workingDirectory: $(Build.BinariesDirectory)
+      continueOnError: true
+      condition: always()
+
+    - task: CmdLine@2
       displayName: 'Download azcopy'
       inputs:
         script: |
