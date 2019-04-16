@@ -40,7 +40,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   auto w_data = reinterpret_cast<const CudaT*>(W->template Data<T>());
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  bool has_bias = (num_inputs == 3);
+  bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
 
   CudaT* y_data = nullptr;
 
@@ -57,7 +57,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         s_.last_w_dims = w_dims;
 
       Prepare p;
-      ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p));
+      ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p, dynamic_padding));
 
       const auto& y_dims = p.Y->Shape().GetDims();
       s_.y_dims = y_dims;

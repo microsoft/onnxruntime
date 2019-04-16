@@ -302,7 +302,7 @@ is applied to the tensor elementwise. )DOC";
       .Input(0, "X", "Input tensor", "T")
       .Output(0, "Y", "Output tensor", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput); 
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   static const char* DynamicSlice_ver1_doc = R"DOC(
 Produces a slice of the input tensor along multiple axes. Similar to numpy:
@@ -348,7 +348,7 @@ Example 2:
       .Output(0, "output", "Sliced data tensor.", "T")
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
-  
+
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)
       .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
@@ -454,7 +454,7 @@ Example 2:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-  
+
   // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
@@ -508,7 +508,7 @@ Sample echo operator.)DOC");
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
+        //ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Resize)
@@ -642,7 +642,7 @@ activation.)DOC")
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
+        //ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, true, false);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedGemm)

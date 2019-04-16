@@ -211,6 +211,10 @@ KernelCreateInfo BuildKernelCreateInfo();
 namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
+namespace cuda {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}
 }  // namespace contrib
 
 // Naming convention for operator kernel classes
