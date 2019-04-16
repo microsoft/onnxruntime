@@ -17,7 +17,7 @@ class ConvTranspose : public CudaKernel, public ConvTransposeBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  mutable CudnnConvState<cudnnConvolutionBwdDataAlgo_t> s_;
+  mutable CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t> s_;
 };
 
 }  // namespace cuda
