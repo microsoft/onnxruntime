@@ -11,9 +11,6 @@
 
 namespace onnxruntime {
 
-static const int kMaxBatchSize = 1;
-static const int kMaxWorkSpaceSize = 1 << 30;
-    
 class TensorrtLogger : public nvinfer1::ILogger {
     nvinfer1::ILogger::Severity verbosity_;
 public:
@@ -76,7 +73,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+  void SetMaxBatchSize(int max_batch_size) {
+      max_batch_size_ = max_batch_size;
+  }
+
  private:
+ int max_batch_size_ = 1;
+ const int max_workspace_size_ = 1 << 30;
+
   struct InferDeleter {
     template <typename T>
     void operator()(T* obj) const {
