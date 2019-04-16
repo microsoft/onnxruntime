@@ -181,7 +181,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
           builder.SetDefaultOutputMemoryType(OrtMemTypeCPUOutput);
         }
         ORT_RETURN_IF_ERROR(fused_kernel_registry->Register(
-            builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); }));
+            builder, static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new FunctionKernel(info); })));
       }
     }
   }
