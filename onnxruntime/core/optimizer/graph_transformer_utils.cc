@@ -52,7 +52,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
                                                                              const std::unordered_set<std::string>& compatible_execution_providers) {
   auto rewrite_rules_to_register = transformer_utils::GenerateRewriteRules(level, rules_to_enable);
   if (rewrite_rules_to_register.empty()) {
-    return std::unique_ptr<RuleBasedGraphTransformer>{};
+    return nullptr;
   }
 
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
