@@ -52,6 +52,8 @@ class Status {
 
   Status(StatusCategory category, int code, const std::string& msg);
 
+  Status(StatusCategory category, int code, const char* msg);
+
   Status(StatusCategory category, int code);
 
   Status(const Status& other)
@@ -72,7 +74,9 @@ class Status {
   Status& operator=(Status&& other) = default;
   ~Status() = default;
 
-  bool IsOK() const noexcept;
+  bool IsOK() const {
+    return (state_ == nullptr);
+  }
 
   int Code() const noexcept;
 
@@ -90,13 +94,18 @@ class Status {
     return !(*this == other);
   }
 
-  static const Status& OK() noexcept;
+  static Status OK() {
+    return Status();
+  }
 
  private:
   static const std::string& EmptyString() noexcept;
 
   struct State {
     State(StatusCategory cat0, int code0, const std::string& msg0)
+        : category(cat0), code(code0), msg(msg0) {}
+
+    State(StatusCategory cat0, int code0, const char* msg0)
         : category(cat0), code(code0), msg(msg0) {}
 
     const StatusCategory category;

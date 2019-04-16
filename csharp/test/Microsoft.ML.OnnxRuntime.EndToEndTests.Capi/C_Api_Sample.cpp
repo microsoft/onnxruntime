@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
     // print input node names
     char* input_name;
     status = OrtSessionGetInputName(session, i, allocator, &input_name);
-    printf("Input %d : name=%s\n", i, input_name);
+    printf("Input %zu : name=%s\n", i, input_name);
     input_node_names[i] = input_name;
 
     // print input node types
@@ -75,15 +75,15 @@ int main(int argc, char* argv[]) {
     status = OrtSessionGetInputTypeInfo(session, i, &typeinfo);
     const OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(typeinfo);
     ONNXTensorElementDataType type = OrtGetTensorElementType(tensor_info);
-    printf("Input %d : type=%d\n", i, type);
+    printf("Input %zu : type=%d\n", i, type);
 
     // print input shapes/dims
     size_t num_dims = OrtGetNumOfDimensions(tensor_info);
-    printf("Input %d : num_dims=%zu\n", i, num_dims);
+    printf("Input %zu : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
     for (size_t j = 0; j < num_dims; j++)
-      printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
+      printf("Input %zu : dim %zu=%jd\n", i, j, input_node_dims[j]);
 
     OrtReleaseTypeInfo(typeinfo);
   }

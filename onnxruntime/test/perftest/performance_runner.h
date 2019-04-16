@@ -16,8 +16,10 @@
 #include "test_configuration.h"
 #include "heap_buffer.h"
 #include "test_session.h"
+#include "OrtValueList.h"
 
 class ITestCase;
+class TestModelInfo;
 
 namespace onnxruntime {
 namespace perftest {
@@ -99,15 +101,13 @@ class PerformanceRunner {
   }
 
  private:
-  OrtEnv* env_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
-
-  std::unordered_map<std::string, OrtValue*> feeds_;
-  std::vector<OrtValue*> input_values_;
+  TestModelInfo* test_model_info_;
+  std::unique_ptr<TestSession> session_;
+  OrtValueArray inputs_;
   HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
-  TestSession* session_;
 };
 }  // namespace perftest
 }  // namespace onnxruntime

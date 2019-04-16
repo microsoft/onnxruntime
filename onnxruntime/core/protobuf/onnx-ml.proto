@@ -81,7 +81,12 @@ enum Version {
   // IR VERSION 4 published on Jan 22, 2019
   // - Relax constraint that initializers should be a subset of graph inputs
   // - Add type BFLOAT16
-  IR_VERSION = 0x0000000000000004;
+  IR_VERSION_2019_1_22 = 0x0000000000000004;
+
+  // IR VERSION 5 published on March 18, 2019
+  // - Add message TensorAnnotation.
+  // - Add quantization annotation in GraphProto to map tensor with its scale and zero point quantization parameters.
+  IR_VERSION = 0x0000000000000005;
 }
 
 // Attributes
@@ -230,6 +235,7 @@ message ModelProto {
 
   // The parameterized graph that is evaluated to execute the model.
   optional GraphProto graph = 7;
+
   // kezhan: This field is not in ONNX, and will be pushed into ONNX with good use cases in microsoft.
   repeated FunctionProto functions = 100;
 
@@ -244,13 +250,14 @@ message StringStringEntryProto {
   optional string value= 2;
 };
 
-message QuantInfo {
+message TensorAnnotation {
   optional string tensor_name = 1;
-  // The keys used in the mapping below will be pre-defined in ONNX spec.
-  // For example, for linear case, “SCALE”, “ZERO_POINT” will be pre-defined as
+  // <key, value> pairs to annotate tensor specified by <tensor_name> above.
+  // The keys used in the mapping below must be pre-defined in ONNX spec.
+  // For example, for 8-bit linear quantization case, 'SCALE_TENSOR', 'ZERO_POINT_TENSOR' will be pre-defined as
   // quantization parameter keys.
   repeated StringStringEntryProto quant_parameter_tensor_names = 2;
-};
+}
 
 // Graphs
 //
@@ -283,9 +290,9 @@ message GraphProto {
 
   // This field carries information to indicate the mapping among a tensor and its
   // quantization parameter tensors. For example:
-  // A tensor “a” and its quantization parameter tensor are “scale_a” and
-  // “zero_point_a” (in linear case).
-  repeated QuantInfo quantization_annotation = 100;
+  // For tensor 'a', it may have {'SCALE_TENSOR', 'a_scale'} and {'ZERO_POINT_TENSOR', 'a_zero_point'} annotated,
+  // which means, tensor 'a_scale' and tensor 'a_zero_point' are scale and zero point of tensor 'a' in the model.
+  repeated TensorAnnotation quantization_annotation = 14;
 
   // DO NOT USE the following fields, they were deprecated from earlier versions.
   // repeated string input = 3;
