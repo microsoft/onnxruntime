@@ -6,9 +6,8 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/threading.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/sgemm.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/convolve.cpp
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib/ConvolveNCHWc.cpp
-  ${ONNXRUNTIME_ROOT}/core/mlas/lib/PoolingNCHWc.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/pooling.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/snchwc.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp

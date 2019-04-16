@@ -6,29 +6,63 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvolveNCHWc.cpp
+    snchwc.cpp
 
 Abstract:
 
-    This module implements the convolution operation with an output format of
-    NCHWc.
+    This module implements the single precision operations using the NCHWc
+    blocking format.
 
 --*/
 
 #include "mlasi.h"
 
-struct MLAS_CONV2_WORK_BLOCK {
-    const MLAS_CONV_PARAMETERS* Parameters;
+//
+// Define the base thead context for NCWHc convolution or pooling operations.
+//
+
+struct MLAS_NCHWC_WORK_BLOCK {
+    size_t BatchCount;
+    size_t InputChannels;
+    size_t InputShape[3];
+    size_t InputSize;
+    size_t OutputChannels;
+    size_t OutputShape[3];
+    size_t OutputSize;
+    size_t KernelShape[3];
+    size_t DilationShape[3];
+    size_t Padding[6];
+    size_t StrideShape[3];
+    size_t OutputCountLeftPad[3];
+    size_t OutputCount[3];
+    size_t OutputCountRightPad[3];
+};
+
+//
+// Define the worker thread context for a NCHWc convolution operation.
+//
+
+struct MLAS_CONV_NCHWC_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK {
     const float* Input;
     const float* Filter;
     const float* Bias;
+    const MLAS_ACTIVATION* Activation;
     float* Output;
+    size_t GroupCount;
     int32_t tids;
     bool ZeroMode;
 };
 
-//#define TIDS 12
-#define TIDS (MlasPlatform.GetMaximumThreadCount())
+//
+// Define the worker thread context for a NCHWc pooling operation.
+//
+
+struct MLAS_POOL_NCHWC_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK {
+    const float* Input;
+    float* Output;
+    MLAS_POOLING_KIND PoolingKind;
+    int32_t tids;
+};
 
 void
 MlasReorderInput(
@@ -37,7 +71,7 @@ MlasReorderInput(
     float* D
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
     const size_t InputChannels = size_t(InputShape[1]);
     const size_t InputSize = size_t(InputShape[2]) * size_t(InputShape[3]);
@@ -92,7 +126,7 @@ MlasReorderOutput(
     float* D
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
     const size_t OutputChannels = size_t(OutputShape[1]);
     const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
@@ -147,7 +181,7 @@ MlasConvReorderFilter(
     float* D
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
@@ -225,7 +259,7 @@ MlasConvReorderFilter2(
     float* D
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
@@ -292,6 +326,116 @@ MlasConvReorderFilter2(
     }
 }
 
+void
+MlasPrepareNchwcWorkBlock(
+    MLAS_NCHWC_WORK_BLOCK* WorkBlock,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape
+    )
+{
+    //
+    // Extract and skip over the the batch and channel counts.
+    //
+
+    WorkBlock->BatchCount = size_t(InputShape[0]);
+    WorkBlock->InputChannels = size_t(InputShape[1]);
+    WorkBlock->OutputChannels = size_t(OutputShape[1]);
+
+    InputShape += 2;
+    OutputShape += 2;
+
+    //
+    // Extract the shape information along each dimension.
+    //
+
+    size_t InputSize = 1;
+    size_t OutputSize = 1;
+
+    for (size_t dim = 0; dim < Dimensions; dim++) {
+
+        const size_t InputValue = size_t(InputShape[dim]);
+        const size_t OutputValue = size_t(OutputShape[dim]);
+
+        WorkBlock->InputShape[dim] = InputValue;
+        WorkBlock->OutputShape[dim] = OutputValue;
+
+        InputSize *= InputValue;
+        OutputSize *= OutputValue;
+
+        if (KernelShape != nullptr) {
+            WorkBlock->KernelShape[dim] = size_t(KernelShape[dim]);
+        } else {
+            WorkBlock->KernelShape[dim] = InputValue;
+        }
+
+        if (DilationShape != nullptr) {
+            WorkBlock->DilationShape[dim] = size_t(DilationShape[dim]);
+        } else {
+            WorkBlock->DilationShape[dim] = 1;
+        }
+
+        if (Padding != nullptr) {
+            WorkBlock->Padding[dim] = size_t(Padding[dim]);
+            WorkBlock->Padding[dim + Dimensions] = size_t(Padding[dim + Dimensions]);
+        } else {
+            WorkBlock->Padding[dim] = 0;
+            WorkBlock->Padding[dim + Dimensions] = 0;
+        }
+
+        if (StrideShape != nullptr) {
+            WorkBlock->StrideShape[dim] = size_t(StrideShape[dim]);
+        } else {
+            WorkBlock->StrideShape[dim] = 1;
+        }
+
+        //
+        //
+        //
+
+        const size_t SpanValue =
+            WorkBlock->DilationShape[dim] * (WorkBlock->KernelShape[dim] - 1) + 1;
+        const size_t StrideValue = WorkBlock->StrideShape[dim];
+        const size_t PaddingLeftValue = WorkBlock->Padding[dim];
+
+        size_t OutputCount;
+
+        if (InputValue >= SpanValue) {
+            OutputCount = (InputValue - SpanValue) / StrideValue + 1;
+        } else {
+            OutputCount = 0;
+        }
+
+        size_t OutputCountWithLeftPad;
+
+        if (InputValue + PaddingLeftValue >= SpanValue) {
+            OutputCountWithLeftPad = (InputValue + PaddingLeftValue - SpanValue) / StrideValue + 1;
+        } else {
+            OutputCountWithLeftPad = OutputValue;
+        }
+
+        size_t OutputCountLeftPad = OutputCountWithLeftPad - OutputCount;
+
+        if (OutputCountLeftPad == 0 && PaddingLeftValue > 0) {
+            OutputCountLeftPad = 1;
+            OutputCount--;
+        }
+
+        size_t OutputCountRightPad = OutputValue - OutputCountWithLeftPad;
+
+        WorkBlock->OutputCountLeftPad[dim] = OutputCountLeftPad;
+        WorkBlock->OutputCount[dim] = OutputCount;
+        WorkBlock->OutputCountRightPad[dim] = OutputCountRightPad;
+    }
+
+    WorkBlock->InputSize = InputSize;
+    WorkBlock->OutputSize = OutputSize;
+}
+
 #define KERNEL_1x1      MlasPlatform.SconvKernel1x1Routine
 #define KERNEL          MlasPlatform.SconvKernelNchwcRoutine
 #define KERNEL_NCHW     MlasPlatform.SconvKernelNchwRoutine
@@ -302,29 +446,28 @@ Convolver_1x1(
     int32_t Index
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
-    MLAS_CONV2_WORK_BLOCK* WorkBlock = (MLAS_CONV2_WORK_BLOCK*)Context;
-    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
-    const MLAS_ACTIVATION* Activation = Parameters->Activation;
+    MLAS_CONV_NCHWC_WORK_BLOCK* WorkBlock = (MLAS_CONV_NCHWC_WORK_BLOCK*)Context;
+    const MLAS_ACTIVATION* Activation = WorkBlock->Activation;
     const bool ZeroMode = WorkBlock->ZeroMode;
 
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
 
-    const size_t InputChannels = Parameters->InputChannels;
-    const size_t OutputChannels = Parameters->FilterCount;
+    const size_t InputChannels = WorkBlock->InputChannels;
+    const size_t OutputChannels = WorkBlock->OutputChannels;
 
-    const size_t InputHeight = Parameters->InputShape[HeightShapeIndex];
-    const size_t InputWidth = Parameters->InputShape[WidthShapeIndex];
-    const size_t InputSize = Parameters->InputSize;
+    const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
+    const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
 
-    const size_t OutputHeight = Parameters->OutputShape[HeightShapeIndex];
-    const size_t OutputWidth = Parameters->OutputShape[WidthShapeIndex];
-    const size_t OutputSize = Parameters->OutputSize;
+    const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
+    const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
+    const size_t OutputSize = WorkBlock->OutputSize;
 
-    const size_t StrideHeight = Parameters->StrideShape[HeightShapeIndex];
-    const size_t StrideWidth = Parameters->StrideShape[WidthShapeIndex];
+    const size_t StrideHeight = WorkBlock->StrideShape[HeightShapeIndex];
+    const size_t StrideWidth = WorkBlock->StrideShape[WidthShapeIndex];
 
     //
     //
@@ -465,98 +608,50 @@ Convolver(
     int32_t Index
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
-    MLAS_CONV2_WORK_BLOCK* WorkBlock = (MLAS_CONV2_WORK_BLOCK*)Context;
-    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
-    const MLAS_ACTIVATION* Activation = Parameters->Activation;
+    MLAS_CONV_NCHWC_WORK_BLOCK* WorkBlock = (MLAS_CONV_NCHWC_WORK_BLOCK*)Context;
+    const MLAS_ACTIVATION* Activation = WorkBlock->Activation;
     const bool ZeroMode = WorkBlock->ZeroMode;
 
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
 
-    const size_t InputChannels = Parameters->InputChannels;
-    const size_t OutputChannels = Parameters->FilterCount;
+    const size_t InputChannels = WorkBlock->InputChannels;
+    const size_t OutputChannels = WorkBlock->OutputChannels;
 
-    const size_t InputHeight = Parameters->InputShape[HeightShapeIndex];
-    const size_t InputWidth = Parameters->InputShape[WidthShapeIndex];
-    const size_t InputSize = Parameters->InputSize;
+    const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
+    const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
 
-    const size_t OutputHeight = Parameters->OutputShape[HeightShapeIndex];
-    const size_t OutputWidth = Parameters->OutputShape[WidthShapeIndex];
-    const size_t OutputSize = Parameters->OutputSize;
+    const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
+    const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
+    const size_t OutputSize = WorkBlock->OutputSize;
 
-    const size_t PaddingLeftY = Parameters->Padding[HeightShapeIndex];
-    const size_t PaddingLeftX = Parameters->Padding[WidthShapeIndex];
-
-    const size_t StrideHeight = Parameters->StrideShape[HeightShapeIndex];
-    const size_t StrideWidth = Parameters->StrideShape[WidthShapeIndex];
-
-    const size_t DilationHeight = Parameters->DilationShape[HeightShapeIndex];
-    const size_t DilationWidth = Parameters->DilationShape[WidthShapeIndex];
-
-    const size_t KernelHeight = Parameters->KernelShape[HeightShapeIndex];
-    const size_t KernelWidth = Parameters->KernelShape[WidthShapeIndex];
+    const size_t KernelHeight = WorkBlock->KernelShape[HeightShapeIndex];
+    const size_t KernelWidth = WorkBlock->KernelShape[WidthShapeIndex];
     const size_t KernelSize = KernelHeight * KernelWidth;
 
-    const size_t SpanHeight = DilationHeight * (KernelHeight - 1) + 1;
-    const size_t SpanWidth = DilationWidth * (KernelWidth - 1) + 1;
+    const size_t DilationHeight = WorkBlock->DilationShape[HeightShapeIndex];
+    const size_t DilationWidth = WorkBlock->DilationShape[WidthShapeIndex];
+
+    const size_t PaddingLeftY = WorkBlock->Padding[HeightShapeIndex];
+    const size_t PaddingLeftX = WorkBlock->Padding[WidthShapeIndex];
+
+    const size_t StrideHeight = WorkBlock->StrideShape[HeightShapeIndex];
+    const size_t StrideWidth = WorkBlock->StrideShape[WidthShapeIndex];
 
     //
     //
     //
 
-    size_t OutputCountPadNoneH;
+    size_t OutputCountLeftPadH = WorkBlock->OutputCountLeftPad[HeightShapeIndex];
+    size_t OutputCountH = WorkBlock->OutputCount[HeightShapeIndex];
+    size_t OutputCountWithLeftPadH = OutputCountLeftPadH + OutputCountH;
 
-    if (InputHeight >= SpanHeight) {
-        OutputCountPadNoneH = (InputHeight - SpanHeight) / StrideHeight + 1;
-    } else {
-        OutputCountPadNoneH = 0;
-    }
-
-    size_t OutputCountWithLeftPaddingH;
-
-    if (InputHeight + PaddingLeftX >= SpanHeight) {
-        OutputCountWithLeftPaddingH = (InputHeight + PaddingLeftY - SpanHeight) / StrideHeight + 1;
-    } else {
-        OutputCountWithLeftPaddingH = OutputHeight;
-    }
-
-    size_t OutputCountPadLeftH = OutputCountWithLeftPaddingH - OutputCountPadNoneH;
-
-    if (OutputCountPadLeftH == 0 && PaddingLeftY > 0) {
-        OutputCountPadLeftH = 1;
-        OutputCountPadNoneH--;
-    }
-
-    //
-    //
-    //
-
-    size_t OutputCountPadNoneW;
-
-    if (InputWidth >= SpanWidth) {
-        OutputCountPadNoneW = (InputWidth - SpanWidth) / StrideWidth + 1;
-    } else {
-        OutputCountPadNoneW = 0;
-    }
-
-    size_t OutputCountWithLeftPaddingW;
-
-    if (InputWidth + PaddingLeftX >= SpanWidth) {
-        OutputCountWithLeftPaddingW = (InputWidth + PaddingLeftX - SpanWidth) / StrideWidth + 1;
-    } else {
-        OutputCountWithLeftPaddingW = OutputWidth;
-    }
-
-    size_t OutputCountPadLeftW = OutputCountWithLeftPaddingW - OutputCountPadNoneW;
-
-    if (OutputCountPadLeftW == 0 && PaddingLeftX > 0) {
-        OutputCountPadLeftW = 1;
-        OutputCountPadNoneW--;
-    }
-
-    size_t OutputCountPadRightW = OutputWidth - OutputCountWithLeftPaddingW;
+    size_t OutputCountLeftPadW = WorkBlock->OutputCountLeftPad[WidthShapeIndex];
+    size_t OutputCountW = WorkBlock->OutputCount[WidthShapeIndex];
+    size_t OutputCountRightPadW = WorkBlock->OutputCountRightPad[WidthShapeIndex];
 
     //
     //
@@ -622,7 +717,7 @@ Convolver(
             for (size_t rrr = 0; rrr < WorkThisPass; rrr++) {
 
                 const size_t ph = phStart + rrr;
-        //printf("doing %zd, %zd %zd  %zd\n", ph, WorkIndex, OutputHeight, OutputCountPadLeftH);
+        //printf("doing %zd, %zd %zd  %zd\n", ph, WorkIndex, OutputHeight, OutputCountLeftPadH);
 
                 size_t ihStart = ph * StrideHeight - PaddingLeftY;
 
@@ -631,7 +726,7 @@ Convolver(
 
                 size_t mykh = KernelHeight;
 
-                if (ph < OutputCountPadLeftH || ph >= OutputCountWithLeftPaddingH) {
+                if (ph < OutputCountLeftPadH || ph >= OutputCountWithLeftPadH) {
 
                     size_t ih = ihStart;
 
@@ -682,9 +777,9 @@ Convolver(
                        input + NCHWC * (ihStart * InputWidth),
                        NCHWC * InputWidth * sizeof(float),
                        NCHWC * DilationHeight * InputWidth * sizeof(float),
-                       OutputCountPadLeftW,
-                       OutputCountPadNoneW,
-                       OutputCountPadRightW,
+                       OutputCountLeftPadW,
+                       OutputCountW,
+                       OutputCountRightPadW,
                        Bias,
                        Flags);
 
@@ -716,98 +811,50 @@ Convolver_NCHW(
     int32_t Index
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
-    MLAS_CONV2_WORK_BLOCK* WorkBlock = (MLAS_CONV2_WORK_BLOCK*)Context;
-    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
-    const MLAS_ACTIVATION* Activation = Parameters->Activation;
+    MLAS_CONV_NCHWC_WORK_BLOCK* WorkBlock = (MLAS_CONV_NCHWC_WORK_BLOCK*)Context;
+    const MLAS_ACTIVATION* Activation = WorkBlock->Activation;
     const bool ZeroMode = WorkBlock->ZeroMode;
 
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
 
-    const size_t InputChannels = Parameters->InputChannels;
-    const size_t OutputChannels = Parameters->FilterCount;
+    const size_t InputChannels = WorkBlock->InputChannels;
+    const size_t OutputChannels = WorkBlock->OutputChannels;
 
-    const size_t InputHeight = Parameters->InputShape[HeightShapeIndex];
-    const size_t InputWidth = Parameters->InputShape[WidthShapeIndex];
-    const size_t InputSize = Parameters->InputSize;
+    const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
+    const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
 
-    const size_t OutputHeight = Parameters->OutputShape[HeightShapeIndex];
-    const size_t OutputWidth = Parameters->OutputShape[WidthShapeIndex];
-    const size_t OutputSize = Parameters->OutputSize;
+    const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
+    const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
+    const size_t OutputSize = WorkBlock->OutputSize;
 
-    const size_t PaddingLeftY = Parameters->Padding[HeightShapeIndex];
-    const size_t PaddingLeftX = Parameters->Padding[WidthShapeIndex];
-
-    const size_t StrideHeight = Parameters->StrideShape[HeightShapeIndex];
-    const size_t StrideWidth = Parameters->StrideShape[WidthShapeIndex];
-
-    const size_t DilationHeight = Parameters->DilationShape[HeightShapeIndex];
-    const size_t DilationWidth = Parameters->DilationShape[WidthShapeIndex];
-
-    const size_t KernelHeight = Parameters->KernelShape[HeightShapeIndex];
-    const size_t KernelWidth = Parameters->KernelShape[WidthShapeIndex];
+    const size_t KernelHeight = WorkBlock->KernelShape[HeightShapeIndex];
+    const size_t KernelWidth = WorkBlock->KernelShape[WidthShapeIndex];
     const size_t KernelSize = KernelHeight * KernelWidth;
 
-    const size_t SpanHeight = DilationHeight * (KernelHeight - 1) + 1;
-    const size_t SpanWidth = DilationWidth * (KernelWidth - 1) + 1;
+    const size_t DilationHeight = WorkBlock->DilationShape[HeightShapeIndex];
+    const size_t DilationWidth = WorkBlock->DilationShape[WidthShapeIndex];
+
+    const size_t PaddingLeftY = WorkBlock->Padding[HeightShapeIndex];
+    const size_t PaddingLeftX = WorkBlock->Padding[WidthShapeIndex];
+
+    const size_t StrideHeight = WorkBlock->StrideShape[HeightShapeIndex];
+    const size_t StrideWidth = WorkBlock->StrideShape[WidthShapeIndex];
 
     //
     //
     //
 
-    size_t OutputCountPadNoneH;
+    size_t OutputCountLeftPadH = WorkBlock->OutputCountLeftPad[HeightShapeIndex];
+    size_t OutputCountH = WorkBlock->OutputCount[HeightShapeIndex];
+    size_t OutputCountWithLeftPadH = OutputCountLeftPadH + OutputCountH;
 
-    if (InputHeight >= SpanHeight) {
-        OutputCountPadNoneH = (InputHeight - SpanHeight) / StrideHeight + 1;
-    } else {
-        OutputCountPadNoneH = 0;
-    }
-
-    size_t OutputCountWithLeftPaddingH;
-
-    if (InputHeight + PaddingLeftX >= SpanHeight) {
-        OutputCountWithLeftPaddingH = (InputHeight + PaddingLeftY - SpanHeight) / StrideHeight + 1;
-    } else {
-        OutputCountWithLeftPaddingH = OutputHeight;
-    }
-
-    size_t OutputCountPadLeftH = OutputCountWithLeftPaddingH - OutputCountPadNoneH;
-
-    if (OutputCountPadLeftH == 0 && PaddingLeftY > 0) {
-        OutputCountPadLeftH = 1;
-        OutputCountPadNoneH--;
-    }
-
-    //
-    //
-    //
-
-    size_t OutputCountPadNoneW;
-
-    if (InputWidth >= SpanWidth) {
-        OutputCountPadNoneW = (InputWidth - SpanWidth) / StrideWidth + 1;
-    } else {
-        OutputCountPadNoneW = 0;
-    }
-
-    size_t OutputCountWithLeftPaddingW;
-
-    if (InputWidth + PaddingLeftX >= SpanWidth) {
-        OutputCountWithLeftPaddingW = (InputWidth + PaddingLeftX - SpanWidth) / StrideWidth + 1;
-    } else {
-        OutputCountWithLeftPaddingW = OutputWidth;
-    }
-
-    size_t OutputCountPadLeftW = OutputCountWithLeftPaddingW - OutputCountPadNoneW;
-
-    if (OutputCountPadLeftW == 0 && PaddingLeftX > 0) {
-        OutputCountPadLeftW = 1;
-        OutputCountPadNoneW--;
-    }
-
-    size_t OutputCountPadRightW = OutputWidth - OutputCountWithLeftPaddingW;
+    size_t OutputCountLeftPadW = WorkBlock->OutputCountLeftPad[WidthShapeIndex];
+    size_t OutputCountW = WorkBlock->OutputCount[WidthShapeIndex];
+    size_t OutputCountRightPadW = WorkBlock->OutputCountRightPad[WidthShapeIndex];
 
     //
     //
@@ -866,7 +913,7 @@ Convolver_NCHW(
 
         size_t mykh = KernelHeight;
 
-        if (ph < OutputCountPadLeftH || ph >= OutputCountWithLeftPaddingH) {
+        if (ph < OutputCountLeftPadH || ph >= OutputCountWithLeftPadH) {
 
             size_t ih = ihStart;
 
@@ -921,9 +968,9 @@ Convolver_NCHW(
                    input + (ihStart * InputWidth),
                    InputWidth * sizeof(float),
                    DilationHeight * InputWidth * sizeof(float),
-                   OutputCountPadLeftW,
-                   OutputCountPadNoneW,
-                   OutputCountPadRightW,
+                   OutputCountLeftPadW,
+                   OutputCountW,
+                   OutputCountRightPadW,
                    Bias,
                    Flags);
 
@@ -953,37 +1000,60 @@ Convolver_NCHW(
 void
 MLASCALL
 MlasConvNchwc(
-    const MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t GroupCount,
     const float* Input,
     const float* Filter,
     const float* Bias,
     float* Output,
+    const MLAS_ACTIVATION* Activation,
     bool ZeroMode
     )
 {
-    const size_t NCHWC = MlasPlatform.NchwcBlockSize;
+    MLAS_CONV_NCHWC_WORK_BLOCK WorkBlock;
 
-    MLAS_CONV2_WORK_BLOCK wb;
+    //
+    //
+    //
 
-    if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) __debugbreak();
+    WorkBlock.Input = Input;
+    WorkBlock.Output = Output;
+    WorkBlock.GroupCount = GroupCount;
+    WorkBlock.Filter = Filter;
+    WorkBlock.Bias = Bias;
+    WorkBlock.Activation = Activation;
+    WorkBlock.ZeroMode = ZeroMode;
 
-    wb.Parameters = Parameters;
-    wb.Input = Input;
-    wb.Filter = Filter;
-    wb.Bias = Bias;
-    wb.Output = Output;
-    wb.tids = TIDS;
-    wb.ZeroMode = ZeroMode;
+    //
+    //
+    //
+
+    MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
+        DilationShape, Padding, StrideShape, OutputShape);
+
+    if (WorkBlock.BatchCount > 1 || WorkBlock.GroupCount > 1) __debugbreak();
+
+    //
+    //
+    //
+
+    WorkBlock.tids = MlasPlatform.GetMaximumThreadCount();
 
     PMLAS_THREADED_ROUTINE ConvolverRoutine;
 
-    if (Parameters->InputChannels >= NCHWC) {
-        if (Parameters->KernelShape[0] == 1 &&
-            Parameters->KernelShape[1] == 1 &&
-            Parameters->Padding[0] == 0 &&
-            Parameters->Padding[1] == 0 &&
-            Parameters->Padding[2] == 0 &&
-            Parameters->Padding[3] == 0 &&
+    if (WorkBlock.InputChannels >= MlasPlatform.GetNchwcBlockSize()) {
+        if (WorkBlock.KernelShape[0] == 1 &&
+            WorkBlock.KernelShape[1] == 1 &&
+            WorkBlock.Padding[0] == 0 &&
+            WorkBlock.Padding[1] == 0 &&
+            WorkBlock.Padding[2] == 0 &&
+            WorkBlock.Padding[3] == 0 &&
             MlasPlatform.SconvKernel1x1Routine != nullptr) {
             ConvolverRoutine = Convolver_1x1;
         } else {
@@ -993,5 +1063,202 @@ MlasConvNchwc(
         ConvolverRoutine = Convolver_NCHW;
     }
 
-    MlasExecuteThreaded(ConvolverRoutine, &wb, TIDS);
+    MlasExecuteThreaded(ConvolverRoutine, &WorkBlock, WorkBlock.tids);
+}
+
+void
+MlasPoolNchwcThreaded(
+    void* Context,
+    int32_t Index
+    )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    NCHWc pooling operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    Index - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
+
+    constexpr size_t HeightShapeIndex = 0;
+    constexpr size_t WidthShapeIndex = 1;
+
+    MLAS_POOL_NCHWC_WORK_BLOCK* WorkBlock = (MLAS_POOL_NCHWC_WORK_BLOCK*)Context;
+
+    const size_t TotalChannelCount = WorkBlock->BatchCount * WorkBlock->InputChannels;
+
+    const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
+    const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
+
+    const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
+    const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
+    const size_t OutputSize = WorkBlock->OutputSize;
+
+    const size_t KernelHeight = WorkBlock->KernelShape[HeightShapeIndex];
+    const size_t KernelWidth = WorkBlock->KernelShape[WidthShapeIndex];
+    const size_t KernelSize = KernelHeight * KernelWidth;
+
+    const size_t DilationHeight = WorkBlock->DilationShape[HeightShapeIndex];
+    const size_t DilationWidth = WorkBlock->DilationShape[WidthShapeIndex];
+
+    const size_t PaddingLeftY = WorkBlock->Padding[HeightShapeIndex];
+    const size_t PaddingLeftX = WorkBlock->Padding[WidthShapeIndex];
+
+    const size_t StrideHeight = WorkBlock->StrideShape[HeightShapeIndex];
+    const size_t StrideWidth = WorkBlock->StrideShape[WidthShapeIndex];
+
+    //
+    //
+    //
+
+    size_t OutputCountLeftPadH = WorkBlock->OutputCountLeftPad[HeightShapeIndex];
+    size_t OutputCountH = WorkBlock->OutputCount[HeightShapeIndex];
+    size_t OutputCountWithLeftPadH = OutputCountLeftPadH + OutputCountH;
+
+    size_t OutputCountLeftPadW = WorkBlock->OutputCountLeftPad[WidthShapeIndex];
+    size_t OutputCountW = WorkBlock->OutputCount[WidthShapeIndex];
+    size_t OutputCountRightPadW = WorkBlock->OutputCountRightPad[WidthShapeIndex];
+
+    //
+    //
+    //
+
+    const size_t TotalWork = ((TotalChannelCount + NCHWC - 1) / NCHWC) * OutputHeight;
+    const size_t WorkPerThread = TotalWork / WorkBlock->tids;
+    const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
+
+    size_t WorkIndex;
+    size_t WorkIndexEnd;
+
+    if (uint32_t(Index) < WorkPerThreadExtra) {
+        WorkIndex = (WorkPerThread + 1) * Index;
+        WorkIndexEnd = WorkIndex + WorkPerThread + 1;
+    } else {
+        WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
+        WorkIndexEnd = WorkIndex + WorkPerThread;
+    }
+
+    const float* Input = WorkBlock->Input;
+    float* Output = WorkBlock->Output;
+
+    Input += (WorkIndex / OutputHeight) * InputSize * NCHWC;
+    Output += WorkIndex * NCHWC * OutputWidth;
+
+    PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel = nullptr;
+    switch (WorkBlock->PoolingKind) {
+        case MlasMaximumPooling:
+            PoolFloatKernel = MlasPlatform.PoolMaximumFloatKernel;
+            break;
+        case MlasAveragePoolingExcludePad:
+            PoolFloatKernel = MlasPlatform.PoolAverageExcludePadFloatKernel;
+            break;
+        case MlasAveragePoolingIncludePad:
+            PoolFloatKernel = MlasPlatform.PoolAverageIncludePadFloatKernel;
+            break;
+    }
+
+    while (WorkIndex < WorkIndexEnd) {
+
+        const size_t ph = WorkIndex % OutputHeight;
+
+        size_t ihStart = ph * StrideHeight - PaddingLeftY;
+
+        size_t mykh = KernelHeight;
+
+        if (ph < OutputCountLeftPadH || ph >= OutputCountWithLeftPadH) {
+
+            size_t ih = ihStart;
+
+            for (size_t kh = 0; kh < KernelHeight; kh++) {
+
+                if (ih >= InputHeight) {
+
+                    if (ih == ihStart) {
+                        ihStart += DilationHeight;
+                    }
+
+                    mykh -= 1;
+                }
+
+                ih += DilationHeight;
+            }
+        }
+
+        PoolFloatKernel(Input + NCHWC * (ihStart * InputWidth - PaddingLeftX),
+                          Output,
+                          NCHWC * StrideWidth * sizeof(float),
+                          NCHWC * DilationWidth * sizeof(float),
+                          NCHWC * DilationHeight * InputWidth * sizeof(float) - NCHWC * KernelWidth * DilationWidth * sizeof(float),
+                          mykh,
+                          KernelWidth,
+                          KernelSize,
+                          Input + NCHWC * (ihStart * InputWidth),
+                          NCHWC * InputWidth * sizeof(float),
+                          NCHWC * DilationHeight * InputWidth * sizeof(float),
+                          OutputCountLeftPadW,
+                          OutputCountW,
+                          OutputCountRightPadW);
+
+        WorkIndex++;
+
+        Output += NCHWC * OutputWidth;
+
+        if ((WorkIndex % OutputHeight) == 0) {
+            Input += NCHWC * InputSize;
+        }
+    }
+}
+
+void
+MLASCALL
+MlasPoolNchwc(
+    MLAS_POOLING_KIND PoolingKind,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const float* Input,
+    float* Output
+    )
+{
+    MLAS_POOL_NCHWC_WORK_BLOCK WorkBlock;
+
+    //
+    //
+    //
+
+    WorkBlock.Input = Input;
+    WorkBlock.Output = Output;
+    WorkBlock.PoolingKind = PoolingKind;
+
+    //
+    //
+    //
+
+    MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
+        DilationShape, Padding, StrideShape, OutputShape);
+
+    //
+    //
+    //
+
+    WorkBlock.tids = MlasPlatform.GetMaximumThreadCount();
+
+    MlasExecuteThreaded(MlasPoolNchwcThreaded, &WorkBlock, WorkBlock.tids);
 }

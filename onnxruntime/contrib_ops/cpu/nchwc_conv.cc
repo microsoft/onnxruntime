@@ -57,7 +57,6 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   const Tensor* B = context->Input<Tensor>(2);
   const Tensor* Sum = context->Input<Tensor>(3);
   const int64_t N = X->Shape()[0];
-  const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
 
@@ -81,52 +80,37 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
-  Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  TensorShape output_shape = Y->Shape().Slice(2);
-
-  const float* Xdata = X->template Data<float>();
-  float* Ydata = Y->template MutableData<float>();
-
-  const size_t kernel_rank = kernel_shape.size();
+  Tensor* Y = context->Output(0, Y_dims);
 
   MLAS_ACTIVATION Activation;
   if (activation_.empty()) {
-      Activation.ActivationKind = MlasIdentityActivation;
+    Activation.ActivationKind = MlasIdentityActivation;
   } else if (activation_ == "Relu") {
-      Activation.ActivationKind = MlasReluActivation;
+    Activation.ActivationKind = MlasReluActivation;
   } else if (activation_ == "LeakyRelu") {
-      Activation.ActivationKind = MlasLeakyReluActivation;
-      Activation.alpha = alpha_;
+    Activation.ActivationKind = MlasLeakyReluActivation;
+    Activation.alpha = alpha_;
   } else if (activation_ == "Tanh") {
-      Activation.ActivationKind = MlasTanhActivation;
+    Activation.ActivationKind = MlasTanhActivation;
   } else if (activation_ == "Sigmoid") {
-      Activation.ActivationKind = MlasLogisticActivation;
+    Activation.ActivationKind = MlasLogisticActivation;
   } else {
     ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
   }
 
-  MLAS_CONV_PARAMETERS Parameters;
-  size_t WorkingBufferSize;
-  MlasConvPrepare(&Parameters,
-                  kernel_rank,
-                  static_cast<size_t>(N),
-                  static_cast<size_t>(group_),
-                  static_cast<size_t>(C / group_),
-                  input_shape.GetDims().data(),
-                  kernel_shape.data(),
-                  dilations.data(),
-                  pads.data(),
-                  strides.data(),
-                  output_shape.GetDims().data(),
-                  static_cast<size_t>(M / group_),
-                  &Activation,
-                  &WorkingBufferSize);
-
-  MlasConvNchwc(&Parameters,
-                Xdata,
+  MlasConvNchwc(kernel_shape.size(),
+                X->Shape().GetDims().data(),
+                kernel_shape.data(),
+                dilations.data(),
+                pads.data(),
+                strides.data(),
+                Y_dims.data(),
+                static_cast<size_t>(group_),
+                X->template Data<float>(),
                 W->template Data<float>(),
                 B != nullptr ? B->template Data<float>() : nullptr,
-                Ydata,
+                Y->template MutableData<float>(),
+                &Activation,
                 Sum == nullptr);
 
   return Status::OK();

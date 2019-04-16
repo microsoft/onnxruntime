@@ -170,9 +170,9 @@ void
     const float* InputBase,
     size_t InputWidth,
     size_t DilatedInputWidth,
-    size_t OutputCountPadLeft,
-    size_t OutputCountPadNone,
-    size_t OutputCountPadRight,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
     const float* Bias,
     unsigned Flags
     );
@@ -212,9 +212,9 @@ void
     const float* InputBase,
     size_t InputWidth,
     size_t DilatedInputWidth,
-    size_t OutputCountPadLeft,
-    size_t OutputCountPadNone,
-    size_t OutputCountPadRight
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad
     );
 
 typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
@@ -381,6 +381,18 @@ struct MLAS_PLATFORM {
         return MaximumThreadCount;
 #else
         return 1;
+#endif
+    }
+
+    size_t
+    GetNchwcBlockSize(
+        void
+        )
+    {
+#if defined(MLAS_TARGET_AMD64)
+        return NchwcBlockSize;
+#else
+        return 8;
 #endif
     }
 };

@@ -254,11 +254,19 @@ MlasConvReorderFilter2(
 void
 MLASCALL
 MlasConvNchwc(
-    const MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t GroupCount,
     const float* Input,
     const float* Filter,
     const float* Bias,
     float* Output,
+    const MLAS_ACTIVATION* Activation,
     bool ZeroMode
     );
 
