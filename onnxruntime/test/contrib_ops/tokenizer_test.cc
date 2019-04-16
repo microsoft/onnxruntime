@@ -830,5 +830,55 @@ TEST(ContribOpTest, TokenizerExpression_RegChar) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(ContribOpTest, Tokenizer_EmptyInput) {
+  // Special case of empty input.
+  // For [C] empty input we should output [0]
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {""}, 1);
+
+    std::vector<int64_t> dims{0};
+    std::vector<std::string> input;
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  // For [N][C] empty input we output [N][0]
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {""}, 1);
+
+    std::vector<int64_t> dims{1, 0};
+    std::vector<std::string> input;
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims(dims);
+    std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {""}, 1);
+
+    std::vector<int64_t> dims{0, 1};
+    std::vector<std::string> input;
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims{0, 0};
+    std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime
