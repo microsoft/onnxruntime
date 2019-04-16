@@ -2377,14 +2377,6 @@ Status Graph::SetGraphInputsOutputs() {
       }
     }
 
-    // Make sure all initializers appear as graph inputs as per ONNX requirements
-    for (auto i : name_to_initial_tensor_) {
-      if (added_input_names.find(i.first) == added_input_names.cend()) {
-        auto* na = GetNodeArg(i.first);
-        graph_inputs_including_initializers_.push_back(na);
-      }
-    }
-
     // Set graph outputs
     auto end = graph_output_args.end();
     for (auto& name : ordered_output_names) {
