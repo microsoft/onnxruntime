@@ -53,7 +53,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   inferredOutputShape[1] = X_shape[1];
 
   // For feature dims calculate reversing the formula used for Maxpool
-  for (auto dim = 0; dim < kernel_shape_.size(); ++dim) {
+  for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
     inferredOutputShape[dim + 2] = (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim + 2] + pads_[kernel_shape_.size() + dim + 4]) + kernel_shape_[dim];
   }
 
@@ -75,7 +75,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     inferredPads.resize(inferredOutputShape.size() * 2, 0);
 
     // calculate if output shape has any padding over the inferred shape for feature dims.
-    for (auto dim = 2; dim < shape.size(); dim++) {
+    for (size_t dim = 2; dim < shape.size(); dim++) {
       ORT_RETURN_IF_NOT(inferredOutputShape[dim] <= shape[dim], "Incorrect output shape");
 
       int64_t inferredPad = shape[dim] - inferredOutputShape[dim];
@@ -97,7 +97,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   int64_t totalPooledElem = 1;
   int64_t totalOutputElem = 1;
 
-  for (auto dim = 0; dim < X_shape.NumDimensions(); dim++) {
+  for (size_t dim = 0; dim < X_shape.NumDimensions(); dim++) {
     totalPooledElem *= X_shape[dim];
     totalOutputElem *= inferredOutputShape[dim];
   }
