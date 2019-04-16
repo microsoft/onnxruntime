@@ -153,6 +153,7 @@ class SessionState {
 
   using NameNodeInfoMapType = std::unordered_map<std::string, std::vector<NodeInfo>>;
   common::Status AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info);
+  common::Status ProcessDelayesInputNameToNodeInfoMapping(Graph&);
   common::Status GetInputNodeInfo(const std::string& input_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
@@ -230,6 +231,12 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+  // Some inputs feed into more than one nodes. If one of the nodes requires cross devices copy
+  // we records this here and then AddInputNameToNodeInfoMapping() creates a duplicate
+  // input for the given Node and fix-up the NodeArgs
+  // by calling ProcessDelayesInputNameToNodeInfoMapping(). Because this requires Graph modification
+  // we need to call it after SaveInputOutputNamesToNodeMapping()
+  std::vector<std::pair<std::string, NodeInfo>> delayed_input_to_nodeinfo_mapping_;
 };
 
 }  // namespace onnxruntime

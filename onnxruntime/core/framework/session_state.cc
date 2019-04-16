@@ -135,15 +135,47 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       if (current_provider == new_provider) {
         entries.push_back(node_info);
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "Using an input in multiple nodes on different devices is not supported currently. Input:",
-                               input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
-                               ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
+        delayed_input_to_nodeinfo_mapping_.push_back({input_name, node_info});
       }
     }
   }
 
   return Status::OK();
+}
+
+common::Status SessionState::ProcessDelayesInputNameToNodeInfoMapping(Graph& graph) {
+  Status s;
+  if (!delayed_input_to_nodeinfo_mapping_.empty()) {
+    for (const auto& delayed : delayed_input_to_nodeinfo_mapping_) {
+      // create unique name for new def
+      const auto& arg_name = delayed.first;
+      const auto* arg = graph.GetNodeArg(arg_name);
+      assert(arg != nullptr);
+
+      // Create a duplicate input
+      std::string new_def_name = graph.GenerateNodeArgName(arg_name + "_" + utils::GetNodeInputProviderType(delayed.second));
+      auto* new_arg = &graph.GetOrCreateNodeArg(new_def_name, arg->TypeAsProto());
+
+      // TODO: Do we need to add this new input to?:
+      // - graph_inputs_including_initializers_
+      // - graph_inputs_excluding_initializers_
+
+      // Replace existing arg with a new one for the node
+      Node* node = graph.GetNode(delayed.second.index);
+      std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement = {{arg, new_arg}};
+      node->ReplaceDefs(replacement);
+
+      mlvalue_name_idx_map_.Add(new_def_name);
+
+      // Update feeds
+      auto& entries = input_names_to_nodeinfo_mapping_[new_def_name];
+      entries.push_back(delayed.second);
+    }
+
+    // All done.
+    delayed_input_to_nodeinfo_mapping_.clear();
+  }
+  return s;
 }
 
 common::Status SessionState::GetInputNodeInfo(const std::string& input_name,
