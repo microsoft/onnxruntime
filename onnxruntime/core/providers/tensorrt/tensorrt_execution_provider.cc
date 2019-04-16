@@ -291,7 +291,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int max_batch_size = atoi(batch_env);
       SetMaxBatchSize(max_batch_size);
     }
-    std::cout << "max batch size: " << max_batch_size_ << std::endl;
     trt_builder->setMaxBatchSize(max_batch_size_);
     trt_builder->setMaxWorkspaceSize(max_workspace_size_);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
