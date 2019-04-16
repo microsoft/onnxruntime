@@ -220,7 +220,8 @@ value at X[t][n] >= seqLengths[n].
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUUnit)
       .SinceVersion(1)
       .SetDoc(GRUUnit_ver1_doc)
-      .Attr("drop_states", "Bool to determine if hidden state is zeroes or passed "
+      .Attr("drop_states",
+            "Bool to determine if hidden state is zeroes or passed "
             "along for timesteps past the given sequence_length.",
             AttributeProto::INT, OPTIONAL)
       .Input(0, "hidden_prev", "The previous GRU hidden state.", "T")
@@ -266,7 +267,7 @@ and op)DOC";
            "tensor(float16)",
            "tensor(float)",
            "tensor(double)"},
-           "Constrain output types to bool, int32, int64, float16, float, double tensors.");
+          "Constrain output types to bool, int32, int64, float16, float, double tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(10)
@@ -366,7 +367,6 @@ and op)DOC";
            "tensor(float)",
            "tensor(double)"},
           "Constrain output types to bool, int32, int64, float16, float, double tensors.");
-
 
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)
@@ -874,6 +874,13 @@ activation and leaky_relu_alpha.)DOC")
   If input is ["Hello", "World"],
   then the corresponding output would be [0x02, "Hello", "World", 0x03].
   This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2].
+
+If tokenizer removes the entire content of [C]-input, it will produce [[]].
+I.e. the output shape should be [C][0] or [N][C][0] if input shape was [N][C].
+
+If the tokenizer receives empty input of [0] then the output is [0] if empty input
+of [N, 0] then [N, 0].
+
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
@@ -931,11 +938,27 @@ activation and leaky_relu_alpha.)DOC")
         if (dims.size() < 1 || dims.size() > 2) {
           fail_shape_inference("Input dimensions are either [C] or [N][C] allowed");
         }
+
+        int64_t size = 1;
         for (auto& dim : dims) {
-          *output_shape.add_dim() = dim;
+          if (dim.has_dim_value()) {
+            size *= dim.dim_value();
+          }
         }
-        // Add the last unknown dimension
-        output_shape.add_dim();
+
+        if (size > 0) {
+          for (auto& dim : dims) {
+            *output_shape.add_dim() = dim;
+          }
+          // Add the last unknown dimension
+          // only if the input is not empty
+          output_shape.add_dim();
+        } else if (size == 0) {
+          if (dims.size() == 2) {
+            *output_shape.add_dim() = dims[0];
+          }
+          output_shape.add_dim()->set_dim_value(0);
+        }
         updateOutputShape(ctx, 0, output_shape);
       });
 

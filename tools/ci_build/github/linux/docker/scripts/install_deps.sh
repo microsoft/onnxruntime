@@ -38,8 +38,9 @@ else
   #5af210ca8a1c73aa6bae8754c9346ec54d0a756e is v1.2.3
   #bae6333e149a59a3faa9c4d9c44974373dcf5256 is v1.3.0
   #9e55ace55aad1ada27516038dfbdc66a8a0763db is v1.4.1
-  #7a112a6f930aac375da5a38d744ccda93e37632c" is v1.4.1 latest
-  for onnx_version in "5af210ca8a1c73aa6bae8754c9346ec54d0a756e" "bae6333e149a59a3faa9c4d9c44974373dcf5256" "9e55ace55aad1ada27516038dfbdc66a8a0763db" "7a112a6f930aac375da5a38d744ccda93e37632c" ; do
+  #7a112a6f930aac375da5a38d744ccda93e37632c" is v1.4.1
+  #a80c3371a6514bd11664249e59cae958f45b3b59 latest  
+    for onnx_version in "5af210ca8a1c73aa6bae8754c9346ec54d0a756e" "bae6333e149a59a3faa9c4d9c44974373dcf5256" "9e55ace55aad1ada27516038dfbdc66a8a0763db" "7a112a6f930aac375da5a38d744ccda93e37632c" "a80c3371a6514bd11664249e59cae958f45b3b59"; do
     if [ -z ${lastest_onnx_version+x} ]; then
       echo "first pass";
     else
