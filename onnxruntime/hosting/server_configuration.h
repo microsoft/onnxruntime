@@ -16,7 +16,7 @@ namespace hosting {
 namespace po = boost::program_options;
 
 enum class Result {
-  ExitSuccess = 1,
+  ExitSuccess,
   ExitFailure,
   ContinueSuccess
 };
