@@ -47,8 +47,8 @@ class ServerConfiguration {
   ServerConfiguration() {
     desc.add_options()("help,h", "Shows a help message and exits");
     desc.add_options()("logging_level", po::value(&logging_level_str)->default_value(logging_level_str), "Logging level. Allowed options (case sensitive): verbose, info, warning, error, fatal");
-    desc.add_options()("model_path,m", po::value(&model_path)->required(), "Path to ONNX model");
-    desc.add_options()("address,a", po::value(&address)->default_value(address), "The base HTTP address");
+    desc.add_options()("model_path", po::value(&model_path)->required(), "Path to ONNX model");
+    desc.add_options()("address", po::value(&address)->default_value(address), "The base HTTP address");
     desc.add_options()("http_port", po::value(&http_port)->default_value(http_port), "HTTP port to listen to requests");
     desc.add_options()("num_http_threads", po::value(&num_http_threads)->default_value(num_http_threads), "Number of http threads");
   }
