@@ -288,7 +288,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     const char* batch_env = getenv("TENSORRT_MAX_BATCH_SIZE");
     if (batch_env) {
-      int max_batch_size = atoi(batch_env);
+      const int max_batch_size = atoi(batch_env);
       SetMaxBatchSize(max_batch_size);
     }
     trt_builder->setMaxBatchSize(max_batch_size_);
