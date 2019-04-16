@@ -32,6 +32,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       break;
 
     case TransformerLevel::Level2:
+      rules.push_back(std::make_unique<ConvAddFusion>());
       break;
     default:
       ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
@@ -93,7 +94,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
 #endif
-      transformers.emplace_back(std::make_unique<ConvAddFusion>());
       transformers.emplace_back(std::make_unique<ConvMulFusion>());
       transformers.emplace_back(std::make_unique<ConvBNFusion>());
     } break;

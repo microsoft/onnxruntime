@@ -3,16 +3,21 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
-class ConvAddFusion : public onnxruntime::GraphTransformer {
+class ConvAddFusion : public RewriteRule {
  public:
-  ConvAddFusion() noexcept : onnxruntime::GraphTransformer("ConvAddFusion") {}
+  ConvAddFusion() noexcept : RewriteRule("ConvAddFusion"){}
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  /** Apply rule when op type is the following. */
+  const std::string included_op_type_ = "Conv";
+
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
+
+  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 };
 
 }  // namespace onnxruntime
