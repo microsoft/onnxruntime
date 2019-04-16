@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_SERVER_CONFIGURATION_H
-#define ONNXRUNTIME_HOSTING_SERVER_CONFIGURATION_H
+#pragma once
 
 #include <thread>
 #include <fstream>
@@ -126,4 +125,3 @@ class ServerConfiguration {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_SERVER_CONFIGURATION_H

@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_CONVERTER_H
-#define ONNXRUNTIME_HOSTING_CONVERTER_H
+#pragma once
 
 #include <google/protobuf/stubs/status.h>
 
@@ -28,5 +27,3 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
 
 }  // namespace hosting
 }  // namespace onnxruntime
-
-#endif  // ONNXRUNTIME_HOSTING_CONVERTER_H

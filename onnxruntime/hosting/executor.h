@@ -3,8 +3,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_EXECUTOR_H
-#define ONNXRUNTIME_HOSTING_EXECUTOR_H
+#pragma once
 
 #include <google/protobuf/stubs/status.h>
 
@@ -41,4 +40,3 @@ class Executor {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  //ONNXRUNTIME_HOSTING_EXECUTOR_H

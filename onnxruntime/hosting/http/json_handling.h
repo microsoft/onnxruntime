@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_JSON_HANDLING_H
-#define ONNXRUNTIME_HOSTING_HTTP_JSON_HANDLING_H
+#pragma once
 
 #include <google/protobuf/util/json_util.h>
 #include <boost/beast/http.hpp>
@@ -31,4 +30,3 @@ std::string CreateJsonError(http::status error_code, const std::string& error_me
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_HTTP_JSON_HANDLING_H

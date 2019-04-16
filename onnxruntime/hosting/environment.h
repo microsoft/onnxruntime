@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_ENVIRONMENT_H
-#define ONNXRUNTIME_HOSTING_ENVIRONMENT_H
+#pragma once
 
 #include <memory>
 
@@ -37,4 +36,3 @@ class HostingEnvironment {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  //ONNXRUNTIME_HOSTING_ENVIRONMENT_H

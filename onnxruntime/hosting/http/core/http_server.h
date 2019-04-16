@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_CORE_HTTP_SERVER_H
-#define ONNXRUNTIME_HOSTING_HTTP_CORE_HTTP_SERVER_H
+#pragma once
 
 #include <functional>
 #include <iostream>
@@ -53,4 +52,3 @@ class App {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_HTTP_BEAST_HTTP_H

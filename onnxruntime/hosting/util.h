@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_UTIL_H
-#define ONNXRUNTIME_HOSTING_UTIL_H
+#pragma once
 
 #include <google/protobuf/stubs/status.h>
 
@@ -17,4 +16,3 @@ google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common:
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  //ONNXRUNTIME_HOSTING_UTIL_H
