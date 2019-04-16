@@ -8,7 +8,7 @@
 namespace onnxruntime {
 
 /**
-@Class EliminateSlice
+@Class UnsqueezeElimination
 
 Rewrite rule that eliminates an unsqueeze operator that takes as input an initializer.
 

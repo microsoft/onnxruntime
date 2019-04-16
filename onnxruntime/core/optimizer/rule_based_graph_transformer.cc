@@ -14,7 +14,7 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
   if (op_types.empty()) {
     any_op_type_rules_.push_back(std::move(rule));
   } else {
-    std::for_each(op_types.begin(), op_types.end(),
+    std::for_each(op_types.cbegin(), op_types.cend(),
                   [&](const std::string& op_type) { op_type_to_rules_[op_type].push_back(std::move(rule)); });
   }
   return Status::OK();
