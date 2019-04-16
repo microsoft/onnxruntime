@@ -2242,7 +2242,6 @@ Status Graph::SetGraphInputsOutputs() {
     std::unordered_map<std::string, const NodeArg*> graph_inputs;
 
     // Name to NodeArg mapping of all graph node outputs.
-    // Graph outputs specified in the model must be in this map, <graph_initializers> or <graph_inputs>.
     std::unordered_map<std::string, const NodeArg*> nodes_outputs;
 
     for (auto& initializer : graph_proto_->initializer()) {
@@ -2251,6 +2250,9 @@ Status Graph::SetGraphInputsOutputs() {
       graph_initializers.insert({initializer_name, initializer_arg});
     }
 
+    // Set graph inputs.
+    // <graph_inputs_including_initializers_> contains inputs exactly specified in proto.
+    // <graph_inputs_excluding_initializers_> contains inputs without default value (specified as initializer).
     for (auto& graph_input : graph_proto_->input()) {
       auto& name = graph_input.name();
       const auto* node_arg = GetNodeArg(name);
@@ -2268,7 +2270,8 @@ Status Graph::SetGraphInputsOutputs() {
       }
     }
 
-    // Preserve output order.
+    // Set graph outputs.
+    // Graph outputs specified in the model must be nodes' outputs, initailizer or graph inputs.
     for (auto& graph_output : graph_proto_->output()) {
       auto& graph_output_name = graph_output.name();
       auto iter = nodes_outputs.find(graph_output_name);
@@ -2291,6 +2294,7 @@ Status Graph::SetGraphInputsOutputs() {
       graph_outputs_.push_back(iter->second);
     }
 
+    // Set graph value_info_.
     for (auto& graph_value_info : graph_proto_->value_info()) {
       auto& name = graph_value_info.name();
       const auto* node_arg = GetNodeArg(name);
