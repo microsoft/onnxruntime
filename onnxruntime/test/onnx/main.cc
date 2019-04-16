@@ -181,8 +181,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
-    std::vector<ITestCase*> tests =
-        LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance);
     SessionOptionsWrapper sf(env);
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
@@ -204,23 +202,6 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     if (enable_cuda) {
 #ifdef USE_CUDA
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));
-      // Filter out some flaky tests from cuda test runs. Those tests
-      // caused random segfault in CUDA 9.1. 
-      // TODO: remove this list once we fully moved to CUDA10
-      // clang-format off
-      std::unordered_set<std::string> cuda_flaky_tests = {
-        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"
-      };
-      for (auto it = tests.begin(); it != tests.end();) {
-        auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
-        if (iter != cuda_flaky_tests.end()) {
-          delete *it;
-          it = tests.erase(it);
-        }
-        else {
-          ++it;
-        }
-      }
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
@@ -243,6 +224,37 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
     }
 
+    std::unordered_set<std::string> cuda_flaky_tests = {
+      "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+
+#if (defined (_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+    //Minimize mem consumption
+    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests] (ITestCase* l) {
+      std::unique_ptr<ITestCase> test_case_ptr(l);
+      if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
+        return;
+      }
+      TestResultStat per_case_stat;
+      std::vector<ITestCase*> per_case_tests = {l};
+      TestEnv per_case_args(per_case_tests, per_case_stat, sf);
+      RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
+      stat += per_case_stat;
+    });
+#else
+    std::vector<ITestCase*> tests;
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests] (ITestCase* l) { tests.push_back(l); });
+    if (enable_cuda) {
+      for (auto it = tests.begin(); it != tests.end();) {
+        auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
+        if (iter != cuda_flaky_tests.end()) {
+          delete *it;
+          it = tests.erase(it);
+        }
+        else {
+          ++it;
+        }
+      }
+    }
     TestEnv args(tests, stat, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
@@ -250,12 +262,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
     }
-
-    std::string res = stat.ToString();
-    fwrite(res.c_str(), 1, res.size(), stdout);
     for (ITestCase* l : tests) {
       delete l;
     }
+#endif
+    std::string res = stat.ToString();
+    fwrite(res.c_str(), 1, res.size(), stdout);
   }
   // clang-format off
   std::map<std::string, std::string> broken_tests{
@@ -348,24 +360,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
   // clang-format on
 
-#ifdef _WIN32
-  broken_tests["tf_inception_resnet_v2"] = "failed: type mismatch";
-  broken_tests["tf_inception_v4"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v1_101"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v1_152"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_101"] = "failed: type mismatch";
-  broken_tests["tf_resnet_v2_152"] = "failed: type mismatch";
+#if defined (_WIN32) && !defined(_WIN64)
   broken_tests["vgg19"] = "failed: bad allocation";
-  broken_tests["tf_nasnet_large"] = "failed: bad allocation";
-  broken_tests["tf_pnasnet_large"] = "failed: bad allocation";
-  broken_tests["zfnet512"] = "failed: bad allocation";
 #endif
 
-#ifdef __GNUG__
-#ifndef __LP64__
+#if defined(__GNUG__) && !defined(__LP64__)
   broken_tests["nonzero_example"] = "failed: type mismatch";
-  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
-#endif
 #endif
 
   int result = 0;
