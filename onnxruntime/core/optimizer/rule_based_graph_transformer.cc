@@ -15,7 +15,7 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
     any_op_type_rules_.push_back(std::move(rule));
   } else {
     std::for_each(op_types.cbegin(), op_types.cend(),
-                  [&](const std::string& op_type) { op_type_to_rules_[op_type].push_back(std::move(rule)); });
+                  [&](const auto& op_type) { op_type_to_rules_[op_type].push_back(std::move(rule)); });
   }
   return Status::OK();
 }
@@ -72,4 +72,11 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
   return Status::OK();
 }
+
+size_t RuleBasedGraphTransformer::RulesCount() const {
+  return any_op_type_rules_.size() +
+         std::accumulate(op_type_to_rules_.cbegin(), op_type_to_rules_.cend(), size_t(0),
+                         [](size_t sum, const auto& rules) { return sum + rules.second.size(); });
+}
+
 }  // namespace onnxruntime

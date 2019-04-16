@@ -44,11 +44,14 @@ class RuleBasedGraphTransformer : public GraphTransformer {
     return (rules != op_type_to_rules_.cend()) ? &rules->second : nullptr;
   }
 
-  /** Get rewrite rules that are evaluated on all nodes irrespective of their op type.
+  /** Gets the rewrite rules that are evaluated on all nodes irrespective of their op type.
       @returns a pointer to the vector containing all such rewrite rules or nullptr if no such rule. */
   const std::vector<std::unique_ptr<RewriteRule>>* GetAnyOpRewriteRules() const {
     return &any_op_type_rules_;
   }
+
+  /** Returns the total number of rules that are registered in this transformer. */
+  size_t RulesCount() const;
 
  protected:
   /** Applies the given set of rewrite rules on the Node of this Graph.

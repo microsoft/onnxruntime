@@ -16,6 +16,11 @@ namespace onnxruntime {
 
 namespace transformer_utils {
 
+/** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */
+static std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
+  return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_RuleBasedTransformer";
+}
+
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel level,
                                                                const std::vector<std::string>& rules_to_enable) {
   std::vector<std::unique_ptr<RewriteRule>> rules;
@@ -121,10 +126,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     }
     return filtered_list;
   }
-}
-
-std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
-  return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_RuleBasedTransformer";
 }
 
 }  // namespace transformer_utils
