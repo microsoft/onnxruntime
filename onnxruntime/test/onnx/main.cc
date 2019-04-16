@@ -391,6 +391,9 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   broken_tests["coreml_Inceptionv3_ImageNet"] = "This model uses contrib ops.";
   broken_tests["coreml_FNS-Candy_ImageNet"] = "This model uses contrib ops.";
   broken_tests["coreml_AgeNet_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_thresholdedrelu_ImageNet_large"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_thresholdedrelu_ImageNet_small"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_thresholdedrelu_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
 #endif
 
   int result = 0;
