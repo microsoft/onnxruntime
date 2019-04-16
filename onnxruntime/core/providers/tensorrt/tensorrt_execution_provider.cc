@@ -14,7 +14,6 @@
 #include "gsl/pointers"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
-#include <stdlib.h>
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -287,11 +286,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
 
-#ifdef TENSORRT_MAX_BATCH_SIZE
-    trt_builder->setMaxBatchSize(TENSORRT_MAX_BATCH_SIZE);
-#else
-    trt_builder->setMaxBatchSize(kMaxBatchSize);
-#endif
+    const char* batch_env = getenv("TENSORRT_MAX_BATCH_SIZE");
+    if (batch_env) {
+      int max_batch_size = atoi(batch_env);
+      trt_builder->setMaxBatchSize(max_batch_size);
+    } else {
+      trt_builder->setMaxBatchSize(kMaxBatchSize);
+    }
 
     trt_builder->setMaxWorkspaceSize(kMaxWorkSpaceSize);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
