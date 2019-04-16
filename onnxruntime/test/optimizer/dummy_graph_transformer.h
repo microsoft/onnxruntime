@@ -10,7 +10,7 @@ namespace test {
 // Dummy graph transformer that does nothing, but just sets the modified value
 class DummyGraphTransformer : public GraphTransformer {
  public:
-  DummyGraphTransformer(const std::string& name) noexcept : GraphTransformer(name, "Dummy transformer for testing"),
+  DummyGraphTransformer(const std::string& name) noexcept : GraphTransformer(name),
                                                             transformer_invoked_(false) {}
 
   bool IsTransformerInvoked() const {
@@ -30,15 +30,14 @@ class DummyGraphTransformer : public GraphTransformer {
 // This is currently used to test custom transformer selection feature
 class DummyRewriteRule : public RewriteRule {
  public:
-  DummyRewriteRule(const std::string& name) noexcept : RewriteRule(name, "Dummy transformer for testing"),
-                                                       rewrite_rule_invoked_(false) {}
+  DummyRewriteRule(const std::string& name) noexcept : RewriteRule(name), rewrite_rule_invoked_(false) {}
 
   bool IsRewriteRuleInvoked() const {
     return rewrite_rule_invoked_;
   }
 
-  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
-    return std::unordered_set<std::string>();
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return std::vector<std::string>();
   }
 
  private:

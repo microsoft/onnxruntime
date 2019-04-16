@@ -19,10 +19,10 @@ It is attempted to be triggered on all nodes irrespective of their op type.
 */
 class ConstantFolding : public RewriteRule {
  public:
-  ConstantFolding() noexcept : RewriteRule("ConstantFolding", "Constant folding") {}
+  ConstantFolding() noexcept : RewriteRule("ConstantFolding") {}
 
-  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
-    return std::unordered_set<std::string>();
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return std::vector<std::string>();
   }
 
  private:

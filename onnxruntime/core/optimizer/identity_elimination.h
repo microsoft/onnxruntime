@@ -16,9 +16,9 @@ It is attempted to be triggered only on nodes with op type "Identity".
 */
 class EliminateIdentity : public RewriteRule {
  public:
-  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node") {}
+  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity") {}
 
-  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
+  std::vector<std::string> TargetOpTypes() const noexcept override {
     return {"Identity"};
   }
 

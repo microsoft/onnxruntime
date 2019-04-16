@@ -16,9 +16,9 @@ It is attempted to be triggered only on nodes with op type "Unsqueeze".
 */
 class UnsqueezeElimination : public RewriteRule {
  public:
-  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination", "Eliminate unsqueeze node") {}
+  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination") {}
 
-  std::unordered_set<std::string> TargetOpTypes() const noexcept override {
+  std::vector<std::string> TargetOpTypes() const noexcept override {
     return {"Unsqueeze"};
   }
 

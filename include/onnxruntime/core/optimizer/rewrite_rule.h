@@ -35,7 +35,7 @@ If the list of op types is left empty, that rule will be triggered for every op 
 */
 class RewriteRule {
  public:
-  RewriteRule(const std::string& name, const std::string& desc) : name_(name), desc_(desc) {}
+  RewriteRule(const std::string& name) : name_(name) {}
 
   virtual ~RewriteRule() = default;
 
@@ -44,15 +44,10 @@ class RewriteRule {
     return name_;
   }
 
-  /** Gets the description of this rewrite rule. */
-  const std::string& Description() const noexcept {
-    return desc_;
-  }
-
   /** Returns the node op types for which this rule will be triggered. If the op type of a node is not included in the
       target op types of a rule, that rule would not be considered at all. Returning an empty list indicates that we
       will attempt to trigger the rule for every op type. */
-  virtual std::unordered_set<std::string> TargetOpTypes() const noexcept = 0;
+  virtual std::vector<std::string> TargetOpTypes() const noexcept = 0;
 
   /** Checks if the condition of the rule is satisfied, and if so applies the body of the rule.
       @param[in] graph The Graph.
@@ -68,7 +63,6 @@ class RewriteRule {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RewriteRule);
 
   const std::string name_;
-  const std::string desc_;
 
   /** Checks if the Node of the given Graph satisfies the conditions of this rule. The body of the rule will be 
       evaluated if this condition function returns true. This can include a more complex pattern matching (conditions 
