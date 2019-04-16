@@ -73,7 +73,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  void SetMaxBatchSize(int max_batch_size) {
+  void SetMaxBatchSize(const int max_batch_size) {
       max_batch_size_ = max_batch_size;
   }
 
