@@ -97,6 +97,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
 
   // Prepare the output names and vector
   std::vector<std::string> output_names;
+  output_names.reserve(request.output_filter_size());
   for (const auto& name : request.output_filter()) {
     output_names.push_back(name);
   }
@@ -114,7 +115,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   }
 
   // Build the response
-  for (size_t i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0, sz = outputs.size(); i < sz; ++i) {
     onnx::TensorProto output_tensor{};
     status = MLValueToTensorProto(outputs[i], using_raw_data, std::move(logger), output_tensor);
     logger = env_.GetLogger(request_id_);
