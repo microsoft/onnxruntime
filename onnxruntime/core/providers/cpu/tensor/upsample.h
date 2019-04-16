@@ -61,6 +61,10 @@ class UpsampleBase {
       for (auto& scale : scales) {
         ORT_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
       }
+    } else {
+      for (auto& scale : scales) {
+        ORT_ENFORCE(scale > 0, "Scale value should be greater than 0.");
+      }
     }
 
     if (UpsampleMode::LINEAR == mode) {
