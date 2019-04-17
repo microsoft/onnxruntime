@@ -53,8 +53,10 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       if (input_dims_changed)
         s_.last_x_dims = x_dims;
 
-      if (w_dims_changed)
+      if (w_dims_changed) {
         s_.last_w_dims = w_dims;
+        s_.cached_benchmark_results.clear();
+      }
 
       Prepare p;
       ORT_RETURN_IF_ERROR(PrepareForCompute(context, has_bias, p, dynamic_padding));
@@ -72,8 +74,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(group_)));
 
-      IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
-
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
         ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
@@ -88,26 +88,33 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
       y_data = reinterpret_cast<CudaT*>(p.Y->template MutableData<T>());
 
-      // set math type to tensor core before algorithm search
-      if (std::is_same<T, MLFloat16>::value)
-        CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+      if (!s_.cached_benchmark_results.contains(x_dims)) {
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
 
-      cudnnConvolutionBwdDataAlgoPerf_t perf;
-      int algo_count = 1;
-      CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
-          CudnnHandle(),
-          s_.filter_desc,
-          w_data,
-          s_.x_tensor,
-          x_data,
-          s_.conv_desc,
-          s_.y_tensor,
-          y_data,
-          1,
-          &algo_count,
-          &perf,
-          algo_search_workspace.get(),
-          AlgoSearchWorkspaceSize));
+        // set math type to tensor core before algorithm search
+        if (std::is_same<T, MLFloat16>::value)
+          CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
+
+        cudnnConvolutionBwdDataAlgoPerf_t perf;
+        int algo_count = 1;
+        CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
+            CudnnHandle(),
+            s_.filter_desc,
+            w_data,
+            s_.x_tensor,
+            x_data,
+            s_.conv_desc,
+            s_.y_tensor,
+            y_data,
+            1,
+            &algo_count,
+            &perf,
+            algo_search_workspace.get(),
+            AlgoSearchWorkspaceSize));
+        s_.cached_benchmark_results.insert(x_dims, {perf.algo, perf.memory, perf.mathType});
+      }
+
+      const auto& perf = s_.cached_benchmark_results.at(x_dims);
       CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, perf.mathType));
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;

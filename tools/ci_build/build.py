@@ -135,6 +135,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
+    parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
+    parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -271,9 +273,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     return True
 
 def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
-    """Sets up the test data, downloading it if needed."""
-    if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
-        raise BuildError("Failed to set up test data.")
+    if test_data_url is not None:
+        """Sets up the test data, downloading it if needed."""
+        if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
+            raise BuildError("Failed to set up test data.")
 
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
@@ -323,6 +326,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # TensorRT provider currently only supports full_protobuf option.
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_tensorrt else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
+                 "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -556,17 +560,26 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         else:
             run_subprocess([exe] + cmd, cwd=cwd)
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
+
         if is_windows():
             cwd = os.path.join(cwd, config)
-        if use_tensorrt:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
-        elif use_cuda:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
+        if nightly_build:
+            if use_tensorrt:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt', '--nightly_build'], cwd=cwd)
+            elif use_cuda:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda', '--nightly_build'], cwd=cwd)
+            else:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--nightly_build'], cwd=cwd)
         else:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
+            if use_tensorrt:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
+            elif use_cuda:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
+            else:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
         if is_ubuntu_1604():
             run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
 
@@ -696,8 +709,9 @@ def main():
             update_submodules(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
-            if not args.test_data_url or not args.test_data_checksum:
-               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            if args.download_test_data:
+                if not args.test_data_url or not args.test_data_checksum:
+                   raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         path_to_protoc_exe = None
@@ -716,10 +730,12 @@ def main():
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
-    if (args.test):
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm, args.use_tensorrt)
+    if args.test :
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
+                              args.enable_pybind if not args.skip_onnx_tests else False,
+                              args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
-        if (args.enable_onnx_tests):
+        if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
             onnx_test_data_dir = '/data/onnx'
             if is_windows() or not os.path.exists(onnx_test_data_dir):
@@ -741,7 +757,8 @@ def main():
 
     if args.build:
         if args.build_wheel:
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt)
+            nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt, nightly_build)
     
     if args.gen_doc:
         generate_documentation(source_dir, build_dir, configs)

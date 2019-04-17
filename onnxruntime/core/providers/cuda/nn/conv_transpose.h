@@ -18,7 +18,7 @@ class ConvTranspose : public CudaKernel, public ConvTransposeBase {
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 
  private:
-  mutable CudnnConvState<cudnnConvolutionBwdDataAlgo_t> s_;
+  mutable CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t> s_;
 };
 
 }  // namespace cuda

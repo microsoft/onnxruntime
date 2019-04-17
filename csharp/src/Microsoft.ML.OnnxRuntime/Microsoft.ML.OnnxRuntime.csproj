@@ -72,25 +72,28 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
-
+    <None Include="$(NativeBuildOutputDir)\libiomp5md.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')"
+          PackagePath="\runtimes\win-x64\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt"
           PackagePath="\"
           Pack="true"
           Visible="false"
     />
-
     <None Include="$(OnnxRuntimeCsharpRoot)\..\docs\CSharp_API.md"
           PackagePath="\README.md"
           Pack="true"
           Visible="false"
     />
-
     <None Include="$(PackageId).targets" 
           PackagePath="\build\$(TargetFramework);\build\native"
           Pack="true"
           Visible="false"
     />
-
     <None Include="$(PackageId).props"
           PackagePath="\build\$(TargetFramework);\build\native"
           Pack="true"

@@ -299,12 +299,15 @@ ONNX_CPU_OPERATOR_KERNEL(
     8,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Mean_8<float>);
-
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib {
 ONNX_CPU_OPERATOR_KERNEL(
     Scale,
     1,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Scale<float>);
+}
+#endif
 
 ONNX_CPU_OPERATOR_KERNEL(
     Erf,
@@ -1008,6 +1011,8 @@ REG_EXPAND_KERNEL(uint64_t)
 REG_EXPAND_KERNEL(bool)
 REG_EXPAND_KERNEL(MLFloat16)
 
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib{
 template <>
 Status Scale<float>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
@@ -1015,6 +1020,8 @@ Status Scale<float>::Compute(OpKernelContext* ctx) const {
   EigenMap<float>(Y) = scale_ * EigenMap<float>(X);
   return Status::OK();
 }
+}
+#endif
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
