@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-// only register this operator if low precision computation is enabled. 
+// only register this operator if low precision computation is enabled.
 ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul,
     kOnnxDomain,
@@ -52,13 +52,13 @@ void QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, i
   uint32_t* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
   auto current_exponent = (*fp_as_bits >> 23);
   // bring multiplier in [.5,1) range and calculate the shift
-  auto bumped_multiplier_as_bits = 
+  auto bumped_multiplier_as_bits =
       (*fp_as_bits & UINT32_C(0x007fffff)) | UINT32_C(0x3f000000);
-  float* bumped_multiplier = 
+  float* bumped_multiplier =
       reinterpret_cast<float*>(&bumped_multiplier_as_bits);
   auto shift = 126 - current_exponent;
   // convert to fixed point number
-  std::int64_t int_multiplier = 
+  std::int64_t int_multiplier =
       static_cast<std::int64_t>(std::round(*bumped_multiplier * (1ll << 31)));
 
   *integer_multiplier = static_cast<int32_t>(int_multiplier);
@@ -66,11 +66,11 @@ void QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, i
 }
 
 void ScaleAndZeropointPairValidationHelper(const Tensor* scale, const Tensor* zeropoint) {
-  ORT_ENFORCE(scale->Shape().NumDimensions() == 0 || 
-      (scale->Shape().NumDimensions() == 1 && scale->Shape().GetDims().size() == 1), 
+  ORT_ENFORCE(scale->Shape().NumDimensions() == 0 ||
+      (scale->Shape().NumDimensions() == 1 && scale->Shape().GetDims().size() == 1),
       "scale must be a scalar");
-  ORT_ENFORCE(zeropoint->Shape().NumDimensions() == 0 || 
-      (zeropoint->Shape().NumDimensions() == 1 && zeropoint->Shape().GetDims().size() == 1), 
+  ORT_ENFORCE(zeropoint->Shape().NumDimensions() == 0 ||
+      (zeropoint->Shape().NumDimensions() == 1 && zeropoint->Shape().GetDims().size() == 1),
       "zeropoint must be a scalar");
 }
 
@@ -104,7 +104,7 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
   int right_shift;
   QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
 
-  for (int i = 0; i < helper.OutputOffsets().size(); i++) {
+  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
                      b->template Data<uint8_t>() + helper.RightOffsets()[i],
                      y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],

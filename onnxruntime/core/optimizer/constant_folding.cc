@@ -33,7 +33,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   // Go over all output node args and substitute them with the newly computed tensors, which will be
   // added to the graph as initializers.
   ORT_ENFORCE(fetches.size() == node.OutputDefs().size());
-  for (int fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+  for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
     MLValue& mlvalue = fetches[fetch_idx];
 
     // Build the TensorProto that corresponds to the computed MLValue and add it as initializer to the graph.
