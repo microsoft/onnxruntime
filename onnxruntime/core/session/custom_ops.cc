@@ -84,7 +84,7 @@ struct CustomOpKernel : OpKernel {
 };
 
 common::Status GetProviderString(OrtExecutionProviderType provider, std::string &providerString) {
-  static std::unordered_map<OrtExecutionProviderType, std::string> providerMap{
+  static const std::unordered_map<OrtExecutionProviderType, std::string> providerMap{
     { ORT_EXECUTION_PROVIDER_CPU, kCpuExecutionProvider },
     { ORT_EXECUTION_PROVIDER_CUDA, kCudaExecutionProvider },
     { ORT_EXECUTION_PROVIDER_MKL_DNN, kMklDnnExecutionProvider },
@@ -92,8 +92,9 @@ common::Status GetProviderString(OrtExecutionProviderType provider, std::string 
     { ORT_EXECUTION_PROVIDER_BRAIN_SLICE, kBrainSliceExecutionProvider },
     { ORT_EXECUTION_PROVIDER_TENSORRT, kTensorrtExecutionProvider },
   };
-  if (providerMap.count(provider) > 0) {
-    providerString = providerMap.at(provider);
+  auto it = providerMap.find(provider);
+  if (it != providerMap.end()) {
+    providerString = it->second;
     return Status::OK();
   } else {
     return Status(common::ONNXRUNTIME, common::FAIL, "Unsupported ExecutionProvider type");
