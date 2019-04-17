@@ -68,7 +68,7 @@ if [ $BUILD_DEVICE = "cpu" ]; then
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
+         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
 else
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     nvidia-docker run --rm -h $HOSTNAME \
@@ -80,7 +80,7 @@ else
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-        -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" &
+        -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
 fi
 wait -n
 

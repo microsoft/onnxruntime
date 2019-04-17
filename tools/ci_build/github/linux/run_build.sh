@@ -4,7 +4,6 @@ set -e -o -x
 id
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
-BUILD_OS="ubuntu16.04"
 
 while getopts c:d:x: parameter_Option
 do case "${parameter_Option}"
