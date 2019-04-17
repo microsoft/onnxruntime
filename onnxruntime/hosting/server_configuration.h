@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_SERVER_CONFIGURATION_H
-#define ONNXRUNTIME_HOSTING_SERVER_CONFIGURATION_H
+#pragma once
 
 #include <thread>
 #include <fstream>
@@ -16,8 +15,13 @@ namespace hosting {
 
 namespace po = boost::program_options;
 
+// Enumerates the different type of results which can occur
+// The three different types are:
+// 0. ExitSuccess which is when the program should exit with EXIT_SUCCESS
+// 1. ExitFailure when program should exit with EXIT_FAILURE
+// 2. No need for exiting the program, continue
 enum class Result {
-  ExitSuccess = 1,
+  ExitSuccess,
   ExitFailure,
   ContinueSuccess
 };
@@ -33,7 +37,7 @@ static std::unordered_map<std::string, onnxruntime::logging::Severity> supported
 // Provides sane default values
 class ServerConfiguration {
  public:
-  const std::string full_desc = "ONNX Hosting: host an ONNX model for inferencing with ONNXRuntime";
+  const std::string full_desc = "ONNX Hosting: host an ONNX model with ONNX Runtime";
   std::string model_path;
   std::string address = "0.0.0.0";
   int http_port = 8001;
@@ -43,8 +47,8 @@ class ServerConfiguration {
   ServerConfiguration() {
     desc.add_options()("help,h", "Shows a help message and exits");
     desc.add_options()("logging_level", po::value(&logging_level_str)->default_value(logging_level_str), "Logging level. Allowed options (case sensitive): verbose, info, warning, error, fatal");
-    desc.add_options()("model_path,m", po::value(&model_path)->required(), "Path to ONNX model");
-    desc.add_options()("address,a", po::value(&address)->default_value(address), "The base HTTP address");
+    desc.add_options()("model_path", po::value(&model_path)->required(), "Path to ONNX model");
+    desc.add_options()("address", po::value(&address)->default_value(address), "The base HTTP address");
     desc.add_options()("http_port", po::value(&http_port)->default_value(http_port), "HTTP port to listen to requests");
     desc.add_options()("num_http_threads", po::value(&num_http_threads)->default_value(num_http_threads), "Number of http threads");
   }
@@ -52,9 +56,9 @@ class ServerConfiguration {
   // Parses argc and argv and sets the values for the class
   // Returns an enum with three options: ExitSuccess, ExitFailure, ContinueSuccess
   // ExitSuccess and ExitFailure means the program should exit but is left to the caller
-  Result ParseInput(int ac, char** av) {
+  Result ParseInput(int argc, char** argv) {
     try {
-      po::store(po::command_line_parser(ac, av).options(desc).run(), vm);  // can throw
+      po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);  // can throw
 
       if (ContainsHelp()) {
         PrintHelp(std::cout, full_desc);
@@ -126,4 +130,3 @@ class ServerConfiguration {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_SERVER_CONFIGURATION_H

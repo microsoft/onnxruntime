@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_UTIL_H
-#define ONNXRUNTIME_HOSTING_HTTP_UTIL_H
+#pragma once
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http/status.hpp>
@@ -35,4 +34,3 @@ SupportedContentType GetResponseContentType(const HttpContext& context);
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_HTTP_UTIL_H

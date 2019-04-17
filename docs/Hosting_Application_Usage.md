@@ -1,3 +1,5 @@
+<h1><span style="color:red">Note: Hosting Application is still in beta state. It's currently not ready for production environments.</span></h1>
+
 # How to Use ONNX Hosting Application REST API for Prediction
 
 ONNX Hosting provides a REST API for prediction. The goal of the project is to make it easy to "host" any ONNX model as a RESTful service. The CLI command to start the service is shown below:

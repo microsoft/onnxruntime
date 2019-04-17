@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_CORE_LISTENER_H
-#define ONNXRUNTIME_HOSTING_HTTP_CORE_LISTENER_H
+#pragma once
 
 #include <memory>
 
@@ -43,4 +42,3 @@ class Listener : public std::enable_shared_from_this<Listener> {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_HTTP_LISTENER_H

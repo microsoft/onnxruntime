@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace hosting {
 namespace test {
 
-TEST(PositiveTests, ConfigParsingFullArgs) {
+TEST(PositiveTests, ConfigParsingAllArgs) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--model_path"), const_cast<char*>("testdata/mul_1.pb"),
@@ -29,28 +29,10 @@ TEST(PositiveTests, ConfigParsingFullArgs) {
   EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kINFO);
 }
 
-TEST(PositiveTests, ConfigParsingShortArgs) {
-  char* test_argv[] = {
-      const_cast<char*>("/path/to/binary"),
-      const_cast<char*>("-m"), const_cast<char*>("testdata/mul_1.pb"),
-      const_cast<char*>("-a"), const_cast<char*>("4.4.4.4"),
-      const_cast<char*>("--http_port"), const_cast<char*>("5001"),
-      const_cast<char*>("--num_http_threads"), const_cast<char*>("2")};
-
-  onnxruntime::hosting::ServerConfiguration config{};
-  Result res = config.ParseInput(9, test_argv);
-  EXPECT_EQ(res, Result::ContinueSuccess);
-  EXPECT_EQ(config.model_path, "testdata/mul_1.pb");
-  EXPECT_EQ(config.address, "4.4.4.4");
-  EXPECT_EQ(config.http_port, 5001);
-  EXPECT_EQ(config.num_http_threads, 2);
-  EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kVERBOSE);
-}
-
 TEST(PositiveTests, ConfigParsingDefaults) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
-      const_cast<char*>("-m"), const_cast<char*>("testdata/mul_1.pb"),
+      const_cast<char*>("--model"), const_cast<char*>("testdata/mul_1.pb"),
       const_cast<char*>("--num_http_threads"), const_cast<char*>("3")};
 
   onnxruntime::hosting::ServerConfiguration config{};

@@ -3,8 +3,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_EXECUTOR_H
-#define ONNXRUNTIME_HOSTING_EXECUTOR_H
+#pragma once
 
 #include <google/protobuf/stubs/status.h>
 
@@ -16,7 +15,7 @@ namespace hosting {
 
 class Executor {
  public:
-  Executor(HostingEnvironment&& hosting_env, std::string request_id) : env_(hosting_env),
+  Executor(std::shared_ptr<HostingEnvironment> hosting_env, std::string request_id) : env_(hosting_env),
                                                                             request_id_(std::move(request_id)),
                                                                             using_raw_data(true) {}
 
@@ -27,7 +26,7 @@ class Executor {
                                          /* out */ onnxruntime::hosting::PredictResponse& response);
 
  private:
-  HostingEnvironment& env_;
+  std::shared_ptr<HostingEnvironment> env_;
   const std::string request_id_;
   bool using_raw_data;
 
@@ -41,4 +40,3 @@ class Executor {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  //ONNXRUNTIME_HOSTING_EXECUTOR_H

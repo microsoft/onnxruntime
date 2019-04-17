@@ -11,7 +11,7 @@ namespace beast = boost::beast;    // from <boost/beast.hpp>
 using tcp = boost::asio::ip::tcp;  // from <boost/asio/ip/tcp.hpp>
 
 HttpSession::HttpSession(const Routes& routes, tcp::socket socket)
-    : routes_(std::move(routes)), socket_(std::move(socket)), strand_(socket_.get_executor()) {
+    : routes_(routes), socket_(std::move(socket)), strand_(socket_.get_executor()) {
 }
 
 void HttpSession::DoRead() {

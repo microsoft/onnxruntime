@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef ONNXRUNTIME_HOSTING_HTTP_CORE_HTTP_SESSION_H
-#define ONNXRUNTIME_HOSTING_HTTP_CORE_HTTP_SESSION_H
+#pragma once
 
 #include <memory>
 #include <boost/beast/version.hpp>
@@ -78,4 +77,3 @@ class HttpSession : public std::enable_shared_from_this<HttpSession> {
 }  // namespace hosting
 }  // namespace onnxruntime
 
-#endif  // ONNXRUNTIME_HOSTING_HTTP_HTTP_SESSION_H
