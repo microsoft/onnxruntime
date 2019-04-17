@@ -83,6 +83,23 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
+common::Status GetProviderString(OrtExecutionProviderType provider, std::string &providerString) {
+  static std::unordered_map<OrtExecutionProviderType, std::string> providerMap{
+    { ORT_EXECUTION_PROVIDER_CPU, kCpuExecutionProvider },
+    { ORT_EXECUTION_PROVIDER_CUDA, kCudaExecutionProvider },
+    { ORT_EXECUTION_PROVIDER_MKL_DNN, kMklDnnExecutionProvider },
+    { ORT_EXECUTION_PROVIDER_NUPHAR, kNupharExecutionProvider },
+    { ORT_EXECUTION_PROVIDER_BRAIN_SLICE, kBrainSliceExecutionProvider },
+    { ORT_EXECUTION_PROVIDER_TENSORRT, kTensorrtExecutionProvider },
+  };
+  if (providerMap.count(provider) > 0) {
+    providerString = providerMap.at(provider);
+    return Status::OK();
+  } else {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Unsupported ExecutionProvider type");
+  }
+}
+
 common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains, std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
@@ -121,13 +138,9 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
           .SetDomain(domain->domain_)
           .SinceVersion(1);
       if (&op->GetExecutionProviderType) {
-        auto provider = op->GetExecutionProviderType(op);
-        if (provider == ORT_EXECUTION_PROVIDER_CPU)
-          def_builder.Provider(onnxruntime::kCpuExecutionProvider);
-        else if (provider == ORT_EXECUTION_PROVIDER_CUDA)
-          def_builder.Provider(onnxruntime::kCudaExecutionProvider);
-        else
-          return Status(common::ONNXRUNTIME, common::FAIL, "Unsupported ExecutionProvider type");
+        std::string provider;
+        ORT_RETURN_IF_ERROR(GetProviderString(op->GetExecutionProviderType(op), provider));
+        def_builder.Provider(provider);
       } else {
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
       }
