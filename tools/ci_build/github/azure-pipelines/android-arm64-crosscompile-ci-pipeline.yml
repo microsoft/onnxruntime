@@ -2,9 +2,6 @@ jobs:
 - job: Linux_CI_Dev
   pool: Linux-CPU
   steps:
-    - checkout: self
-      submodules: true
-
     - template: templates/set-test-data-variables-step.yml
 
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d cpu'
