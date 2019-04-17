@@ -1,7 +1,6 @@
 jobs:
 - job: Linux_CI_Dev
-  pool:
-    vmImage: 'ubuntu-16.04'
+  pool: Linux-CPU
   steps:
     - checkout: self
       submodules: true
@@ -10,6 +9,10 @@ jobs:
 
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d cpu'
       displayName: 'Command Line Script'
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
