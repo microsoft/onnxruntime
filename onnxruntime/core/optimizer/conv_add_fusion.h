@@ -8,7 +8,7 @@
 namespace onnxruntime {
 
 /**
-@Class EliminateIdentity
+@Class ConvAddFusion
 
 Rewrite rule that fuses two Conv+Add nodes to a single Conv node.
 

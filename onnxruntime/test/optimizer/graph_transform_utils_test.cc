@@ -38,7 +38,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   ASSERT_TRUE(transformers.size() != 0);
 
   // Transformer name match test
-  std::vector<std::string> custom_list = {"EliminateIdentity", "ConvBNFusion", "ConvMulFusion", "abc", "def"};
+  std::vector<std::string> custom_list = {"EliminateIdentity", "GemmActivationFusion", "MatMulAddFusion", "abc", "def"};
   transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
   // validate each rule returned is present in the custom list

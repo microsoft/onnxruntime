@@ -102,7 +102,7 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) {
     return false;
   }
 
-  const Node& next_node = *node.OutputNodesBegin();
+  const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", 7) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
       next_node.GetInputEdgesCount() != 1 ||
