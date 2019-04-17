@@ -14,7 +14,7 @@ o) BUILD_OS=${OPTARG};;
 esac
 done
 
-if [ $BUILD_OS = "Android" ]; then
+if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
     /opt/cmake/bin/cmake -DCMAKE_TOOLCHAIN_FILE=/android_ndk/build/cmake/android.toolchain.cmake -DANDROID_CPP_FEATURES=exceptions -DANDROID_PLATFORM=android-28 -DANDROID_ABI=arm64-v8a -DCMAKE_BUILD_TYPE=Release -Donnxruntime_CROSS_COMPILING=ON -Donnxruntime_BUILD_x86=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
