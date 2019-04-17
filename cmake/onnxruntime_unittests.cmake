@@ -539,5 +539,5 @@ endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas)
+target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas onnxruntime_common Threads::Threads)
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
