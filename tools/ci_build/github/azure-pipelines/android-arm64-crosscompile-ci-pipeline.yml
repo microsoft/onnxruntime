@@ -3,6 +3,9 @@ jobs:
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
+    - checkout: self
+      submodules: true
+
     - template: templates/set-test-data-variables-step.yml
 
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d cpu'
