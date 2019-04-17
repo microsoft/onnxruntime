@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-project(onnxruntime_hosting)
+set(HOSTING_APP_NAME "onnxruntime_hosting")
 
 # Generate .h and .cc files from protobuf file
 add_library(hosting_proto
@@ -97,8 +97,8 @@ target_link_libraries(onnxruntime_hosting_lib PRIVATE
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_hosting_srcs} ${onnxruntime_hosting_lib_srcs} ${onnxruntime_hosting_lib})
 
 # Hosting Application
-add_executable(${PROJECT_NAME} ${onnxruntime_hosting_srcs})
-add_dependencies(${PROJECT_NAME} onnx hosting_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+add_executable(${HOSTING_APP_NAME} ${onnxruntime_hosting_srcs})
+add_dependencies(${HOSTING_APP_NAME} onnx hosting_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
@@ -106,14 +106,14 @@ if(NOT WIN32)
   endif()
 endif()
 
-onnxruntime_add_include_to_target(${PROJECT_NAME} onnxruntime_session onnxruntime_hosting_lib gsl onnx onnx_proto hosting_proto)
+onnxruntime_add_include_to_target(${HOSTING_APP_NAME} onnxruntime_session onnxruntime_hosting_lib gsl onnx onnx_proto hosting_proto)
 
-target_include_directories(${PROJECT_NAME} PRIVATE
+target_include_directories(${HOSTING_APP_NAME} PRIVATE
     ${ONNXRUNTIME_ROOT}
     ${ONNXRUNTIME_ROOT}/hosting/http
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
+target_link_libraries(${HOSTING_APP_NAME} PRIVATE
     onnxruntime_hosting_http_core_lib
     onnxruntime_hosting_lib
 )
