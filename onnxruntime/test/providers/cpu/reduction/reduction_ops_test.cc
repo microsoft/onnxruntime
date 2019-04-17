@@ -259,6 +259,18 @@ TEST(ReductionOpTest, ReduceLogSum) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceLogSum_samesize) {
+  OpTester test("ReduceLogSum");
+  test.AddAttribute("axes", std::vector<int64_t>{2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 1}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddOutput<float>("reduced", {3, 2, 1},
+                        {0.0f, 0.6931471f,
+                         1.09861230f, 1.38629436f,
+                         1.60943794f, 1.79175949f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceLogSum_do_not_keepdims_2) {
   OpTester test("ReduceLogSum");
   test.AddAttribute("axes", std::vector<int64_t>{0});

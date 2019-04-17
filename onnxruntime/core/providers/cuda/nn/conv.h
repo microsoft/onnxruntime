@@ -44,7 +44,6 @@ struct vector_hash {
 template <typename Key, typename T,
           typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>,
-          typename Allocator = std::allocator<std::pair<const Key, T>>,
           typename ListAllocator = std::allocator<Key>>
 class lru_unordered_map {
  public:
@@ -96,13 +95,14 @@ private:
     T value;
     iterator_type lru_iterator;
   };
+  using MapAllocator = std::allocator<std::pair<const Key, value_type>>;
 
   void move_to_front(iterator_type it) {
     lru_list_.splice(lru_list_.begin(), lru_list_, it);
   }
 
   size_t max_size_;
-  std::unordered_map<Key, value_type, Hash, KeyEqual, Allocator> items_;
+  std::unordered_map<Key, value_type, Hash, KeyEqual, MapAllocator> items_;
   list_type lru_list_;
 };
 
