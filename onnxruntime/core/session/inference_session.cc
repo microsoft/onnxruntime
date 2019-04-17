@@ -512,7 +512,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto iter = input_def_map_.find(feed_names[i]);
     if (input_def_map_.end() == iter) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Names:", feed_names[i]);
+                             "Invalid Feed Input Name:", feed_names[i]);
     }
 
     auto expected_type = utils::GetMLDataType(*iter->second);
