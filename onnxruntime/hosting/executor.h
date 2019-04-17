@@ -15,7 +15,7 @@ namespace hosting {
 
 class Executor {
  public:
-  Executor(HostingEnvironment&& hosting_env, std::string request_id) : env_(hosting_env),
+  Executor(std::shared_ptr<HostingEnvironment> hosting_env, std::string request_id) : env_(hosting_env),
                                                                             request_id_(std::move(request_id)),
                                                                             using_raw_data(true) {}
 
@@ -26,7 +26,7 @@ class Executor {
                                          /* out */ onnxruntime::hosting::PredictResponse& response);
 
  private:
-  HostingEnvironment& env_;
+  std::shared_ptr<HostingEnvironment> env_;
   const std::string request_id_;
   bool using_raw_data;
 
