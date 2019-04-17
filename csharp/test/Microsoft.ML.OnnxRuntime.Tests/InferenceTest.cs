@@ -119,7 +119,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Contains("Missing Input", ex.Message);
+            Assert.Contains("Invalid Feed Input", ex.Message);
             session.Dispose();
         }
 
