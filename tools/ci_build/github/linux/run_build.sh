@@ -5,7 +5,7 @@ id
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 
-while getopts c:d:x: parameter_Option
+while getopts d:x:o: parameter_Option
 do case "${parameter_Option}"
 in
 d) BUILD_DEVICE=${OPTARG};;
