@@ -5,7 +5,7 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory)'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d cpu'
       displayName: 'Command Line Script'
 
     - template: templates/clean-agent-build-directory-step.yml
