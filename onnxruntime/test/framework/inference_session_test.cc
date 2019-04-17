@@ -1264,7 +1264,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  for (int i = 0; i < Y_data.size(); ++i)
+  for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
@@ -1287,7 +1287,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     if (seq_start > 0) {
       // continue from truncated sequence
       ASSERT_TRUE(fetches.size() == output_names.size());
-      for (int i_output = 0; i_output < output_names.size(); ++i_output) {
+      for (size_t i_output = 0; i_output < output_names.size(); ++i_output) {
         auto iter = init_state_map.find(output_names[i_output]);
         if (iter != init_state_map.end())
           truncated_feeds.insert(std::make_pair(iter->second, fetches[i_output]));
