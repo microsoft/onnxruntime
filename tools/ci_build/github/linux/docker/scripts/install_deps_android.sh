@@ -2,7 +2,7 @@
 set -e
 #download Android NDK r19c
 aria2c -q -d /tmp https://dl.google.com/android/repository/android-ndk-r19c-linux-x86_64.zip
-unzip -oq /tmp/android-ndk-r19c-linux-x86_64.zip -d /android_ndk
+unzip -oq /tmp/android-ndk-r19c-linux-x86_64.zip -d /tmp/android-ndk && mv /tmp/android-ndk/* /android-ndk
 #install ninja
 aria2c -q -d /tmp https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip
 unzip -oq /tmp/ninja-linux.zip -d /usr/bin
