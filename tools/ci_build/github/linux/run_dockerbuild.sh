@@ -19,6 +19,7 @@ p) PYTHON_VER=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 # "cuda10.0-cudnn7.3, cuda9.1-cudnn7.1"
 c) CUDA_VER=${OPTARG};;
+# x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
 esac
 done
