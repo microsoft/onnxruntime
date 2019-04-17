@@ -108,7 +108,6 @@ bool PerformanceRunner::Initialize() {
   performance_result_.model_name = narrow_model_name;
 
   test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
-  test_model_info_ = nullptr;
 
   // TODO: Place input tensor on cpu memory if mkldnn provider type to avoid CopyTensor logic in CopyInputAcrossDevices
   if (test_case_->GetDataCount() <= 0) {
@@ -118,12 +117,18 @@ bool PerformanceRunner::Initialize() {
   std::unordered_map<std::string, OrtValue*> feeds;
   test_case_->LoadTestData(0 /* id */, b_, feeds, true);
   // Discard the names in feeds
-  size_t input_index = 0;
-  for (auto& kvp : feeds) {
-    inputs_.Set(input_index, kvp.second);
-    ++input_index;
+  int input_count = test_model_info_->GetInputCount();
+  for (int i = 0; i != input_count; ++i) {
+    auto iter = feeds.find(test_model_info_->GetInputName(i));
+    if (iter == feeds.end()) {
+      std::cout << "there is no test input data for input " << test_model_info_->GetInputName(i) << " and model "
+                << test_case_->GetTestCaseName() << std::endl;
+      return false;
+    }
+    inputs_.Set(static_cast<size_t>(i), iter->second);
   }
   test_case_.reset(nullptr);
+  test_model_info_ = nullptr;
   return true;
 }
 
