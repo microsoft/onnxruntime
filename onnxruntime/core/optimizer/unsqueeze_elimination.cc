@@ -66,7 +66,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
   input_def->SetShape(shape);
 
   // Remove Unsqueeze node.
-  if (graph_utils::RemoveSingleInputNode(graph, node)) {
+  if (graph_utils::RemoveNode(graph, node)) {
     removed = modified = true;
   }
 

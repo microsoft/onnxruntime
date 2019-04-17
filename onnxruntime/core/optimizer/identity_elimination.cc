@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  if (graph_utils::RemoveSingleInputNode(graph, node)) {
+  if (graph_utils::RemoveNode(graph, node)) {
     modified = deleted = true;
   }
 

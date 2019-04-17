@@ -39,8 +39,9 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
+    // A node might not be found as it might have already been deleted from one of the rules.
     if (!node) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+      continue;
     }
 
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {

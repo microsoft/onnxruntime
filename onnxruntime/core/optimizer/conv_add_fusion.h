@@ -7,6 +7,13 @@
 
 namespace onnxruntime {
 
+/**
+@Class EliminateIdentity
+
+Rewrite rule that fuses two Conv+Add nodes to a single Conv node.
+
+It is attempted to be triggered only on nodes with op type "Conv".
+*/
 class ConvAddFusion : public RewriteRule {
  public:
   ConvAddFusion() noexcept : RewriteRule("ConvAddFusion"){}

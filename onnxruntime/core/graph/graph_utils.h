@@ -64,10 +64,14 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
-/** Removes the given single-input Node from the Graph. The single input might be either
-    another node or an initializer, but not an implicit input. The node should have a single
-    output but can have multiple output edges. */
-bool RemoveSingleInputNode(Graph& graph, Node& node);
+/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
+    We support the removal of the Node if it has no implicit inputs and a single output (but it can have multiple
+    output edges). As for the Node's inputs, we support the following cases:
+    - If the Node has a single incoming node (and possibly multiple initializers), we can remove the Node and
+      connect its incoming node to its outgoing nodes.
+    - If the Node has a single initializer as input, we remove the Node and feed the initializer as input to its
+      output nodes. */
+bool RemoveNode(Graph& graph, Node& node);
 
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
