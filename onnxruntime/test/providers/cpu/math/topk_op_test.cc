@@ -39,8 +39,8 @@ static void RunTest(int op_set,
   // Run test and check results
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }  
+    excluded_providers.insert(kTensorrtExecutionProvider);//Disable TensorRT because of unsupported data types
+  }
   test.Run(expect_result, expected_err_str, excluded_providers);
 }
 

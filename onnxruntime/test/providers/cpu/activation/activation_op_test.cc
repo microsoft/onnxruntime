@@ -26,6 +26,8 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   test.AddInput<float>("X", dims, input_vals);
   test.AddOutput<float>("Y", dims, expected_vals);
+
+  // Disable TensorRT on unsupported tests
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);

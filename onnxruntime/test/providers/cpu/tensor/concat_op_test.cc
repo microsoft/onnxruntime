@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
+
 TEST(MathOpTest, Concat1D_string) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});

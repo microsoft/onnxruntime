@@ -286,7 +286,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
 
-    const char* batch_env = getenv("TENSORRT_MAX_BATCH_SIZE");
+    const char* batch_env = getenv("ORT_TENSORRT_MAX_BATCH_SIZE");
     if (batch_env) {
       const int max_batch_size = atoi(batch_env);
       SetMaxBatchSize(max_batch_size);

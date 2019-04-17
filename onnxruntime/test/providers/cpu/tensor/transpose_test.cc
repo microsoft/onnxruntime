@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because of errors in the parser
+
 template <class T>
 void TransposeTest(std::vector<int64_t>& input_shape,
                    std::vector<T>& input_vals,

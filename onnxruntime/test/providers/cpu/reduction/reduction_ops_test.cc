@@ -9,6 +9,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
+
 template <typename OutT>
 void TestReduceOp(const std::string& op,
                   const std::vector<int64_t>& input_dims,

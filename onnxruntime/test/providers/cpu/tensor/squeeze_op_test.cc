@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because axis=0 is not supported
+
 TEST(SqueezeOpTest, Squeeze_1) {
   OpTester test("Squeeze");
   test.AddAttribute("axes", std::vector<int64_t>{0});

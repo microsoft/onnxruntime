@@ -211,6 +211,7 @@ void RunTest(bool condition_value,
   }
 
   std::unordered_set<std::string> excluded_providers;
+  // Disable TensorRT on SymbolicShape or NoShape tests
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
   }

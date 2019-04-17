@@ -480,7 +480,8 @@ def setup_tensorrt_vars(args):
                              "tensorrt_home='{}' valid={}."
                              .format(tensorrt_home, tensorrt_home_valid))
 
-        os.environ["TENSORRT_MAX_BATCH_SIZE"] = "13"
+        # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests 
+        os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
 
     return tensorrt_home
 

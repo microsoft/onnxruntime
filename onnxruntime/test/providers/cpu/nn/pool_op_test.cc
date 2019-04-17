@@ -8,6 +8,8 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because "pads" attribute is not supported
+
 TEST(PoolTest, MaxPool) {
   OpTester test("MaxPool");
 

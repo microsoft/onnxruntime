@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because only constant mode and value 0 is supported for "Pad" node
+
 TEST(TensorOpTest, Pad_Spec_Example) {
   OpTester test("Pad");
 

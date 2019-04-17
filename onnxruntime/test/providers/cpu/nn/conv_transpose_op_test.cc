@@ -45,7 +45,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
     test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});
+  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});// Disable TensorRT because weight as input is not supported
 }
 }  // namespace
 
@@ -247,7 +247,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
       vector<int64_t>{2, 1, 1, 14},  // output_shape
       vector<int64_t>{0, 0, 0, 0},   // pads
       vector<int64_t>{1, 1},         // strides
-      vector<int64_t>{1, 1},         // dilations 
+      vector<int64_t>{1, 1},         // dilations
       1                              // group
   };
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
@@ -260,7 +260,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
   vector<int64_t> Y_shape = {2, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, 
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectFailure,
                       "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,1,5}");
 }
@@ -302,7 +302,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx2) {
       {},                           // output_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      vector<int64_t>{1, 1},        // dilations 
+      vector<int64_t>{1, 1},        // dilations
       1                             // group
   };
   vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.};

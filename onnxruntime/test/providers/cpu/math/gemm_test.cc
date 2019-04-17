@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because TensorRT only support FLOAT, INT8, FLOAT16 and INT32 for now
+
 TEST(GemmOpTest, GemmNoTrans) {
   OpTester test("Gemm");
 

@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because of errors in the parser
+
 TEST(TensorOpTest, Unsqueeze_1) {
   OpTester test("Unsqueeze");
 

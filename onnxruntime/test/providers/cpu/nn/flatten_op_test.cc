@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because axis=0 is not supported
+
 class FlattenOpTest : public testing::Test {
  public:
   FlattenOpTest() : test_("Flatten"), data0_(120, 1.0f) {}

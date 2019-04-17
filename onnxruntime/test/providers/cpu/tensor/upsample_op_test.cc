@@ -8,6 +8,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because TensorRT only supports "nearest" mode Upsample and limited data types
+
 TEST(UpsampleOpTest, UpsampleOpNearestTest) {
   OpTester test("Upsample");
 

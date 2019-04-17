@@ -12,6 +12,8 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
+// Disable TensorRT on some of the tests because of unsupported data types
+
 TEST(TensorOpTest, Reshape) {
   OpTester test("Reshape");
 

@@ -24,7 +24,7 @@ void TestConvOp(const ConvOpAttributes& attributes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
                 bool is_cuda_supported = true,
-                bool is_mkldnn_supported = true,                
+                bool is_mkldnn_supported = true,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "") {
   OpTester test("Conv");
@@ -50,7 +50,7 @@ void TestConvOp(const ConvOpAttributes& attributes,
   if (!is_mkldnn_supported) {
     excluded_providers.insert(kMklDnnExecutionProvider);
   }
-  excluded_providers.insert(kTensorrtExecutionProvider);
+  excluded_providers.insert(kTensorrtExecutionProvider);// Disable TensorRT because weight as input is not supported
   test.Run(expect_result, err_str, excluded_providers);
 }
 

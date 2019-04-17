@@ -7,6 +7,8 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because its parser doesn't support weight as input
+
 TEST(InstanceNormalizationOpTest, InstanceNorm) {
   OpTester test("InstanceNormalization");
   test.AddAttribute("epsilon", 0.3F);

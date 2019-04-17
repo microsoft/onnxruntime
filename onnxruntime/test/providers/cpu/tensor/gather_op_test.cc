@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because of unsupported data types
+
 TEST(GatherOpTest, Gather_axis0) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
