@@ -97,20 +97,28 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
 
   // Prepare the output names and vector
   std::vector<std::string> output_names;
-  output_names.reserve(request.output_filter_size());
-  for (const auto& name : request.output_filter()) {
-    output_names.push_back(name);
+
+  if (!request.output_filter().empty()) {
+    output_names.reserve(request.output_filter_size());
+    for (const auto& name : request.output_filter()) {
+      output_names.push_back(name);
+    }
+  } else {
+    output_names = env_->GetModelOutputNames();
   }
+
   std::vector<onnxruntime::MLValue> outputs(output_names.size());
 
   // Run
   OrtRunOptions run_options{};
+  run_options.run_log_verbosity_level = static_cast<unsigned int>(env_->GetLogSeverity());
   run_options.run_tag = request_id_;
 
   auto status = env_->session->Run(run_options, name_ml_value_map, output_names, &outputs);
 
   if (!status.IsOK()) {
-    LOGS(*logger, ERROR) << "Run() failed." << ". Error Message: " << status.ToString();
+    LOGS(*logger, ERROR) << "Run() failed."
+                         << ". Error Message: " << status.ToString();
     return GenerateProtobufStatus(status, "Run() failed: " + status.ToString());
   }
 

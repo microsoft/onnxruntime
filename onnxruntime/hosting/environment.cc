@@ -24,8 +24,34 @@ HostingEnvironment::HostingEnvironment(logging::Severity severity) : severity_(s
   session = std::make_unique<onnxruntime::InferenceSession>(options_, &default_logging_manager_);
 }
 
+common::Status HostingEnvironment::InitializeModel(std::string model_path) {
+  auto status = session->Load(model_path);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  auto outputs = session->GetModelOutputs();
+  if (!outputs.first.IsOK()) {
+    return outputs.first;
+  }
+
+  for (const auto* output_node : *(outputs.second)) {
+    model_output_names_.push_back(output_node->Name());
+  }
+
+  return common::Status::OK();
+}
+
+const std::vector<std::string> HostingEnvironment::GetModelOutputNames() const {
+  return model_output_names_;
+}
+
 const logging::Logger& HostingEnvironment::GetAppLogger() {
   return default_logging_manager_.DefaultLogger();
+}
+
+const logging::Severity HostingEnvironment::GetLogSeverity() const {
+  return severity_;
 }
 
 std::unique_ptr<logging::Logger> HostingEnvironment::GetLogger(const std::string& id) {
