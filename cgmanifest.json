@@ -289,6 +289,14 @@
                "repositoryUrl":"https://github.com/onnx/onnx-tensorrt.git"
             }
          }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "repositoryUrl":"https://github.com/NervanaSystems/ngraph.git"
+            }
+         }
       }
    ],
    "Version":1

@@ -195,11 +195,8 @@ if (onnxruntime_USE_NGRAPH)
   target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_ngraph PROPERTIES LINKER_LANGUAGE CXX)
 
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -z noexecstack")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -z relro -z now")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pie")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+  target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
+  target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
 
 endif()
 
