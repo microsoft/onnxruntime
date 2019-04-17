@@ -174,6 +174,16 @@ void
 
 typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
 
+typedef
+void
+(MLASCALL MLAS_ERF_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_ERF_KERNEL_ROUTINE* PMLAS_ERF_KERNEL_ROUTINE;
+
 extern "C" {
 
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
@@ -203,9 +213,11 @@ extern "C" {
 
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
     MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
+    MLAS_ERF_KERNEL_ROUTINE MlasErfKernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
     MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_ERF_KERNEL_ROUTINE MlasErfKernelFma3;
 #endif
 
 }
@@ -269,6 +281,7 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
@@ -571,6 +584,91 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vminq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vcgtq_f32(Vector1, Vector2));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cmpgt_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_and_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vorq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_or_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vandq_u32(vmvnq_u32(vreinterpretq_u32_f32(VectorNot)), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_andnot_ps(VectorNot, Vector);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_xor_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasFloorFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    MLAS_FLOAT32X4 round_down = vcvtq_f32_s32(vcvtq_s32_f32(Vector));
+    uint32x4_t mask = vandq_u32(vcgtq_f32(Vector, round_down), vreinterpretq_u32_f32(vdupq_n_f32(1.0f)));
+    return vsubq_f32(round_down, vreinterpret_f32_u32(mask));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    MLAS_FLOAT32X4 tmp = _mm_cvtepi32_ps(_mm_cvttps_epi32(Vector));
+    MLAS_FLOAT32X4 mask = _mm_cmpgt_ps(tmp, Vector);
+    mask = _mm_and_ps(mask, _mm_set1_ps(1.0f));
+    return _mm_sub_ps(tmp, mask);
+#endif
+}
+
+// calc 2^int(N)
+inline
+MLAS_FLOAT32X4
+MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    int32x4_t emm0 = vaddq_s32(vcvtq_s32_f32(Vector), vdupq_n_s32(0x7f));
+    return vreinterpretq_f32_s32(vshlq_n_s32(emm0, 23));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    __m128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
+    return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
 #endif
 }
 
