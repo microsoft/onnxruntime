@@ -225,6 +225,14 @@ ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* l
 // < applies to session load, initialization, etc
 ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
 
+// Set Graph optimization level.
+// Return 0 on success and -1 otherwise
+// Available options are : 0, 1, 2.
+// 0 -> Disable all optimizations
+// 1 -> Enable basic optimizations
+// 2 -> Enable all optimizations
+ORT_API(int, OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level);
+
 // How many threads in the session thread pool.
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
@@ -238,8 +246,6 @@ ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int s
   * on your most preferred execution provider first followed by the less preferred ones.
   * If none are called Ort will use its internal CPU execution provider.
   */
-
-ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path);
 
 ORT_API_STATUS(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
 ORT_API_STATUS(OrtSessionGetOutputCount, _In_ const OrtSession* sess, _Out_ size_t* out);
@@ -283,7 +289,7 @@ ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
  * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
  */
 ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
-               _In_ const size_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+               _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
                _Out_ OrtValue** out);
 
 /**
@@ -292,7 +298,7 @@ ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
  * \param out Should be freed by calling OrtReleaseValue
  */
 ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-               _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+               _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                ONNXTensorElementDataType type, _Out_ OrtValue** out);
 
 // This function doesn't work with string tensor
@@ -528,12 +534,30 @@ ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXTyp
 */
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
+struct OrtKernelContext;
+typedef struct OrtKernelContext OrtKernelContext;
 
-/*
- * These allow reading node attributes during kernel creation
-*/
-ORT_API_STATUS(OrtKernelInfoGetAttribute_float, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
-ORT_API_STATUS(OrtKernelInfoGetAttribute_int64, _In_ OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+struct OrtCustomOpApi {
+  /*
+   * These allow reading node attributes during kernel creation
+  */
+  OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_float)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
+  OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_int64)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+
+  OrtStatus*(ORT_API_CALL* GetTensorShapeAndType)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
+
+  int64_t(ORT_API_CALL* GetTensorShapeElementCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
+  size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
+  void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
+  OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
+  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, void** data);
+
+  void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
+
+  OrtValue*(ORT_API_CALL* KernelContext_GetInput)(OrtKernelContext* context, _In_ size_t index);
+  OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+};
+typedef struct OrtCustomOpApi OrtCustomOpApi;
 
 /*
  * The OrtCustomOp structure defines a custom op's schema and its kernel callbacks. The callbacks are filled in by
@@ -543,7 +567,7 @@ struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ OrtKernelInfo* info, _Out_ void** op_kernel);
+  void*(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtCustomOpApi* api, _In_ const OrtKernelInfo* info);
 
   // Returns the name of the op
   const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
@@ -555,8 +579,8 @@ struct OrtCustomOp {
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
 
   // Op kernel callbacks
-  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
-  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtValue** inputs, _In_ size_t input_count, _In_ OrtValue** outputs, _In_ size_t output_count);
+  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtKernelContext* context, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
+  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 };
 typedef struct OrtCustomOp OrtCustomOp;
@@ -564,7 +588,7 @@ typedef struct OrtCustomOp OrtCustomOp;
 /*
 * Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
 */
-ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain, _In_ int op_version_start, _In_ int op_version_end);
+ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain);
 
 /*
  * Add custom ops to the OrtCustomOpDomain

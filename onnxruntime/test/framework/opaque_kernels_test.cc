@@ -296,7 +296,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   auto shape_def = ConstructFetchSparseShape();
   EXPECT_TRUE(registry->RegisterCustomKernel(shape_def, [](const OpKernelInfo& info) { return new FetchSparseTensorShape(info); }).IsOK());
 
-  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry};
+  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
   Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version);
@@ -351,11 +351,11 @@ TEST_F(OpaqueTypeTests, RunModel) {
   EXPECT_TRUE(graph.Resolve().IsOK());
 
   // Get a proto and load from it
-  std::stringstream serialized_model;
+  std::string serialized_model;
   auto model_proto = model.ToProto();
-  EXPECT_TRUE(model_proto.SerializeToOstream(&serialized_model));
-
-  EXPECT_TRUE(session_object.Load(serialized_model).IsOK());
+  EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
+  std::stringstream sstr(serialized_model);
+  EXPECT_TRUE(session_object.Load(sstr).IsOK());
   EXPECT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;

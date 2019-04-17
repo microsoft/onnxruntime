@@ -126,8 +126,11 @@ ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
                                                                   &name);
   std::unique_ptr<Environment> env;
   Status status = Environment::Create(env);
-  if (status.IsOK())
+  if (status.IsOK()) {
     *out = new OrtEnv(env.release(), default_logging_manager.release());
+    return nullptr;
+  }
+  *out = nullptr;
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -164,7 +167,7 @@ ORT_API_STATUS_IMPL(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* 
 }
 
 template <typename T>
-OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator* allocator,
+OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
@@ -180,7 +183,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, OrtAllocator*
  * this function will create a copy of the allocator info
  */
 template <typename T>
-OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
+OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -206,7 +209,7 @@ OrtStatus* CreateTensorImpl(const size_t* shape, size_t shape_len, const OrtAllo
  * this function will create a copy of the allocator info
  */
 ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* info,
-                    _Inout_ void* p_data, size_t p_data_len, _In_ const size_t* shape, size_t shape_len,
+                    _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
@@ -272,7 +275,7 @@ ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorIn
 }
 
 ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
-                    _In_ const size_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+                    _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
                     _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
@@ -337,11 +340,9 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
   API_IMPL_END
 }
 
-ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain, int op_version_start, int op_version_end) {
+ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain) {
   auto custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   custom_op_domain->domain_ = domain;
-  custom_op_domain->op_version_start_ = op_version_start;
-  custom_op_domain->op_version_end_ = op_version_end;
   return custom_op_domain.release();
 }
 
@@ -370,11 +371,6 @@ ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* mo
       options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
   if (options != nullptr) {
-    if (!options->custom_op_paths.empty()) {
-      status = sess->LoadCustomOps(options->custom_op_paths);
-      if (!status.IsOK())
-        return ToOrtStatus(status);
-    }
     if (!options->custom_op_domains_.empty()) {
       status = sess->AddCustomOpDomains(options->custom_op_domains_);
       if (!status.IsOK())
@@ -558,7 +554,6 @@ ORT_API_STATUS_IMPL(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* 
   ORT_API(void, OrtRelease##INPUT_TYPE, Ort##INPUT_TYPE* value) { \
     delete reinterpret_cast<REAL_TYPE*>(value);                   \
   }
-
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputCount, _In_ const OrtSession* sess, _Out_ size_t* out) {
   API_IMPL_BEGIN
@@ -801,7 +796,7 @@ OrtStatus* OrtGetValueImplSeqOfPrimitives(const MLValue* p_ml_value, int index, 
   using ElemType = typename T::value_type;
   auto& data = p_ml_value->Get<T>();
   auto& data_elem = data.at(index);
-  std::vector<size_t> dims = {1};
+  std::vector<int64_t> dims = {1};
   OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                             GetONNXTensorElementDataType<ElemType>(), out);
   return st ? st : PopulateTensorWithData<ElemType>(*out, &data_elem, 1);
@@ -835,7 +830,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
   using TKey = typename T::key_type;
   using TVal = typename T::mapped_type;
   auto& data = p_ml_value->Get<T>();
-  size_t num_kv_pairs = data.size();
+  int64_t num_kv_pairs = data.size();
   switch (index) {
     case 0: {  // user is requesting keys
       std::vector<TKey> vec;
@@ -843,7 +838,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       for (const auto& kv : data) {
         vec.push_back(kv.first);
       }
-      std::vector<size_t> dims{num_kv_pairs};
+      std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TKey>(), out);
       return st ? st : PopulateTensorWithData<TKey>(*out, vec.data(), num_kv_pairs);
@@ -854,7 +849,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const MLValue* p_ml_value, int index,
       for (const auto& kv : data) {
         vec.push_back(kv.second);
       }
-      std::vector<size_t> dims{num_kv_pairs};
+      std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtCreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                 GetONNXTensorElementDataType<TVal>(), out);
       return st ? st : PopulateTensorWithData<TVal>(*out, vec.data(), num_kv_pairs);
@@ -1067,11 +1062,11 @@ static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, int num_values, Ort
 
   if (key_type == DataTypeImpl::GetType<std::string>()) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, out);
-  } else if (key_type == DataTypeImpl::GetType<int64_t>()) {
-    return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
-  } else {
-    return OrtCreateStatus(ORT_FAIL, "Key type is not supported yet.");
   }
+  if (key_type == DataTypeImpl::GetType<int64_t>()) {
+    return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
+  }
+  return OrtCreateStatus(ORT_FAIL, "Key type is not supported yet.");
 }
 
 static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum ONNXType value_type,
@@ -1081,11 +1076,11 @@ static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum O
   }
   if (value_type == ONNX_TYPE_MAP) {
     return OrtCreateValueImplMap(in, num_values, out);
-  } else if (value_type == ONNX_TYPE_SEQUENCE) {
-    return OrtCreateValueImplSeq(in, num_values, out);
-  } else {
-    return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
   }
+  if (value_type == ONNX_TYPE_SEQUENCE) {
+    return OrtCreateValueImplSeq(in, num_values, out);
+  }
+  return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
 }
 
 ORT_API_STATUS_IMPL(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,

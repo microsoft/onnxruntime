@@ -277,7 +277,6 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       // Use tokenexp
       re2::RE2::Options options;
       options.set_longest_match(true);
-      options.set_posix_syntax(true);
       std::unique_ptr<re2::RE2> regex(new re2::RE2(tokenexp, options));
       if (!regex->ok()) {
         ORT_THROW("Can not digest regex: ", regex->error());
@@ -305,20 +304,21 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input string contains invalid utf8 chars: " + s);
     }
-    if (mark_) {
-      tokens += 2;  // Start/end markers as separate tokens
-    }
     max_tokens = std::max(max_tokens, tokens);
     ++curr_input;
   }
 
   std::vector<int64_t> output_dims(input_dims);
   // Check if we have no output due to apparently empty strings input.
-  if ((max_tokens - mark_ * 2) == 0) {
+  if (max_tokens == 0) {
     output_dims.push_back(0);
     TensorShape output_shape(output_dims);
     ctx->Output(0, output_shape);
     return Status::OK();
+  }
+
+  if (mark_) {
+    max_tokens += 2;  // Start/end markers as separate tokens
   }
 
   output_dims.push_back(max_tokens);
@@ -435,22 +435,22 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
       row_tokens.emplace_back(ws, wstr.length() - offset);
     }
 
-    size_t tokens = row_tokens.size();
-    if (mark_) {
-      tokens += 2;  // Start/end markers as separate tokens
-    }
-    max_tokens = std::max(max_tokens, tokens);
+    max_tokens = std::max(max_tokens, row_tokens.size());
     ++curr_input;
   }
 
   std::vector<int64_t> output_dims(input_dims);
   // Check if we have no output due to either empty input
   // everything is a separator
-  if ((max_tokens - mark_ * 2) == 0) {
+  if (max_tokens == 0) {
     output_dims.push_back(0);
     TensorShape output_shape(output_dims);
     ctx->Output(0, output_shape);
     return Status::OK();
+  }
+
+  if (mark_) {
+    max_tokens += 2;  // Start/end markers as separate tokens
   }
 
   output_dims.push_back(max_tokens);
@@ -499,8 +499,7 @@ Status Tokenizer::ExpressionTokenize(OpKernelContext* ctx,
   using namespace re2;
   // Represents a token that will be output after
   // first is the index, second is the size;
-  using Token = std::pair<size_t, size_t>;
-  std::vector<std::vector<Token>> tokens;
+  std::vector<std::vector<StringPiece>> tokens;
   tokens.reserve(N * C);
 
   size_t max_tokens = 0;
@@ -524,49 +523,41 @@ Status Tokenizer::ExpressionTokenize(OpKernelContext* ctx,
     StringPiece submatch;
 
     bool match = true;
-    while (match) {
+    do {
       match = regex_->Match(text, start_pos, end_pos, anchor, &submatch, 1);
       if (match) {
         // Record  pos/len
         assert(submatch.data() != nullptr);
         size_t match_pos = submatch.data() - s.data();
         assert(match_pos >= start_pos);
-        auto token_len = match_pos - start_pos;
+        // Guard against empty match and make
+        // sure we make progress either way
+        auto token_len = submatch.length();
         if (token_len > 0) {
-          row.emplace_back(start_pos, token_len);
-        }
-        // Update starting position
-        // Guard against empty string match
-        auto match_len = submatch.length();
-        if (match_len > 0) {
-          start_pos = match_pos + match_len;
+          row.push_back(submatch);
+          start_pos = match_pos + token_len;
         } else {
           start_pos = match_pos + 1;
         }
-      } else {
-        // record trailing token
-        auto trailing_len = end_pos - start_pos;
-        if (trailing_len > 0) {
-          row.emplace_back(start_pos, trailing_len);
-        }
       }
-    }
-    size_t tokens_num = row.size();
-    if (mark_) {
-      tokens_num += 2;  // Start/end markers as separate tokens
-    }
-    max_tokens = std::max(max_tokens, tokens_num);
+    } while (match);
+    max_tokens = std::max(max_tokens, row.size());
     ++curr_input;
   }
+
   // Check for empty output
   std::vector<int64_t> output_dims(input_dims);
   // Check if we have no output due to either empty input
   // everything is a separator
-  if ((max_tokens - mark_ * 2) == 0) {
+  if (max_tokens == 0) {
     output_dims.push_back(0);
     TensorShape output_shape(output_dims);
     ctx->Output(0, output_shape);
     return Status::OK();
+  }
+
+  if (mark_) {
+    max_tokens += 2;  // Start/end markers as separate tokens
   }
 
   output_dims.push_back(max_tokens);
@@ -590,15 +581,8 @@ Status Tokenizer::ExpressionTokenize(OpKernelContext* ctx,
       ++output_index;
     }
     // Output tokens for this row
-    const char* data = curr_input->data();
     for (const auto& token : row) {
-#ifdef _DEBUG
-      auto s_len = curr_input->length();
-      assert(token.second > 0);
-      assert(token.first < s_len);
-      assert(token.first + token.second <= s_len);
-#endif
-      (output_data + output_index)->assign(data + token.first, token.second);
+      (output_data + output_index)->assign(token.data(), token.length());
       ++output_index;
     }
     if (mark_) {
@@ -629,21 +613,14 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
                   "tensor(string) expected as input");
   }
 
-  auto& input_dims = X->Shape().GetDims();
+  auto& input_shape = X->Shape();
+  auto& input_dims = input_shape.GetDims();
   size_t N = 0;
   size_t C = 0;
   if (input_dims.size() == 1) {
     N = 1;
-    if (input_dims[0] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid C dimension value");
-    }
     C = input_dims[0];
   } else if (input_dims.size() == 2) {
-    if (input_dims[0] < 1 || input_dims[1] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid N and/or C dimension values");
-    }
     N = input_dims[0];
     C = input_dims[1];
   } else {
@@ -651,7 +628,20 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
                   "Input dimensions are either [C] or [N][C] allowed");
   }
 
+  // Empty input
   Status s;
+  if (input_shape.Size() == 0) {
+    std::vector<int64_t> output_dims;
+    if (input_dims.size() == 2) {
+      output_dims.push_back(input_dims[0]);
+    }
+    output_dims.push_back(0);
+
+    TensorShape output_shape(output_dims);
+    ctx->Output(0, output_shape);
+    return s;
+  }
+
   if (char_tokenezation_) {
     s = CharTokenize(ctx, N, C, input_dims);
   } else {

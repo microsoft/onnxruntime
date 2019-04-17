@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"873ddbbc33c6e54d90c5628387edd391fb651dfc",
+               "commitHash":"3717dc617fa06e4eea326e85dc0ccfdcdf4f4ab5",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -157,7 +157,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"b9ce57acb12f71776a3130ed6f031cc00757de3c",
+               "commitHash":"7de7e5d02bf687f971e7668963649728356e0c20",
                "repositoryUrl":"https://github.com/intel/mkl-dnn.git"
             }
          }
@@ -278,6 +278,15 @@
                "Name":"FreeBSD GetOpt",
                "Version":"12.0.0",
                "DownloadUrl":"https://svnweb.freebsd.org/base/release/12.0.0/lib/libc/stdlib/getopt.c?revision=341707&view=co"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"c8ebe0da0776c1a6347139b074a901bd57fae499",
+               "repositoryUrl":"https://github.com/onnx/onnx-tensorrt.git"
             }
          }
       }

@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
+#include <cmath>
 
 namespace onnxruntime {
 namespace test {
@@ -374,7 +375,7 @@ TEST(MathOpTest, Pow) {
   std::vector<int64_t> dims{2, 2};
   test.AddInput<float>("X", dims,
                        {2.0f, 2.0f,
-                        sqrt(2.0f), 1.0f});
+                        std::sqrt(2.0f), 1.0f});
   test.AddInput<float>("Y", dims,
                        {0.0f, 8.0f,
                         2.0f, 9.0f});
@@ -411,8 +412,8 @@ TEST(MathOpTest, Exp) {
                        {0.0f, 1.0f,
                         2.0f, 10.0f});
   test.AddOutput<float>("Y", dims,
-                        {1.0f, exp(1.0f),
-                         exp(2.0f), exp(10.0f)});
+                        {1.0f, std::exp(1.0f),
+                         std::exp(2.0f), std::exp(10.0f)});
   test.SetOutputRelErr("Y", 1e-7f);
   test.Run();
 }
@@ -424,8 +425,8 @@ TEST(MathOpTest, Log) {
                        {1.0f, 2.0f,
                         5.0f, 10.0f});
   test.AddOutput<float>("Y", dims,
-                        {0.0f, log(2.0f),
-                         log(5.0f), log(10.0f)});
+                        {0.0f, std::log(2.0f),
+                         std::log(5.0f), std::log(10.0f)});
   test.Run();
 }
 
@@ -759,6 +760,7 @@ TEST(MathOpTest, Mean_8) {
   test.Run();
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(MathOpTest, AffineDefaultAttributes) {
   OpTester test("Affine");
   std::vector<int64_t> dims{2, 2};
@@ -776,6 +778,7 @@ TEST(MathOpTest, Affine) {
   test.AddOutput<float>("B", dims, {1.0f, 3.0f, 5.0f, 7.0f});
   test.Run();
 }
+#endif
 
 template <float (&op)(float value)>
 void TrigTest(OpTester& test, std::initializer_list<float> input) {
@@ -883,9 +886,9 @@ TEST(MathOpTest, Expand_8_3x3_int32) {
   test.AddInput<int32_t>("data_0", {1}, {1});
   test.AddInput<int64_t>("data_1", {2}, {3, 3});
   test.AddOutput<int32_t>("result", {3, 3},
-                        {1, 1, 1,
-                         1, 1, 1,
-                         1, 1, 1});
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
   test.Run();
 }
 
@@ -894,9 +897,9 @@ TEST(MathOpTest, Expand_8_3x1_int32) {
   test.AddInput<int32_t>("data_0", {3}, {1, 2, 3});
   test.AddInput<int64_t>("data_1", {2}, {3, 1});
   test.AddOutput<int32_t>("result", {3, 3},
-                        {1, 2, 3,
-                         1, 2, 3,
-                         1, 2, 3});
+                          {1, 2, 3,
+                           1, 2, 3,
+                           1, 2, 3});
   test.Run();
 }
 
@@ -905,9 +908,9 @@ TEST(MathOpTest, Expand_8_1x3_int32) {
   test.AddInput<int32_t>("data_0", {3, 1}, {1, 2, 3});
   test.AddInput<int64_t>("data_1", {2}, {1, 3});
   test.AddOutput<int32_t>("result", {3, 3},
-                        {1, 1, 1,
-                         2, 2, 2,
-                         3, 3, 3});
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
   test.Run();
 }
 
@@ -916,9 +919,9 @@ TEST(MathOpTest, Expand_8_3x3_int64) {
   test.AddInput<int64_t>("data_0", {1}, {1});
   test.AddInput<int64_t>("data_1", {2}, {3, 3});
   test.AddOutput<int64_t>("result", {3, 3},
-                        {1, 1, 1,
-                         1, 1, 1,
-                         1, 1, 1});
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
   test.Run();
 }
 
@@ -927,9 +930,9 @@ TEST(MathOpTest, Expand_8_3x1_int64) {
   test.AddInput<int64_t>("data_0", {3}, {1, 2, 3});
   test.AddInput<int64_t>("data_1", {2}, {3, 1});
   test.AddOutput<int64_t>("result", {3, 3},
-                        {1, 2, 3,
-                         1, 2, 3,
-                         1, 2, 3});
+                          {1, 2, 3,
+                           1, 2, 3,
+                           1, 2, 3});
   test.Run();
 }
 
@@ -938,9 +941,9 @@ TEST(MathOpTest, Expand_8_1x3_int64) {
   test.AddInput<int64_t>("data_0", {3, 1}, {1, 2, 3});
   test.AddInput<int64_t>("data_1", {2}, {1, 3});
   test.AddOutput<int64_t>("result", {3, 3},
-                        {1, 1, 1,
-                         2, 2, 2,
-                         3, 3, 3});
+                          {1, 1, 1,
+                           2, 2, 2,
+                           3, 3, 3});
   test.Run();
 }
 
@@ -949,9 +952,9 @@ TEST(MathOpTest, Expand_8_3x3_float16) {
   test.AddInput<MLFloat16>("data_0", {1}, {MLFloat16(math::floatToHalf(1.0f))});
   test.AddInput<int64_t>("data_1", {2}, {3, 3});
   test.AddOutput<MLFloat16>("result", {3, 3},
-                        {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
-                         MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
-                         MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f))});
+                            {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
+                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
+                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f))});
   test.Run();
 }
 
@@ -960,9 +963,9 @@ TEST(MathOpTest, Expand_8_3x1_float16) {
   test.AddInput<MLFloat16>("data_0", {3}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
   test.AddInput<int64_t>("data_1", {2}, {3, 1});
   test.AddOutput<MLFloat16>("result", {3, 3},
-                        {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f)),
-                         MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f)),
-                         MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
+                            {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f)),
+                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f)),
+                             MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
   test.Run();
 }
 
@@ -971,12 +974,14 @@ TEST(MathOpTest, Expand_8_1x3_float16) {
   test.AddInput<MLFloat16>("data_0", {3, 1}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
   test.AddInput<int64_t>("data_1", {2}, {1, 3});
   test.AddOutput<MLFloat16>("result", {3, 3},
-                        {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
-                         MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)),
-                         MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f))});
+                            {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(1.0f)),
+                             MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(2.0f)),
+                             MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f))});
   test.Run();
 }
 
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib {
 TEST(MathOpTest, Scale) {
   OpTester test("Scale");
   std::vector<int64_t> dims{2, 2};
@@ -993,6 +998,8 @@ TEST(MathOpTest, Scale_Default) {
   test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
   test.Run();
 }
+}  // namespace contrib
+#endif
 
 TEST(MathOpTest, Erf) {
   OpTester test("Erf", 9);

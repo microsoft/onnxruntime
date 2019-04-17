@@ -29,6 +29,7 @@ if(NOT NUMPY_INCLUDE_DIR)
   endif(${NUMPY_NOT_FOUND})
 endif(NOT NUMPY_INCLUDE_DIR)
 
+
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.cc"
@@ -42,6 +43,15 @@ add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
+
+if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+endif()   
+
+if (onnxruntime_USE_MKLDNN)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_MKLDNN=1)
+endif()
+
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
@@ -58,6 +68,7 @@ set(onnxruntime_pybind11_state_libs
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -77,16 +88,19 @@ set(onnxruntime_pybind11_state_dependencies
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 if (MSVC)
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
+          ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES} ${ONNXRUNTIME_SO_LINK_FLAG})
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES}
+          ${ONNXRUNTIME_SO_LINK_FLAG})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY} ${ONNXRUNTIME_SO_LINK_FLAG} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY}
+          ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-Xlinker -rpath=\$ORIGIN")
 endif()
 
@@ -118,9 +132,6 @@ file(GLOB onnxruntime_python_datasets_data
     "${ONNXRUNTIME_ROOT}/python/datasets/*.pb"
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
-file(GLOB onnxruntime_python_sklapi_srcs
-    "${ONNXRUNTIME_ROOT}/python/sklapi/*.py"
-)
 
 # adjust based on what target/s onnxruntime_unittests.cmake created
 if (SingleUnitTestProject)
@@ -135,7 +146,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/sklapi
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -164,18 +174,17 @@ add_custom_command(
       ${onnxruntime_python_datasets_data}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets/
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_sklapi_srcs}
-      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/sklapi/
-  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/VERSION_NUMBER
+      $<TARGET_FILE_DIR:${test_data_target}>
 )
 
 if (onnxruntime_USE_MKLDNN)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB}
+    COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

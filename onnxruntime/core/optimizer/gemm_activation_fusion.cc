@@ -12,7 +12,10 @@ namespace onnxruntime {
 
 namespace {
 bool IsFusableActivation(const Node& node) {
-  return utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) || utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
 }
 
 void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_gemm) {
@@ -43,13 +46,15 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
-    if (!(utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 7) ||
-          utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 9)) ||
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 7) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 9)) ||
+        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
     }
     const Node& next_node = *(node.OutputNodesBegin());
-    if (!IsFusableActivation(next_node)) {
+    if (!IsFusableActivation(next_node) ||
+        next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
 
@@ -67,6 +72,9 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     //Add a new attribute to specify the activation type
     fused_gemm.AddAttribute("activation", act_node.OpType());
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    fused_gemm.SetExecutionProviderType(gemm_node.GetExecutionProviderType());
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {

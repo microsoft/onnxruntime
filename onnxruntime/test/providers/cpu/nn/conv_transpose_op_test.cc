@@ -49,7 +49,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
 }
 }  // namespace
 
-TEST(ConvTransposeTest, ConvTranspose_1) {
+TEST(ConvTransposeTest, ConvTranspose_2D) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{1, 1},        // output_padding
@@ -77,7 +77,7 @@ TEST(ConvTransposeTest, ConvTranspose_1) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_Bias_1) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Bias_1) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{0, 0},        // output_padding
@@ -108,7 +108,7 @@ TEST(ConvTransposeTest, ConvTranspose_Bias_1) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_Bias_2) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Bias_2) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0},        // output_padding
@@ -156,7 +156,7 @@ TEST(ConvTransposeTest, ConvTranspose_Bias_2) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_Output_Shape) {
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
       {},                           // output_padding
@@ -196,7 +196,7 @@ TEST(ConvTransposeTest, ConvTranspose_Output_Shape) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_Output_Shape2) {
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 5},         // kernel_shape
       {},                            // output_padding
@@ -217,7 +217,7 @@ TEST(ConvTransposeTest, ConvTranspose_Output_Shape2) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_Output_Shape_Batch) {
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 5},         // kernel_shape
       {},                            // output_padding
@@ -240,7 +240,7 @@ TEST(ConvTransposeTest, ConvTranspose_Output_Shape_Batch) {
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_Invalid_Kernel_Shape) {
+TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{1, 1, 1, 5},   // invalid kernel_shape, should be [1, 5]
       {},                            // output_padding
@@ -346,7 +346,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx_group) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose2D_group_dilation2) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_1) {
   ConvTransposeOpAttributes attrs = {
     vector<int64_t>{2, 2},
     {}, {},
@@ -368,7 +368,7 @@ TEST(ConvTransposeTest, ConvTranspose2D_group_dilation2) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose2D_group_dilation3) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_2) {
   ConvTransposeOpAttributes attrs = {
     vector<int64_t>{2, 2},
     {}, {},
@@ -391,12 +391,12 @@ TEST(ConvTransposeTest, ConvTranspose2D_group_dilation3) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose3D_group_dilation2) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_3) {
   ConvTransposeOpAttributes attrs = {
     vector<int64_t>{2, 2},
     {}, {},
-    vector<int64_t>{0,0,0,0,0,0,0,0,0},
-    vector<int64_t>{1,1,1},
+    vector<int64_t>{0,0,0,0},
+    vector<int64_t>{1,1},
     {2,2},
     1
   };
@@ -415,12 +415,12 @@ TEST(ConvTransposeTest, ConvTranspose3D_group_dilation2) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose3D_group_dilation3) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
   ConvTransposeOpAttributes attrs = {
     vector<int64_t>{2, 2},
     {}, {},
-    vector<int64_t>{0,0,0,0,0,0,0,0,0},
-    vector<int64_t>{1,1,1},
+    vector<int64_t>{0,0,0,0},
+    vector<int64_t>{1,1},
     {3,3},
     1
   };
@@ -440,12 +440,12 @@ TEST(ConvTransposeTest, ConvTranspose3D_group_dilation3) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose3D_group2_dilation2) {
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_Group_1) {
   ConvTransposeOpAttributes attrs = {
     vector<int64_t>{2, 2},
     {}, {},
-    vector<int64_t>{0,0,0,0,0,0,0,0,0},
-    vector<int64_t>{1,1,1},
+    vector<int64_t>{0,0,0,0},
+    vector<int64_t>{1,1},
     {2,2},
     2
   };

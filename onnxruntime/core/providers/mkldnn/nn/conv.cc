@@ -171,13 +171,13 @@ class ConvPrimitive : public PrimitiveBase {
 
     if (!params.bias_dims.empty()) {
       context_.fwd_desc.reset(new mkldnn::convolution_forward::desc(
-          mkldnn::prop_kind::forward, mkldnn::convolution_direct, *context_.src_md,
+          mkldnn::prop_kind::forward_inference, mkldnn::convolution_direct, *context_.src_md,
           *context_.filter_md, *context_.bias_md, *context_.dst_md,
           params.strides, params.dilations, params.padding_left,
           params.padding_right, mkldnn::padding_kind::zero));
     } else {
       context_.fwd_desc.reset(new mkldnn::convolution_forward::desc(
-          mkldnn::prop_kind::forward, mkldnn::convolution_direct, *context_.src_md,
+          mkldnn::prop_kind::forward_inference, mkldnn::convolution_direct, *context_.src_md,
           *context_.filter_md, *context_.dst_md, params.strides,
           params.dilations, params.padding_left,
           params.padding_right, mkldnn::padding_kind::zero));
