@@ -164,11 +164,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
-    if (p_op_kernel->Node().GetExecutionProviderType() != kCudaExecutionProvider || queue_id == 0) {
-      // free ml-values corresponding to this node
-      VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
-      ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
-    }
+    // free ml-values corresponding to this node
+    VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
+    ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 
   VLOGS(logger, 1) << "Fetching output.";

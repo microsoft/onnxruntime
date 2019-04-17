@@ -22,7 +22,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)
-        .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -33,7 +32,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .OutputMemoryType<OrtMemTypeCPUOutput>(0)
-        .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
