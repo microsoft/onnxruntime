@@ -23,7 +23,8 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
   const Tensor* indices = context->Input<Tensor>(1);
   ORT_ENFORCE(dY->Shape() == indices->Shape(), "The shape of dY and indices does not match in MaxPoolGrad.");
 
-  const TensorShape& dX_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
+  TensorShape dX_shape(output_tensor_shapes_[0]);
+  dX_shape[0] = dY->Shape()[0];
   Tensor* dX = context->Output(0, dX_shape);
 
   const T* dY_data = dY->template Data<T>();

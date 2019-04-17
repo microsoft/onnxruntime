@@ -4,6 +4,7 @@
 #pragma once
 #include <vector>
 #include "core/framework/ml_value.h"
+#include "core/framework/framework_common.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 #define RETURN_IF_FAIL(expr)                                \
@@ -33,19 +34,17 @@ class DataSet {
   // Get all tensor names
   const std::vector<std::string> TensorNames() const;
 
+  size_t NumInputs() const { return tensor_names_.size(); }
+
+  size_t NumSamples() const { return data_.size(); }
+
   // Add a data sample
   common::Status AddData(SampleType&& single_sample);
 
   // Given a batch_size, get the total num of batches.
   size_t TotalBatch(size_t batch_size) const;
 
-  // Given a batch_size, get the [start, end) iterator to access the k-th batch.
-  // Caller should make sure no new data is added when using the iterator.
-  // Otherwise the iterators are invalid.
-  std::pair<IteratorType, IteratorType> KthBatchRange(size_t batch_size, size_t k_th) const;
-
-  // Get the [start, end) iterator to loop over all data.
-  std::pair<IteratorType, IteratorType> AllDataRange() const;
+  std::vector<MLValue> GetKthBatch(size_t batch_size, size_t k_th) const;
 
   void RandomShuffle();
 
@@ -83,6 +82,8 @@ class TrainingUtil {
   }
 
   static AllocatorPtr GetCpuAllocator();
+
+  static void PrintNameMLValMap(const NameMLValMap& mlvalue_map);
 };
 }  // namespace training
 }  // namespace onnxruntime

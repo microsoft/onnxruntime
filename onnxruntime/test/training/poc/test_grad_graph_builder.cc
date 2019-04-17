@@ -36,8 +36,8 @@ using namespace onnxruntime::training;
 //const std::vector<std::string> EXCLUDE_WEIGHTS = {"OC2_DUMMY_1"};
 
 const std::string MODEL_NAME = "squeezenet";
-const std::string PREDICTION_NAME = "pool10_1";
-const std::vector<std::string> EXCLUDE_WEIGHTS = {};
+const std::string PREDICTION_NAME = "pool10_1_reshaped";
+const std::vector<std::string> EXCLUDE_WEIGHTS = {"pool10_1_shape"};
 
 const std::string SHARED_PATH = "test_models/";
 const std::string ORIGINAL_MODEL_PATH = SHARED_PATH + MODEL_NAME + "/model.onnx";

@@ -61,7 +61,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t N = logits_shape[0];
   int64_t D = logits_shape[1];
 
-  const TensorShape output_shape({N});
+  const TensorShape output_shape({1});
   Tensor* loss = context->Output(0, output_shape);
 
   const float* logits_data = logits.template Data<float>();
@@ -94,8 +94,10 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
   auto& mul = sub;
   math::Mul<float, CPUMathUtil>(nd, labels_data, sub.data(), mul.data(), nullptr);
-  math::RowwiseSum<float, CPUMathUtil>(n, d, mul.data(), loss_data, nullptr);
-  math::Scale<float, CPUMathUtil>(n, -1.f, loss_data, loss_data, nullptr);
+
+  // Sum over batches and classes
+  math::Sum<float, CPUMathUtil>(nd, mul.data(), loss_data, nullptr);
+  *loss_data *= -1;
 
   return Status::OK();
 }
@@ -150,8 +152,8 @@ Status SoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const {
   math::DivToCol<float, CPUMathUtil>(n, d, sum_exp.data(), prob.data(), nullptr);
   math::Sub<float, CPUMathUtil>(nd, prob.data(), labels_data, d_logits_data, nullptr);
 
-  // d_logits = dY * backprop
-  math::MulToCol<float, CPUMathUtil>(n, d, dY_data, d_logits_data, nullptr);
+  // d_logits = dY * backprop, dY is a scalar
+  math::Scale<float, CPUMathUtil>(nd, dY_data, d_logits_data, d_logits_data, nullptr);
 
   return Status::OK();
 }

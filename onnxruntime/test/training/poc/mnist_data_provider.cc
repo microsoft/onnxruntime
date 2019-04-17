@@ -37,10 +37,9 @@ pair<vector<vector<float>>, vector<vector<float>>> NormalizeData(const vector<Im
 
 void ConvertData(const vector<vector<float>>& images,
                  const vector<vector<float>>& labels,
+                 const vector<int64_t>& image_dims,
+                 const vector<int64_t>& label_dims,
                  DataSet& data_set) {
-  const static vector<int64_t> image_dims = {1, 784};
-  const static vector<int64_t> label_dims = {1, 10};
-
   for (int i = 0; i < images.size(); ++i) {
     MLValue imageMLValue;
     TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), image_dims, images[i], &imageMLValue);
@@ -52,6 +51,8 @@ void ConvertData(const vector<vector<float>>& images,
 }
 
 void PrepareMNISTData(const string& data_folder,
+                      const vector<int64_t>& image_dims,
+                      const vector<int64_t>& label_dims,
                       DataSet& training_data,
                       DataSet& test_data) {
   printf("Loading MNIST data ...\n");
@@ -66,7 +67,7 @@ void PrepareMNISTData(const string& data_folder,
   printf("Preparing data ...\n");
   auto training_images_labels = NormalizeData(dataset.training_images, dataset.training_labels);
   auto test_images_labels = NormalizeData(dataset.test_images, dataset.test_labels);
-  ConvertData(training_images_labels.first, training_images_labels.second, training_data);
-  ConvertData(test_images_labels.first, test_images_labels.second, test_data);
+  ConvertData(training_images_labels.first, training_images_labels.second, image_dims, label_dims, training_data);
+  ConvertData(test_images_labels.first, test_images_labels.second, image_dims, label_dims, test_data);
   printf("Preparing data: done\n");
 }

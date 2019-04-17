@@ -121,11 +121,11 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <typename T>
 Status ReluGrad<T>::Compute(OpKernelContext* context) const {
   auto& dY = *context->Input<Tensor>(0);
-  auto& Y = *context->Input<Tensor>(1);
+  auto& X = *context->Input<Tensor>(1);
   auto& dX = *context->Output(0, dY.Shape());
 
   EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size()) =
-      (ConstEigenVectorArrayMap<float>(Y.template Data<T>(), Y.Shape().Size()) > T(0))
+      (ConstEigenVectorArrayMap<float>(X.template Data<T>(), X.Shape().Size()) > T(0))
           .select(ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size()), T(0));
 
   return Status::OK();

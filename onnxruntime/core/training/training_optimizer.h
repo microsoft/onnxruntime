@@ -20,7 +20,8 @@ class GradientDescent {
   }
 
   NameMLValMap CalculateNewWeights(const NameMLValMap& original_weights,
-                                   const std::vector<NameMLValMap>& gradients_multi_batches) const;
+                                   const NameMLValMap& gradients,
+                                   size_t batch_size) const;
 
  private:
   ParameterType param_;

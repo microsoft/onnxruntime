@@ -127,7 +127,7 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
     grad.insert(make_pair(training_output_names[i], gradient_fetches[i]));
   }
 
-  EXPECT_TRUE(weight_updater.Update({grad}).IsOK());
+  EXPECT_TRUE(weight_updater.Update(grad, 1).IsOK());
 }
 }  // namespace test
 }  // namespace onnxruntime

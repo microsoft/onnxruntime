@@ -61,7 +61,7 @@ Status TrainingRunner::Initialize() {
 
 Status TrainingRunner::Run() {
   printf("Before training \n");
-  ORT_RETURN_IF_ERROR(Evaluate(session_, true));
+  ORT_RETURN_IF_ERROR(Evaluate(session_, false));
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
 
@@ -81,31 +81,23 @@ Status TrainingRunner::TrainingLoop() {
 
     // loop through the data
     for (size_t batch = 0; batch < training_data_.TotalBatch(params_.batch_size_); ++batch) {
-      // Accumulated gradients.
-      vector<NameMLValMap> grads_batch;
-      auto batchRange = training_data_.KthBatchRange(params_.batch_size_, batch);
+      std::vector<MLValue> feed = training_data_.GetKthBatch(params_.batch_size_, batch);
 
-      for (auto it = batchRange.first; it < batchRange.second; ++it) {
-        vector<MLValue> gradient_fetches;
-        ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                         training_data_.TensorNames(),
-                                         *(it->get()),
-                                         training_output_names,
-                                         &gradient_fetches));
+      vector<MLValue> gradient_fetches;
+      ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
+                                       training_data_.TensorNames(),
+                                       feed,
+                                       training_output_names,
+                                       &gradient_fetches));
 
-        // Accumulated grads from multi run.
-        NameMLValMap grad;
-        for (int i = 0; i < training_output_names.size(); i++) {
-          if (training_output_names[i] == params_.loss_func_info_.loss_name_ ||
-              training_output_names[i] == params_.model_prediction_name_) {
-            continue;
-          }
-          grad.insert(make_pair(training_output_names[i], gradient_fetches[i]));
+      NameMLValMap grad;
+      for (int i = 0; i < training_output_names.size(); i++) {
+        if (training_output_names[i] == params_.loss_func_info_.loss_name_ ||
+            training_output_names[i] == params_.model_prediction_name_) {
+          continue;
         }
-        grads_batch.emplace_back(grad);
+        grad.insert(make_pair(training_output_names[i], gradient_fetches[i]));
       }
-
-      auto start_iterator = training_data_.AllDataRange().first;
 
       // Print some info when reaching the end of the batch.
       printf("batch: %d/%d, epoch: %d/%d \n",
@@ -114,10 +106,10 @@ Status TrainingRunner::TrainingLoop() {
              static_cast<int>(epoch + 1),
              static_cast<int>(params_.num_of_epoch_));
       printf("Training data range: [%d - %d)\n",
-             static_cast<int>(distance(start_iterator, batchRange.first)),
-             static_cast<int>(distance(start_iterator, batchRange.second)));
+             static_cast<int>(batch * params_.batch_size_),
+             static_cast<int>((batch + 1) * params_.batch_size_ - 1));
 
-      weight_updater.Update(grads_batch);
+      weight_updater.Update(grad, params_.batch_size_);
       ORT_RETURN_IF_ERROR(Evaluate(session_));
     }
   }
@@ -153,45 +145,37 @@ Status TrainingRunner::EndTraining() {
 Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
   // A static batch index representing current test batch
   static size_t current_batch = 0;
+
   if (current_batch == 0 && !use_full_set) {
     test_data_.RandomShuffle();
     printf("Randomly shuffle test data.\n");
   }
 
-  auto batchRange = test_data_.KthBatchRange(params_.num_of_samples_for_evaluation_, current_batch);
-  if (use_full_set) {
-    // If full set is used, reset the range.
-    batchRange = test_data_.AllDataRange();
-  } else {
-    // Increase current_batch for next Evaluate() call.
-    current_batch = (current_batch + 1) % test_data_.TotalBatch(params_.num_of_samples_for_evaluation_);
-  }
-
-  auto start_iterator = test_data_.AllDataRange().first;
+  size_t evaluation_batch_size = use_full_set ? test_data_.NumSamples() : params_.num_of_samples_for_evaluation_;
 
   printf("Test data range: [%d - %d)\n",
-         static_cast<int>(distance(start_iterator, batchRange.first)),
-         static_cast<int>(distance(start_iterator, batchRange.second)));
+         static_cast<int>(current_batch * evaluation_batch_size),
+         static_cast<int>((current_batch + 1) * evaluation_batch_size - 1));
 
-  for (auto it = batchRange.first; it < batchRange.second; ++it) {
-    vector<MLValue> fetches;
-    ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
-                                    test_data_.TensorNames(),
-                                    *(it->get()),
-                                    {params_.model_prediction_name_, params_.loss_func_info_.loss_name_},
-                                    &fetches));
-    // Call error function with predict, label and loss.
-    if (params_.error_function_) {
-      params_.error_function_(fetches[0] /*predict*/, it->get()->back() /*label*/, fetches[1] /*loss*/);
-    }
+  std::vector<MLValue> feed = test_data_.GetKthBatch(evaluation_batch_size, current_batch);
+  vector<MLValue> fetches;
+  ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
+                                  test_data_.TensorNames(),
+                                  feed,
+                                  {params_.model_prediction_name_, params_.loss_func_info_.loss_name_},
+                                  &fetches));
+
+  // Call error function with predict, label and loss.
+  if (params_.error_function_) {
+    params_.error_function_(fetches[0] /*predict*/, feed.back() /*label*/, fetches[1] /*loss*/);
   }
 
   // Call afer a test batch.
   if (params_.post_evaluation_callback_) {
-    size_t total_run = distance(batchRange.first, batchRange.second);
-    params_.post_evaluation_callback_(total_run);
+    params_.post_evaluation_callback_(evaluation_batch_size);
   }
 
+  current_batch++;
   return Status::OK();
 }
 }  // namespace training

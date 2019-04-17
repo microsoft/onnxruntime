@@ -23,55 +23,49 @@ template <typename T>
 auto MakeEigenArrayMap(const Tensor* t) { return ConstEigenVectorArrayMap<T>(t->template Data<T>(), t->Shape().Size()); }
 
 NameMLValMap GradientDescent::CalculateNewWeights(const NameMLValMap& original_weights,
-                                                  const std::vector<NameMLValMap>& gradients_multi_batches) const {
-  NameMLValMap newWeights;
+                                                  const NameMLValMap& gradients,
+                                                  size_t batch_size) const {
+  NameMLValMap new_weights;
 
   // Update weight - formula:
-  // W = W - LearningRate * Sum(GradOfW[i])/n
+  // W = W - LearningRate * GradOfW[i] / batch_size
 
   for (auto pair : original_weights) {
-    auto gradName = pair.first + "_grad";
+    std::string grad_name = pair.first + "_grad";
     auto element_type = DataTypeImpl::GetType<float>();
-    auto gradEntry = gradients_multi_batches[0].find(gradName);
 
-    if (gradEntry == gradients_multi_batches[0].end()) {
+    auto grad_it = gradients.find(grad_name);
+    if (grad_it == gradients.end()) {
       throw new NotImplementedException("bad gradiant name");
     }
+    const Tensor& grad_tensor = grad_it->second.Get<Tensor>();
 
-    auto shape = gradEntry->second.Get<Tensor>().Shape();
-
+    auto shape = grad_tensor.Shape();
     void* buffer = param_.allocator_ptr_->Alloc(element_type->Size() * shape.Size());
     memset(buffer, 0, element_type->Size() * shape.Size());
+    auto p_tensor = new Tensor(element_type,
+                               shape,
+                               buffer,
+                               param_.allocator_ptr_->Info());
 
-    auto p_tensor = new Tensor(
-        element_type,
-        shape,
-        buffer,
-        param_.allocator_ptr_->Info());
+    auto outputGradArrayMap = MakeEigenArrayMap<float>(p_tensor);
+    outputGradArrayMap += MakeEigenArrayMap<float>(grad_tensor);
 
-    auto outputAccumulatedGradArrayMap = MakeEigenArrayMap<float>(p_tensor);
+    outputGradArrayMap *= param_.learning_rate_ / static_cast<float>(batch_size);
 
-    for (auto nvmap : gradients_multi_batches) {
-      outputAccumulatedGradArrayMap += MakeEigenArrayMap<float>(nvmap[gradName].Get<Tensor>());
-    }
-
-    outputAccumulatedGradArrayMap /= (float)gradients_multi_batches.size();
-    outputAccumulatedGradArrayMap *= param_.learning_rate_;
-
-    auto originalValue = pair.second;
-    auto& original_weight = originalValue.Get<Tensor>();
+    auto& original_weight = pair.second.Get<Tensor>();
     auto originalWeightArrayMap = MakeEigenArrayMap<float>(original_weight);
 
-    // reuse outputAccumulatedGradArrayMap to store final output - which is the new weight
-    outputAccumulatedGradArrayMap = originalWeightArrayMap - outputAccumulatedGradArrayMap;
+    // reuse outputGradArrayMap to store final output - which is the new weight
+    outputGradArrayMap = originalWeightArrayMap - outputGradArrayMap;
 
-    MLValue newWeight;
-    newWeight.Init(p_tensor,
-                   DataTypeImpl::GetType<Tensor>(),
-                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    MLValue updated_weight;
+    updated_weight.Init(p_tensor,
+                        DataTypeImpl::GetType<Tensor>(),
+                        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
-    newWeights.insert(std::make_pair(pair.first, newWeight));
+    new_weights.insert(std::make_pair(pair.first, updated_weight));
   }
 
-  return newWeights;
+  return new_weights;
 }

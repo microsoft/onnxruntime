@@ -18,8 +18,8 @@ class WeightUpdater {
       : training_session_(training_session), optimizer_(param) {
   }
 
-  common::Status Update(const std::vector<NameMLValMap>& gradients_multi_batches) {
-    if (gradients_multi_batches.size() < 0) {
+  common::Status Update(const NameMLValMap& gradients, size_t batch_size) {
+    if (gradients.size() < 0) {
       return common::Status(common::ONNXRUNTIME, common::FAIL);
     }
 
@@ -28,7 +28,7 @@ class WeightUpdater {
       current_weights_ = training_session_.GetWeights();
     }
 
-    current_weights_ = optimizer_.CalculateNewWeights(current_weights_, gradients_multi_batches);
+    current_weights_ = optimizer_.CalculateNewWeights(current_weights_, gradients, batch_size);
     return training_session_.UpdateWeights(current_weights_);
   }
 

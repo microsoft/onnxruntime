@@ -16,17 +16,25 @@ using namespace onnxruntime::training;
 using namespace std;
 
 const static int NUM_OF_EPOCH = 2;
-const static float LEARNING_RATE = 0.5f;
+const static float LEARNING_RATE = 0.1f;
 const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
-const static int NUM_SAMPLES_FOR_EVALUATION = 1000;
+const static int NUM_SAMPLES_FOR_EVALUATION = 100;
 
-const static char* ORIGINAL_MODEL_PATH = "mnist_fc_model.onnx";
-const static char* GENERATED_MODEL_WITH_COST_PATH = "mnist_fc_model_with_cost.onnx";
-const static char* BACKWARD_MODEL_PATH = "mnist_fc_model_bw.onnx";
-const static char* TRAINED_MODEL_PATH = "mnist_fc_model_trained.onnx";
-const static char* TRAINED_MODEL_WITH_COST_PATH = "mnist_fc_model_with_cost_trained.onnx";
-const static char* MNIST_DATA_PATH = "mnist_data";
+//const static std::string MODEL_NAME = "mnist_fc_model";
+//const static vector<int64_t> IMAGE_DIMS = {1, 784};
+//const static vector<int64_t> LABEL_DIMS = {1, 10};
+
+//const static std::string MODEL_NAME = "mnist_conv";
+const static std::string MODEL_NAME = "mnist_conv_batch_unknown";
+const static vector<int64_t> IMAGE_DIMS = {1, 1, 28, 28};
+const static vector<int64_t> LABEL_DIMS = {1, 10};
+const static std::string ORIGINAL_MODEL_PATH = MODEL_NAME + ".onnx";
+const static std::string GENERATED_MODEL_WITH_COST_PATH = MODEL_NAME + "_with_cost.onnx";
+const static std::string BACKWARD_MODEL_PATH = MODEL_NAME + "_bw.onnx";
+const static std::string TRAINED_MODEL_PATH = MODEL_NAME + "_trained.onnx";
+const static std::string TRAINED_MODEL_WITH_COST_PATH = MODEL_NAME + "_with_cost_trained.onnx";
+const static std::string MNIST_DATA_PATH = "mnist_data";
 
 int main(int /*argc*/, char* /*args*/[]) {
   string default_logger_id{"Default"};
@@ -41,7 +49,7 @@ int main(int /*argc*/, char* /*args*/[]) {
 
   DataSet trainingData({"X", "labels"});
   DataSet testData({"X", "labels"});
-  PrepareMNISTData(MNIST_DATA_PATH, trainingData, testData);
+  PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData);
 
   TrainingRunner::Parameters params;
 
@@ -61,29 +69,46 @@ int main(int /*argc*/, char* /*args*/[]) {
 
   int true_count = 0;
   float total_loss = 0.0f;
+
   params.error_function_ = [&true_count, &total_loss](const MLValue& predict, const MLValue& label, const MLValue& loss) {
-    const float* prediction_data = predict.Get<Tensor>().template Data<float>();
+    const Tensor& predict_t = predict.Get<Tensor>();
+    const Tensor& label_t = label.Get<Tensor>();
+    const Tensor& loss_t = loss.Get<Tensor>();
 
-    auto max_class_index = std::distance(prediction_data,
-                                         std::max_element(prediction_data, prediction_data + NUM_CLASS));
+    const float* prediction_data = predict_t.template Data<float>();
+    const float* label_data = label_t.template Data<float>();
+    const float* loss_data = loss_t.template Data<float>();
 
-    const float* label_data = label.Get<Tensor>().template Data<float>();
+    const TensorShape predict_shape = predict_t.Shape();
+    const TensorShape label_shape = label_t.Shape();
+    const TensorShape loss_shape = loss_t.Shape();
+    ORT_ENFORCE(predict_shape == label_shape);
+    ORT_ENFORCE(loss_shape.NumDimensions() == 1 && loss_shape[0] == 1);
 
-    if (static_cast<int>(label_data[max_class_index]) == 1) {
-      true_count++;
+    int64_t batch_size = predict_shape[0];
+    for (int n = 0; n < batch_size; ++n) {
+      auto max_class_index = std::distance(prediction_data,
+                                           std::max_element(prediction_data, prediction_data + NUM_CLASS));
+
+      if (static_cast<int>(label_data[max_class_index]) == 1) {
+        true_count++;
+      }
+
+      prediction_data += predict_shape.SizeFromDimension(1);
+      label_data += label_shape.SizeFromDimension(1);
     }
-
-    total_loss += *(loss.Get<Tensor>().Data<float>());
+    total_loss += *loss_data;
   };
 
-  params.post_evaluation_callback_ = [&true_count, &total_loss](size_t num_of_test_run) {
-    float precision = float(true_count) / num_of_test_run;
+  params.post_evaluation_callback_ = [&true_count, &total_loss](size_t num_samples) {
+    float precision = float(true_count) / num_samples;
+    float average_loss = total_loss / float(num_samples);
     printf("");
-    printf("#examples: %d, #correct: %d, precision: %0.04f, loss:%0.04f \n\n",
-           static_cast<int>(num_of_test_run),
+    printf("#examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
+           static_cast<int>(num_samples),
            true_count,
            precision,
-           total_loss / num_of_test_run);
+           average_loss);
     true_count = 0;
     total_loss = 0.0f;
   };

@@ -5,5 +5,7 @@
 #include "test/training/runner/training_runner.h"
 
 void PrepareMNISTData(const std::string& data_folder,
+                      const std::vector<int64_t>& image_dims,
+                      const std::vector<int64_t>& label_dims,
                       onnxruntime::training::DataSet& training_data,
                       onnxruntime::training::DataSet& test_data);
