@@ -28,7 +28,7 @@ EXIT_CODE=1
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 cd $SCRIPT_DIR/docker
-if [ $BUILD_OS = "android" ]
+if [ $BUILD_OS = "android" ]; then
     IMAGE="android"
     DOCKER_FILE=Dockerfile.ubuntu_for_android
     docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
