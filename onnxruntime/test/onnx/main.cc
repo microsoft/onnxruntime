@@ -394,6 +394,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   broken_tests["keras2coreml_thresholdedrelu_ImageNet_large"] = "This model uses contrib ops.";
   broken_tests["keras2coreml_thresholdedrelu_ImageNet_small"] = "This model uses contrib ops.";
   broken_tests["keras2coreml_thresholdedrelu_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
+  broken_tests["thresholdedrelu"] = "This model uses contrib ops.";
+  broken_tests["thresholdedrelu_default"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_default_axes"] = "This model uses contrib ops.";
+  broken_tests["thresholdedrelu_example"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_neg failed"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_start_out_of_bounds"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
 #endif
 
   int result = 0;
