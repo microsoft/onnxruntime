@@ -540,14 +540,14 @@ endif()
 
 if (onnxruntime_BUILD_HOSTING)
   file(GLOB onnxruntime_test_hosting_src
-    "${TEST_SRC_DIR}/hosting/*.cc"
-    "${TEST_SRC_DIR}/hosting/*.h"
+    "${TEST_SRC_DIR}/hosting/unit_tests/*.cc"
+    "${TEST_SRC_DIR}/hosting/unit_tests/*.h"
   )
   if(NOT WIN32)
     if(HAS_UNUSED_PARAMETER)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
 

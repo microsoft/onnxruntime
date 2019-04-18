@@ -12,7 +12,7 @@ namespace test {
 
 namespace protobufutil = google::protobuf::util;
 
-TEST(PositiveTests, GetRequestContentTypeJson) {
+TEST(RequestContentTypeTests, ContentTypeJson) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::content_type, "application/json");
@@ -22,7 +22,7 @@ TEST(PositiveTests, GetRequestContentTypeJson) {
   EXPECT_EQ(result, SupportedContentType::Json);
 }
 
-TEST(PositiveTests, GetRequestContentTypeRawData) {
+TEST(RequestContentTypeTests, ContentTypeRawData) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::content_type, "application/octet-stream");
@@ -40,7 +40,7 @@ TEST(PositiveTests, GetRequestContentTypeRawData) {
   EXPECT_EQ(result, SupportedContentType::PbByteArray);
 }
 
-TEST(NegativeTests, GetRequestContentTypeUnknown) {
+TEST(RequestContentTypeTests, ContentTypeUnknown) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::content_type, "text/plain");
@@ -50,7 +50,7 @@ TEST(NegativeTests, GetRequestContentTypeUnknown) {
   EXPECT_EQ(result, SupportedContentType::Unknown);
 }
 
-TEST(NegativeTests, GetRequestContentTypeMissing) {
+TEST(RequestContentTypeTests, ContentTypeMissing) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   context.request = request;
@@ -59,7 +59,7 @@ TEST(NegativeTests, GetRequestContentTypeMissing) {
   EXPECT_EQ(result, SupportedContentType::Unknown);
 }
 
-TEST(PositiveTests, GetResponseContentTypeJson) {
+TEST(ResponseContentTypeTests, ContentTypeJson) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::accept, "application/json");
@@ -69,7 +69,7 @@ TEST(PositiveTests, GetResponseContentTypeJson) {
   EXPECT_EQ(result, SupportedContentType::Json);
 }
 
-TEST(PositiveTests, GetResponseContentTypeRawData) {
+TEST(ResponseContentTypeTests, ContentTypeRawData) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::accept, "application/octet-stream");
@@ -87,7 +87,7 @@ TEST(PositiveTests, GetResponseContentTypeRawData) {
   EXPECT_EQ(result, SupportedContentType::PbByteArray);
 }
 
-TEST(NegativeTests, GetResponseContentTypeAny) {
+TEST(ResponseContentTypeTests, ContentTypeAny) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::accept, "*/*");
@@ -97,7 +97,7 @@ TEST(NegativeTests, GetResponseContentTypeAny) {
   EXPECT_EQ(result, SupportedContentType::PbByteArray);
 }
 
-TEST(NegativeTests, GetResponseContentTypeUnknown) {
+TEST(ResponseContentTypeTests, ContentTypeUnknown) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   request.set(http::field::accept, "text/plain");
@@ -107,7 +107,7 @@ TEST(NegativeTests, GetResponseContentTypeUnknown) {
   EXPECT_EQ(result, SupportedContentType::Unknown);
 }
 
-TEST(NegativeTests, GetResponseContentTypeMissing) {
+TEST(ContentTypeTests, ContentTypeMissing) {
   HttpContext context;
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   context.request = request;
