@@ -410,8 +410,8 @@ else()
 
   # Enabling this for Mac builds causes a sigabrt in several tests.
   if (UNIX AND NOT APPLE)
-    string(APPEND CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
-    string(APPEND CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections")
+    string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+    string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
   endif()
 
   if(onnxruntime_DEV_MODE)
