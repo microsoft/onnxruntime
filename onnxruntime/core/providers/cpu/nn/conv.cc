@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/nn/conv_impl.h"
 #include "core/util/math_cpuonly.h"
 
@@ -65,6 +66,11 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
       ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
     }
 
+    // Get access to the internal threadpool
+    // Temporarily derive concurrency parameters without access to session state
+    auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+    auto thread_pool = ctx_internal->GetOperatorThreadPool();
+
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
@@ -80,7 +86,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     output_shape.GetDims().data(),
                     static_cast<size_t>(M / group_),
                     &Activation,
-                    &WorkingBufferSize);
+                    &WorkingBufferSize,
+                    thread_pool->NumThreads());
 
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
@@ -90,7 +97,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              W->template Data<float>(),
              B != nullptr ? B->template Data<float>() : nullptr,
              static_cast<float*>(working_buffer.get()),
-             Ydata);
+             Ydata,
+             const_cast<ThreadPool*>(thread_pool));
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
