@@ -46,7 +46,7 @@ static DType GetDataType(const ngraph::element::Type& ng_type) {
 }
 
 NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto,
-                               const std::shared_ptr<ngraph::runtime::Backend> ng_backend)
+                               const std::shared_ptr<ngraph::runtime::Backend>& ng_backend)
     : ng_backend_{ng_backend},
       model_proto_{model_proto} {
   allocate_func_ = context->allocate_func;

@@ -15,7 +15,7 @@ namespace ngraph_ep {
 
 class NGRAPHCustomOp {
  public:
-  NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto, const std::shared_ptr<ngraph::runtime::Backend> ng_backend);
+  NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto, const std::shared_ptr<ngraph::runtime::Backend>& ng_backend);
 
   Status Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs, ONNXRunTimeTensor* const output_tensors, const size_t num_outputs) const;
 
