@@ -73,7 +73,8 @@ void
 MlasExecuteThreaded(
     MLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
-    int32_t Iterations
+    int32_t Iterations,
+    ThreadPool *ExternalThreadPool
     )
 {
     //
@@ -83,6 +84,17 @@ MlasExecuteThreaded(
     if (Iterations == 1) {
         ThreadedRoutine(Context, 0);
         return;
+    }
+
+    //
+    // Use an external thread pool if one is provided.
+    //
+
+    if (!(ExternalThreadPool == nullptr)) {
+      std::function<void(int)> WorkObject = [&](int32_t tid) { ThreadedRoutine(Context, tid); };
+      ExternalThreadPool->ParallelFor(Iterations, WorkObject);
+
+      return;
     }
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
