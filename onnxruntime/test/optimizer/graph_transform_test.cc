@@ -98,6 +98,30 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+// Check transformations in the case a subgraph with constant inputs.
+TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
+  string model_uri = MODEL_FOLDER + "constant-subgraph.onnx";
+
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Level2;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  NameMLValMap feeds;
+  RunOptions run_options;
+
+  std::vector<std::string> output_names = {"output"};
+  std::vector<MLValue> fetches;
+
+  ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
+}
+
 TEST(GraphTransformationTests, FuseConvBNNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-no-bias.onnx";
 
