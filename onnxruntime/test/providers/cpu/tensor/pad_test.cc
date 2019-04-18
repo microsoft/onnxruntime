@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because only constant mode and value 0 is supported for "Pad" node
+
 TEST(TensorOpTest, Pad_Spec_Example) {
   OpTester test("Pad");
 
@@ -14,7 +16,7 @@ TEST(TensorOpTest, Pad_Spec_Example) {
   test.AddAttribute("value", 0.0f);
   test.AddInput<float>("data", {3, 2}, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f});
   test.AddOutput<float>("output", {3, 4}, {0.0f, 0.0f, 1.0f, 1.2f, 0.0f, 0.0f, 2.3f, 3.4f, 0.0f, 0.0f, 4.5f, 5.7f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Constant_1D) {
@@ -24,7 +26,7 @@ TEST(TensorOpTest, Pad_Constant_1D) {
   test.AddAttribute("value", 1234.0f);
   test.AddInput<float>("data", {2}, {1.0f, 2.0f});
   test.AddOutput<float>("output", {5}, {1234.0f, 1.0f, 2.0f, 1234.0f, 1234.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Constant_1D_Zero) {
@@ -34,7 +36,7 @@ TEST(TensorOpTest, Pad_Constant_1D_Zero) {
   test.AddAttribute("value", 1234.0f);
   test.AddInput<float>("data", {2}, {1.0f, 2.0f});
   test.AddOutput<float>("output", {2}, {1.0f, 2.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Constant_2D) {
@@ -50,7 +52,7 @@ TEST(TensorOpTest, Pad_Constant_2D) {
                          1234.0f, 1234.0f, 11.0f, 21.0f, 1234.0f, 1234.0f,
                          1234.0f, 1234.0f, 12.0f, 22.0f, 1234.0f, 1234.0f,
                          1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Constant_2D_negative) {
@@ -66,7 +68,7 @@ TEST(TensorOpTest, Pad_Constant_2D_negative) {
                          1234.0f, 1234.0f, 11.0f, 21.0f,
                          1234.0f, 1234.0f, 12.0f, 22.0f,
                          1234.0f, 1234.0f, 1234.0f, 1234.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_3D_complex) {
@@ -86,7 +88,7 @@ TEST(TensorOpTest, Pad_3D_complex) {
 
                          111.0f, 112.0f,
                          121.0f, 122.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Edge_2D) {
@@ -104,7 +106,7 @@ TEST(TensorOpTest, Pad_Edge_2D) {
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f,
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f,
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Edge_3D) {
@@ -137,7 +139,7 @@ TEST(TensorOpTest, Pad_Edge_3D) {
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f,
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Pad_Reflect_2D) {
@@ -157,7 +159,7 @@ TEST(TensorOpTest, Pad_Reflect_2D) {
                          33.0f, 23.0f, 13.0f, 23.0f, 33.0f, 23.0f, 13.0f,
                          32.0f, 22.0f, 12.0f, 22.0f, 32.0f, 22.0f, 12.0f,
                          31.0f, 21.0f, 11.0f, 21.0f, 31.0f, 21.0f, 11.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
