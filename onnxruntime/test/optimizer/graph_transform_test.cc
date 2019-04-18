@@ -148,6 +148,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   }
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<std::string, std::string> model_to_op_name{{"fusion/conv_relu.onnx", "Relu"},
                                                                 {"fusion/conv_sigmoid.onnx", "Sigmoid"},
@@ -172,6 +173,7 @@ TEST(GraphTransformationTests, FuseConvActivation) {
     ASSERT_TRUE(op_to_count[model.second] == 0);
   }
 }
+#endif
 
 TEST(GraphTransformationTests, FuseConvMulNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-mul-no-bias.onnx";
@@ -269,6 +271,7 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   ASSERT_TRUE(op_to_count["Gemm"] == 1);
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
 
@@ -283,6 +286,7 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
+#endif
 
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";

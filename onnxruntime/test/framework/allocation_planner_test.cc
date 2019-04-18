@@ -67,14 +67,14 @@ class AllocationPlanTestUtility {
  public:
   static void CheckAllocationKind(const SequentialExecutionPlan& plan, std::vector<AllocKind>& expected) {
     ASSERT_EQ(plan.allocation_plan.size(), expected.size()) << "Allocation plan of wrong size";
-    for (int i = 0; i < expected.size(); ++i) {
+    for (size_t i = 0; i < expected.size(); ++i) {
       EXPECT_EQ(plan.allocation_plan[i].alloc_kind, expected[i]) << "Error in allocation kind at position " << i;
     }
   }
 
   static void CheckToBeFreed(const SequentialExecutionPlan& plan, const std::vector<MLValueIndex>& expected) {
     ASSERT_EQ(plan.to_be_freed.size(), expected.size()) << "Allocation plan's to_be_freed of wrong size";
-    for (int i = 0; i < expected.size(); ++i) {
+    for (size_t i = 0; i < expected.size(); ++i) {
       EXPECT_EQ(plan.to_be_freed[i], expected[i]) << "Error in to_be_freed at position " << i;
     }
   }
@@ -82,7 +82,7 @@ class AllocationPlanTestUtility {
   static void CheckFreedAtEachStep(const SequentialExecutionPlan& plan, const std::vector<int>& expected_num_freed) {
     ASSERT_EQ(plan.execution_plan.size(), expected_num_freed.size()) << "Execution plan is of wrong size";
     int start = 0;
-    for (int i = 0; i < expected_num_freed.size(); ++i) {
+    for (size_t i = 0; i < expected_num_freed.size(); ++i) {
       if (expected_num_freed[i] > 0) {
         EXPECT_EQ(plan.execution_plan[i].free_from_index, start) << "Error in free_from_index at position " << i;
         EXPECT_EQ(plan.execution_plan[i].free_to_index, start + expected_num_freed[i] - 1)

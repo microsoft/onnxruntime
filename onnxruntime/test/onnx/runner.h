@@ -128,9 +128,11 @@ struct DataTask {
   const size_t task_id;
 };
 
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  double default_per_sample_tolerance, double default_relative_per_sample_tolerance);
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::function<void(ITestCase*)>& process_function);
+
 //Do not run this function in the thread pool passed in
 ::onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);
