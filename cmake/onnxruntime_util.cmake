@@ -9,7 +9,7 @@ file(GLOB_RECURSE onnxruntime_util_srcs
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_util_srcs})
 
 add_library(onnxruntime_util ${onnxruntime_util_srcs})
-target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${MKLML_INCLUDE_DIR})
+target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} ${MKLML_INCLUDE_DIR} PUBLIC ${eigen_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_util onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
 if(UNIX)
     target_compile_options(onnxruntime_util PUBLIC "-Wno-error=comment")
