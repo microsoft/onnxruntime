@@ -39,12 +39,13 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 add_library(onnxruntime_common ${onnxruntime_common_src})
 
 onnxruntime_add_include_to_target(onnxruntime_common gsl date_interface)
-target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
+target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
         PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 if(onnxruntime_USE_NSYNC)
     target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC)
 endif()
 if(onnxruntime_USE_EIGEN_THREADPOOL)
+    target_include_directories(onnxruntime_common PRIVATE ${eigen_INCLUDE_DIRS})
     target_compile_definitions(onnxruntime_common PUBLIC USE_EIGEN_THREADPOOL)
     add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES} eigen)
 endif()
