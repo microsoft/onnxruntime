@@ -23,11 +23,11 @@ class HostingEnvironment {
 
   const logging::Logger& GetAppLogger();
   std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
-  const logging::Severity GetLogSeverity() const;
+  logging::Severity GetLogSeverity() const;
 
   common::Status
   InitializeModel(std::string model_path);
-  const std::vector<std::string> GetModelOutputNames() const;
+  const std::vector<std::string>& GetModelOutputNames() const;
 
   std::unique_ptr<onnxruntime::InferenceSession> session;
 

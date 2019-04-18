@@ -42,7 +42,7 @@ common::Status HostingEnvironment::InitializeModel(std::string model_path) {
   return common::Status::OK();
 }
 
-const std::vector<std::string> HostingEnvironment::GetModelOutputNames() const {
+const std::vector<std::string>& HostingEnvironment::GetModelOutputNames() const {
   return model_output_names_;
 }
 
@@ -50,7 +50,7 @@ const logging::Logger& HostingEnvironment::GetAppLogger() {
   return default_logging_manager_.DefaultLogger();
 }
 
-const logging::Severity HostingEnvironment::GetLogSeverity() const {
+logging::Severity HostingEnvironment::GetLogSeverity() const {
   return severity_;
 }
 
