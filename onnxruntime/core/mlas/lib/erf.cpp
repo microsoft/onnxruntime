@@ -39,7 +39,7 @@ extern "C" const struct {
     float ErfSMALL_P3;
     float ErfSMALL_P4;
     float ErfSMALL_P5_Minus_One;
-    int32_t ErfMaxInt;
+    float ErfReserved0;
     float ErfBIG_P0;
     float ErfBIG_P1;
     float ErfBIG_P2;
@@ -73,7 +73,7 @@ extern "C" const struct {
     1.12818025e-1f,
     -3.76124859e-1f,
     1.28379151e-1f,
-    0x7FFFFFFF,
+    0.0f,
     1.72948930e-5f,
     -3.83208680e-4f,
     3.88393435e-3f,
@@ -130,8 +130,9 @@ Return Value:
 {
     while (N >= 4) {
         MLAS_FLOAT32X4 Value = MlasLoadFloat32x4(Input);
-        MLAS_FLOAT32X4 SignMask = MlasAndFloat32x4(Value, MlasBroadcastFloat32x4(MlasErfConstants.ErfNegZero));
-        MLAS_FLOAT32X4 AbsValue = MlasAndFloat32x4(Value, MlasBroadcastFloat32x4(reinterpret_cast<const float*>(&MlasErfConstants.ErfMaxInt)));
+        MLAS_FLOAT32X4 NegZero = MlasBroadcastFloat32x4(MlasErfConstants.ErfNegZero);
+        MLAS_FLOAT32X4 SignMask = MlasAndFloat32x4(Value, NegZero);
+        MLAS_FLOAT32X4 AbsValue = MlasAndNotFloat32x4(NegZero, Value);
         AbsValue = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasErfConstants.ErfUpperAbsRange), Value);
         MLAS_FLOAT32X4 SquareValue = MlasMultiplyFloat32x4(AbsValue, AbsValue);
         MLAS_FLOAT32X4 split_mask = MlasGreaterThanFloat32x4(AbsValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfSplitBoundary));
@@ -247,7 +248,7 @@ MlasComputeErf(
 
 Routine Description:
 
-    This routine computes the hyperbolic tangent function.
+    This routine computes the error function.
 
 Arguments:
 
@@ -269,5 +270,3 @@ Return Value:
     MlasErfKernel(Input, Output, N);
 #endif
 }
-
-
