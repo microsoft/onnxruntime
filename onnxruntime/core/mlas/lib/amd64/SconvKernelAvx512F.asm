@@ -357,23 +357,21 @@ SkipReluActivation:
 
 ProcessFilterCountN MACRO Format, FilterCount
 
-        LOCAL   ProcessOutputCountLeftPad
         LOCAL   ProcessOutputCount
         LOCAL   ProcessNextOutputCountBy6
         LOCAL   ProcessRemainingOutputCount
         LOCAL   ProcessRemainingOutputCountLessThan3
         LOCAL   ProcessRemainingOutputCount1
-        LOCAL   ProcessOutputCountRightPad
+        LOCAL   ProcessOutputCountRightPadAndRemaining
 
 ;
 ; Process the output blocks that include left padding.
 ;
 
-ProcessOutputCountLeftPad:
         mov     r10,SconvKernelFrame.OutputCountLeftPad[rsp]
         test    r10,r10
         jz      ProcessOutputCount
-        call    MlasConvKernelSingle&Format&Avx512FFilterCount&FilterCount
+        call    MlasConv&Format&FloatSingleAvx512FFilterCount&FilterCount
 
 ;
 ; Process the output blocks that do not include any padding.
@@ -393,34 +391,31 @@ ProcessNextOutputCountBy6:
 
 ProcessRemainingOutputCount:
         add     r10,6                       ; correct for over-subtract above
-        jz      ProcessOutputCountRightPad
+        jz      ProcessOutputCountRightPadAndRemaining
         cmp     r10,3
         jb      ProcessRemainingOutputCountLessThan3
         ProcessOutputCountN SconvKernelFrame, Format, 16, FilterCount, 3
         lea     rax,[r9*2+r9]
         add     rbp,rax                     ; advance input by 3 elements
         sub     r10,3
-        jz      ProcessOutputCountRightPad
+        jz      ProcessOutputCountRightPadAndRemaining
 
 ProcessRemainingOutputCountLessThan3:
         cmp     r10,1
-        je      ProcessRemainingOutputCount1
+        je      ProcessOutputCountRightPadAndRemaining
         ProcessOutputCountN SconvKernelFrame, Format, 16, FilterCount, 2
         lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
-        jmp     ProcessOutputCountRightPad
-
-ProcessRemainingOutputCount1:
-        call    MlasConvKernelSingle&Format&Avx512FFilterCount&FilterCount
+        sub     r10,2
 
 ;
-; Process the output blocks that include right padding.
+; Process the output blocks that include right padding plus any remaining output
+; blocks from above.
 ;
 
-ProcessOutputCountRightPad:
-        mov     r10,SconvKernelFrame.OutputCountRightPad[rsp]
-        test    r10,r10
+ProcessOutputCountRightPadAndRemaining:
+        add     r10,SconvKernelFrame.OutputCountRightPad[rsp]
         jz      ExitKernel
-        call    MlasConvKernelSingle&Format&Avx512FFilterCount&FilterCount
+        call    MlasConv&Format&FloatSingleAvx512FFilterCount&FilterCount
 
         ENDM
 

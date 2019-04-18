@@ -311,7 +311,7 @@ SconvKernelFunction MACRO Format, BlockSize, Isa, BiasFilter
 ;
 ;--
 
-        NESTED_ENTRY MlasConvKernel&Format&&Isa&, _TEXT
+        NESTED_ENTRY MlasConv&Format&FloatKernel&Isa&, _TEXT
 
         rex_push_reg rbp
         push_reg rbx
@@ -401,7 +401,7 @@ ENDIF
         pop     rbp
         ret
 
-        NESTED_END MlasConvKernel&Format&&Isa&, _TEXT
+        NESTED_END MlasConv&Format&FloatKernel&Isa&, _TEXT
 
 IFDIFI <Isa>, <Sse>
 
@@ -411,7 +411,7 @@ IFDIFI <Isa>, <Sse>
 
         IRP FilterCount, <1, 2, 3, 4>
 
-        LEAF_ENTRY MlasConvKernelSingle&Format&&Isa&FilterCount&FilterCount, _TEXT
+        LEAF_ENTRY MlasConv&Format&FloatSingle&Isa&FilterCount&FilterCount, _TEXT
 
 ProcessNextOutputCount:
         ProcessOutputCountN SconvKernelSingleFrame.KernelFrame, Format, BlockSize, FilterCount, 1
@@ -420,7 +420,7 @@ ProcessNextOutputCount:
         jnz     ProcessNextOutputCount
         ret
 
-        LEAF_END MlasConvKernelSingle&Format&&Isa&FilterCount&FilterCount, _TEXT
+        LEAF_END MlasConv&Format&FloatSingle&Isa&FilterCount&FilterCount, _TEXT
 
         ENDM
 
@@ -505,7 +505,7 @@ SconvKernel1x1Function MACRO Isa, BiasFilter
 ;
 ;--
 
-        NESTED_ENTRY MlasConvKernel1x1Nchwc&Isa, _TEXT
+        NESTED_ENTRY MlasConv1x1FloatKernel&Isa, _TEXT
 
         rex_push_reg rbp
         push_reg rbx
@@ -590,6 +590,6 @@ ExitKernel:
         pop     rbp
         ret
 
-        NESTED_END MlasConvKernel1x1Nchwc&Isa&, _TEXT
+        NESTED_END MlasConv1x1FloatKernel&Isa&, _TEXT
 
         ENDM

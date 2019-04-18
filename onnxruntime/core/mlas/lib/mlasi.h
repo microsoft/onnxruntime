@@ -155,7 +155,7 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 
 typedef
 void
-(MLASCALL MLAS_SCONV_KERNEL_ROUTINE)(
+(MLASCALL MLAS_CONV_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
     float* Output,
@@ -177,11 +177,11 @@ void
     unsigned Flags
     );
 
-typedef MLAS_SCONV_KERNEL_ROUTINE* PMLAS_SCONV_KERNEL_ROUTINE;
+typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_SCONV_KERNEL_1X1_ROUTINE)(
+(MLASCALL MLAS_CONV_1X1_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
     float* Output,
@@ -196,7 +196,7 @@ void
     unsigned Flags
     );
 
-typedef MLAS_SCONV_KERNEL_1X1_ROUTINE* PMLAS_SCONV_KERNEL_1X1_ROUTINE;
+typedef MLAS_CONV_1X1_FLOAT_KERNEL* PMLAS_CONV_1X1_FLOAT_KERNEL;
 
 typedef
 void
@@ -267,17 +267,17 @@ extern "C" {
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwSse;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcSse;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwAvx;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcAvx;
-    MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcAvx;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwFma3;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcFma3;
-    MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcFma3;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwAvx512F;
-    MLAS_SCONV_KERNEL_ROUTINE MlasConvKernelNchwcAvx512F;
-    MLAS_SCONV_KERNEL_1X1_ROUTINE MlasConvKernel1x1NchwcAvx512F;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
+    MLAS_CONV_1X1_FLOAT_KERNEL MlasConv1x1FloatKernelAvx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelFma3;
+    MLAS_CONV_1X1_FLOAT_KERNEL MlasConv1x1FloatKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
+    MLAS_CONV_1X1_FLOAT_KERNEL MlasConv1x1FloatKernelAvx512F;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
@@ -355,9 +355,9 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
-    PMLAS_SCONV_KERNEL_ROUTINE SconvKernelNchwRoutine;
-    PMLAS_SCONV_KERNEL_ROUTINE SconvKernelNchwcRoutine;
-    PMLAS_SCONV_KERNEL_1X1_ROUTINE SconvKernel1x1Routine;
+    PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
+    PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
+    PMLAS_CONV_1X1_FLOAT_KERNEL Conv1x1FloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolMaximumFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolAverageExcludePadFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolAverageIncludePadFloatKernel;

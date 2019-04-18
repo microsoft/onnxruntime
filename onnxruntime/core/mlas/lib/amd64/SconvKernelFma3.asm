@@ -120,17 +120,16 @@ ProcessFilterCountN MACRO Format, FilterCount
         LOCAL   ProcessNextOutputCountBy3
         LOCAL   ProcessRemainingOutputCount
         LOCAL   ProcessRemainingOutputCount1
-        LOCAL   ProcessOutputCountRightPad
+        LOCAL   ProcessOutputCountRightPadAndRemaining
 
 ;
 ; Process the output blocks that include left padding.
 ;
 
-ProcessOutputCountLeftPad:
         mov     r10,SconvKernelFrame.OutputCountLeftPad[rsp]
         test    r10,r10
         jz      ProcessOutputCount
-        call    MlasConvKernelSingle&Format&Fma3FilterCount&FilterCount
+        call    MlasConv&Format&FloatSingleFma3FilterCount&FilterCount
 
 ;
 ; Process the output blocks that do not include any padding.
@@ -150,25 +149,22 @@ ProcessNextOutputCountBy3:
 
 ProcessRemainingOutputCount:
         add     r10,3                       ; correct for over-subtract above
-        jz      ProcessOutputCountRightPad
+        jz      ProcessOutputCountRightPadAndRemaining
         cmp     r10,2
-        jb      ProcessRemainingOutputCount1
+        jb      ProcessOutputCountRightPadAndRemaining
         ProcessOutputCountN SconvKernelFrame, Format, 8, FilterCount, 2
         lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
-        jmp     ProcessOutputCountRightPad
-
-ProcessRemainingOutputCount1:
-        call    MlasConvKernelSingle&Format&Fma3FilterCount&FilterCount
+        sub     r10,2
 
 ;
-; Process the output blocks that include right padding.
+; Process the output blocks that include right padding plus any remaining output
+; blocks from above.
 ;
 
-ProcessOutputCountRightPad:
-        mov     r10,SconvKernelFrame.OutputCountRightPad[rsp]
-        test    r10,r10
+ProcessOutputCountRightPadAndRemaining:
+        add     r10,SconvKernelFrame.OutputCountRightPad[rsp]
         jz      ExitKernel
-        call    MlasConvKernelSingle&Format&Fma3FilterCount&FilterCount
+        call    MlasConv&Format&FloatSingleFma3FilterCount&FilterCount
 
         ENDM
 
