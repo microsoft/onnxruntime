@@ -290,7 +290,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     if (batch_env) {
       const int max_batch_size = atoi(batch_env);
       SetMaxBatchSize(max_batch_size);
-    }
+    }    
+    
+    const char* workspace_env = getenv("ORT_TENSORRT_MAX_WORKSPACE_SIZE");
+    if (workspace_env) {
+      const size_t max_workspace_size = atoi(workspace_env);
+      SetMaxWorkspaceSize(max_workspace_size);
+    } 
+    
     trt_builder->setMaxBatchSize(max_batch_size_);
     trt_builder->setMaxWorkspaceSize(max_workspace_size_);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
