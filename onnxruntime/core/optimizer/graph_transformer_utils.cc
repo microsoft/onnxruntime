@@ -85,9 +85,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l2_execution_providers);
 
       // create standalone transformers
+#ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
+#endif
       transformers.emplace_back(std::make_unique<ConvAddFusion>());
       transformers.emplace_back(std::make_unique<ConvMulFusion>());
       transformers.emplace_back(std::make_unique<ConvBNFusion>());
