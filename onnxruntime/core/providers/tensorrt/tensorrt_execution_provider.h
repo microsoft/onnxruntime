@@ -73,13 +73,17 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  void SetMaxBatchSize(const int max_batch_size) {
-      max_batch_size_ = max_batch_size;
+  void SetMaxBatchSize(const int batch_size) {
+      max_batch_size_ = batch_size;
   }
 
+  void SetMaxWorkspaceSize(const size_t workspace_size) {
+      max_workspace_size_ = workspace_size;
+  }
+    
  private:
  int max_batch_size_ = 1;
- const int max_workspace_size_ = 1 << 30;
+ size_t max_workspace_size_ = 1 << 30; // 1GB
 
   struct InferDeleter {
     template <typename T>
