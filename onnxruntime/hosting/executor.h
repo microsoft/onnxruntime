@@ -1,5 +1,3 @@
-#include <utility>
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -16,8 +14,8 @@ namespace hosting {
 class Executor {
  public:
   Executor(std::shared_ptr<HostingEnvironment> hosting_env, std::string request_id) : env_(hosting_env),
-                                                                            request_id_(std::move(request_id)),
-                                                                            using_raw_data(true) {}
+                                                                                      request_id_(std::move(request_id)),
+                                                                                      using_raw_data(true) {}
 
   // Prediction method
   google::protobuf::util::Status Predict(const std::string& model_name,
@@ -39,4 +37,3 @@ class Executor {
 
 }  // namespace hosting
 }  // namespace onnxruntime
-

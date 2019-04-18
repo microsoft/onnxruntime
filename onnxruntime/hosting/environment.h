@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "core/framework/environment.h"
 #include "core/common/logging/logging.h"
@@ -22,8 +23,14 @@ class HostingEnvironment {
 
   const logging::Logger& GetAppLogger();
   std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
+  logging::Severity GetLogSeverity() const;
+
+  common::Status
+  InitializeModel(std::string model_path);
+  const std::vector<std::string>& GetModelOutputNames() const;
 
   std::unique_ptr<onnxruntime::InferenceSession> session;
+
  private:
   const logging::Severity severity_;
   const std::string logger_id_;
@@ -31,8 +38,8 @@ class HostingEnvironment {
 
   std::unique_ptr<onnxruntime::Environment> runtime_environment_;
   onnxruntime::SessionOptions options_;
+  std::vector<std::string> model_output_names_;
 };
 
 }  // namespace hosting
 }  // namespace onnxruntime
-

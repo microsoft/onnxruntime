@@ -25,12 +25,12 @@ int main(int argc, char* argv[]) {
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
   LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
 
-  auto status = env->session->Load(config.model_path);
+  auto status = env->InitializeModel(config.model_path);
   if (!status.IsOK()) {
-    LOGS(logger, FATAL) << "Load Model Failed: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
+    LOGS(logger, FATAL) << "Initialize Model Failed: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
     exit(EXIT_FAILURE);
   } else {
-    LOGS(logger, VERBOSE) << "Load Model Successfully!";
+    LOGS(logger, VERBOSE) << "Initialize Model Successfully!";
   }
 
   status = env->session->Initialize();
