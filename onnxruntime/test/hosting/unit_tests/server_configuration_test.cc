@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace hosting {
 namespace test {
 
-TEST(PositiveTests, ConfigParsingAllArgs) {
+TEST(ConfigParsingTests, AllArgs) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--model_path"), const_cast<char*>("testdata/mul_1.pb"),
@@ -29,7 +29,7 @@ TEST(PositiveTests, ConfigParsingAllArgs) {
   EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kINFO);
 }
 
-TEST(PositiveTests, ConfigParsingDefaults) {
+TEST(ConfigParsingTests, Defaults) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--model"), const_cast<char*>("testdata/mul_1.pb"),
@@ -45,7 +45,7 @@ TEST(PositiveTests, ConfigParsingDefaults) {
   EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kVERBOSE);
 }
 
-TEST(PositiveTests, ConfigParsingHelp) {
+TEST(ConfigParsingTests, Help) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--help")};
@@ -55,7 +55,7 @@ TEST(PositiveTests, ConfigParsingHelp) {
   EXPECT_EQ(res, Result::ExitSuccess);
 }
 
-TEST(NegativeTests, ConfigParsingNoModelArg) {
+TEST(ConfigParsingTests, NoModelArg) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--num_http_threads"), const_cast<char*>("3")};
@@ -65,7 +65,7 @@ TEST(NegativeTests, ConfigParsingNoModelArg) {
   EXPECT_EQ(res, Result::ExitFailure);
 }
 
-TEST(NegativeTests, ConfigParsingModelNotFound) {
+TEST(ConfigParsingTests, ModelNotFound) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--model_path"), const_cast<char*>("does/not/exist"),
@@ -78,7 +78,7 @@ TEST(NegativeTests, ConfigParsingModelNotFound) {
   EXPECT_EQ(res, Result::ExitFailure);
 }
 
-TEST(NegativeTests, ConfigParsingWrongLoggingLevel) {
+TEST(ConfigParsingTests, WrongLoggingLevel) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--logging_level"), const_cast<char*>("not a logging level"),

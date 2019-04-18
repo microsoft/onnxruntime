@@ -19,7 +19,7 @@ void do_something(const std::string& name, const std::string& version,
 
 void run_route(const std::string& pattern, http::verb method, const std::vector<test_data>& data, bool does_validate_data);
 
-TEST(PositiveTests, RegisterTest) {
+TEST(HttpRouteTests, RegisterTest) {
   auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
   Routes routes;
   EXPECT_TRUE(routes.RegisterController(http::verb::post, predict_regex, do_something));
@@ -28,7 +28,7 @@ TEST(PositiveTests, RegisterTest) {
   EXPECT_TRUE(routes.RegisterController(http::verb::get, status_regex, do_something));
 }
 
-TEST(PositiveTests, PostRouteTest) {
+TEST(HttpRouteTests, PostRouteTest) {
   auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 
   std::vector<test_data> actions{
@@ -41,7 +41,7 @@ TEST(PositiveTests, PostRouteTest) {
   run_route(predict_regex, http::verb::post, actions, true);
 }
 
-TEST(NegativeTests, PostRouteInvalidURLTest) {
+TEST(HttpRouteTests, PostRouteInvalidURLTest) {
   auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 
   std::vector<test_data> actions{
@@ -65,7 +65,7 @@ TEST(NegativeTests, PostRouteInvalidURLTest) {
 
 // These tests are because we currently only support POST and GET
 // Some HTTP methods should be removed from test data if we support more (e.g. PUT)
-TEST(NegativeTests, PostRouteInvalidMethodTest) {
+TEST(HttpRouteTests, PostRouteInvalidMethodTest) {
   auto predict_regex = R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))";
 
   std::vector<test_data> actions{
@@ -104,6 +104,6 @@ void run_route(const std::string& pattern, http::verb method, const std::vector<
   }
 }
 
-} // namespace test
-} // namespace hosting
-} // namespace onnxruntime
+}  // namespace test
+}  // namespace hosting
+}  // namespace onnxruntime
