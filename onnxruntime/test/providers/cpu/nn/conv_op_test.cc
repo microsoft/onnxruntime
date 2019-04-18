@@ -50,6 +50,7 @@ void TestConvOp(const ConvOpAttributes& attributes,
   if (!is_mkldnn_supported) {
     excluded_providers.insert(kMklDnnExecutionProvider);
   }
+  excluded_providers.insert(kTensorrtExecutionProvider);// Disable TensorRT because weight as input is not supported
   test.Run(expect_result, err_str, excluded_providers);
 }
 

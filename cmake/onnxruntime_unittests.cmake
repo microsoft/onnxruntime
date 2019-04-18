@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
-set(TEST_INC_DIR ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
+set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
@@ -26,7 +26,7 @@ function(AddTest)
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
   if (_UT_DEPENDS)
-    add_dependencies(${_UT_TARGET} ${_UT_DEPENDS} eigen)
+    add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif(_UT_DEPENDS)
   if(_UT_DYN)
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest gmock onnxruntime ${CMAKE_DL_LIBS} Threads::Threads)
@@ -35,7 +35,9 @@ function(AddTest)
   endif()
   onnxruntime_add_include_to_target(${_UT_TARGET} date_interface gsl eigen)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
-
+  if (onnxruntime_USE_CUDA)
+    target_include_directories(${_UT_TARGET} PRIVATE ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
+  endif()
   if (WIN32)
     if (onnxruntime_USE_CUDA)
       # disable a warning from the CUDA headers about unreferenced local functions
@@ -567,5 +569,5 @@ endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas)
+target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas onnxruntime_common Threads::Threads)
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")

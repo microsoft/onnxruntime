@@ -486,6 +486,12 @@ def setup_tensorrt_vars(args):
                              "tensorrt_home='{}' valid={}."
                              .format(tensorrt_home, tensorrt_home_valid))
 
+        # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests 
+        os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
+
+        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes).  
+        os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"  
+        
     return tensorrt_home
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False):

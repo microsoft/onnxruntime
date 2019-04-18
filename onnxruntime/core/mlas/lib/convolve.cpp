@@ -744,7 +744,8 @@ MlasConvTryMultithread(
     const float* Filter,
     const float* Bias,
     float* WorkingBuffer,
-    float* Output
+    float* Output,
+    ThreadPool* ExternalThreadPool
     )
 /*++
 
@@ -777,7 +778,11 @@ Return Value:
 --*/
 {
 
-#if defined(MLAS_HAS_THREADING_SUPPORT)
+#if !defined(MLAS_HAS_THREADING_SUPPORT)
+  if (ExternalThreadPool == nullptr) {
+    return false;
+  }
+#endif
 
     MLAS_CONV_WORK_BLOCK WorkBlock;
 
@@ -820,27 +825,9 @@ Return Value:
         Index++;
     }
 
-    MlasExecuteThreaded(MlasConvOperationThreaded, &WorkBlock, Index);
+    MlasExecuteThreaded(MlasConvOperationThreaded, &WorkBlock, Index, ExternalThreadPool);
 
     return true;
-
-#else
-
-    //
-    // No threading implementation is available.
-    //
-
-    MLAS_UNREFERENCED_PARAMETER(Parameters);
-    MLAS_UNREFERENCED_PARAMETER(Input);
-    MLAS_UNREFERENCED_PARAMETER(Filter);
-    MLAS_UNREFERENCED_PARAMETER(Bias);
-    MLAS_UNREFERENCED_PARAMETER(WorkingBuffer);
-    MLAS_UNREFERENCED_PARAMETER(Output);
-
-    return false;
-
-#endif
-
 }
 
 void
@@ -851,7 +838,8 @@ MlasConv(
     const float* Filter,
     const float* Bias,
     float* WorkingBuffer,
-    float* Output
+    float* Output,
+    ThreadPool* ExternalThreadPool
     )
 /*++
 
@@ -894,8 +882,6 @@ Return Value:
 
     const MLAS_CONV_ALGORITHM Algorithm = Parameters->Algorithm;
 
-#if defined(MLAS_HAS_THREADING_SUPPORT)
-
     //
     // Schedule batches of GEMMs across multiple threads.
     //
@@ -904,7 +890,7 @@ Return Value:
 
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
-        int32_t TargetThreadCount = MlasPlatform.GetMaximumThreadCount();
+        int32_t TargetThreadCount = (int32_t)Parameters->ThreadCount;
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
             TargetThreadCount = int32_t(BatchGroupCount);
@@ -920,12 +906,16 @@ Return Value:
         WorkBlock.Output = Output;
         WorkBlock.TargetThreadCount = TargetThreadCount;
 
-        MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount);
-
+#if defined(MLAS_HAS_THREADING_SUPPORT)
+        MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ExternalThreadPool);
         return;
-    }
-
+#else
+        if (ExternalThreadPool != nullptr) {
+          MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ExternalThreadPool);
+          return;
+        }
 #endif
+    }
 
     //
     // Iterate over each batch and group.
@@ -952,7 +942,7 @@ Return Value:
 
                     MlasSgemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
                         OutputSize, K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb, 0.0f,
-                        Output, OutputSize);
+                        Output, OutputSize, ExternalThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -978,7 +968,7 @@ Return Value:
                     }
 
                     MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
-                        K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize);
+                        K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize, ExternalThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -998,7 +988,7 @@ Return Value:
                     //
 
                     if (!MlasConvTryMultithread(Parameters, Input, filter, bias, WorkingBuffer,
-                        Output)) {
+                        Output, ExternalThreadPool)) {
                         MlasConvOperation(Parameters, Input, filter, bias, WorkingBuffer,
                             Output, 0, OutputSize);
                     }
@@ -1038,7 +1028,8 @@ MlasConvPrepare(
     const int64_t* OutputShape,
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
-    size_t* WorkingBufferSize
+    size_t* WorkingBufferSize,
+    int32_t ThreadPoolLimit
     )
 /*++
 
@@ -1136,11 +1127,16 @@ Return Value:
 
     *WorkingBufferSize = 0;
 
+    // Take the thread count either limited by the available pool or the platform limit
+    int32_t MaximumThreadCount = (ThreadPoolLimit > 0) ? ThreadPoolLimit : MlasPlatform.GetMaximumThreadCount();
+
     if (AllStridesAreOne && AllPaddingIsZero) {
 
         //
         // Detect a pointwise convolution.
         //
+
+        Parameters->ThreadCount = MaximumThreadCount;
 
         if (K == InputChannels) {
 
@@ -1210,8 +1206,6 @@ Return Value:
             TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
         }
 
-        int32_t MaximumThreadCount = MlasPlatform.GetMaximumThreadCount();
-
         if (TargetThreadCount >= MaximumThreadCount) {
             TargetThreadCount = MaximumThreadCount;
         }
@@ -1236,6 +1230,8 @@ Return Value:
                 TargetThreadCount--;
             }
         }
+
+        Parameters->ThreadCount = TargetThreadCount;
 
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemmSegmented;
         Parameters->u.ExpandThenGemmSegmented.ThreadStrideN = StrideN;
