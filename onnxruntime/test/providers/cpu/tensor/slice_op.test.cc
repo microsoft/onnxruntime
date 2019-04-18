@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because axis=0 is not supported
+
 template <typename T>
 void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<T>& input_vals,
@@ -27,7 +29,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 		testv9.AddAttribute("axes", axes);
 	  testv9.AddInput<T>("data", input_dims, input_vals);
 	  testv9.AddOutput<T>("output", output_dims, output_vals);
-	  testv9.Run();
+	  testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
 
   // V10
@@ -40,7 +42,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   if (steps.size() != 0)
     testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<T>("output", output_dims, output_vals);
-  testv10.Run();
+  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Slice V1-9 & Slice V10 can both run the following tests
@@ -369,7 +371,7 @@ TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
                       {2, 1, 1},
                       {26, 9},
 	                  true);
-} 
+}
 
 TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_1) {
   RunSliceTest<int32_t>({3, 3, 3},
@@ -416,8 +418,8 @@ TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_2) {
 }
 
 // Slice for Reversing
-// With numeric_limit_max, it means slice to the end of a dimension 
-// (whichever direction we are stepping) 
+// With numeric_limit_max, it means slice to the end of a dimension
+// (whichever direction we are stepping)
 TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},

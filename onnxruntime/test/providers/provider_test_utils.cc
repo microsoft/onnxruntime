@@ -466,7 +466,9 @@ void OpTester::Run(ExpectResult expect_result,
             continue;
 
           //if node is not registered for the provider, skip
-          node.SetExecutionProviderType(provider_type);
+          node.SetExecutionProviderType(provider_type);          
+          if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+            continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
           if (!kci) {
