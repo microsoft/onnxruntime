@@ -306,7 +306,8 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   const auto& input_tensor = *input_tensor_ptr;
   const auto& input_dimensions = input_tensor.Shape().GetDims();
   if (input_dimensions.size() < 1)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+"Cannot slice scalars");
 
   // Initialize the starts & ends to the actual tensor shape
   std::vector<int64_t> starts(input_dimensions.size(), 0);

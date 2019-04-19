@@ -269,7 +269,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Invalid scan input:", graph_inputs[i]->Name(),
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
@@ -280,7 +280,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
       sequence_len_ = this_seq_len;
     } else {
       if (sequence_len_ != this_seq_len) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), 
                                "Scan inputs have inconsistent sequence lengths. Previous value was ",
                                sequence_len_, " but input '", graph_inputs[i]->Name(),
                                "' dimension ", seq_len_dim, " has length of ", this_seq_len);
@@ -296,7 +296,7 @@ Status ScanImpl::ValidateInput() {
   auto num_graph_inputs = graph_inputs.size();
 
   if (static_cast<size_t>(num_variadic_inputs_) < num_graph_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' requires ", num_graph_inputs,
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "The subgraph in 'body' requires ", num_graph_inputs,
                            " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
@@ -312,7 +312,7 @@ Status ScanImpl::ValidateInput() {
       if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
       else
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_input_axes for input ", i,
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context_.Kernel().Node(), "Invalid value in scan_input_axes for input ", i,
                                " of ", axis, ". Input tensor rank was ", input_rank);
     }
 
@@ -371,7 +371,7 @@ Status ScanImpl::AllocateOutputTensors() {
   auto& graph_outputs = subgraph_.GetOutputs();
 
   if (graph_outputs.size() != static_cast<size_t>(num_variadic_outputs_)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Subgraph in 'body' produces ", graph_outputs.size(),
                            " outputs but Scan expects ", num_variadic_outputs_);
   }
 
@@ -478,7 +478,7 @@ Status ScanImpl::TransposeOutput() {
       if (axis >= -output_rank && axis < output_rank)
         axis = HandleNegativeAxis(axis, output_rank);
       else
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context_.Kernel().Node(), "Invalid value in scan_output_axes for output ", i,
                                " of ", axis, ". Output tensor rank was ", output_rank);
 
       std::vector<int64_t> permutations;

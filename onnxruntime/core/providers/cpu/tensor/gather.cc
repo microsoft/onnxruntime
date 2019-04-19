@@ -31,7 +31,8 @@ Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const
 }
 
 template <typename Tin>
-Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
+Status GatherCopyData(const OpKernelContext* ctx,
+	const Tensor* indices_tensor, const uint8_t* src_base, uint8_t* dst_base, bool is_string_type,
                       const size_t element_bytes, const int64_t block_size, const int64_t M,
                       const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
                       const TensorShape& input_data_shape, const int64_t axis) {
@@ -42,7 +43,8 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
   for (int64_t i = 0; i < N; ++i) {
     Tin idx = indices_data[i];
     if (idx < 0 || idx >= input_data_shape[axis]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+"indices element out of data bounds, idx=", idx,
                              " data_dim=", input_data_shape[axis]);
     }
   }
@@ -91,10 +93,10 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   MLDataType Tind_type = p.indices_tensor->DataType();
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
-    return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
+    return GatherCopyData<int32_t>(context, p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
-    return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
+    return GatherCopyData<int64_t>(context, p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }
 

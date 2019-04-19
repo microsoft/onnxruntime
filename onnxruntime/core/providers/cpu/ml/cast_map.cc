@@ -64,7 +64,8 @@ Status CastMap::Compute(OpKernelContext* context) const {
   if (input_type == DataTypeImpl::GetType<std::map<int64_t, float>>()) {
     float_input = true;
   } else if (input_type != DataTypeImpl::GetType<std::map<int64_t, std::string>>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input type of value: ",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+"Invalid input type of value: ",
                            input_type,
                            " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
   }

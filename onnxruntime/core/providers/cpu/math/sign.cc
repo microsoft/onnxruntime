@@ -104,7 +104,8 @@ Status Sign::Compute(OpKernelContext* ctx) const {
   } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
     SignBFloat16(input, output);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input datatype");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+"Unsupported input datatype");
   }
   return Status::OK();
 }

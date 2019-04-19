@@ -31,7 +31,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Scatter);
 
 template <class Tin>
-Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
+Status CopyScatterData(const OpKernelContext* ctx,
+	const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
   const Tin* indices_data = indices_input->template Data<Tin>();
@@ -39,7 +40,8 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   for (int64_t i = 0; i < num_indices; ++i) {
     Tin idx = indices_data[i];
     if (idx < 0 || idx >= input_data_shape[axis]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+"indices element out of data bounds, idx=", idx,
                              " data_dim=", input_data_shape[axis]);
     }
   }
@@ -167,7 +169,8 @@ Status Scatter::Compute(OpKernelContext* context) const {
   const auto* updates_input = context->Input<Tensor>(2);
 
   if (data_input->DataType() != updates_input->DataType()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "data type is different from updates type");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                              "data type is different from updates type");
   }
 
   auto& indices_dims = indices_input->Shape().GetDims();
@@ -179,7 +182,8 @@ Status Scatter::Compute(OpKernelContext* context) const {
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
     if (indices_dims[i] != updates_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i,
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Indices vs updates dimensions differs at position=", i,
                              " ", indices_dims[i], " vs ", updates_dims[i]);
     }
   }
@@ -189,13 +193,15 @@ Status Scatter::Compute(OpKernelContext* context) const {
   // exceed that of the input
   auto& input_dims = input_data_shape.GetDims();
   if (input_dims.size() != indices_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                              "Indices must have the same rank as Input. Indices rank=",
                            indices_dims.size(), ". Input rank=", input_dims.size());
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
     if (input_dims[i] < indices_dims[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than input dim=", input_dims[i]);
     }
   }
@@ -204,11 +210,12 @@ Status Scatter::Compute(OpKernelContext* context) const {
 
   MLDataType Tind_type = indices_input->DataType();
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
-    return CopyScatterData<int32_t>(data_input, indices_input, updates_input, axis, data_output);
+    return CopyScatterData<int32_t>(context, data_input, indices_input, updates_input, axis, data_output);
   } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
-    return CopyScatterData<int64_t>(data_input, indices_input, updates_input, axis, data_output);
+    return CopyScatterData<int64_t>(context, data_input, indices_input, updates_input, axis, data_output);
   }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");
+  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                            "Expecting indices to be either int32_t or int64_t");
 }
 
 }  // namespace onnxruntime

@@ -115,6 +115,9 @@ class OpKernelContext {
     return static_cast<int>(kernel_->Node().OutputDefs().size());
   }
 
+  const OpKernel& Kernel() const {
+    return *kernel_;
+  }
   /**
    * return an allocator on device 0, with memtype of OrtMemTypeDefault
    *

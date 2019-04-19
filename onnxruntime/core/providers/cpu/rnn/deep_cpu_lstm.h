@@ -62,7 +62,8 @@ class DeepCpuLstmOp final : public OpKernel {
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
 
-  Status ValidateInputs(const Tensor& X,
+  Status ValidateInputs(const OpKernelContext& context,
+                        const Tensor& X,
                         const Tensor& W,
                         const Tensor& R,
                         const Tensor* B,

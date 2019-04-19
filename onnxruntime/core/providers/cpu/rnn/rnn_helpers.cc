@@ -23,7 +23,8 @@ namespace detail {
 
 using namespace ::onnxruntime::common;
 
-Status ValidateCommonRnnInputs(const Tensor& X,
+Status ValidateCommonRnnInputs(const OpKernelContext& ctx,
+                               const Tensor& X,
                                const Tensor& W,
                                const Tensor& R,
                                const Tensor* B,
@@ -41,47 +42,52 @@ Status ValidateCommonRnnInputs(const Tensor& X,
   int64_t input_size = X_shape[2];
 
   if (X_shape.NumDimensions() != 3)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                              "Input X must have 3 dimensions only. Actual:", X_shape);
 
   if (W_shape.NumDimensions() != 3 ||
       W_shape[0] != num_directions ||
       W_shape[1] != hidden_size * WRB_dim_1_multipler ||
       W_shape[2] != input_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           input_size, "}. Actual:", W_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                              "Input W must have shape {",
+                              num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                              input_size, "}. Actual:", W_shape);
 
   if (R_shape.NumDimensions() != 3 ||
       R_shape[0] != num_directions ||
       R_shape[1] != hidden_size * WRB_dim_1_multipler ||
       R_shape[2] != hidden_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           hidden_size, "}. Actual:", R_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                              "Input R must have shape {",
+                              num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                              hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions ||
         B_shape[1] != 2 * WRB_dim_1_multipler * hidden_size)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
-                             num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                                "Input B must have shape {",
+                                num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
   }
 
   if (sequence_lens != nullptr) {
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
-                             batch_size, "}. Actual:", sequence_lens_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                                "Input sequence_lens must have shape {",
+                                batch_size, "}. Actual:", sequence_lens_shape);
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
     if (std::any_of(sequence_len_entries.cbegin(),
                     sequence_len_entries.cend(),
                     [seq_length](int len) { return len < 0 || len > seq_length; })) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
+      return ORT_MAKE_OP_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
           "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
     }
   }
@@ -94,8 +100,8 @@ Status ValidateCommonRnnInputs(const Tensor& X,
         initial_h_shape[1] != batch_size ||
         initial_h_shape[2] != hidden_size)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_h must have shape {",
-                             num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx.Kernel().Node(), "Input initial_h must have shape {",
+                                num_directions, ",", batch_size, ",", hidden_size, "}. Actual:", initial_h_shape);
   }
 
   return Status::OK();

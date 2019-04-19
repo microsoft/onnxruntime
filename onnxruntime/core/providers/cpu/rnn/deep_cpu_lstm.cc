@@ -356,7 +356,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   int batch_size = gsl::narrow<int>(X_shape[1]);
   int input_size = gsl::narrow<int>(X_shape[2]);
 
-  Status status = ValidateInputs(X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size);
+  Status status = ValidateInputs(context, X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size);
   ORT_RETURN_IF_ERROR(status);
 
   // LSTM outputs are optional but must be in the same order
@@ -520,10 +520,11 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   return Status::OK();
 }
 
-Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Tensor& R, const Tensor* B,
+Status DeepCpuLstmOp::ValidateInputs(const OpKernelContext& context,
+                                     const Tensor& X, const Tensor& W, const Tensor& R, const Tensor* B,
                                      const Tensor* sequence_lens, const Tensor* initial_h, const Tensor* initial_c,
                                      const Tensor* P, int batch_size) const {
-  auto status = rnn::detail::ValidateCommonRnnInputs(X, W, R, B, 4, sequence_lens, initial_h,
+  auto status = rnn::detail::ValidateCommonRnnInputs(context, X, W, R, B, 4, sequence_lens, initial_h,
                                                      num_directions_, hidden_size_);
   ORT_RETURN_IF_ERROR(status);
 
@@ -535,8 +536,9 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
-                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(),
+                                "Input initial_c must have shape {",
+                                num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -546,8 +548,8 @@ Status DeepCpuLstmOp::ValidateInputs(const Tensor& X, const Tensor& W, const Ten
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
-                             num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Input P must have shape {",
+                                num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();

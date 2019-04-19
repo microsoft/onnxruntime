@@ -13,17 +13,20 @@ static Status ComputeRange(OpKernelContext* ctx) {
   auto  delta_tensor_ptr = ctx->Input<Tensor>(2);
 
   if (!start_tensor.Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+		ctx->Kernel().Node(),
                                    "start in Range operator should be scalar like tensor, yet got shape:",
                                    start_tensor.Shape());
   }
   if (!limit_tensor.Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+		ctx->Kernel().Node(),
                                    "limit in Range operator should be scalar like tensor, yet got shape:",
                                    limit_tensor.Shape());
   }
   if (delta_tensor_ptr != nullptr && !delta_tensor_ptr->Shape().IsScalar()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+		ctx->Kernel().Node(),
                                    "delta in Range operator should be scalar like tensor, yet got shape:",
                                    delta_tensor_ptr->Shape());
   }
@@ -66,7 +69,8 @@ Status Range::Compute(OpKernelContext* ctx) const {
   else if (data_type == DataTypeImpl::GetType<double>()) {
       return ComputeRange<double>(ctx);
   }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  
+  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+	  ctx->Kernel().Node(),
                                  "Unsupportted tensor data type:",
                                  data_type);
 }

@@ -232,7 +232,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Invalid scan input:", graph_inputs[i]->Name(),
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
@@ -242,7 +242,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
       batch_size_ = this_batch_size;
     else {
       if (batch_size_ != this_batch_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Scan inputs have inconsistent batch size. Previous value was ",
                                batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
                                this_batch_size);
       }
@@ -255,7 +255,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
         max_sequence_len_ = this_seq_len;
       } else {
         if (max_sequence_len_ != this_seq_len) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
+          return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Scan inputs have inconsistent sequence lengths. Previous value was ",
                                  max_sequence_len_, " but ", graph_inputs[i]->Name(),
                                  " has length of ", this_seq_len);
         }
@@ -271,7 +271,7 @@ Status Scan8Impl::ValidateInput() {
   auto num_graph_inputs = graph_inputs.size();
 
   if (num_graph_inputs != static_cast<size_t>(num_variadic_inputs_)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' expects ", num_graph_inputs,
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "The subgraph in 'body' expects ", num_graph_inputs,
                            " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
@@ -287,7 +287,7 @@ Status Scan8Impl::ValidateInput() {
     auto num_entries = sequence_lens_tensor_->Shape().Size();
 
     if (num_entries != batch_size_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens length of ", num_entries,
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context_.Kernel().Node(), "sequence_lens length of ", num_entries,
                              " did not match batch size of ", batch_size_);
     }
 
@@ -296,7 +296,7 @@ Status Scan8Impl::ValidateInput() {
 
     if (std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; }) == false) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context_.Kernel().Node(), 
                              "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
 
@@ -312,7 +312,7 @@ Status Scan8Impl::AllocateOutputTensors() {
   auto& graph_outputs = subgraph_.GetOutputs();
 
   if (graph_outputs.size() != static_cast<size_t>(num_variadic_outputs_)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Subgraph in 'body' produces ", graph_outputs.size(),
                            " outputs but Scan expects ", num_variadic_outputs_);
   }
 

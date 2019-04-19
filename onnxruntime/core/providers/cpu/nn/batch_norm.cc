@@ -35,7 +35,7 @@ Status BatchNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const Tensor* mean = p_op_kernel_context->Input<Tensor>(3);
   const Tensor* var = p_op_kernel_context->Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(p_op_kernel_context, X, scale, B, mean, var));
 
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);

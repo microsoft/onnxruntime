@@ -82,7 +82,8 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
 
   // input validations
   if (group_ <= 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "group count is <= 0",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+"group count is <= 0",
                            " group: ", group_);
   }
 
@@ -90,12 +91,14 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
     // This condition is not true for two tests in ONNX tests series:
     // test_convtranspose_1d_cpu, test_convtranspose_3d_cpu.
     // TODO: the error message should tell which operator raises it.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 4-dimensional.",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+"Input X must be 4-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
 
   if (input_shape.NumDimensions() != F->Shape().NumDimensions()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "X num_dims does not match W num_dims.",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+"X num_dims does not match W num_dims.",
                            " X: ", X->Shape().ToString().c_str(),
                            " W: ", F->Shape().ToString().c_str());
   }
@@ -103,7 +106,8 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   const int64_t num_input_channels = input_shape[1];
 
   if (F->Shape()[0] != num_input_channels) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+"filter number not equal to input channel number.",
                            " filter_number: ", F->Shape()[0],
                            " num_input_channels: ", num_input_channels);
   }
@@ -118,7 +122,8 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   // num_input_channels is k*group_. hence removing the check for num_output_channels here.
 
   if (num_input_channels % group_ != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+"Input channels is not divisible by group.",
                            " num_input_channels: ", num_input_channels,
                            " group: ", group_);
   }
