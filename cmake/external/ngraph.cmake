@@ -11,7 +11,7 @@ set(ngraph_SRC ${CMAKE_CURRENT_BINARY_DIR}/ngraph/src/project_ngraph)
 set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
 set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/onnx")
 set(ngraph_URL "https://github.com/NervanaSystems/ngraph.git")
-set(ngraph_TAG "v0.18.1-rc.0")
+set(ngraph_TAG "v0.18.1")
 
 # Libraries for python package.
 set(NGRAPH_SHARED_LIB libngraph.so)
