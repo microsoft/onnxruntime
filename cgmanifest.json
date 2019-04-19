@@ -139,7 +139,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"cf794d3b741a6278df169e58461f8529f43bce5d",
+               "commitHash":"1456fe2fac0cd074bbbb8630ba003a7c325d015b",
                "repositoryUrl":"https://github.com/eigenteam/eigen-git-mirror.git"
             }
          }

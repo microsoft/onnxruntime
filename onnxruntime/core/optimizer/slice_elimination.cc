@@ -17,8 +17,7 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 }
 
 bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
-  if (node.OpType() != included_op_type_ ||
-      !graph_utils::IsSingleInSingleOutNode(node) ||
+  if (!graph_utils::IsSingleInSingleOutNode(node) ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }

@@ -47,7 +47,7 @@ endif()
 if(onnxruntime_USE_EIGEN_THREADPOOL)
     target_include_directories(onnxruntime_common PRIVATE ${eigen_INCLUDE_DIRS})
     target_compile_definitions(onnxruntime_common PUBLIC USE_EIGEN_THREADPOOL)
-    add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES} eigen)
+    add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

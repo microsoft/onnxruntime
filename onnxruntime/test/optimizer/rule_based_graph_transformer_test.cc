@@ -29,15 +29,14 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   auto dummy_rule = std::make_unique<DummyRewriteRule>("DummyRule");
   const auto* dummy_rule_ptr = dummy_rule.get();
 
-  auto graph_transformer = std::make_unique<RuleBasedGraphTransformer>("CUDATopDownTransformer", "Registered for CUDA",
-                                                                       compatible_provider);
+  auto graph_transformer = std::make_unique<RuleBasedGraphTransformer>("CUDATopDownTransformer", compatible_provider);
   graph_transformer->Register(std::move(dummy_rule));  
 
   // Create rule based transformer with a dummy rewrite rule and register it with CPU as compatible provider
   auto dummy_rule1 = std::make_unique<DummyRewriteRule>("DummyRule1");
   const auto* dummy_rule1_ptr = dummy_rule1.get();
 
-  auto graph_transformer1 = std::make_unique<RuleBasedGraphTransformer>("CPUTopDownTransformer", "Registered for CPU");
+  auto graph_transformer1 = std::make_unique<RuleBasedGraphTransformer>("CPUTopDownTransformer");
 
   graph_transformer1->Register(std::move(dummy_rule1));  
 
