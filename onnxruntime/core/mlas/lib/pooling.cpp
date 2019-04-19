@@ -1182,7 +1182,8 @@ MlasPool(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    ThreadPool *ExternalThreadPool
     )
 /*++
 
@@ -1316,14 +1317,25 @@ Return Value:
     }
 
     //
+    // Use an external thread pool if one is provided.
+    // TODO: change to use MlasExecuteThreaded
+
+    if (!(ExternalThreadPool == nullptr)) {
+      std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
+      ExternalThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+
+      return;
+    }
+
+    //
     // Execute the pooling kernel routine.
     //
 
 #if defined(MLAS_USE_OPENMP)
 
-    #pragma omp parallel for
+#pragma omp parallel for
     for (int64_t c = 0; c < int64_t(TotalChannelCount); c++) {
-        PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
+      PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
     }
 
 #else
@@ -1331,5 +1343,4 @@ Return Value:
     PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
 
 #endif
-
 }

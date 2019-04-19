@@ -69,6 +69,18 @@ if (MSVC)
 
   endif()
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if(CMAKE_ANDROID_ARCH_ABI MATCHES "^arm.*")
+        if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
+        endif()
+
+        set(mlas_platform_srcs
+          ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
+        )
+    else()
+        message(FATAL_ERROR "Android build is not supported on non-ARM platform now")
+    endif()
 else()
 
   execute_process(

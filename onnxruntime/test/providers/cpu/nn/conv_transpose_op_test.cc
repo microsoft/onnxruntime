@@ -45,7 +45,7 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
     test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str);
+  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});// Disable TensorRT because weight as input is not supported
 }
 }  // namespace
 
@@ -247,7 +247,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
       vector<int64_t>{2, 1, 1, 14},  // output_shape
       vector<int64_t>{0, 0, 0, 0},   // pads
       vector<int64_t>{1, 1},         // strides
-      vector<int64_t>{1, 1},         // dilations 
+      vector<int64_t>{1, 1},         // dilations
       1                              // group
   };
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
@@ -302,7 +302,7 @@ TEST(ConvTransposeTest, ConvTranspose_onnx2) {
       {},                           // output_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      vector<int64_t>{1, 1},        // dilations 
+      vector<int64_t>{1, 1},        // dilations
       1                             // group
   };
   vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17.};
