@@ -54,7 +54,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   for (const auto& node : graph.Nodes()) {
     graph_build.AddNode(node);
-  }  
+  }
   ORT_ENFORCE(graph_build.Resolve().IsOK());
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -80,7 +80,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       node_set.reserve(group.size());
       for (const auto& index : group) {
         node_set.insert(node_index[index]);
-      }      
+      }
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -279,14 +279,27 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create TensorRT engine
     string string_buf;
     model_proto.SerializeToString(&string_buf);
-    
+
     TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
-    trt_builder->setMaxBatchSize(kMaxBatchSize);
-    trt_builder->setMaxWorkspaceSize(kMaxWorkSpaceSize);
+
+    const char* batch_env = getenv("ORT_TENSORRT_MAX_BATCH_SIZE");
+    if (batch_env) {
+      const int max_batch_size = atoi(batch_env);
+      SetMaxBatchSize(max_batch_size);
+    }    
+    
+    const char* workspace_env = getenv("ORT_TENSORRT_MAX_WORKSPACE_SIZE");
+    if (workspace_env) {
+      const size_t max_workspace_size = atoi(workspace_env);
+      SetMaxWorkspaceSize(max_workspace_size);
+    } 
+    
+    trt_builder->setMaxBatchSize(max_batch_size_);
+    trt_builder->setMaxWorkspaceSize(max_workspace_size_);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
 
@@ -333,6 +346,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         dim_size *= dimensions.d[j];
       }
       output_dim_sizes[bindingIndex] = dim_size;
+
+      const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
+      if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
+        output_shapes[bindingIndex].pop_back();
+      }
     }
 
     ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));

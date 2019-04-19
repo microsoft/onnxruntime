@@ -12,13 +12,15 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
+// Disable TensorRT on some of the tests because of unsupported data types
+
 TEST(TensorOpTest, Reshape) {
   OpTester test("Reshape");
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});  // Nuphar only supports reshape shape from initializer
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyDim) {
@@ -27,7 +29,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
   test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
   test.AddInput<int64_t>("shape", {0}, {}, true);
   test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithInitializer) {
@@ -36,7 +38,7 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Identity) {
@@ -52,7 +54,7 @@ TEST(TensorOpTest, IdentityString) {
   std::vector<std::string> X{"this", "is", "a", "test", "for", "identity"};
   test.AddInput<std::string>("input", {2, 3}, X);
   test.AddOutput<std::string>("output", {2, 3}, X);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ShapeTest2D) {
@@ -60,7 +62,7 @@ TEST(TensorOpTest, ShapeTest2D) {
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<int64_t>("shape", {2}, {2, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ShapeTest3D) {
@@ -68,7 +70,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 
   test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 template <typename SrcType,
@@ -83,7 +85,7 @@ void TestCastOp(const std::initializer_list<SrcType>& input,
   test.AddAttribute("to", toType);
   test.AddInput<SrcType>("input", dimensions, input);
   test.AddOutput<DstType>("output", dimensions, output);
-  test.Run(expect_result, expected_failure_string);
+  test.Run(expect_result, expected_failure_string, {kTensorrtExecutionProvider});
 }
 
 template <typename SrcType>
@@ -512,7 +514,7 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   MeanVarianceNormalizationPerChannel(false, false);
 
   // across_channels: false, normalize_variance: true
-  MeanVarianceNormalizationPerChannel(false, true);  
+  MeanVarianceNormalizationPerChannel(false, true);
 }
 #endif
 
@@ -603,7 +605,7 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
-  
+
   // axes: {0, 1, 2, 3} for across_channels
   MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
 
