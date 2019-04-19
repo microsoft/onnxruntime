@@ -614,7 +614,7 @@ MLAS_FLOAT32X4
 MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
-    return vreinterpretq_f32_u32(vorq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+    return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_or_ps(Vector1, Vector2);
 #endif
@@ -625,7 +625,7 @@ MLAS_FLOAT32X4
 MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
 {
 #if defined(MLAS_NEON_INTRINSICS)
-    return vreinterpretq_f32_u32(vandq_u32(vmvnq_u32(vreinterpretq_u32_f32(VectorNot)), vreinterpretq_u32_f32(Vector2)));
+    return vreinterpretq_f32_u32(vandq_u32(vmvnq_u32(vreinterpretq_u32_f32(VectorNot)), vreinterpretq_u32_f32(Vector)));
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_andnot_ps(VectorNot, Vector);
 #endif
