@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"ad7313470a9119d7e1afda7edf1d654497ee80ab",
+               "commitHash":"83dd62659fc07d5b7fa93b5d1c1879f93509c7db",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -139,7 +139,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"cf794d3b741a6278df169e58461f8529f43bce5d",
+               "commitHash":"1456fe2fac0cd074bbbb8630ba003a7c325d015b",
                "repositoryUrl":"https://github.com/eigenteam/eigen-git-mirror.git"
             }
          }
