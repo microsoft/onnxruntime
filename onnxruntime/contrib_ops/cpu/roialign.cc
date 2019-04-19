@@ -19,6 +19,10 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "core/framework/op_kernel_context_internal.h"
+#include "core/platform/threadpool.h"
+
+using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
 namespace contrib {
@@ -160,13 +164,11 @@ void ROIAlignForward(
     const T* bottom_rois,
     int64_t roi_cols,
     T* top_data,
-    const std::string& mode) {
+    const std::string& mode,
+    const ThreadPool* ttp) {
   int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-  for (int n = 0; n < n_rois; n++) {
+  std::function<void(int32_t)> work_object = [&](int32_t n) {
     int64_t index_n = n * channels * pooled_width * pooled_height;
 
     const T* offset_bottom_rois = bottom_rois + n * roi_cols;
@@ -261,7 +263,8 @@ void ROIAlignForward(
         }  // for pw
       }    // for ph
     }      // for c
-  }        // for n
+  };       // for n
+  const_cast<ThreadPool*>(ttp)->ParallelFor((int32_t)n_rois, work_object);
 }
 }  // namespace
 
@@ -304,7 +307,8 @@ Status ROIAlign<T>::Compute(OpKernelContext* context) const {
       rois_ptr->Data<T>(),
       rois_dims[1],
       Y.template MutableData<T>(),
-      mode_);
+      mode_,
+      static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
 
   return Status::OK();
 }

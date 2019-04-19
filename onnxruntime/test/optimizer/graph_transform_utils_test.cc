@@ -20,16 +20,16 @@ TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
 
   // Rule name match test
   std::vector<std::string> custom_list = {"EliminateIdentity", "ConvAddFusion", "ConvMulFusion", "abc", "def"};
-  rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1, &custom_list);
+  rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
   // validate each rule returned is present in the custom list
   for (const auto& rule : rewrite_rules) {
     ASSERT_TRUE(std::find(custom_list.begin(), custom_list.end(), rule->Name()) != custom_list.end());
   }
 
-  // Rule name no match test. Test to validate empty rules list is returned when 
+  // Rule name no match test. Test to validate empty rules list is returned when
   // there is no match in custom list
   custom_list = {"abc"};
-  rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1, &custom_list);
+  rewrite_rules = transformer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
   ASSERT_TRUE(rewrite_rules.size() == 0);
 }
 
@@ -39,7 +39,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 
   // Transformer name match test
   std::vector<std::string> custom_list = {"EliminateIdentity", "ConvAddFusion", "ConvMulFusion", "abc", "def"};
-  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, &custom_list);
+  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
   // validate each rule returned is present in the custom list
   for (const auto& transformer : transformers) {
@@ -48,8 +48,25 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 
   // Transformer name no match test. When there is no match empty list is expected.
   custom_list = {"EliminateIdentity"};
-  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, &custom_list);
+  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
   ASSERT_TRUE(transformers.size() == 0);
+}
+
+TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers_CustomList) {
+  // custom list of rules and transformers
+  std::string l1_rule1 = "EliminateIdentity";
+  std::string l1_rule2 = "ConstantFolding";
+  std::string l2_transformer = "ConvAddFusion";
+  std::vector<std::string> custom_list = {l1_rule1, l1_rule2, l2_transformer};
+
+  auto transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level1, custom_list);
+  ASSERT_TRUE(transformers.size() == 1);
+  auto rule_transformer = dynamic_cast<RuleBasedGraphTransformer*>(transformers[0].get());
+  ASSERT_TRUE(rule_transformer->RulesCount() == 2);
+  
+  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
+  ASSERT_TRUE(transformers.size() == 1);
+  ASSERT_TRUE(transformers[0]->Name() == l2_transformer);
 }
 
 }  // namespace test

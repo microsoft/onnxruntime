@@ -10,8 +10,6 @@
 namespace onnxruntime {
 
 Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  // TODO Check if we need default transformers any more. I dont think we do...
-
   // Create execution frame for executing constant nodes.
   OptimizerExecutionFrame::Info info({&node}, graph.GetAllInitializedTensors());
 
@@ -33,7 +31,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   // Go over all output node args and substitute them with the newly computed tensors, which will be
   // added to the graph as initializers.
   ORT_ENFORCE(fetches.size() == node.OutputDefs().size());
-  for (int fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+  for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
     MLValue& mlvalue = fetches[fetch_idx];
 
     // Build the TensorProto that corresponds to the computed MLValue and add it as initializer to the graph.
@@ -58,6 +56,8 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
   return excluded_op_types_.find(node.OpType()) == excluded_op_types_.end() &&
+         // constant folding is not currently supported in subgraphs.
+         node.ImplicitInputDefs().size() == 0 &&
          graph_utils::AllNodeInputsAreConstant(graph, node);
 }
 

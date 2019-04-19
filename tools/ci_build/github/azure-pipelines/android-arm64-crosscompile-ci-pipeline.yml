@@ -1,0 +1,15 @@
+jobs:
+- job: Linux_CI_Dev
+  pool: Linux-CPU
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d cpu'
+      displayName: 'Command Line Script'
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
+    - template: templates/clean-agent-build-directory-step.yml
+

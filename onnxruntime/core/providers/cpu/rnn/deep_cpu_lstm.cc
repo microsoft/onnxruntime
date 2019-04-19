@@ -203,11 +203,7 @@ class UniDirectionalLstm {
                      const ActivationFuncs::Entry& activation_func_g,
                      const ActivationFuncs::Entry& activation_func_h,
                      const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                     Eigen::NonBlockingThreadPool& ttp);
-#else
-                     TaskThreadPool& ttp);
-#endif
+                     onnxruntime::concurrency::ThreadPool& ttp);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -299,11 +295,7 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::ActivationFuncPtr> activation_g_;
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool& ttp_;
-#else
-  TaskThreadPool& ttp_;
-#endif
+  onnxruntime::concurrency::ThreadPool& ttp_;
 };
 
 }  // namespace detail
@@ -577,11 +569,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(AllocatorPtr allocator,
                                           const ActivationFuncs::Entry& activation_func_g,
                                           const ActivationFuncs::Entry& activation_func_h,
                                           const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                                          Eigen::NonBlockingThreadPool& ttp)
-#else
-                                          TaskThreadPool& ttp)
-#endif
+                                          onnxruntime::concurrency::ThreadPool& ttp)
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),

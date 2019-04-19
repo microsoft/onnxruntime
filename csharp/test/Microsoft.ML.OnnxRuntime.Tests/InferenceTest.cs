@@ -119,7 +119,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
+            Assert.Contains("Invalid Feed Input", ex.Message);
             session.Dispose();
         }
 
@@ -174,7 +174,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Names", ex.Message);
+            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Name", ex.Message);
             session.Dispose();
         }
 
@@ -212,10 +212,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestPreTrainedModelsOpset7And8()
         {
             // 16-bit float not supported type in C#.
-            var skipModels = new[] {
+            var skipModels = new List<String>() {
                 "fp16_inception_v1",
                 "fp16_shufflenet",
                 "fp16_tiny_yolov2" };
+
+            var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
+            var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
+            if (isContribOpsDisabled) {
+                skipModels.Add("test_tiny_yolov2");
+            }
 
             var opsets = new[] { "opset7", "opset8" };
             var modelsDir = GetTestModelsDir();
@@ -225,7 +231,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 foreach (var modelDir in modelRoot.EnumerateDirectories())
                 {
                     String onnxModelFileName = null;
-        
+
                     if (skipModels.Contains(modelDir.Name))
                         continue;
 
@@ -653,7 +659,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var container = new List<NamedOnnxValue>();
                 container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-                Assert.Equal("[ErrorCode:InvalidArgument] Missing required input: data_0", ex.Message);
+                Assert.Contains("Missing Input", ex.Message);
             }
         }
 
@@ -689,7 +695,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var x = GetProcAddress(hModule, ep);
                 Assert.False(x == UIntPtr.Zero, $"Entrypoint {ep} not found in module {module}");
             }
-        }        
+        }
 
         static string GetTestModelsDir()
         {

@@ -43,7 +43,7 @@ class UpsampleBase {
   UpsampleMode mode_;
   std::vector<float> scales_;
   bool scales_cached_;
-  bool resizable = false;
+  bool is_resize = false;
 
   UpsampleMode StringToUpsampleMode(const std::string& mode) {
     if (strcmp(mode.c_str(), UpsampleModeNN) == 0) {
@@ -57,9 +57,13 @@ class UpsampleBase {
   }
 
   void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
-    if (!resizable) {
+    if (!is_resize) {
       for (auto& scale : scales) {
         ORT_ENFORCE(scale >= 1, "Scale value should be greater than or equal to 1.");
+      }
+    } else {
+      for (auto& scale : scales) {
+        ORT_ENFORCE(scale > 0, "Scale value should be greater than 0.");
       }
     }
 

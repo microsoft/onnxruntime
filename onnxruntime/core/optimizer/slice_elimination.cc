@@ -17,8 +17,7 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 }
 
 bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
-  if (node.OpType() != included_op_type_ ||
-      !graph_utils::IsSingleInSingleOutNode(node) ||
+  if (!graph_utils::IsSingleInSingleOutNode(node) ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
@@ -41,7 +40,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
 
   // For now eliminate slice operators if starts=0 and ends=MAX_INT or -1.
   // TODO: Take into account the input's shape to get a tighter bound for the ends.
-  for (int i = 0; i < axes.size(); ++i) {
+  for (size_t i = 0; i < axes.size(); ++i) {
     if (starts[i] > 0 || starts[i] < 0 ||
         (ends[i] > 0 && ends[i] < INT64_MAX)) {
       return false;

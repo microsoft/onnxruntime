@@ -96,11 +96,7 @@ class DeepCpuAttnLstmOp final : public OpKernel {
 // across them. mutable due to this.
 // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
 // cost on every call.
-#ifdef USE_EIGEN_THREADPOOL
-  mutable Eigen::NonBlockingThreadPool ttp_{static_cast<int>(std::thread::hardware_concurrency())};
-#else
-  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
-#endif
+  mutable onnxruntime::concurrency::ThreadPool ttp_{"DEEPCPU_ATTN_LSTM", (int)std::thread::hardware_concurrency()};
 };
 
 }  // namespace contrib

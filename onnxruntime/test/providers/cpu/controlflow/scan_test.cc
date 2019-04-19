@@ -78,7 +78,7 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
-  /* Subgraph looks like this. 
+  /* Subgraph looks like this.
 
     [constant_1]  loop_state_in_1             concat_in_0      concat_in_1
             \           |                                 \     /
@@ -310,7 +310,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   test.AddOutput<float>("scan_output_2", output_shape, output_2);
   test.AddOutput<float>("scan_output_3", output_shape, output_3);
 
-  test.Run(expect_result, failure_message);
+  test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because its parser failed
 }
 
 static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
@@ -403,9 +403,9 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because its parser failed
   }
 }
 
@@ -889,7 +889,7 @@ TEST(Scan9, TransposeOutputDim2) {
   test.AddInput<float>("scan_input_1", input_shape, {1.0, 2.0});
   test.AddOutput<float>("scan_output_1", output_shape, {1.0, 2.0});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// Disable TensorRT on supported data types
 }
 
 static void InvalidInput(bool is_v8) {
@@ -1081,7 +1081,7 @@ void MixedTypeInputs(bool is_v8) {
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
   test.AddOutput<int64_t>("scan_output_2", seq_shape, {0, 1, 2});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// Disable TensorRT on unsupported data types
 }
 
 TEST_8_AND_9(MixedTypeInputs);
@@ -1146,7 +1146,7 @@ void UnknownDimInSubgraphOutput(bool is_v8) {
   test.AddOutput<float>("final_state_1", state_shape, {3.0});
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Disable TensorRT on unknown dimension tests
 }
 
 TEST_8_AND_9(UnknownDimInSubgraphOutput);
