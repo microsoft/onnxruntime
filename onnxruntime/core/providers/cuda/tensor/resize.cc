@@ -15,7 +15,7 @@ namespace cuda {
       KernelDefBuilder()                                          \
           .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Upsample<T>);
+      Resize<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
