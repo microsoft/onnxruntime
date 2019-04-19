@@ -35,7 +35,7 @@ void TestBatchNorm(const InputDataMap& input_data_map,
   test.AddInput<float>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
   test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
   test.AddOutput<float>("output", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str);
+  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});// Weight as input is not supported by TensorRT
 }
 
 TEST(BatchNormTest, PositiveTestCase) {
@@ -601,7 +601,7 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.AddInput<MLFloat16>("mean", {3}, f_mean);
   test.AddInput<MLFloat16>("var", {3}, f_var);
   test.AddOutput<MLFloat16>("output", input_shape, f_output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
