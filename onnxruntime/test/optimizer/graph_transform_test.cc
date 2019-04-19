@@ -98,7 +98,7 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
-// Check transformations in the case a subgraph with constant inputs.
+// Check transformations in the case of a subgraph with constant inputs.
 TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
   string model_uri = MODEL_FOLDER + "constant-subgraph.onnx";
 
