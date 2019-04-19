@@ -402,17 +402,10 @@ if (WIN32)
       endforeach()
     endif()
 else()
-  # Enabling this for Mac builds causes a sigabrt in several tests. Secondly the right option for Mac is -dead_strip
   add_definitions(-DPLATFORM_POSIX)
-  # Enable warning in Linux
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
-  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
-
-  # Enabling this for Mac builds causes a sigabrt in several tests.
-  if (UNIX AND NOT APPLE)
-    string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
-    string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
-  endif()
+  # Enable warning and enable space optimization in Linux
+  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
 
   if(onnxruntime_DEV_MODE)
     if(NOT onnxruntime_USE_TVM)
