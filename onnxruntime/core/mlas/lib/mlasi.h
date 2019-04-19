@@ -642,22 +642,6 @@ MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
-inline
-MLAS_FLOAT32X4
-MlasFloorFloat32x4(MLAS_FLOAT32X4 Vector)
-{
-#if defined(MLAS_NEON_INTRINSICS)
-    MLAS_FLOAT32X4 round_down = vcvtq_f32_s32(vcvtq_s32_f32(Vector));
-    uint32x4_t mask = vandq_u32(vcgtq_f32(Vector, round_down), vreinterpretq_u32_f32(vdupq_n_f32(1.0f)));
-    return vsubq_f32(round_down, vreinterpret_f32_u32(mask));
-#elif defined(MLAS_SSE2_INTRINSICS)
-    MLAS_FLOAT32X4 tmp = _mm_cvtepi32_ps(_mm_cvttps_epi32(Vector));
-    MLAS_FLOAT32X4 mask = _mm_cmpgt_ps(tmp, Vector);
-    mask = _mm_and_ps(mask, _mm_set1_ps(1.0f));
-    return _mm_sub_ps(tmp, mask);
-#endif
-}
-
 // calc 2^int(N)
 inline
 MLAS_FLOAT32X4
