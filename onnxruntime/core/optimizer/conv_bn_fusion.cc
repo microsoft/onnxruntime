@@ -9,7 +9,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvBNFusion::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
+Status ConvBNFusion::Apply(Graph& graph, Node& node, bool& modified, bool& /*removed*/) {
   auto& conv_node = node;
   const Node& bn_node = *conv_node.OutputNodesBegin();
 
