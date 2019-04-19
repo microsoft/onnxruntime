@@ -65,7 +65,18 @@ class ThreadPool::Impl : public Eigen::NonBlockingThreadPool {
     ORT_UNUSED_PARAMETER(name);
   }
 
-  void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
+    void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+    for (int32_t id = 0; id < total; ++id) {
+      fn(id);
+    }
+    return;
+
+    // TODO: Enable eigen threadpool for ParallelFor once we have the stratery to determine
+    // whether to use single thread, multi-thread or OpenMP
+
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
     Barrier barrier(static_cast<unsigned int>(total));
@@ -80,6 +91,7 @@ class ThreadPool::Impl : public Eigen::NonBlockingThreadPool {
     }
 
     barrier.Wait();
+
   }
 
   void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
@@ -115,16 +127,18 @@ class ThreadPool::Impl : public TaskThreadPool {
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
 #ifdef USE_OPENMP
 #pragma omp parallel for
+#endif
     for (int32_t id = 0; id < total; ++id) {
       fn(id);
     }
-#else
+    return;
+    // TODO: Enable std threadpool once we have the stratery to determine
+    // whether to use single thread or multi-thread
     for (int32_t id = 0; id < total; ++id) {
       std::packaged_task<void()> task(std::bind(fn, id));
       RunTask(std::move(task));
     }
     WaitWorkComplete();
-#endif
   }
 
   void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
