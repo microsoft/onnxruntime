@@ -14,18 +14,18 @@ namespace hosting {
 
 namespace protobufutil = google::protobuf::util;
 
-#define GenerateErrorResponse(logger, error_code, message, context, ms_request_id, client_request_id) \
-  {                                                                                                   \
-    auto http_error_code = (error_code);                                                              \
-    (context).response.insert("x-ms-request-id", (ms_request_id));                                    \
-    if (!client_request_id.empty()) {                                                                 \
-      (context).response.insert("x-ms-client-request-id", (client_request_id));                       \
-    }                                                                                                 \
-    auto json_error_message = CreateJsonError(http_error_code, (message));                            \
-    LOGS((*logger), VERBOSE) << json_error_message;                                                   \
-    (context).response.result(http_error_code);                                                       \
-    (context).response.body() = json_error_message;                                                   \
-    (context).response.set(http::field::content_type, "application/json");                            \
+#define GenerateErrorResponse(logger, error_code, message, context)                     \
+  {                                                                                     \
+    auto http_error_code = (error_code);                                                \
+    (context).response.insert("x-ms-request-id", ((context).request_id));               \
+    if (!(context).client_request_id.empty()) {                                         \
+      (context).response.insert("x-ms-client-request-id", (context).client_request_id); \
+    }                                                                                   \
+    auto json_error_message = CreateJsonError(http_error_code, (message));              \
+    LOGS((*logger), VERBOSE) << json_error_message;                                     \
+    (context).response.result(http_error_code);                                         \
+    (context).response.body() = json_error_message;                                     \
+    (context).response.set(http::field::content_type, "application/json");              \
   }
 
 static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type,
@@ -39,18 +39,15 @@ void Predict(const std::string& name,
   auto logger = env->GetLogger(context.request_id);
   LOGS(*logger, VERBOSE) << "Name: " << name << " Version: " << version << " Action: " << action;
 
-  // We need to persist the "x-ms-client-request-id" field for the user to track the request from client side
-  std::string client_request_id{};
-  if (context.request.find("x-ms-client-request-id") != context.request.end()) {
-    client_request_id = context.request["x-ms-client-request-id"].to_string();
-    LOGS(*logger, VERBOSE) << "x-ms-client-request-id: [" << client_request_id << "]";
+  if (!context.client_request_id.empty()) {
+    LOGS(*logger, VERBOSE) << "x-ms-client-request-id: [" << context.client_request_id << "]";
   }
 
   // Request and Response content type information
   SupportedContentType request_type = GetRequestContentType(context);
   SupportedContentType response_type = GetResponseContentType(context);
   if (response_type == SupportedContentType::Unknown) {
-    GenerateErrorResponse(logger, http::status::bad_request, "Unknown 'Accept' header field in the request", context, context.request_id, client_request_id);
+    GenerateErrorResponse(logger, http::status::bad_request, "Unknown 'Accept' header field in the request", context);
   }
 
   // Deserialize the payload
@@ -60,7 +57,7 @@ void Predict(const std::string& name,
   std::string error_message;
   bool parse_succeeded = ParseRequestPayload(context, request_type, predict_request, error_code, error_message);
   if (!parse_succeeded) {
-    GenerateErrorResponse(logger, error_code, error_message, context, context.request_id, client_request_id);
+    GenerateErrorResponse(logger, error_code, error_message, context);
     return;
   }
 
@@ -70,7 +67,7 @@ void Predict(const std::string& name,
   PredictResponse predict_response{};
   status = executor.Predict(name, version, predict_request, predict_response);
   if (!status.ok()) {
-    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context, context.request_id, client_request_id);
+    GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context);
     return;
   }
 
@@ -79,7 +76,7 @@ void Predict(const std::string& name,
   if (response_type == SupportedContentType::Json) {
     status = GenerateResponseInJson(predict_response, response_body);
     if (!status.ok()) {
-      GenerateErrorResponse(logger, http::status::internal_server_error, status.error_message(), context, context.request_id, client_request_id);
+      GenerateErrorResponse(logger, http::status::internal_server_error, status.error_message(), context);
       return;
     }
     context.response.set(http::field::content_type, "application/json");
@@ -90,8 +87,8 @@ void Predict(const std::string& name,
 
   // Build HTTP response
   context.response.insert("x-ms-request-id", context.request_id);
-  if (!client_request_id.empty()) {
-    context.response.insert("x-ms-client-request-id", client_request_id);
+  if (!context.client_request_id.empty()) {
+    context.response.insert("x-ms-client-request-id", context.client_request_id);
   }
   context.response.body() = response_body;
   context.response.result(http::status::ok);

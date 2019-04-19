@@ -28,11 +28,13 @@ class HttpContext {
   http::request<http::string_body, http::basic_fields<std::allocator<char>>> request{};
   http::response<http::string_body> response{};
 
-  std::string request_id;
+  const std::string request_id;
+  std::string client_request_id;
   http::status error_code;
   std::string error_message;
 
   HttpContext() : request_id(boost::uuids::to_string(boost::uuids::random_generator()())),
+                  client_request_id(""),
                   error_code(http::status::internal_server_error),
                   error_message("An unknown server error has occurred") {}
 
@@ -42,4 +44,3 @@ class HttpContext {
 
 }  // namespace hosting
 }  // namespace onnxruntime
-

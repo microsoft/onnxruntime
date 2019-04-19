@@ -112,6 +112,10 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
   std::string model_name, model_version, action;
   HandlerFn func;
 
+  if (context.request.find("x-ms-client-request-id") != context.request.end()) {
+    context.client_request_id = context.request["x-ms-client-request-id"].to_string();
+  }
+
   auto status = routes_.ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 
   if (status != http::status::ok) {
