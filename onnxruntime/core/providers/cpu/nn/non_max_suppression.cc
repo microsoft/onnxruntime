@@ -15,7 +15,6 @@ limitations under the License.
 #include <queue>
 
 namespace onnxruntime {
-namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
     NonMaxSuppression,
@@ -207,5 +206,4 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-}  // namespace contrib
 }  // namespace onnxruntime

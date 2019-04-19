@@ -7,7 +7,6 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 class NonMaxSuppression final : public OpKernel {
  public:
@@ -42,5 +41,4 @@ class NonMaxSuppression final : public OpKernel {
     int64_t box_index_ = 0;
   };
 };
-}  // namespace contrib
 }  // namespace onnxruntime
