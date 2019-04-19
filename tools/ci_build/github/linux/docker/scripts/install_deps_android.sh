@@ -33,10 +33,6 @@ export ONNX_ML=1
 
 #The last onnx version will be kept
 
-aria2c -q -d /tmp/src  http://bitbucket.org/eigen/eigen/get/3.3.7.tar.bz2
-tar -jxf /tmp/src/eigen-eigen-323c052e1731.tar.bz2 -C /usr/include
-mv /usr/include/eigen-eigen-323c052e1731 /usr/include/eigen3
-
 rm -rf /tmp/src
 rm -rf /usr/include/google
 rm -rf /usr/lib/libproto*
