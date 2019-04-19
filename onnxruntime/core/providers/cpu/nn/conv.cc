@@ -98,7 +98,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              B != nullptr ? B->template Data<float>() : nullptr,
              static_cast<float*>(working_buffer.get()),
              Ydata,
-             const_cast<ThreadPool*>(thread_pool));
+             const_cast<concurrency::ThreadPool*>(thread_pool));
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();

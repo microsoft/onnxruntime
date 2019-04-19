@@ -1183,7 +1183,7 @@ MlasPool(
     const int64_t* OutputShape,
     const float* Input,
     float* Output,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1320,9 +1320,9 @@ Return Value:
     // Use an external thread pool if one is provided.
     // TODO: change to use MlasExecuteThreaded
 
-    if (!(ExternalThreadPool == nullptr)) {
+    if (!(ThreadPool == nullptr)) {
       std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
-      ExternalThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+      ThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
 
       return;
     }

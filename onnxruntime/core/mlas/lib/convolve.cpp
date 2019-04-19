@@ -745,7 +745,7 @@ MlasConvTryMultithread(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    ThreadPool* ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -779,7 +779,7 @@ Return Value:
 {
 
 #if !defined(MLAS_HAS_THREADING_SUPPORT)
-  if (ExternalThreadPool == nullptr) {
+  if (ThreadPool == nullptr) {
     return false;
   }
 #endif
@@ -825,7 +825,7 @@ Return Value:
         Index++;
     }
 
-    MlasExecuteThreaded(MlasConvOperationThreaded, &WorkBlock, Index, ExternalThreadPool);
+    MlasExecuteThreaded(MlasConvOperationThreaded, &WorkBlock, Index, ThreadPool);
 
     return true;
 }
@@ -839,7 +839,7 @@ MlasConv(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    ThreadPool* ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -907,11 +907,11 @@ Return Value:
         WorkBlock.TargetThreadCount = TargetThreadCount;
 
 #if defined(MLAS_HAS_THREADING_SUPPORT)
-        MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ExternalThreadPool);
+        MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
         return;
 #else
-        if (ExternalThreadPool != nullptr) {
-          MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ExternalThreadPool);
+        if (ThreadPool != nullptr) {
+          MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
           return;
         }
 #endif
@@ -942,7 +942,7 @@ Return Value:
 
                     MlasSgemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
                         OutputSize, K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb, 0.0f,
-                        Output, OutputSize, ExternalThreadPool);
+                        Output, OutputSize, ThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -968,7 +968,7 @@ Return Value:
                     }
 
                     MlasSgemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
-                        K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize, ExternalThreadPool);
+                        K, WorkingBuffer, OutputSize, 0.0f, Output, OutputSize, ThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -988,7 +988,7 @@ Return Value:
                     //
 
                     if (!MlasConvTryMultithread(Parameters, Input, filter, bias, WorkingBuffer,
-                        Output, ExternalThreadPool)) {
+                        Output, ThreadPool)) {
                         MlasConvOperation(Parameters, Input, filter, bias, WorkingBuffer,
                             Output, 0, OutputSize);
                     }

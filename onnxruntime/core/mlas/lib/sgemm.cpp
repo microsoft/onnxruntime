@@ -1081,7 +1081,7 @@ MlasSgemmTryMultithread(
     float beta,
     float* C,
     size_t ldc,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1232,7 +1232,7 @@ Return Value:
         }
     }
 
-    MlasExecuteThreaded(MlasSgemmOperationThreaded, &WorkBlock, Index, ExternalThreadPool);
+    MlasExecuteThreaded(MlasSgemmOperationThreaded, &WorkBlock, Index, ThreadPool);
 
     return true;
 
@@ -1255,7 +1255,7 @@ Return Value:
     MLAS_UNREFERENCED_PARAMETER(beta);
     MLAS_UNREFERENCED_PARAMETER(C);
     MLAS_UNREFERENCED_PARAMETER(ldc);
-    MLAS_UNREFERENCED_PARAMETER(ExternalThreadPool);
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
     return false;
 
@@ -1279,7 +1279,7 @@ MlasSgemm(
     float beta,
     float* C,
     size_t ldc,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1328,7 +1328,7 @@ Return Value:
     // single thread based on the GEMM parameters and system configuration.
     //
 
-    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ExternalThreadPool)) {
+    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ThreadPool)) {
         MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 }

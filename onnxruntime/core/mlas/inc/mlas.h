@@ -44,10 +44,16 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// External threadpool definition
+// Thread pool abstraction.
 //
-#include "core/platform/threadpool.h"
-using namespace onnxruntime::concurrency;
+
+namespace onnxruntime {
+    namespace concurrency {
+        class ThreadPool;
+    };
+};
+
+using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
 
 //
 // Activation routines.
@@ -98,7 +104,7 @@ MlasSgemm(
     float beta,
     float* C,
     size_t ldc,
-    ThreadPool* ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -169,7 +175,7 @@ MlasConv(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -194,7 +200,7 @@ MlasPool(
     const int64_t* OutputShape,
     const float* Input,
     float* Output,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //

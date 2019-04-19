@@ -36,6 +36,8 @@ Abstract:
 #endif
 #endif
 
+#include "core/platform/threadpool.h"
+
 //
 // Macro to place variables at a specified alignment.
 //
@@ -309,7 +311,7 @@ MlasExecuteThreaded(
     PMLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
     int32_t Iterations,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
