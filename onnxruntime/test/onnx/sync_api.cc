@@ -7,7 +7,14 @@
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267)
 #endif
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #include <core/common/common.h>
 #include <core/common/logging/logging.h>
 #include <core/platform/ort_mutex.h>
@@ -56,7 +63,7 @@ Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data,
   return Status::OK();
 }
 
-using DefaultThreadPoolType = Eigen::NonBlockingThreadPool;
+using DefaultThreadPoolType = Eigen::ThreadPool;
 static std::unique_ptr<DefaultThreadPoolType> default_pool;
 static std::once_flag default_pool_init;
 
