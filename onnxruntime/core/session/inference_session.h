@@ -345,7 +345,7 @@ class InferenceSession {
 
   void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                  TransformerLevel graph_optimization_level,
-                                 std::vector<std::string>& custom_list);
+                                 const std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
@@ -396,18 +396,8 @@ class InferenceSession {
   std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 
-// Environment for this session
-// not used now; we'll need it when we introduce threadpool
-// statically allocated pointer, no need to manage its lifetime.
-//Env* env_;
-
-// Threadpool for this session
-//thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
-#ifdef USE_EIGEN_THREADPOOL
-  std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
-#else
-  std::unique_ptr<TaskThreadPool> thread_pool_;
-#endif
+  // Threadpool for this session
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;

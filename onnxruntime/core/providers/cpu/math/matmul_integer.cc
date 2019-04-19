@@ -57,20 +57,20 @@ Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) c
   int32_t b_offset = 0;
   if (has_a_zero_point_) {
     auto a_zero_point = ctx->Input<Tensor>(2);
-    ORT_ENFORCE(a_zero_point->Shape().NumDimensions() == 0 || 
-        (a_zero_point->Shape().NumDimensions() == 1 && a_zero_point->Shape().GetDims().size() == 1), 
+    ORT_ENFORCE(a_zero_point->Shape().NumDimensions() == 0 ||
+        (a_zero_point->Shape().NumDimensions() == 1 && a_zero_point->Shape().GetDims().size() == 1),
         "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
     a_offset = static_cast<int32_t>(*a_zero_point->template Data<uint8_t>());
   }
   if (has_b_zero_point_) {
     auto b_zero_point = ctx->Input<Tensor>(3);
-    ORT_ENFORCE(b_zero_point->Shape().NumDimensions() == 0 || 
+    ORT_ENFORCE(b_zero_point->Shape().NumDimensions() == 0 ||
         (b_zero_point->Shape().NumDimensions() == 1 && b_zero_point->Shape().GetDims().size() == 1),
         "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
     b_offset = static_cast<int32_t>(*b_zero_point->template Data<uint8_t>());
   }
 
-  for (int i = 0; i < helper.OutputOffsets().size(); i++) {
+  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     GemmlowpMultiply(a->template Data<uint8_t>() + helper.LeftOffsets()[i],
                      b->template Data<uint8_t>() + helper.RightOffsets()[i],
                      y->template MutableData<int32_t>() + helper.OutputOffsets()[i],

@@ -436,7 +436,8 @@ void
 MlasExecuteThreaded(
     PMLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
-    int32_t Iterations
+    int32_t Iterations,
+    ThreadPool *ExternalThreadPool
     );
 
 //

@@ -19,6 +19,8 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 
+#include "core/platform/ort_mutex.h"
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -177,11 +179,7 @@ class UniDirectionalGru {
                     const ActivationFuncs::Entry& activation_func_f,
                     const ActivationFuncs::Entry& activation_func_g,
                     const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                    Eigen::NonBlockingThreadPool& ttp_);
-#else
-                    TaskThreadPool& ttp_);
-#endif
+                    onnxruntime::concurrency::ThreadPool& ttp_);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -197,11 +195,7 @@ class UniDirectionalGru {
   AllocatorPtr allocator_;
   const logging::Logger& logger_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool& ttp_;
-#else
-  TaskThreadPool& ttp_;
-#endif
+  onnxruntime::concurrency::ThreadPool& ttp_;
 
   int seq_length_;
   int batch_size_;
@@ -410,7 +404,6 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[3],
         clip_, ttp_);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
-
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
@@ -449,11 +442,7 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
                                         const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                                        Eigen::NonBlockingThreadPool& ttp)
-#else
-                                        TaskThreadPool& ttp)
-#endif
+                                        onnxruntime::concurrency::ThreadPool& ttp)
     : allocator_(allocator),
       logger_(logger),
       ttp_(ttp),
@@ -614,7 +603,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
     if (batch_size_ % hidden_num_threads_ != 0)
       fused_hidden_rows++;
 
-    // lambda executed by Eigen::NonBlockingThreadPool
+    // lambda executed by ThreadPool
     auto hidden_gemm_and_activations = [&](const int row) {
       //handling boundaries
       int local_fused_hidden_rows = fused_hidden_rows;

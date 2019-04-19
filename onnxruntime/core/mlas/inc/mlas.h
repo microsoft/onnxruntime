@@ -44,7 +44,13 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Activiation routines.
+// External threadpool definition
+//
+#include "core/platform/threadpool.h"
+using namespace onnxruntime::concurrency;
+
+//
+// Activation routines.
 //
 
 enum MLAS_ACTIVATION_KIND {
@@ -91,7 +97,8 @@ MlasSgemm(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    ThreadPool* ExternalThreadPool
     );
 
 //
@@ -120,6 +127,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t InputSize;
     size_t OutputSize;
     size_t K;
+    size_t ThreadCount;
     MLAS_CONV_ALGORITHM Algorithm;
     union {
         struct {
@@ -148,7 +156,8 @@ MlasConvPrepare(
     const int64_t* OutputShape,
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
-    size_t* WorkingBufferSize
+    size_t* WorkingBufferSize,
+    int32_t ThreadPoolLimit
     );
 
 void
@@ -159,7 +168,8 @@ MlasConv(
     const float* Filter,
     const float* Bias,
     float* WorkingBuffer,
-    float* Output
+    float* Output,
+    ThreadPool *ExternalThreadPool
     );
 
 //
@@ -183,7 +193,8 @@ MlasPool(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    ThreadPool *ExternalThreadPool
     );
 
 //

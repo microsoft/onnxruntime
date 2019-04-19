@@ -16,8 +16,8 @@
 #include <Windows.h>
 #else
 #include <pthread.h>
-#include <unsupported/Eigen/CXX11/ThreadPool>
 #endif
+
 #include <test/compare_mlvalue.h>
 #include "TestCase.h"
 #include "heap_buffer.h"
@@ -242,10 +242,10 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
   return common::Status::OK();
 }
 
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  double default_per_sample_tolerance, double default_relative_per_sample_tolerance) {
-  std::vector<ITestCase*> tests;
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
     std::basic_string<PATH_CHAR_TYPE> node_data_root_path = paths.back();
@@ -271,11 +271,10 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
 
       ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
                                         default_per_sample_tolerance, default_relative_per_sample_tolerance);
-      tests.push_back(l);
+      process_function(l);
       return true;
     });
   }
-  return tests;
 }
 
 SeqTestRunner::SeqTestRunner(OrtSession* session1,
