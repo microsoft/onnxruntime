@@ -17,10 +17,11 @@ class ConvMulFusion : public RewriteRule {
  public:
   ConvMulFusion() noexcept : RewriteRule("ConvMulFusion") {}
 
- private:
-  /** Apply rule when op type is the following. */
-  const std::string included_op_type_ = "Conv";
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Conv"};
+  }
 
+ private:
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;

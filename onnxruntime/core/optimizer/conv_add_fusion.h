@@ -16,12 +16,13 @@ It is attempted to be triggered only on nodes with op type "Conv".
 */
 class ConvAddFusion : public RewriteRule {
  public:
-  ConvAddFusion() noexcept : RewriteRule("ConvAddFusion"){}
+  ConvAddFusion() noexcept : RewriteRule("ConvAddFusion") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Conv"};
+  }
 
  private:
-  /** Apply rule when op type is the following. */
-  const std::string included_op_type_ = "Conv";
-
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;

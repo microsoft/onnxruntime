@@ -131,8 +131,7 @@ TEST(GraphTransformationTests, FuseConvBNNoBias) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L2 =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2", "Level2 rule transformer");
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
   rule_transformer_L2->Register(std::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
 
@@ -156,7 +155,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
     rule_transformer_L1->Register(std::make_unique<UnsqueezeElimination>());
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-    
+
     auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
     rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
     rule_transformer_L2->Register(std::make_unique<ConvBNFusion>());
@@ -257,8 +256,7 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L2 =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2", "Level2 rule transformer");
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
   rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
   rule_transformer_L2->Register(std::make_unique<ConvMulFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
@@ -332,8 +330,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
 
-  auto rule_transformer_L2 =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2", "Level2 rule transformer");
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
   rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
   rule_transformer_L2->Register(std::make_unique<ConvBNFusion>());
   rule_transformer_L2->Register(std::make_unique<ConvMulFusion>());
@@ -352,7 +349,8 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   for (int i = 0; i < 9; ++i) {
     values_x.push_back(x_f);
   }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value_x);
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                           dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 
   std::vector<std::string> output_names;
@@ -372,7 +370,8 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(), rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
+  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
+                                     rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
 }
 
