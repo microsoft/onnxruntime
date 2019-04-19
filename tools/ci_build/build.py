@@ -492,7 +492,7 @@ def setup_tensorrt_vars(args):
         
     return tensorrt_home
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -507,7 +507,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
 
         if enable_python_tests:
             # Disable python tests for TensorRT because many tests are not supported yet
-            if enable_tensorrt:
+            if enable_tensorrt or enable_ngraph:
+                print("NOT RUNNING")
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
@@ -745,7 +746,7 @@ def main():
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind if not args.skip_onnx_tests else False,
-                              args.use_tvm, args.use_tensorrt)
+                              args.use_tvm, args.use_tensorrt, args.use_ngraph)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
@@ -760,15 +761,14 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
+            elif args.use_ngraph:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
               # TODO: parallel executor test fails on MacOS
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
 
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
-
-            if args.use_ngraph:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
 
     if args.build:
         if args.build_wheel:
