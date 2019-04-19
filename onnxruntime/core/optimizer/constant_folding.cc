@@ -10,8 +10,6 @@
 namespace onnxruntime {
 
 Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  // TODO Check if we need default transformers any more. I dont think we do...
-
   // Create execution frame for executing constant nodes.
   OptimizerExecutionFrame::Info info({&node}, graph.GetAllInitializedTensors());
 
