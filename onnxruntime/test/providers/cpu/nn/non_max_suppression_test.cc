@@ -190,10 +190,10 @@ TEST(NonMaxSuppressionOpTest, SelectTwo) {
                         0.0f, 10.1f, 1.0f, 11.1f,
                         0.0f, 100.0f, 1.0f, 101.0f});
   test.AddInput<float>("scores", {1, 1, 6}, {0.9f, 0.75f, 0.6f, 0.95f, 0.5f, 0.3f});
-  test.AddInput<int32_t>("max_output_boxes_per_class", {}, {2L});
+  test.AddInput<int64_t>("max_output_boxes_per_class", {}, {2L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
-  test.AddOutput<int32_t>("selected_indices", {2, 3},
+  test.AddOutput<int64_t>("selected_indices", {2, 3},
                           {0L, 0L, 3L,
                            0L, 0L, 0L});
   test.Run();
