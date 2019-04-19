@@ -90,6 +90,7 @@ Return Value:
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
     this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelSse;
     this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelSse;
@@ -133,7 +134,8 @@ Return Value:
             this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
             this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx;
             this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx;
-            this->Conv1x1FloatKernel = MlasConv1x1FloatKernelAvx;
+            this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx;
+            this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx;
             this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelAvx;
             this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelAvx;
             this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelAvx;
@@ -158,7 +160,8 @@ Return Value:
                     this->KernelAddRoutine = MlasSgemmKernelAddAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx512F;
-                    this->Conv1x1FloatKernel = MlasConv1x1FloatKernelAvx512F;
+                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
+                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx512F;
                     this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelAvx512F;
                     this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelAvx512F;
                     this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelAvx512F;
@@ -170,7 +173,8 @@ Return Value:
                     this->KernelAddRoutine = MlasSgemmKernelAddFma3;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
-                    this->Conv1x1FloatKernel = MlasConv1x1FloatKernelFma3;
+                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
+                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 }
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;

@@ -239,14 +239,14 @@ MlasReorderOutput(
 
 void
 MlasConvReorderFilter(
-    const MLAS_CONV_PARAMETERS* Parameters,
+    const int64_t* FilterShape,
     const float* S,
     float* D
     );
 
 void
 MlasConvReorderFilter2(
-    const MLAS_CONV_PARAMETERS* Parameters,
+    const int64_t* FilterShape,
     const float* S,
     float* D
     );

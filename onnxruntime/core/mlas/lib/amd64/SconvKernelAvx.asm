@@ -30,6 +30,8 @@ INCLUDE SconvKernelAvxCommon.inc
 ;
 ; Arguments:
 ;
+;   KernelType - Supplies the type of kernel to be generated.
+;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
 ;   OutputCount - Supplies the number of output blocks to produce.
@@ -55,8 +57,15 @@ INCLUDE SconvKernelAvxCommon.inc
 ;   ymm0-ymm7 - Supplies the block accumulators.
 ;
 
-ComputeBlock MACRO FilterCount, OutputCount, VectorOffset, BroadcastOffset
+ComputeBlock MACRO KernelType, FilterCount, OutputCount, VectorOffset, BroadcastOffset
 
+IFIDNI <KernelType>, <Depthwise>
+        vmovups ymm12,YMMWORD PTR [rdx]
+        EmitIfCountGE OutputCount, 1, <vmulps ymm8,ymm12,YMMWORD PTR [rcx]>
+        EmitIfCountGE OutputCount, 1, <vaddps ymm0,ymm0,ymm8>
+        EmitIfCountGE OutputCount, 2, <vmulps ymm9,ymm12,YMMWORD PTR [rcx+r9]>
+        EmitIfCountGE OutputCount, 2, <vaddps ymm4,ymm4,ymm9>
+ELSE
         EmitIfCountGE OutputCount, 1, <vbroadcastss ymm13,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCountGE OutputCount, 2, <vbroadcastss ymm14,DWORD PTR [rcx+r9+BroadcastOffset]>
 IF OutputCount EQ 1
@@ -90,6 +99,7 @@ ELSE
         EmitIfCount2GE FilterCount, 4, OutputCount, 2, <vmulps ymm11,ymm14,ymm12>
         EmitIfCount2GE FilterCount, 4, OutputCount, 2, <vaddps ymm7,ymm7,ymm11>
 ENDIF
+ENDIF
 
         ENDM
 
@@ -101,7 +111,10 @@ ENDIF
 ;
 ; Arguments:
 ;
-;   Format - Supplies the block format of the input buffer.
+;   KernelFrame - Supplies the symbol name to access the convolution kernel
+;       stack.
+;
+;   KernelType - Supplies the type of kernel to be generated.
 ;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
@@ -120,7 +133,7 @@ ENDIF
 ;   r15 - Supplies the InputStride parameter (see function description).
 ;
 
-ProcessFilterCountN MACRO Format, FilterCount
+ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
 
         LOCAL   ProcessOutputCount
         LOCAL   ProcessNextOutputCountBy2
@@ -131,22 +144,22 @@ ProcessFilterCountN MACRO Format, FilterCount
 ; Process the output blocks that include left padding.
 ;
 
-        mov     r10,SconvKernelFrame.OutputCountLeftPad[rsp]
+        mov     r10,KernelFrame.OutputCountLeftPad[rsp]
         test    r10,r10
         jz      ProcessOutputCount
-        call    MlasConv&Format&FloatSingleAvxFilterCount&FilterCount
+        call    MlasConv&KernelType&FloatSingleAvxFilterCount&FilterCount
 
 ;
 ; Process the output blocks that do not include any padding.
 ;
 
 ProcessOutputCount:
-        mov     r10,SconvKernelFrame.OutputCount[rsp]
+        mov     r10,KernelFrame.OutputCount[rsp]
         sub     r10,2
         jb      ProcessRemainingOutputCount
 
 ProcessNextOutputCountBy2:
-        ProcessOutputCountN SconvKernelFrame, Format, 8, FilterCount, 2
+        ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 2
         lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
         sub     r10,2
         jae     ProcessNextOutputCountBy2
@@ -160,24 +173,24 @@ ProcessRemainingOutputCount:
 ;
 
 ProcessOutputCountRightPadAndRemaining:
-        add     r10,SconvKernelFrame.OutputCountRightPad[rsp]
+        add     r10,KernelFrame.OutputCountRightPad[rsp]
         jz      ExitKernel
-        call    MlasConv&Format&FloatSingleAvxFilterCount&FilterCount
+        call    MlasConv&KernelType&FloatSingleAvxFilterCount&FilterCount
 
         ENDM
 
 ;
-; Process1x1FilterCountN
+; ProcessPointwiseFilterCountN
 ;
 ;   This macro generates code to compute the convolution for a specified number
-;   of filter rows for a 1x1 kernel.
+;   of filter rows for a pointwise convolution.
 ;
 ; Arguments:
 ;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
 
-Process1x1FilterCountN MACRO FilterCount
+ProcessPointwiseFilterCountN MACRO FilterCount
 
         LOCAL   ProcessNextOutputCountBy2
         LOCAL   ProcessRemainingOutputCount
@@ -186,7 +199,7 @@ Process1x1FilterCountN MACRO FilterCount
         jb      ProcessRemainingOutputCount
 
 ProcessNextOutputCountBy2:
-        Process1x1OutputCountN 8, FilterCount, 2
+        ProcessPointwiseOutputCountN 8, FilterCount, 2
         lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
         sub     r10,2
         jae     ProcessNextOutputCountBy2
@@ -194,7 +207,7 @@ ProcessNextOutputCountBy2:
 ProcessRemainingOutputCount:
         add     r10,2                       ; correct for over-subtract above
         jz      ExitKernel
-        Process1x1OutputCountN 8, FilterCount, 1
+        ProcessPointwiseOutputCountN 8, FilterCount, 1
 
         ENDM
 
@@ -204,6 +217,7 @@ ProcessRemainingOutputCount:
 
 SconvKernelFunction Nchw, 8, Avx
 SconvKernelFunction Nchwc, 8, Avx, BiasFilter
-SconvKernel1x1Function Avx, BiasFilter
+SconvKernelDepthwiseFunction 8, Avx
+SconvKernelPointwiseFunction Avx, BiasFilter
 
         END

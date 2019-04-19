@@ -59,15 +59,10 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         std::vector<float> reordered_filter(conv_W->size());
 
         // Reorder the weights tensor statically.
-        MLAS_CONV_PARAMETERS params = { };
-        params.InputChannels = static_cast<size_t>(input_channels);
-        params.FilterCount = static_cast<size_t>(output_channels);
-        params.KernelShape[0] = static_cast<size_t>(conv_W_tensor_proto->dims(2));
-        params.KernelShape[1] = static_cast<size_t>(conv_W_tensor_proto->dims(3));
         if (input_channels >= 8) {
-          MlasConvReorderFilter(&params, conv_W->data<float>(), reordered_filter.data());
+          MlasConvReorderFilter(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
         } else {
-          MlasConvReorderFilter2(&params, conv_W->data<float>(), reordered_filter.data());
+          MlasConvReorderFilter2(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
         }
 
         new_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));

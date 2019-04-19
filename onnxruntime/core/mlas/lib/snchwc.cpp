@@ -176,7 +176,7 @@ MlasReorderOutput(
 
 void
 MlasConvReorderFilter(
-    const MLAS_CONV_PARAMETERS* Parameters,
+    const int64_t* FilterShape,
     const float* S,
     float* D
     )
@@ -186,13 +186,12 @@ MlasConvReorderFilter(
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
 
-    const size_t InputChannels = Parameters->InputChannels;
-    const size_t OutputChannels = Parameters->FilterCount;
+    const size_t OutputChannels = size_t(FilterShape[0]);
+    const size_t InputChannels = size_t(FilterShape[1]);
+    const size_t KernelHeight = size_t(FilterShape[2]);
+    const size_t KernelWidth = size_t(FilterShape[3]);
 
-    const size_t KernelHeight = Parameters->KernelShape[HeightShapeIndex];
-    const size_t KernelWidth = Parameters->KernelShape[WidthShapeIndex];
     const size_t KernelSize = KernelHeight * KernelWidth;
-
     const size_t InputStride = InputChannels * KernelSize;
 
     for (size_t o = 0; o < OutputChannels; o += NCHWC) {
@@ -254,7 +253,7 @@ MlasConvReorderFilter(
 
 void
 MlasConvReorderFilter2(
-    const MLAS_CONV_PARAMETERS* Parameters,
+    const int64_t* FilterShape,
     const float* S,
     float* D
     )
@@ -264,13 +263,12 @@ MlasConvReorderFilter2(
     constexpr size_t HeightShapeIndex = 0;
     constexpr size_t WidthShapeIndex = 1;
 
-    const size_t InputChannels = Parameters->InputChannels;
-    const size_t OutputChannels = Parameters->FilterCount;
+    const size_t OutputChannels = size_t(FilterShape[0]);
+    const size_t InputChannels = size_t(FilterShape[1]);
+    const size_t KernelHeight = size_t(FilterShape[2]);
+    const size_t KernelWidth = size_t(FilterShape[3]);
 
-    const size_t KernelHeight = Parameters->KernelShape[HeightShapeIndex];
-    const size_t KernelWidth = Parameters->KernelShape[WidthShapeIndex];
     const size_t KernelSize = KernelHeight * KernelWidth;
-
     const size_t InputStride = InputChannels * KernelSize;
 
     for (size_t o = 0; o < OutputChannels; o += NCHWC) {
@@ -436,12 +434,13 @@ MlasPrepareNchwcWorkBlock(
     WorkBlock->OutputSize = OutputSize;
 }
 
-#define KERNEL_1x1      MlasPlatform.Conv1x1FloatKernel
-#define KERNEL          MlasPlatform.ConvNchwcFloatKernel
-#define KERNEL_NCHW     MlasPlatform.ConvNchwFloatKernel
+#define KERNEL_POINTWISE    MlasPlatform.ConvPointwiseFloatKernel
+#define KERNEL              MlasPlatform.ConvNchwcFloatKernel
+#define KERNEL_NCHW         MlasPlatform.ConvNchwFloatKernel
+#define KERNEL_DEPTHWISE    MlasPlatform.ConvDepthwiseFloatKernel
 
 void
-MlasConvNchwc1x1Threaded(
+MlasConvPointwiseThreaded(
     void* Context,
     int32_t Index
     )
@@ -567,7 +566,7 @@ MlasConvNchwc1x1Threaded(
                 }
             }
 
-            KERNEL_1x1(input + NCHWC * (ih * InputWidth),
+            KERNEL_POINTWISE(input + NCHWC * (ih * InputWidth),
                        filter,
                        output,
                        NCHWC * StrideWidth * sizeof(float),
@@ -1007,6 +1006,187 @@ MlasConvNchwcNchwThreaded(
 }
 
 void
+MlasConvDepthwiseFloatThreaded(
+    void* Context,
+    int32_t Index
+    )
+{
+    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
+
+    MLAS_CONV_NCHWC_WORK_BLOCK* WorkBlock = (MLAS_CONV_NCHWC_WORK_BLOCK*)Context;
+
+    constexpr size_t HeightShapeIndex = 0;
+    constexpr size_t WidthShapeIndex = 1;
+
+    const size_t InputChannels = WorkBlock->InputChannels;
+    const size_t OutputChannels = WorkBlock->OutputChannels;
+
+    const size_t InputHeight = WorkBlock->InputShape[HeightShapeIndex];
+    const size_t InputWidth = WorkBlock->InputShape[WidthShapeIndex];
+    const size_t InputSize = WorkBlock->InputSize;
+
+    const size_t OutputHeight = WorkBlock->OutputShape[HeightShapeIndex];
+    const size_t OutputWidth = WorkBlock->OutputShape[WidthShapeIndex];
+    const size_t OutputSize = WorkBlock->OutputSize;
+
+    const size_t KernelHeight = WorkBlock->KernelShape[HeightShapeIndex];
+    const size_t KernelWidth = WorkBlock->KernelShape[WidthShapeIndex];
+    const size_t KernelSize = KernelHeight * KernelWidth;
+
+    const size_t DilationHeight = WorkBlock->DilationShape[HeightShapeIndex];
+    const size_t DilationWidth = WorkBlock->DilationShape[WidthShapeIndex];
+
+    const size_t PaddingLeftY = WorkBlock->Padding[HeightShapeIndex];
+    const size_t PaddingLeftX = WorkBlock->Padding[WidthShapeIndex];
+
+    const size_t StrideHeight = WorkBlock->StrideShape[HeightShapeIndex];
+    const size_t StrideWidth = WorkBlock->StrideShape[WidthShapeIndex];
+
+    const size_t OutputCountLeftPadY = WorkBlock->OutputCountLeftPad[HeightShapeIndex];
+    const size_t OutputCountY = WorkBlock->OutputCount[HeightShapeIndex];
+
+    const size_t OutputCountLeftPadX = WorkBlock->OutputCountLeftPad[WidthShapeIndex];
+    const size_t OutputCountX = WorkBlock->OutputCount[WidthShapeIndex];
+    const size_t OutputCountRightPadX = WorkBlock->OutputCountRightPad[WidthShapeIndex];
+
+    //
+    //
+    //
+
+    const size_t kbatch = 1;
+
+//    const size_t TotalWork = (OutputChannels / (NCHWC * kbatch)) * OutputHeight;
+    const size_t TotalWork = ((OutputChannels + (NCHWC * kbatch) - 1) / (NCHWC * kbatch)) * OutputHeight;
+    const size_t WorkPerThread = TotalWork / WorkBlock->tids;
+    const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
+
+    size_t WorkIndex;
+    size_t WorkRemaining;
+
+    if (uint32_t(Index) < WorkPerThreadExtra) {
+        WorkIndex = (WorkPerThread + 1) * Index;
+        WorkRemaining = WorkPerThread + 1;
+    } else {
+        WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
+        WorkRemaining = WorkPerThread;
+    }
+
+    size_t batch = WorkIndex / OutputHeight;
+    size_t ph = WorkIndex % OutputHeight;
+
+    const float* Input = WorkBlock->Input;
+    const float* Filter = WorkBlock->Filter;
+    const float* Bias = WorkBlock->Bias;
+    float* Output = WorkBlock->Output;
+    const MLAS_ACTIVATION* Activation = WorkBlock->Activation;
+    const bool ZeroMode = WorkBlock->ZeroMode;
+
+    Input += batch * NCHWC * kbatch * InputSize;
+    Filter += batch * NCHWC * kbatch * KernelSize;
+    Output += batch * NCHWC * kbatch * OutputSize;
+
+    if (Bias != nullptr) {
+        Bias += batch * NCHWC * kbatch;
+    }
+
+    float* output = Output + NCHWC * ph * OutputWidth;
+
+    //
+    //
+    //
+
+    while (WorkRemaining > 0) {
+
+        const float* input = Input;
+        const float* filter = Filter;
+
+        //
+        // Compute the first input row and kernel height. If this output row
+        // uses padding from one or more input padding rows, then adjust the
+        // kernel parameters to keep within the input bounds.
+        //
+
+        size_t ih = ph * StrideHeight - PaddingLeftY;
+        size_t EffectiveKernelHeight = KernelHeight;
+
+        if ((ph - OutputCountLeftPadY) >= OutputCountY) {
+
+            size_t ihStep = ih;
+
+            for (size_t kh = 0; kh < KernelHeight; kh++) {
+
+                if (ihStep >= InputHeight) {
+
+                    if (ihStep == ih) {
+                        ih += DilationHeight;
+                        filter += NCHWC * KernelWidth;
+                    }
+
+                    EffectiveKernelHeight -= 1;
+                }
+
+                ihStep += DilationHeight;
+            }
+        }
+
+        unsigned Flags = 0;
+
+        if (!ZeroMode) {
+            Flags |= 1;
+        }
+
+        if (Bias != nullptr) {
+            Flags |= 2;
+        }
+
+        if (Activation->ActivationKind == MlasReluActivation) {
+            Flags |= 4;
+        }
+
+        KERNEL_DEPTHWISE(input + NCHWC * (ih * InputWidth - PaddingLeftX),
+               filter,
+               output,
+               NCHWC * StrideWidth * sizeof(float),
+               NCHWC * DilationWidth * sizeof(float),
+               NCHWC * DilationHeight * InputWidth * sizeof(float) - NCHWC * KernelWidth * DilationWidth * sizeof(float),
+               EffectiveKernelHeight,
+               KernelWidth,
+               input + NCHWC * (ih * InputWidth),
+               NCHWC * InputWidth * sizeof(float),
+               NCHWC * DilationHeight * InputWidth * sizeof(float),
+               OutputCountLeftPadX,
+               OutputCountX,
+               OutputCountRightPadX,
+               Bias,
+               Flags);
+
+        output += NCHWC * OutputWidth;
+        ph += 1;
+        WorkRemaining -= 1;
+
+        //
+        //
+        //
+
+        if (ph == OutputHeight) {
+
+            Input += NCHWC * kbatch * InputSize;
+            Filter += NCHWC * kbatch * KernelSize;
+            Output += NCHWC * kbatch * OutputSize;
+
+            if (Bias != nullptr) {
+                Bias += NCHWC * kbatch;
+            }
+
+            output = Output;
+
+            batch++;
+            ph = 0;
+        }
+    }
+}
+
+void
 MLASCALL
 MlasConvNchwc(
     size_t Dimensions,
@@ -1046,8 +1226,6 @@ MlasConvNchwc(
     MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
         DilationShape, Padding, StrideShape, OutputShape);
 
-    if (WorkBlock.BatchCount > 1 || WorkBlock.GroupCount > 1) __debugbreak();
-
     //
     //
     //
@@ -1056,17 +1234,24 @@ MlasConvNchwc(
 
     PMLAS_THREADED_ROUTINE ConvolverRoutine;
 
+    if (WorkBlock.BatchCount > 1) __debugbreak();
     if (WorkBlock.InputChannels >= MlasPlatform.GetNchwcBlockSize()) {
-        if (WorkBlock.KernelShape[0] == 1 &&
-            WorkBlock.KernelShape[1] == 1 &&
-            WorkBlock.Padding[0] == 0 &&
-            WorkBlock.Padding[1] == 0 &&
-            WorkBlock.Padding[2] == 0 &&
-            WorkBlock.Padding[3] == 0 &&
-            MlasPlatform.Conv1x1FloatKernel != nullptr) {
-            ConvolverRoutine = MlasConvNchwc1x1Threaded;
+        if (WorkBlock.InputChannels == WorkBlock.GroupCount &&
+            WorkBlock.InputChannels == WorkBlock.OutputChannels) {
+            ConvolverRoutine = MlasConvDepthwiseFloatThreaded;
         } else {
-            ConvolverRoutine = MlasConvNchwcThreaded;
+            if (WorkBlock.GroupCount > 1) __debugbreak();
+            if (WorkBlock.KernelShape[0] == 1 &&
+                WorkBlock.KernelShape[1] == 1 &&
+                WorkBlock.Padding[0] == 0 &&
+                WorkBlock.Padding[1] == 0 &&
+                WorkBlock.Padding[2] == 0 &&
+                WorkBlock.Padding[3] == 0 &&
+                MlasPlatform.ConvPointwiseFloatKernel != nullptr) {
+                ConvolverRoutine = MlasConvPointwiseThreaded;
+            } else {
+                ConvolverRoutine = MlasConvNchwcThreaded;
+            }
         }
     } else {
         ConvolverRoutine = MlasConvNchwcNchwThreaded;
@@ -1163,7 +1348,7 @@ Return Value:
     Input += (WorkIndex / OutputHeight) * InputSize * NCHWC;
     Output += WorkIndex * NCHWC * OutputWidth;
 
-    PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel = nullptr;
+    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel = nullptr;
     switch (WorkBlock->PoolingKind) {
         case MlasMaximumPooling:
             PoolFloatKernel = MlasPlatform.PoolMaximumFloatKernel;

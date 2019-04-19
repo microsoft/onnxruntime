@@ -59,6 +59,8 @@ ClearBlock MACRO FilterCount, OutputCount
 ;
 ; Arguments:
 ;
+;   KernelType - Supplies the type of kernel to be generated.
+;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
 ;   OutputCount - Supplies the number of output blocks to produce.
@@ -84,8 +86,18 @@ ClearBlock MACRO FilterCount, OutputCount
 ;   xmm0-xmm7 - Supplies the block accumulators.
 ;
 
-ComputeBlock MACRO FilterCount, OutputCount, VectorOffset, BroadcastOffset
+ComputeBlock MACRO KernelType, FilterCount, OutputCount, VectorOffset, BroadcastOffset
 
+IFIDNI <KernelType>, <Depthwise>
+        movups  xmm8,XMMWORD PTR [rdx]
+        movups  xmm9,XMMWORD PTR [rdx+16]
+        movups  xmm10,XMMWORD PTR [rcx]
+        movups  xmm11,XMMWORD PTR [rcx+16]
+        mulps   xmm8,xmm10
+        addps   xmm0,xmm8
+        mulps   xmm9,xmm11
+        addps   xmm1,xmm9
+ELSE
         EmitIfCountGE OutputCount, 1, <movss xmm12,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCountGE OutputCount, 1, <shufps xmm12,xmm12,0>
         EmitIfCountGE FilterCount, 1, <movups xmm8,XMMWORD PTR [rdx+VectorOffset]>
@@ -112,6 +124,7 @@ ComputeBlock MACRO FilterCount, OutputCount, VectorOffset, BroadcastOffset
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <addps xmm6,xmm8>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <mulps xmm9,xmm12>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <addps xmm7,xmm9>
+ENDIF
 
         ENDM
 
@@ -174,7 +187,7 @@ SkipAccumulateOutput:
 
         test    dl,2
         jz      SkipBiasAddition
-        mov     rcx,SconvKernelFrame.Bias[rsp]
+        mov     rcx,KernelFrame.Bias[rsp]
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm8,XMMWORD PTR [rcx]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm9,XMMWORD PTR [rcx+16]>
         EmitIfCount2GE FilterCount, 2, OutputCount, 1, <movups xmm10,XMMWORD PTR [rcx+32]>
@@ -236,6 +249,11 @@ SkipReluActivation:
 ;
 ; Arguments:
 ;
+;   KernelFrame - Supplies the symbol name to access the convolution kernel
+;       stack.
+;
+;   KernelType - Supplies the type of kernel to be generated.
+;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
 ; Implicit Arguments:
@@ -253,16 +271,16 @@ SkipReluActivation:
 ;   r15 - Supplies the InputStride parameter (see function description).
 ;
 
-ProcessFilterCountN MACRO Format, FilterCount
+ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
 
         LOCAL   ProcessNextOutputCount
 
-        mov     r10,SconvKernelFrame.OutputCountLeftPad[rsp]
-        add     r10,SconvKernelFrame.OutputCount[rsp]
-        add     r10,SconvKernelFrame.OutputCountRightPad[rsp]
+        mov     r10,KernelFrame.OutputCountLeftPad[rsp]
+        add     r10,KernelFrame.OutputCount[rsp]
+        add     r10,KernelFrame.OutputCountRightPad[rsp]
 
 ProcessNextOutputCount:
-        ProcessOutputCountN SconvKernelFrame, Format, 8, FilterCount, 1
+        ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 1
         add     rbp,r9                      ; advance input by 1 element
         dec     r10
         jnz     ProcessNextOutputCount
@@ -275,5 +293,6 @@ ProcessNextOutputCount:
 
 SconvKernelFunction Nchw, 8, Sse
 SconvKernelFunction Nchwc, 8, Sse, BiasFilter
+SconvKernelDepthwiseFunction 8, Sse
 
         END

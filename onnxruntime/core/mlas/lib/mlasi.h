@@ -177,26 +177,43 @@ void
     unsigned Flags
     );
 
-typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
+typedef
+void
+(MLASCALL MLAS_CONV_DEPTHWISE_FLOAT_KERNEL)(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
+    );
 
 typedef
 void
-(MLASCALL MLAS_CONV_1X1_FLOAT_KERNEL)(
+(MLASCALL MLAS_CONV_POINTWISE_FLOAT_KERNEL)(
     const float* Input,
     const float* Filter,
     float* Output,
     size_t StrideWidth,
     size_t InputChannels,
     size_t OutputChannels,
-    size_t AdjustCount,
+    size_t InputStride,
     size_t FilterStride,
     size_t OutputStride,
     size_t OutputCount,
     const float* Bias,
     unsigned Flags
     );
-
-typedef MLAS_CONV_1X1_FLOAT_KERNEL* PMLAS_CONV_1X1_FLOAT_KERNEL;
 
 typedef
 void
@@ -216,8 +233,6 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad
     );
-
-typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
 
 typedef
 void
@@ -269,15 +284,19 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
-    MLAS_CONV_1X1_FLOAT_KERNEL MlasConv1x1FloatKernelAvx;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelFma3;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelFma3;
-    MLAS_CONV_1X1_FLOAT_KERNEL MlasConv1x1FloatKernelFma3;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelFma3;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelFma3;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
-    MLAS_CONV_1X1_FLOAT_KERNEL MlasConv1x1FloatKernelAvx512F;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
@@ -355,12 +374,13 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
-    PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
-    PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
-    PMLAS_CONV_1X1_FLOAT_KERNEL Conv1x1FloatKernel;
-    PMLAS_POOL_FLOAT_KERNEL PoolMaximumFloatKernel;
-    PMLAS_POOL_FLOAT_KERNEL PoolAverageExcludePadFloatKernel;
-    PMLAS_POOL_FLOAT_KERNEL PoolAverageIncludePadFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolMaximumFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolAverageExcludePadFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolAverageIncludePadFloatKernel;
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     size_t NchwcBlockSize;
