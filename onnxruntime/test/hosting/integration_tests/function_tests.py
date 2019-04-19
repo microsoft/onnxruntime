@@ -32,7 +32,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
     def tearDownClass(cls):
         print('Shutdown hosting app')
         cls.hosting_app_proc.kill()
-        print('PID {0} has been killed'.format(cls.hosting_app_proc.pid, test_util.is_process_killed(cls.hosting_app_proc.pid)))
+        print('PID {0} has been killed: {1}'.format(cls.hosting_app_proc.pid, test_util.is_process_killed(cls.hosting_app_proc.pid)))
 
 
     def test_mnist_happy_path(self):
