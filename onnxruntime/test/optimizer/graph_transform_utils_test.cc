@@ -55,7 +55,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers_CustomList) {
   // custom list of rules and transformers
   std::string l1_rule1 = "EliminateIdentity";
-  std::string l1_rule2 = "ConstantFolding";
+  std::string l1_rule2 = "EliminateSlice";
   std::string l2_transformer = "ConvAddFusion";
   std::vector<std::string> custom_list = {l1_rule1, l1_rule2, l2_transformer};
 
