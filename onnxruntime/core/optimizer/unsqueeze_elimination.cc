@@ -74,8 +74,8 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, bool& modified, boo
 }  // namespace onnxruntime
 
 bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) {
-  return node.OpType() == included_op_type_ &&
-         node.GetInputEdgesCount() == 0 &&
+  // Attempt to remove an Unsqueeze operator only if it gets an initializer as input.
+  return node.GetInputEdgesCount() == 0 &&
          !graph.IsNodeOutputsInGraphOutputs(node);
 }
 

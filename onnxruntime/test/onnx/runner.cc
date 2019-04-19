@@ -16,8 +16,8 @@
 #include <Windows.h>
 #else
 #include <pthread.h>
-#include <unsupported/Eigen/CXX11/ThreadPool>
 #endif
+
 #include <test/compare_mlvalue.h>
 #include "TestCase.h"
 #include "heap_buffer.h"

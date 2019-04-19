@@ -20,8 +20,15 @@ using onnxruntime::Status;
 
 // TODO: Temporary, while we bring up the threadpool impl...
 #include "core/platform/threadpool.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
-using DefaultThreadPoolType = Eigen::NonBlockingThreadPool;
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+using DefaultThreadPoolType = Eigen::ThreadPool;
 static std::unique_ptr<DefaultThreadPoolType> default_pool;
 static std::once_flag default_pool_init;
 Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {

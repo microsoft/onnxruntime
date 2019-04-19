@@ -52,7 +52,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
-  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer->Register(std::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
@@ -70,8 +70,7 @@ TEST(GraphTransformationTests, SliceElimination) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Slice"] == 5);
 
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer->Register(std::make_unique<EliminateSlice>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
@@ -89,17 +88,38 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
-
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer->Register(std::make_unique<ConstantFolding>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+// Check transformations in the case of a subgraph with constant inputs.
+TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
+  string model_uri = MODEL_FOLDER + "constant-subgraph.onnx";
+
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Level2;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  NameMLValMap feeds;
+  RunOptions run_options;
+
+  std::vector<std::string> output_names = {"output"};
+  std::vector<MLValue> fetches;
+
+  ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 }
 
 TEST(GraphTransformationTests, FuseConvBNNoBias) {
@@ -129,8 +149,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     Graph& graph = p_model->MainGraph();
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-    std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-        std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
     rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
     graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
     graph_transformation_mgr.Register(std::make_unique<ConvBNFusion>(), TransformerLevel::Level2);
@@ -183,8 +202,7 @@ TEST(GraphTransformationTests, FuseConvMulNoBias) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   graph_transformation_mgr.Register(std::make_unique<ConvMulFusion>(), TransformerLevel::Level2);
@@ -205,8 +223,7 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
-      std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", "First rule transformer");
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
   graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
   graph_transformation_mgr.Register(std::make_unique<ConvAddFusion>(), TransformerLevel::Level2);
