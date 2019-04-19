@@ -54,16 +54,16 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 
 TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers_CustomList) {
   // custom list of rules and transformers
-  std::string l1_rule = "EliminateIdentity";
+  std::string l1_rule1 = "EliminateIdentity";
+  std::string l1_rule2 = "ConstantFolding";
   std::string l2_transformer = "ConvAddFusion";
-  std::vector<std::string> custom_list = {l1_rule, l2_transformer};
+  std::vector<std::string> custom_list = {l1_rule1, l1_rule2, l2_transformer};
 
   auto transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level1, custom_list);
   ASSERT_TRUE(transformers.size() == 1);
   auto rule_transformer = dynamic_cast<RuleBasedGraphTransformer*>(transformers[0].get());
-  ASSERT_TRUE(rule_transformer->GetRewriteRules().size() == 1);
-  ASSERT_TRUE(rule_transformer->GetRewriteRules()[0]->Name() == l1_rule);
-
+  ASSERT_TRUE(rule_transformer->RulesCount() == 2);
+  
   transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
   ASSERT_TRUE(transformers.size() == 1);
   ASSERT_TRUE(transformers[0]->Name() == l2_transformer);

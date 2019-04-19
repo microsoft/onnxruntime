@@ -321,7 +321,8 @@ class DeepCpuGruOpTestContext {
                const std::vector<int>& sequence_length,
                const std::vector<float>* initial_h,
                const std::vector<float>& expected_Y,
-               const std::vector<float>& expected_Y_h);
+               const std::vector<float>& expected_Y_h,
+               const bool linear_before_reset = false);
 
  private:
   const int input_size_;
@@ -456,7 +457,8 @@ void DeepCpuGruOpTestContext::RunTest(const std::vector<float>& X,
                                       const std::vector<int>& sequence_lens,
                                       const std::vector<float>* initial_h,
                                       const std::vector<float>& expected_Y,
-                                      const std::vector<float>& expected_Y_h) {
+                                      const std::vector<float>& expected_Y_h,
+                                      const bool linear_before_reset) {
    //run with and without output_sequence
   ::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
                                   expected_Y, expected_Y_h,
@@ -467,24 +469,24 @@ void DeepCpuGruOpTestContext::RunTest(const std::vector<float>& X,
                                   direction_,
                                   9999999999.f,
                                   /*output_sequence*/ true,
-                                  false,
+                                   linear_before_reset,
                                   activation_func_names_,
                                   alphas_,
                                   betas_);
 
-  ::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
-                                  expected_Y, expected_Y_h,
-                                  input_size_, batch_size, hidden_dim_, seq_length,
-                                  use_bias_ ? &gru_bias_ : nullptr,
-                                  initial_h,
-                                  &sequence_lens,
-                                  direction_,
-                                  9999999999.f,
-                                  /*output_sequence*/ false,
-                                  false,
-                                  activation_func_names_,
-                                  alphas_,
-                                  betas_);
+  //::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
+  //                                expected_Y, expected_Y_h,
+  //                                input_size_, batch_size, hidden_dim_, seq_length,
+  //                                use_bias_ ? &gru_bias_ : nullptr,
+  //                                initial_h,
+  //                                &sequence_lens,
+  //                                direction_,
+  //                                9999999999.f,
+  //                                /*output_sequence*/ false,
+  //                                linear_before_reset,
+  //                                activation_func_names_,
+  //                                alphas_,
+  //                                betas_);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBasic) {
@@ -612,6 +614,33 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatch) {
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
+TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatchLinearBeforeReset) {
+  const std::string direction = "forward";
+  const std::vector<std::string> activations = {"sigmoid", "tanh"};
+
+  DeepCpuGruOpTestContext ctx(direction, activations);
+
+  const int batch_size = 2;
+  const int seq_length = 2;
+  std::vector<float> X = {-0.455351f, -0.276391f,
+                          -0.455351f, -0.276391f,
+
+                          -0.185934f, -0.269585f,
+                          -0.185934f, -0.269585f};
+  std::vector<int> sequence_length = {2, 2};
+  std::vector<float> initial_h = {0.5f, -0.5f, 0.0f, 0.0f};
+  std::vector<float> expected_Y = {0.253942400f, -0.174207777f,
+                                   -0.0325528607f, 0.0774837881f,
+
+                                   0.0874997079f, -0.0485242009f,
+                                   -0.0577347837f, 0.0796165839f};
+
+  std::vector<float> expected_Y_h = {0.0874997079f, -0.0485242009f,
+                                     -0.0577347837f, 0.0796165839f};
+
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+}
+
 TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
@@ -652,6 +681,116 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
   ctx.RunTest(X2, batch2, seq_length2, sequence_length2, &initial_h2, expected_Y2, expected_Y_h2);
 }
 
+TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLengthLinearBeforeReset) {
+  const std::string direction = "forward";
+  const std::vector<std::string> activations = {"sigmoid", "tanh"};
+
+  DeepCpuGruOpTestContext ctx(direction, activations);
+
+  const int batch_size = 1;
+  const int seq_length = 2;
+  std::vector<float> X = {-0.455351f, -0.276391f,
+                          -0.185934f, -0.269585f};
+  std::vector<int> sequence_length = {2};
+  std::vector<float> initial_h = {0.0f, 0.0f};
+  std::vector<float> expected_Y = {-0.0325528607f, 0.0774837881f,
+                                   -0.0577347837f, 0.0796165839f};
+  std::vector<float> expected_Y_h = {-0.0577347837f, 0.0796165839f};
+
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+
+  const int batch2 = 2;
+  const int seq_length2 = 2;
+  std::vector<float> X2 = {-0.455351f, -0.276391f,
+                           -0.455351f, -0.276391f,
+
+                           -0.185934f, -0.269585f,
+                           0.0f, 0.0f};
+  std::vector<int> sequence_length2 = {2, 1};
+  std::vector<float> initial_h2 = {0.5f, -0.5f,
+                                   0.0f, 0.0f};
+  std::vector<float> expected_Y2 = {0.253942400f, -0.174207777f,
+                                    -0.0325528607f, 0.0774837881f,
+
+                                    0.0874997079f, -0.0485242009f,
+                                    0.0f, 0.0f};
+
+  std::vector<float> expected_Y_h2 = {0.0874997079f, -0.0485242009f,
+                                      -0.0325528607f, 0.0774837881f};
+
+  ctx.RunTest(X2, batch2, seq_length2, sequence_length2, &initial_h2, expected_Y2, expected_Y_h2, true);
+}
+
+TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeResetB1) {
+  const std::string direction = "bidirectional";
+  const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
+
+  DeepCpuGruOpTestContext ctx(direction, activations);
+
+  const int batch_size = 1;
+  const int seq_length = 2;
+  std::vector<float> X = {-0.455351f, -0.276391f,
+                          -0.185934f, -0.269585f};
+  std::vector<int> sequence_length = {2};
+  std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> expected_Y = {-0.0325528607f, 0.0774837881f, -0.0559310019f, 0.101836264f,
+                                   -0.0577347837f, 0.0796165839f, -0.0456649922f, 0.0462125242f};
+
+  std::vector<float> expected_Y_h = {-0.0577347837f, 0.0796165839f,
+                                     -0.0559310019f, 0.101836264f};
+
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+}
+
+TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeResetB2) {
+  const std::string direction = "bidirectional";
+  const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
+
+  DeepCpuGruOpTestContext ctx(direction, activations);
+
+  const int batch_size = 1;
+  const int seq_length = 2;
+  std::vector<float> X = {0.855351f, 0.676391f,
+                          0.585934f, 0.669585f};
+  std::vector<int> sequence_length = {2};
+  std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> expected_Y = {-0.275918573f, -0.0022855850f, -0.385578573f, 0.0370728001f,
+                                   -0.382134795f, 0.0607641526f, -0.248751760f, 0.0347689129f};
+  std::vector<float> expected_Y_h = {-0.382134795f, 0.0607641526f,
+                                     -0.385578573f, 0.0370728001f};
+
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+}
+
+// Need CPU fix
+//TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeReset) {
+//  const std::string direction = "bidirectional";
+//  const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
+//
+//  DeepCpuGruOpTestContext ctx(direction, activations);
+//
+//  const int batch_size = 2;
+//  const int seq_length = 2;
+//  std::vector<float> X = {-0.455351f, -0.276391f,
+//                          0.855351f, 0.676391f,
+//                          -0.185934f, -0.269585f,
+//                          0.585934f, 0.669585f};
+//  std::vector<int> sequence_length = {2, 1};
+//  std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f,
+//                                  0.0f, 0.0f, 0.0f, 0.0f};
+//  std::vector<float> expected_Y = {-0.0325528607f, 0.0774837881f, -0.275918573f, -0.00228558504f,
+//                                   -0.0559310019f, 0.101836264f, -0.385578573f, 0.0370728001f,
+//
+//                                   -0.0577347837f, 0.0796165839f, 0.0f, 0.0f,
+//                                   -0.0456649922f, 0.0462125242f, 0.0f, 0.0f};
+//  std::vector<float> expected_Y_h = {-0.0577347837f, 0.0796165839f,
+//                                     -0.275918573f, -0.00228558504f,
+//                                     -0.0559310019f, 0.101836264f,
+//                                     -0.385578573f, 0.0370728001f};
+//
+//  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+//}
+
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithPartialZero) {
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
@@ -661,9 +800,9 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithPartialZero) {
   const int batch_size = 2;
   const int seq_length = 2;
   std::vector<float> X = {-0.455351f, -0.276391f,
-                          -0.455351f, -0.276391f,
+                          0.455351f, 0.276391f,
                           -0.185934f, -0.269585f,
-                          -0.185934f, -0.269585f};
+                          0.185934f, 0.269585f};
   std::vector<int> sequence_length = {2, 0};
   std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f,
                                   0.0f, 0.0f, 0.0f, 0.0f};

@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because of errors in the parser
+
 template <class T>
 void TransposeTest(std::vector<int64_t>& input_shape,
                    std::vector<T>& input_vals,
@@ -18,7 +20,7 @@ void TransposeTest(std::vector<int64_t>& input_shape,
     test.AddAttribute("perm", *p_perm);
   test.AddInput<T>("X", input_shape, input_vals);
   test.AddOutput<T>("Y", expected_shape, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test 2 dimensional transpose, with no permutation attribute specified
