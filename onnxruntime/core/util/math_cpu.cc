@@ -38,7 +38,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "Eigen/src/Core/arch/CUDA/Half.h"
+#include "Eigen/src/Core/arch/GPU/Half.h"
 
 #if defined(USE_MLAS)
 #include "core/mlas/inc/mlas.h"

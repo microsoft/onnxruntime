@@ -91,10 +91,10 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   return Status::OK();
 }
 
+/** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
-  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer",
-                                                      "Transformer to remove duplicate Cast nodes.") {
+  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer") {
   }
 
  private:

@@ -72,6 +72,7 @@ option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_HOSTING "Build ONNX hosting service" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -404,9 +405,10 @@ if (WIN32)
     endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
-  # Enable warning in Linux
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
-  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
+  # Enable warning and enable space optimization in Linux
+  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+
   if(onnxruntime_DEV_MODE)
     if(NOT onnxruntime_USE_TVM)
       string(APPEND CMAKE_CXX_FLAGS " -Werror")
