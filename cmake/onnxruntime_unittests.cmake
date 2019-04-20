@@ -545,6 +545,10 @@ if (onnxruntime_BUILD_HOSTING)
     "${TEST_SRC_DIR}/hosting/unit_tests/*.cc"
     "${TEST_SRC_DIR}/hosting/unit_tests/*.h"
   )
+
+  file(GLOB onnxruntime_integration_test_hosting_src
+    "${TEST_SRC_DIR}/hosting/integration_tests/*.py"
+  )
   if(NOT WIN32)
     if(HAS_UNUSED_PARAMETER)
       set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
@@ -565,6 +569,15 @@ if (onnxruntime_BUILD_HOSTING)
     LIBS ${onnxruntime_test_hosting_libs} hosting_proto onnxruntime_hosting_lib ${onnxruntime_test_providers_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
+
+  add_custom_command(
+    TARGET onnxruntime_hosting_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/hosting_test
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_integration_test_hosting_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/hosting_test/
+  )
+
 endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)

@@ -97,6 +97,7 @@ Use the individual flags to only run the specified stages.
 
     # Build ONNX hosting
     parser.add_argument("--build_hosting", action='store_true', help="Build hosting application for the ONNXRuntime.")
+    parser.add_argument("--enable_hosting_tests", action='store_true', help="Run hosting application tests.")
 
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
@@ -537,6 +538,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
+
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -569,6 +571,15 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
             run_subprocess([exe,'-x'] + cmd, cwd=cwd)
         else:
             run_subprocess([exe] + cmd, cwd=cwd)
+
+def run_hosting_tests(build_dir, configs):
+    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests'])
+    for config in configs:
+        config_build_dir = get_config_build_dir(build_dir, config)
+        hosting_app_path = os.path.join(config_build_dir, 'onnxruntime_hosting')
+        hosting_test_folder = os.path.join(config_build_dir, 'hosting_test')
+        hosting_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'hosting')
+        run_subprocess([sys.executable, 'test_main.py', hosting_app_path, hosting_test_data_folder, hosting_test_data_folder], cwd=hosting_test_folder, dll_path=None)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt, nightly_build = False):
     for config in configs:
@@ -764,6 +775,9 @@ def main():
 
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
+
+    if args.build_hosting and args.enable_hosting_tests:
+        run_hosting_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:

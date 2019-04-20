@@ -58,6 +58,11 @@ int main(int argc, char* argv[]) {
         LOGS(*logger, VERBOSE) << "Error message: " << context.error_message;
 
         context.response.result(context.error_code);
+        context.response.insert("Content-Type", "application/json");
+        context.response.insert("x-ms-request-id", context.request_id);
+        if (!context.client_request_id.empty()) {
+          context.response.insert("x-ms-client-request-id", (context).client_request_id);
+        }
         context.response.body() = hosting::CreateJsonError(context.error_code, context.error_message);
       });
 
