@@ -97,6 +97,7 @@ Use the individual flags to only run the specified stages.
 
     # Build ONNX hosting
     parser.add_argument("--build_hosting", action='store_true', help="Build hosting application for the ONNXRuntime.")
+    parser.add_argument("--enable_hosting_tests", action='store_true', help="Run hosting application tests.")
 
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
@@ -775,7 +776,7 @@ def main():
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
-    if args.build_hosting:
+    if args.build_hosting and args.enable_hosting_tests:
         run_hosting_tests(build_dir, configs)
 
     if args.build:
