@@ -79,5 +79,21 @@ class HttpJsonPayloadTests(unittest.TestCase):
             self.assertTrue(test_util.compare_floats(actual_data[i], expected_data[i]))
 
 
+    def test_mnist_invalid_url(self):
+        url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', -1)
+        print(url)
+
+        request_headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+
+        r = requests.post(url, headers=request_headers, data={'foo': 'bar'})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.headers.get('Content-Type'), 'application/json')
+        self.assertTrue(r.headers.get('x-ms-request-id'))
+
+
+
 if __name__=='__main__':
     unittest.main()
