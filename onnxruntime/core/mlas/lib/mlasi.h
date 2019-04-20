@@ -36,8 +36,6 @@ Abstract:
 #endif
 #endif
 
-#include "core/platform/threadpool.h"
-
 //
 // Macro to place variables at a specified alignment.
 //
@@ -78,13 +76,12 @@ Abstract:
 // Select the threading model.
 //
 
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#include "core/platform/threadpool.h"
+#endif
+
 #if defined(_OPENMP)
 #include <omp.h>
-#define MLAS_USE_OPENMP
-#define MLAS_HAS_THREADING_SUPPORT
-#elif defined(_WIN32)
-#define MLAS_USE_WIN32_THREADPOOL
-#define MLAS_HAS_THREADING_SUPPORT
 #endif
 
 //
@@ -220,7 +217,7 @@ extern "C" {
 // that workload. See EvaluateThreadingPerformance() in the unit test.
 //
 
-#if defined(MLAS_USE_OPENMP)
+#if defined(_OPENMP)
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #else
 #if defined(MLAS_TARGET_AMD64)
@@ -272,23 +269,6 @@ struct MLAS_PLATFORM {
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
 #endif
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    int32_t MaximumThreadCount;
-#endif
-
-    int32_t
-    GetMaximumThreadCount(
-        void
-        )
-    {
-#if defined(MLAS_USE_OPENMP)
-        return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#elif defined(MLAS_USE_WIN32_THREADPOOL)
-        return MaximumThreadCount;
-#else
-        return 1;
-#endif
-    }
 };
 
 extern MLAS_PLATFORM MlasPlatform;
@@ -313,6 +293,27 @@ MlasExecuteThreaded(
     int32_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
+
+inline
+int32_t
+MlasGetMaximumThreadCount(
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#else
+    if (ThreadPool != nullptr) {
+        return ThreadPool->NumThreads();
+    }
+#endif
+
+#ifdef _OPENMP
+    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
+#else
+    return 1;
+#endif
+}
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable

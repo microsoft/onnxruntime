@@ -87,7 +87,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / group_),
                     &Activation,
                     &WorkingBufferSize,
-                    thread_pool->NumThreads());
+                    const_cast<concurrency::ThreadPool*>(thread_pool));
 
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));

@@ -44,7 +44,10 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Thread pool abstraction.
+// Forward declare the thread pool implementation class.
+//
+// N.B. Avoid including onnxruntime headers here to keep the dependencies for
+// standalone MLAS test executables smaller.
 //
 
 namespace onnxruntime {
@@ -133,8 +136,8 @@ struct MLAS_CONV_PARAMETERS {
     size_t InputSize;
     size_t OutputSize;
     size_t K;
-    size_t ThreadCount;
     MLAS_CONV_ALGORITHM Algorithm;
+    int32_t ThreadCount;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -163,7 +166,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
-    int32_t ThreadPoolLimit
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void

@@ -770,6 +770,9 @@ Arguments:
 
     Output - Supplies the output tensor.
 
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
 Return Value:
 
     Returns true if the operation was completed across multiple threads, else
@@ -777,13 +780,6 @@ Return Value:
 
 --*/
 {
-
-#if !defined(MLAS_HAS_THREADING_SUPPORT)
-  if (ThreadPool == nullptr) {
-    return false;
-  }
-#endif
-
     MLAS_CONV_WORK_BLOCK WorkBlock;
 
     const size_t OutputSize = Parameters->OutputSize;
@@ -863,6 +859,9 @@ Arguments:
 
     Output - Supplies the output tensor.
 
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
 Return Value:
 
     None.
@@ -890,7 +889,7 @@ Return Value:
 
         const size_t BatchGroupCount = BatchCount * GroupCount;
 
-        int32_t TargetThreadCount = (int32_t)Parameters->ThreadCount;
+        int32_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
         if (size_t(TargetThreadCount) >= BatchGroupCount) {
             TargetThreadCount = int32_t(BatchGroupCount);
@@ -906,15 +905,9 @@ Return Value:
         WorkBlock.Output = Output;
         WorkBlock.TargetThreadCount = TargetThreadCount;
 
-#if defined(MLAS_HAS_THREADING_SUPPORT)
         MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
+
         return;
-#else
-        if (ThreadPool != nullptr) {
-          MlasExecuteThreaded(MlasConvGemmDirectThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
-          return;
-        }
-#endif
     }
 
     //
@@ -1029,7 +1022,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
-    int32_t ThreadPoolLimit
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1072,6 +1065,9 @@ Arguments:
 
     WorkingBufferSize - Receives the number of elements to allocate for the
         working buffer for intermediate results.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
 
 Return Value:
 
@@ -1127,16 +1123,11 @@ Return Value:
 
     *WorkingBufferSize = 0;
 
-    // Take the thread count either limited by the available pool or the platform limit
-    int32_t MaximumThreadCount = (ThreadPoolLimit > 0) ? ThreadPoolLimit : MlasPlatform.GetMaximumThreadCount();
-
     if (AllStridesAreOne && AllPaddingIsZero) {
 
         //
         // Detect a pointwise convolution.
         //
-
-        Parameters->ThreadCount = MaximumThreadCount;
 
         if (K == InputChannels) {
 
@@ -1205,6 +1196,8 @@ Return Value:
         } else {
             TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
         }
+
+        int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
         if (TargetThreadCount >= MaximumThreadCount) {
             TargetThreadCount = MaximumThreadCount;
