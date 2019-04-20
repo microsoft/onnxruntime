@@ -54,6 +54,31 @@ TEST(PoolTest, MaxPool) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+
+TEST(PoolTest, MaxPool_10_Dilation_1d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2});
+
+  std::vector<float> x_vals = {
+	  1,  2,  3,  4,
+	  5,  6,  7,  8,
+	  9,  10, 11, 12,
+	  13, 14, 15, 16
+      };
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2};
+  std::vector<float> expected_vals = {11, 12, 15, 16};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // Only CUDA kernel has float 16 support
 // Disable for now, still investigating the issue with cudnn lib
 #ifdef USE_CUDA
