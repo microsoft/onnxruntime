@@ -34,14 +34,12 @@ ADD_TYPED_SLICE_V9_OP(string);
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                               \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
-      DynamicSlice,                                                                         \
-      1,                                                                                    \
-      data_type,                                                                            \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),    \
-                                                 DataTypeImpl::GetTensorType<int64_t>()}),  \
+#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                                                                                                                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
+      DynamicSlice,                                                                                                                                                                              \
+      1,                                                                                                                                                                                         \
+      data_type,                                                                                                                                                                                 \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
       Slice<data_type, true>);
 
 ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
@@ -61,14 +59,12 @@ ADD_TYPED_DYNAMIC_SLICE_OP(string);
 }  // namespace contrib
 #endif
 
-#define ADD_TYPED_SLICE_V10_OP(data_type)                                                   \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
-      Slice,                                                                                \
-      10,                                                                                   \
-      data_type,                                                                            \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),    \
-                                                 DataTypeImpl::GetTensorType<int64_t>()}),  \
+#define ADD_TYPED_SLICE_V10_OP(data_type)                                                                                                                                                        \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                                                                                \
+      Slice,                                                                                                                                                                                     \
+      10,                                                                                                                                                                                        \
+      data_type,                                                                                                                                                                                 \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
       Slice<data_type, true>);
 
 ADD_TYPED_SLICE_V10_OP(uint8_t);
@@ -307,7 +303,7 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   const auto& input_dimensions = input_tensor.Shape().GetDims();
   if (input_dimensions.size() < 1)
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
-"Cannot slice scalars");
+                              "Cannot slice scalars");
 
   // Initialize the starts & ends to the actual tensor shape
   std::vector<int64_t> starts(input_dimensions.size(), 0);

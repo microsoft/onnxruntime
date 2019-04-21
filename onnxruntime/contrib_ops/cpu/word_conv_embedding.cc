@@ -133,27 +133,27 @@ void WordConvEmbedding::CalculateLengthOfEachWordInSequence(
 
 Status WordConvEmbedding::ValidateInputShape(const TensorShape& w_conv_shape, const TensorShape& w_char_embedding_shape) const {
   if (embedding_size_ != -1 && w_conv_shape[0] != embedding_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv filter size does not match embedding_size attribute.",
-                           " embedding_size attribute: ", embedding_size_,
-                           " conv filter size: ", w_conv_shape[0]);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Conv filter size does not match embedding_size attribute.",
+                              " embedding_size attribute: ", embedding_size_,
+                              " conv filter size: ", w_conv_shape[0]);
   }
 
   if (conv_window_size_ != -1 && w_conv_shape[2] != conv_window_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv kernal size 1 does not match conv_window_size attribute .",
-                           " conv_window_size attribute: ", conv_window_size_,
-                           " conv kernal size 1: ", w_conv_shape[2]);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Conv kernal size 1 does not match conv_window_size attribute .",
+                              " conv_window_size attribute: ", conv_window_size_,
+                              " conv kernal size 1: ", w_conv_shape[2]);
   }
 
   if (char_embedding_size_ != -1 && w_char_embedding_shape[1] != char_embedding_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding size does not match char_embedding_size attribute.",
-                           " char_embedding_size attribute: ", conv_window_size_,
-                           " Char embedding size: ", w_conv_shape[1]);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Char embedding size does not match char_embedding_size attribute.",
+                              " char_embedding_size attribute: ", conv_window_size_,
+                              " Char embedding size: ", w_conv_shape[1]);
   }
 
   if (w_char_embedding_shape[1] != w_conv_shape[3]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Char embedding size does not match conv kernal size 2.",
-                           " Char embedding size: ", conv_window_size_,
-                           " Conv kernal size 2 : ", w_conv_shape[3]);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Char embedding size does not match conv kernal size 2.",
+                              " Char embedding size: ", conv_window_size_,
+                              " Conv kernal size 2 : ", w_conv_shape[3]);
   }
 
   return Status::OK();

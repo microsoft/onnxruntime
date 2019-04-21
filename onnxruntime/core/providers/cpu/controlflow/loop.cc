@@ -188,9 +188,9 @@ Status LoopImpl::Initialize() {
   // and that value is in num_subgraph_inputs_.
   // validate that the subgraph has that many inputs.
   if (static_cast<size_t>(num_subgraph_inputs_) != subgraph_inputs.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Graph in 'body' attribute of Loop should have ",
-                           num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(),
+                              "Graph in 'body' attribute of Loop should have ",
+                              num_subgraph_inputs_, " inputs. Found:", subgraph_.GetInputs().size());
   }
 
   auto& subgraph_outputs = subgraph_.GetOutputs();
@@ -198,9 +198,9 @@ Status LoopImpl::Initialize() {
 
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
   if (num_subgraph_outputs - 1 != static_cast<size_t>(num_outputs_)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' node has ", num_outputs_,
-                           " outputs so the subgraph requires ", num_outputs_ + 1,
-                           " but has ", num_subgraph_outputs);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "'Loop' node has ", num_outputs_,
+                              " outputs so the subgraph requires ", num_outputs_ + 1,
+                              " but has ", num_subgraph_outputs);
   }
 
   AllocatorPtr allocator;
@@ -306,8 +306,8 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
 
     // sanity check
     if (bytes_per_iteration != iteration_data.Size()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output ", output_index,
-                             " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Inconsistent shape in loop output for output ", output_index,
+                                " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
     auto num_bytes = iteration_data.Size();

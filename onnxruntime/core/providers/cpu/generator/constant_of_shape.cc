@@ -165,7 +165,7 @@ Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
   auto shape_tensor = ctx->Input<Tensor>(0);
 
   if (shape_tensor->DataType() != DataTypeImpl::GetType<int64_t>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input tensor expected to contain int64 data");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "Input tensor expected to contain int64 data");
   }
 
   auto& input_shape = shape_tensor->Shape();

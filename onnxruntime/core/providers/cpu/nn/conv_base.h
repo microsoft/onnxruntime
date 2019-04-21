@@ -104,19 +104,19 @@ class ConvBase {
   ~ConvBase() = default;
 
  protected:
-  Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {
+  Status ComputeKernelShape(const OpKernelContext& context, const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {
     if (kernel_shape_specified_) {
       kernel_shape = kernel_shape_;
       if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                               " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                               " W: ", weight_shape.ToString().c_str());
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "kernel_shape num_dims is not compatible with W num_dims.",
+                                  " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                  " W: ", weight_shape.ToString().c_str());
       }
       for (size_t i = 0; i < kernel_shape.size(); ++i) {
         if (kernel_shape[i] != weight_shape[i + 2]) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                                 " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                                 " W: ", weight_shape.ToString().c_str());
+          return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "kernel_shape is not compatible with W shape.",
+                                    " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                    " W: ", weight_shape.ToString().c_str());
         }
       }
     } else {
@@ -127,33 +127,34 @@ class ConvBase {
     return Status::OK();
   }
 
-  Status ValidateInputShape(const Tensor* X, const Tensor* W) const {
+  Status ValidateInputShape(const OpKernelContext& context, const Tensor* X, const Tensor* W) const {
     const int64_t C = X->Shape()[1];
     const int64_t M = W->Shape()[0];
 
     if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                             " X: ", X->Shape().ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "X num_dims does not match W num_dims.",
+                                " X: ", X->Shape().ToString().c_str(),
+                                " W: ", W->Shape().ToString().c_str());
     }
 
     if (C != W->Shape()[1] * group_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
-                             " C: ", C,
-                             " kernel channels: ", W->Shape()[1],
-                             " group: ", group_);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Input channels C is not equal to kernel channels * group.",
+                                " C: ", C,
+                                " kernel channels: ", W->Shape()[1],
+                                " group: ", group_);
     }
 
     if (M % group_ != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
-                             " M: ", M,
-                             " group: ", group_);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Output channels M is not divisible by group.",
+                                " M: ", M,
+                                " group: ", group_);
     }
     return Status::OK();
   }
 
   template <bool ForceSymmetricAutoPadding = false>
-  Status InferOutputShape(const TensorShape& input_shape,
+  Status InferOutputShape(const OpKernelContext& context,
+                          const TensorShape& input_shape,
                           const std::vector<int64_t>& kernel_shape,
                           const std::vector<int64_t>& strides,
                           const std::vector<int64_t>& dilations,
@@ -164,7 +165,7 @@ class ConvBase {
       if (dim >= strides.size() || dim >= kernel_shape.size() ||
           dim >= dilations.size() || dim >= pads->size() ||
           rank + dim >= pads->size()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Out of bound access to array");
       }
       int64_t dim_size = 0;
       ORT_RETURN_IF_ERROR(ComputePadAndOutputShape<ForceSymmetricAutoPadding>(

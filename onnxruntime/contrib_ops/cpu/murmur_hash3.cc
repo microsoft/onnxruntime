@@ -194,7 +194,7 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
                            seed_,
                            reinterpret_cast<uint8_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type not supported.");
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, context->Kernel().Node(), "Type not supported.");
       }
     }
   }

@@ -111,9 +111,9 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
   auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(X);
 
   if (dtype == TensorProto_DataType_UNDEFINED)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Could not infer data type from input tensor with data type ",
-                           X.DataType());
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(),
+                              "Could not infer data type from input tensor with data type ",
+                              X.DataType());
 
   std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   status = RandomNormalCompute(mean_, scale_, generator_, dtype, *Y);
@@ -133,9 +133,9 @@ Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
   auto dtype = dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : InferDataType(X);
 
   if (dtype == TensorProto_DataType_UNDEFINED)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Could not infer data type from input tensor with data type ",
-                           X.DataType());
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(),
+                              "Could not infer data type from input tensor with data type ",
+                              X.DataType());
   std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
   status = RandomUniformCompute(low_, high_, generator_, dtype, *Y);
 
@@ -256,7 +256,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
       break;
     }
     default:
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid data type of ", output_dtype_);
+      status = ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "Invalid data type of ", output_dtype_);
   }
 
   return status;

@@ -127,8 +127,8 @@ Status IfImpl::Initialize() {
   auto num_subgraph_outputs = graph_outputs.size();
 
   if (num_subgraph_outputs != num_outputs_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
-                           " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "'If' node has ", num_outputs_,
+                              " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }
 
   subgraph_output_names_.reserve(num_subgraph_outputs);
@@ -152,8 +152,8 @@ Status IfImpl::AllocateOutputTensors() {
   for (auto& graph_output : subgraph_.GetOutputs()) {
     auto* graph_output_shape = graph_output->Shape();
     if (!graph_output_shape) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                             graph_output->Name(), " did not.");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Subgraph must have the shape set for all outputs but ",
+                                graph_output->Name(), " did not.");
     }
 
     TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
@@ -166,7 +166,7 @@ Status IfImpl::AllocateOutputTensors() {
       auto* tensor = context_.Output(index, output_shape);
 
       if (!tensor)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Failed to create output tensor for ", graph_output->Name());
 
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     }
@@ -242,7 +242,7 @@ Status IfImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cach
             auto* tensor = context_.Output(i, shape);
 
             if (!tensor)
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
+              return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Failed to create output tensor for If output ", i);
 
             // return MLValue for allocated tensor
             mlvalue = *context_.GetOutputMLValue(i);

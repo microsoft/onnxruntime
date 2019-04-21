@@ -57,8 +57,8 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   const auto& seq_len_shape = seq_lengths.Shape();
 
   if (seq_len_shape.NumDimensions() != 1 || seq_len_shape[0] != batch_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "sequence_lens shape must be {batch_size}. Got:",
-                           seq_len_shape, ". batch_size=", batch_size);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "sequence_lens shape must be {batch_size}. Got:",
+                              seq_len_shape, ". batch_size=", batch_size);
   }
 
   auto& Y = *context->Output(0, dims);

@@ -33,7 +33,7 @@ class Gemm : public OpKernel {
     const auto X = context->Input<Tensor>(0);
     const auto W = context->Input<Tensor>(1);
     const auto B = context->Input<Tensor>(2);
-    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
+    GemmHelper helper(*context, X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
 
     if (!helper.State().IsOK())
       return helper.State();
@@ -119,7 +119,7 @@ class Gemm : public OpKernel {
   float alpha_;
   float beta_;
 
-protected:
+ protected:
   // For fused gemm + activation
   std::string activation_;
   float leaky_relu_alpha_;

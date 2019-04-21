@@ -18,17 +18,17 @@ class CropBase {
         scale_(info.GetAttrsOrDefault<int64_t>("scale")) {
   }
 
-  Status ValidateInput(const Tensor* X) const {
+  Status ValidateInput(const OpKernelContext& ctx, const Tensor* X) const {
     if (border_.size() < 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attribute border needs to be specified with four border elements, got ", border_.size());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                                "Attribute border needs to be specified with four border elements, got ", border_.size());
     }
 
     const auto dims = X->Shape().GetDims();
 
     if (dims.size() < 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                                "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
     }
 
     const int64_t H = dims[2];
@@ -41,11 +41,11 @@ class CropBase {
             bottomBorder = border_[3];
 
     if (H < topBorder + bottomBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(), "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
     }
 
     if (W < leftBorder + rightBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(), "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
     }
 
     int64_t bottomLimit = H - bottomBorder;
@@ -57,12 +57,12 @@ class CropBase {
       rightLimit = leftBorder + scale_[1];
 
       if (H < bottomLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(),
+                                  "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
       }
 
       if (W < rightLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx.Kernel().Node(), "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
       }
     }
 
@@ -81,7 +81,7 @@ class Crop final : public CropBase, public OpKernel {
 
   common::Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
-    ORT_RETURN_IF_ERROR(ValidateInput(X));
+    ORT_RETURN_IF_ERROR(ValidateInput(*context, X));
 
     const auto dims = X->Shape().GetDims();
     const int64_t N = dims[0];
@@ -132,5 +132,5 @@ class Crop final : public CropBase, public OpKernel {
   }
 };
 
-}
+}  // namespace contrib
 }  //namespace onnxruntime

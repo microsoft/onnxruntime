@@ -270,8 +270,8 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Invalid scan input:", graph_inputs[i]->Name(),
-                             " Expected ", min_dims_required,
-                             " dimensions or more but input had shape of ", input_shape);
+                                " Expected ", min_dims_required,
+                                " dimensions or more but input had shape of ", input_shape);
 
     auto seq_len_dim = input_axes_[i - num_loop_state_variables_];
     auto this_seq_len = input_shape[seq_len_dim];
@@ -280,10 +280,10 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
       sequence_len_ = this_seq_len;
     } else {
       if (sequence_len_ != this_seq_len) {
-        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), 
-                               "Scan inputs have inconsistent sequence lengths. Previous value was ",
-                               sequence_len_, " but input '", graph_inputs[i]->Name(),
-                               "' dimension ", seq_len_dim, " has length of ", this_seq_len);
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(),
+                                  "Scan inputs have inconsistent sequence lengths. Previous value was ",
+                                  sequence_len_, " but input '", graph_inputs[i]->Name(),
+                                  "' dimension ", seq_len_dim, " has length of ", this_seq_len);
       }
     }
   }
@@ -297,7 +297,7 @@ Status ScanImpl::ValidateInput() {
 
   if (static_cast<size_t>(num_variadic_inputs_) < num_graph_inputs) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "The subgraph in 'body' requires ", num_graph_inputs,
-                           " inputs but Scan was only given ", num_variadic_inputs_);
+                              " inputs but Scan was only given ", num_variadic_inputs_);
   }
 
   // validate/calculate the input axes values and populate input_axes_.
@@ -313,7 +313,7 @@ Status ScanImpl::ValidateInput() {
         axis = HandleNegativeAxis(axis, input_rank);
       else
         return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context_.Kernel().Node(), "Invalid value in scan_input_axes for input ", i,
-                               " of ", axis, ". Input tensor rank was ", input_rank);
+                                  " of ", axis, ". Input tensor rank was ", input_rank);
     }
 
     input_axes_.push_back(axis);
@@ -356,7 +356,7 @@ Status ScanImpl::SetupInputs() {
 
       MLValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = TransposeBase::DoTranspose(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = TransposeBase::DoTranspose(context_, permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -372,7 +372,7 @@ Status ScanImpl::AllocateOutputTensors() {
 
   if (graph_outputs.size() != static_cast<size_t>(num_variadic_outputs_)) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context_.Kernel().Node(), "Subgraph in 'body' produces ", graph_outputs.size(),
-                           " outputs but Scan expects ", num_variadic_outputs_);
+                              " outputs but Scan expects ", num_variadic_outputs_);
   }
 
   std::unique_ptr<OutputIterator> output_iter;
@@ -479,7 +479,7 @@ Status ScanImpl::TransposeOutput() {
         axis = HandleNegativeAxis(axis, output_rank);
       else
         return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context_.Kernel().Node(), "Invalid value in scan_output_axes for output ", i,
-                               " of ", axis, ". Output tensor rank was ", output_rank);
+                                  " of ", axis, ". Output tensor rank was ", output_rank);
 
       std::vector<int64_t> permutations;
       std::vector<int64_t> new_shape;
@@ -488,7 +488,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = TransposeBase::DoTranspose(permutations, temporary_output_tensor, *output);
+      status = TransposeBase::DoTranspose(context_, permutations, temporary_output_tensor, *output);
       ORT_RETURN_IF_ERROR(status);
     }
   }

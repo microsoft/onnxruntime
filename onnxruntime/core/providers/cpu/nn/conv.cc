@@ -16,10 +16,10 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(ValidateInputShape(*context, X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(*context, W->Shape(), kernel_shape));
 
   std::vector<int64_t> pads(pads_);
   if (pads.empty()) {
@@ -37,7 +37,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(InferOutputShape(*context, input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -52,16 +52,16 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   if (kernel_rank == 2 || kernel_rank == 3) {
     MLAS_ACTIVATION Activation;
     if (activation_.empty()) {
-        Activation.ActivationKind = MlasIdentityActivation;
+      Activation.ActivationKind = MlasIdentityActivation;
     } else if (activation_ == "Relu") {
-        Activation.ActivationKind = MlasReluActivation;
+      Activation.ActivationKind = MlasReluActivation;
     } else if (activation_ == "LeakyRelu") {
-        Activation.ActivationKind = MlasLeakyReluActivation;
-        Activation.alpha = alpha_;
+      Activation.ActivationKind = MlasLeakyReluActivation;
+      Activation.alpha = alpha_;
     } else if (activation_ == "Tanh") {
-        Activation.ActivationKind = MlasTanhActivation;
+      Activation.ActivationKind = MlasTanhActivation;
     } else if (activation_ == "Sigmoid") {
-        Activation.ActivationKind = MlasLogisticActivation;
+      Activation.ActivationKind = MlasLogisticActivation;
     } else {
       ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
     }

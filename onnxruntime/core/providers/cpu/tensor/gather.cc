@@ -108,7 +108,7 @@ Status Gather::Compute(OpKernelContext* context) const {
                                    thread_pool);
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
+  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, context->Kernel().Node(), "Type for Tind not supported yet in Gather.");
 }
 
 }  // namespace onnxruntime

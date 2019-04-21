@@ -32,7 +32,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <class Tin>
 Status CopyScatterData(const OpKernelContext* ctx,
-	const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
+                       const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
   const Tin* indices_data = indices_input->template Data<Tin>();
@@ -41,8 +41,8 @@ Status CopyScatterData(const OpKernelContext* ctx,
     Tin idx = indices_data[i];
     if (idx < 0 || idx >= input_data_shape[axis]) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
-"indices element out of data bounds, idx=", idx,
-                             " data_dim=", input_data_shape[axis]);
+                                "indices element out of data bounds, idx=", idx,
+                                " data_dim=", input_data_shape[axis]);
     }
   }
 
@@ -176,15 +176,15 @@ Status Scatter::Compute(OpKernelContext* context) const {
   auto& indices_dims = indices_input->Shape().GetDims();
   auto& updates_dims = updates_input->Shape().GetDims();
   if (indices_dims.size() != updates_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Indices and updates must have the same rank");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                              "Indices and updates must have the same rank");
   }
 
   for (size_t i = 0; i < indices_dims.size(); ++i) {
     if (indices_dims[i] != updates_dims[i]) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
                                 "Indices vs updates dimensions differs at position=", i,
-                             " ", indices_dims[i], " vs ", updates_dims[i]);
+                                " ", indices_dims[i], " vs ", updates_dims[i]);
     }
   }
 
@@ -195,14 +195,14 @@ Status Scatter::Compute(OpKernelContext* context) const {
   if (input_dims.size() != indices_dims.size()) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
                               "Indices must have the same rank as Input. Indices rank=",
-                           indices_dims.size(), ". Input rank=", input_dims.size());
+                              indices_dims.size(), ". Input rank=", input_dims.size());
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
     if (input_dims[i] < indices_dims[i]) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
                                 "Indices dim=", indices_dims[i], " at pos=", i,
-                             " is greater than input dim=", input_dims[i]);
+                                " is greater than input dim=", input_dims[i]);
     }
   }
 

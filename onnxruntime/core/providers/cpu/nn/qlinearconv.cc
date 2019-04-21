@@ -54,15 +54,15 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   const Tensor* bias = nullptr;
   if (num_inputs == 9) {
     bias = context->Input<Tensor>(8);
-  }  
+  }
 
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(ValidateInputShape(*context, X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(*context, W->Shape(), kernel_shape));
 
   std::vector<int64_t> pads(pads_);
   if (pads.empty()) {
@@ -80,7 +80,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(InferOutputShape(*context, input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -95,7 +95,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
   const int64_t X_offset = C / group_ * input_image_size;
   const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / group_;
-  const int64_t W_offset = W->Shape().Size() / group_;  
+  const int64_t W_offset = W->Shape().Size() / group_;
   const int64_t kernel_dim = C / group_ * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
   const int bias_offset = static_cast<int>(M / group_);
@@ -124,7 +124,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           static_cast<int>(kernel_shape.size()),
           col_buffer_data,
           &CPUMathUtil::Instance(),
-		  false,
+          false,
           input_offset_data);
 
       const uint8_t* filter_data_as_uint8 = W->template Data<uint8_t>() + group_id * W_offset;
@@ -139,20 +139,20 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       // TODO: worker thread pool needs to be handled.
       gemmlowp::GemmContext gemm_context;
       if (bias == nullptr) {
-        auto output_pipeline = MakeOutputPipelineWithOutBias(result_offset_data, 
-            integer_multiplier, right_shift);
-        gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::uint8_t,
-                                         gemmlowp::DefaultL8R8BitDepthParams>(
-            &gemm_context, lhs, rhs, &result, -filter_offset_data, -input_offset_data,
-            output_pipeline);        
-      } else {
-        auto output_pipeline = MakeOutputPipelineWithBias(bias->template Data<int32_t>() + group_id * bias_offset, 
-            static_cast<int>(M / group_), result_offset_data, integer_multiplier, right_shift);
+        auto output_pipeline = MakeOutputPipelineWithOutBias(result_offset_data,
+                                                             integer_multiplier, right_shift);
         gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::uint8_t,
                                          gemmlowp::DefaultL8R8BitDepthParams>(
             &gemm_context, lhs, rhs, &result, -filter_offset_data, -input_offset_data,
             output_pipeline);
-      }      
+      } else {
+        auto output_pipeline = MakeOutputPipelineWithBias(bias->template Data<int32_t>() + group_id * bias_offset,
+                                                          static_cast<int>(M / group_), result_offset_data, integer_multiplier, right_shift);
+        gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::uint8_t,
+                                         gemmlowp::DefaultL8R8BitDepthParams>(
+            &gemm_context, lhs, rhs, &result, -filter_offset_data, -input_offset_data,
+            output_pipeline);
+      }
     }
 
     Xdata += X_offset * group_;

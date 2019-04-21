@@ -83,8 +83,8 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   // input validations
   if (group_ <= 0) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
-"group count is <= 0",
-                           " group: ", group_);
+                              "group count is <= 0",
+                              " group: ", group_);
   }
 
   if (input_shape.NumDimensions() != 4) {
@@ -92,24 +92,24 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
     // test_convtranspose_1d_cpu, test_convtranspose_3d_cpu.
     // TODO: the error message should tell which operator raises it.
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
-"Input X must be 4-dimensional.",
-                           " X: ", X->Shape().ToString().c_str());
+                              "Input X must be 4-dimensional.",
+                              " X: ", X->Shape().ToString().c_str());
   }
 
   if (input_shape.NumDimensions() != F->Shape().NumDimensions()) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
-"X num_dims does not match W num_dims.",
-                           " X: ", X->Shape().ToString().c_str(),
-                           " W: ", F->Shape().ToString().c_str());
+                              "X num_dims does not match W num_dims.",
+                              " X: ", X->Shape().ToString().c_str(),
+                              " W: ", F->Shape().ToString().c_str());
   }
 
   const int64_t num_input_channels = input_shape[1];
 
   if (F->Shape()[0] != num_input_channels) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
-"filter number not equal to input channel number.",
-                           " filter_number: ", F->Shape()[0],
-                           " num_input_channels: ", num_input_channels);
+                              "filter number not equal to input channel number.",
+                              " filter_number: ", F->Shape()[0],
+                              " num_input_channels: ", num_input_channels);
   }
 
   const int64_t N = input_shape[0];
@@ -123,13 +123,13 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
 
   if (num_input_channels % group_ != 0) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
-"Input channels is not divisible by group.",
-                           " num_input_channels: ", num_input_channels,
-                           " group: ", group_);
+                              "Input channels is not divisible by group.",
+                              " num_input_channels: ", num_input_channels,
+                              " group: ", group_);
   }
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(F->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(*context, F->Shape(), kernel_shape));
 
   std::vector<int64_t> output_padding(output_padding_);
   if (output_padding.empty()) {

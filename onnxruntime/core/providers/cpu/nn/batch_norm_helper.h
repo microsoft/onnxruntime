@@ -11,7 +11,7 @@ namespace onnxruntime {
 class BatchNormHelper {
  public:
   static common::Status ValidateInputs(const OpKernelContext* ctx,
-	                                   const Tensor* X,
+                                       const Tensor* X,
                                        const Tensor* scale,
                                        const Tensor* B,
                                        const Tensor* mean,
@@ -31,47 +31,46 @@ class BatchNormHelper {
     int64_t num_channels = X->Shape().GetDims()[1];
 
     if (scale->Shape().NumDimensions() != kNumInputScaleDimensions) {
-      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input scale: NumDimensions() != ", kNumInputScaleDimensions);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                "Invalid input scale: NumDimensions() != ", kNumInputScaleDimensions);
     }
     if (scale->Shape().GetDims()[0] != num_channels) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input scale: 0th dimension != ", num_channels);
+                                ctx->Kernel().Node(),
+                                "Invalid input scale: 0th dimension != ", num_channels);
     }
 
     if (B->Shape().NumDimensions() != kNumInputBiasDimensions) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input B: NumDimensions() != ", kNumInputBiasDimensions);
+                                ctx->Kernel().Node(),
+                                "Invalid input B: NumDimensions() != ", kNumInputBiasDimensions);
     }
     if (B->Shape().GetDims()[0] != num_channels) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input B: 0th dimension != ", num_channels);
+                                ctx->Kernel().Node(),
+                                "Invalid input B: 0th dimension != ", num_channels);
     }
 
     if (mean->Shape().NumDimensions() != kNumInputMeanDimensions) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input mean: NumDimensions() != ", kNumInputMeanDimensions);
+                                ctx->Kernel().Node(),
+                                "Invalid input mean: NumDimensions() != ", kNumInputMeanDimensions);
     }
     if (mean->Shape().GetDims()[0] != num_channels) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input mean: 0th dimension != ", num_channels);
+                                ctx->Kernel().Node(),
+                                "Invalid input mean: 0th dimension != ", num_channels);
     }
 
     if (var->Shape().NumDimensions() != kNumInputVarianceDimensions) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input var: NumDimensions() != ", kNumInputVarianceDimensions);
+                                ctx->Kernel().Node(),
+                                "Invalid input var: NumDimensions() != ", kNumInputVarianceDimensions);
     }
     if (var->Shape().GetDims()[0] != num_channels) {
       return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-ctx->Kernel().Node(),
-"Invalid input var: 0th dimension != ", num_channels);
+                                ctx->Kernel().Node(),
+                                "Invalid input var: 0th dimension != ", num_channels);
     }
 
     return common::Status::OK();

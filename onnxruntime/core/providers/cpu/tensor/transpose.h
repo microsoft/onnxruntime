@@ -16,7 +16,7 @@ class TransposeBase {
   Transpose the input Tensor into the output Tensor using the provided permutations.
   Both Tensors must have the same data type. 
   */
-  static Status DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output);
+  static Status DoTranspose(const OpKernelContext& context, const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output);
 
  protected:
   TransposeBase(const OpKernelInfo& info) {
@@ -37,8 +37,8 @@ class TransposeBase {
     }
   }
 
-  Status ComputeOutputShape(const Tensor& X, std::vector<int64_t>& output_dims,
-                          std::vector<int64_t>& default_perm, const std::vector<int64_t>*& p_perm) const {
+  Status ComputeOutputShape(const OpKernelContext& context, const Tensor& X, std::vector<int64_t>& output_dims,
+                            std::vector<int64_t>& default_perm, const std::vector<int64_t>*& p_perm) const {
     size_t rank = X.Shape().NumDimensions();
     const auto& input_dims = X.Shape().GetDims();
 
@@ -64,8 +64,8 @@ class TransposeBase {
         for (const auto& p : *p_perm)
           ss << p << " ";
         ss << "]";
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "perm: ", ss.str(), " does not align with rank of input data: ", std::to_string(rank));
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context.Kernel().Node(),
+                                  "perm: ", ss.str(), " does not align with rank of input data: ", std::to_string(rank));
       }
       output_dims[i] = input_dims[inpdim];
     }

@@ -8,14 +8,14 @@ namespace onnxruntime {
 
 class GemmHelper {
  public:
-  GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
+  GemmHelper(const OpKernelContext& context, const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
     //dimension check
     ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
     ORT_ENFORCE(right.NumDimensions() == 2);
 
     if (trans_left) {
       M_ = left.NumDimensions() == 2 ? left[1] : left[0];
-      K_ = left.NumDimensions() == 2 ? left[0] :1 ;
+      K_ = left.NumDimensions() == 2 ? left[0] : 1;
     } else {
       M_ = left.NumDimensions() == 2 ? left[0] : 1;
       K_ = left.NumDimensions() == 2 ? left[1] : left[0];
@@ -31,11 +31,11 @@ class GemmHelper {
     }
 
     if (right[k_dim] != K_)
-      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                "GEMM: Dimension mismatch, W: ",
-                                right.ToString(),
-                                " K: " + std::to_string(K_),
-                                " N:" + std::to_string(N_));
+      status_ = ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context.Kernel().Node(),
+                                   "GEMM: Dimension mismatch, W: ",
+                                   right.ToString(),
+                                   " K: " + std::to_string(K_),
+                                   " N:" + std::to_string(N_));
 
     if (!IsValidBroadcast(bias, M_, N_))
       status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");

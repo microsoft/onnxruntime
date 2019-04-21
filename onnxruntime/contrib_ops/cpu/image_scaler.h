@@ -8,7 +8,7 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-namespace contrib{
+namespace contrib {
 
 template <typename T>
 class ImageScaler final : public OpKernel {
@@ -25,8 +25,8 @@ class ImageScaler final : public OpKernel {
     const auto dims = X->Shape().GetDims();
 
     if (dims.size() < 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
     }
 
     const int64_t N = dims[0];
@@ -35,7 +35,7 @@ class ImageScaler final : public OpKernel {
     const int64_t W = dims[3];
 
     if (!bias_.empty() && bias_.size() != static_cast<size_t>(C)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias size (", bias_.size(), ") does not match the number of channels (", C, ")");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Bias size (", bias_.size(), ") does not match the number of channels (", C, ")");
     }
 
     Tensor* Y = context->Output(0, TensorShape({N, C, H, W}));
@@ -52,5 +52,5 @@ class ImageScaler final : public OpKernel {
   float scale_;
   std::vector<float> bias_;
 };
-}
+}  // namespace contrib
 }  //namespace onnxruntime

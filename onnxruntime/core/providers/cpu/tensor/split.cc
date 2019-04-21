@@ -64,20 +64,20 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   if (split_sizes_.empty()) {
     // equal split based on number of outputs
     if (split_dim_size % num_outputs != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
-                             " Axis=", axis_, " NumOutputs=", num_outputs);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
+                                " Axis=", axis_, " NumOutputs=", num_outputs);
     }
 
     // populate split_sizes with the same size for each output
     split_sizes = std::vector<int64_t>(num_outputs, split_dim_size / num_outputs);
   } else {
     if (split_sizes_.size() != num_outputs || split_size_sum_ != split_dim_size)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot split using values in 'split' attribute. Axis=", axis_,
-                             " Input shape=", input_shape,
-                             " NumOutputs=", num_outputs,
-                             " Num entries in 'split' (must equal number of outputs) was ", split_sizes_.size(),
-                             " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum_);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this,
+                                "Cannot split using values in 'split' attribute. Axis=", axis_,
+                                " Input shape=", input_shape,
+                                " NumOutputs=", num_outputs,
+                                " Num entries in 'split' (must equal number of outputs) was ", split_sizes_.size(),
+                                " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum_);
 
     split_sizes = split_sizes_;
   }

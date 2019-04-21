@@ -53,10 +53,10 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(ValidateInputShape(*context, X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(*context, W->Shape(), kernel_shape));
 
   std::vector<int64_t> pads(pads_);
   if (pads.empty()) {
@@ -74,7 +74,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(InferOutputShape(*context, input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -117,8 +117,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
           static_cast<int>(kernel_shape.size()),
           col_buffer_data,
           &CPUMathUtil::Instance(),
-		  false,
-		  input_offset);
+          false,
+          input_offset);
 
       const uint8_t* filter_data_as_uint8 = W->template Data<uint8_t>() + group_id * W_offset;
       static const gemmlowp::MapOrder ResultOrder = gemmlowp::MapOrder::RowMajor;

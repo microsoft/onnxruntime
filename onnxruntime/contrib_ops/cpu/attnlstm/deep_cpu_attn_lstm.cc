@@ -332,39 +332,39 @@ static Status ValidateRnnInputsWithExtraInputFromState(
   int64_t input_size = X_shape[2] + extra_input_size;
 
   if (X_shape.NumDimensions() != 3)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this, "Input X must have 3 dimensions only. Actual:", X_shape);
 
   if (W_shape.NumDimensions() != 3 ||
       W_shape[0] != num_directions ||
       W_shape[1] != hidden_size * WRB_dim_1_multipler ||
       W_shape[2] != input_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           input_size, "}. Actual:", W_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this, "Input W must have shape {",
+                              num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                              input_size, "}. Actual:", W_shape);
 
   if (R_shape.NumDimensions() != 3 ||
       R_shape[0] != num_directions ||
       R_shape[1] != hidden_size * WRB_dim_1_multipler ||
       R_shape[2] != hidden_size)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           hidden_size, "}. Actual:", R_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this, "Input R must have shape {",
+                              num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
+                              hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
     if (B_shape.NumDimensions() != 2 ||
         B_shape[0] != num_directions ||
         B_shape[1] != 2 * WRB_dim_1_multipler * hidden_size)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input B must have shape {",
-                             num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this, "Input B must have shape {",
+                                num_directions, ",", 2 * WRB_dim_1_multipler, "*", hidden_size, "}. Actual:", B_shape);
   }
 
   if (sequence_lens != nullptr) {
     auto& sequence_lens_shape = sequence_lens->Shape();
     if (sequence_lens_shape.NumDimensions() != 1 ||
         sequence_lens_shape[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence_lens must have shape {",
-                             batch_size, "}. Actual:", sequence_lens_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this, "Input sequence_lens must have shape {",
+                                batch_size, "}. Actual:", sequence_lens_shape);
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
@@ -419,9 +419,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         mem_seq_lens_span.cbegin(), mem_seq_lens_span.cend(),
         [max_memory_step](int len) { return len <= 0 || len > max_memory_step; });
     if (item_not_in_range != mem_seq_lens_span.cend()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attention mechanism memory sequence lengths value must in (0, ",
-                             max_memory_step, "], while ", *item_not_in_range, " found!");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this,
+                                "Attention mechanism memory sequence lengths value must in (0, ",
+                                max_memory_step, "], while ", *item_not_in_range, " found!");
     }
   }
 
@@ -430,9 +430,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   if (memory_layer_shape.NumDimensions() != 3 ||
       memory_layer_shape[0] != num_directions_ ||
       memory_layer_shape[1] != memory_depth) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention memory layer weight shape error! Expected:{",
-                           num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this,
+                              "Attention memory layer weight shape error! Expected:{",
+                              num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
   }
   const int am_attn_size = gsl::narrow<int>(memory_layer_shape[2]);
 
@@ -442,9 +442,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
       query_layer_shape[0] != num_directions_ ||
       query_layer_shape[1] != hidden_size_ ||
       query_layer_shape[2] != am_attn_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention query layer weight shape error! Expected:{",
-                           num_directions_, ", ", hidden_size_, ", ", am_attn_size, "}, Got: ", query_layer_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this,
+                              "Attention query layer weight shape error! Expected:{",
+                              num_directions_, ", ", hidden_size_, ", ", am_attn_size, "}, Got: ", query_layer_shape);
   }
 
   // check attention v for [num_directions, am_attn_size]
@@ -452,9 +452,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
   if (v_shape.NumDimensions() != 2 ||
       v_shape[0] != num_directions_ ||
       v_shape[1] != am_attn_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Attention v weight shape error! Expected:{", num_directions_, ", ", am_attn_size,
-                           "}. Got: ", v_shape);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this,
+                              "Attention v weight shape error! Expected:{", num_directions_, ", ", am_attn_size,
+                              "}. Got: ", v_shape);
   }
 
   // Check attention layer weights for [num_directions, memory_depth+cell_hidden_size, aw_attn_size]
@@ -465,9 +465,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
     if (attn_layer_shape.NumDimensions() != 3 ||
         attn_layer_shape[0] != num_directions_ ||
         attn_layer_shape[1] != memory_depth + hidden_size_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Attention layer weight shape error! Expected: {", num_directions_, ", ",
-                             memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this,
+                                "Attention layer weight shape error! Expected: {", num_directions_, ", ",
+                                memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
     }
     aw_attn_size = gsl::narrow<int>(attn_layer_shape[2]);
   }
@@ -484,8 +484,8 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input initial_c must have shape {",
-                             num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Input initial_c must have shape {",
+                                num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
 
   if (P != nullptr) {
@@ -495,8 +495,8 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input P must have shape {",
-                             num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, *this, "Input P must have shape {",
+                                num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 
   return Status::OK();
