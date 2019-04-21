@@ -39,6 +39,12 @@ else
             --use_openmp \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda --build_shared_lib $BUILD_EXTR_PAR
+    elif [ $BUILD_DEVICE = "ngraph" ]; then
+        python3 $SCRIPT_DIR/../../build.py --build_dir /build \
+            --config Debug Release --build_shared_lib \
+            --skip_submodule_sync --enable_onnx_tests \
+            --build_wheel \
+            --parallel --use_openmp $BUILD_EXTR_PAR
     else
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release --build_shared_lib \
