@@ -18,7 +18,7 @@ namespace onnxruntime {
 // Rewrite Conv/FusedConv as NchwcConv with additional nodes to reorder input and output.
 class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
  public:
-  NchwcConvPoolTransformer() noexcept : onnxruntime::GraphTransformer("NchwcConvPoolTransformer", "NchwcConvPoolTransformer") {}
+  NchwcConvPoolTransformer() noexcept : onnxruntime::GraphTransformer("NchwcConvPoolTransformer") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
@@ -50,6 +50,14 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
           continue;
         }
         if ((output_channels % 16) != 0) {
+          continue;
+        }
+
+        const onnxruntime::NodeAttributes& conv_attributes = node.GetAttributes();
+        const ONNX_NAMESPACE::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
+        if (group_attr != nullptr &&
+            group_attr->type() == AttributeProto_AttributeType_INT &&
+            group_attr->has_i() && group_attr->i() != 1) {
           continue;
         }
 
@@ -213,7 +221,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
 // encourage later fusions and reordering cancelations.
 class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
  public:
-  NchwcMoveReorderOutputsLater() noexcept : onnxruntime::GraphTransformer("NchwcMoveReorderOutputsLater", "NchwcMoveReorderOutputsLater") {}
+  NchwcMoveReorderOutputsLater() noexcept : onnxruntime::GraphTransformer("NchwcMoveReorderOutputsLater") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
@@ -290,7 +298,7 @@ class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
 // Removes unneeded ReorderOutput->ReorderInput nodes.
 class NchwcReorderElimination : public onnxruntime::GraphTransformer {
  public:
-  NchwcReorderElimination() noexcept : onnxruntime::GraphTransformer("NchwcReorderElimination", "NchwcReorderElimination") {}
+  NchwcReorderElimination() noexcept : onnxruntime::GraphTransformer("NchwcReorderElimination") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
@@ -352,7 +360,7 @@ class NchwcReorderElimination : public onnxruntime::GraphTransformer {
 // which can accumulate into the buffer as an inplace operation.
 class NchwcConvSumFusion : public onnxruntime::GraphTransformer {
  public:
-  NchwcConvSumFusion() noexcept : onnxruntime::GraphTransformer("NchwcConvSumFusion", "NchwcConvSumFusion") {}
+  NchwcConvSumFusion() noexcept : onnxruntime::GraphTransformer("NchwcConvSumFusion") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
@@ -442,7 +450,7 @@ class NchwcConvSumFusion : public onnxruntime::GraphTransformer {
 // fuse.
 class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
  public:
-  NchwcConvReluFusion() noexcept : onnxruntime::GraphTransformer("NchwcConvReluFusion", "NchwcConvReluFusion") {}
+  NchwcConvReluFusion() noexcept : onnxruntime::GraphTransformer("NchwcConvReluFusion") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override {
@@ -494,7 +502,7 @@ class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
 
 
 NchwcTransformer::NchwcTransformer() noexcept :
-  onnxruntime::GraphTransformer("NchwcTransformer", "NCHWc transformer"),
+  onnxruntime::GraphTransformer("NchwcTransformer"),
   stage1_graph_transformer_mgr_{5}, stage2_graph_transformer_mgr_{50}  {
 
   // Ensure that all simple convolution reshaping has occurred before any of the

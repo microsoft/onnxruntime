@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/op_kernel_context_internal.h"
 #include "nchwc_pool.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -44,7 +45,8 @@ Status NchwcPool<float, MaxPool<1>>::Compute(OpKernelContext* context) const {
                 global_pooling_ ? nullptr : strides_.data(),
                 output_dims.data(),
                 X->template Data<float>(),
-                Y->template MutableData<float>());
+                Y->template MutableData<float>(),
+                const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
 
   return Status::OK();
 }

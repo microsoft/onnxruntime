@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/op_kernel_context_internal.h"
 #include "nchwc_conv.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -111,7 +112,8 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
                 B != nullptr ? B->template Data<float>() : nullptr,
                 Y->template MutableData<float>(),
                 &Activation,
-                Sum == nullptr);
+                Sum == nullptr,
+                const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
 
   return Status::OK();
 }

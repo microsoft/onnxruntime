@@ -1202,7 +1202,8 @@ MlasConvNchwc(
     const float* Bias,
     float* Output,
     const MLAS_ACTIVATION* Activation,
-    bool ZeroMode
+    bool ZeroMode,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     MLAS_CONV_NCHWC_WORK_BLOCK WorkBlock;
@@ -1230,7 +1231,7 @@ MlasConvNchwc(
     //
     //
 
-    WorkBlock.tids = MlasPlatform.GetMaximumThreadCount();
+    WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
 
     PMLAS_THREADED_ROUTINE ConvolverRoutine;
 
@@ -1257,7 +1258,7 @@ MlasConvNchwc(
         ConvolverRoutine = MlasConvNchwcNchwThreaded;
     }
 
-    MlasExecuteThreaded(ConvolverRoutine, &WorkBlock, WorkBlock.tids);
+    MlasExecuteThreaded(ConvolverRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
 }
 
 void
@@ -1438,7 +1439,8 @@ MlasPoolNchwc(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     MLAS_POOL_NCHWC_WORK_BLOCK WorkBlock;
@@ -1462,7 +1464,7 @@ MlasPoolNchwc(
     //
     //
 
-    WorkBlock.tids = MlasPlatform.GetMaximumThreadCount();
+    WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
 
-    MlasExecuteThreaded(MlasPoolNchwcThreaded, &WorkBlock, WorkBlock.tids);
+    MlasExecuteThreaded(MlasPoolNchwcThreaded, &WorkBlock, WorkBlock.tids, ThreadPool);
 }

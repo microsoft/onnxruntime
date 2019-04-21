@@ -287,7 +287,8 @@ MlasConvNchwc(
     const float* Bias,
     float* Output,
     const MLAS_ACTIVATION* Activation,
-    bool ZeroMode
+    bool ZeroMode,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
@@ -302,5 +303,6 @@ MlasPoolNchwc(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     );
