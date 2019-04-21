@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include <sstream>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -196,7 +195,6 @@ class Cast final : public OpKernel {
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
 
-
 const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<bool>(),
     DataTypeImpl::GetTensorType<float>(),
@@ -371,8 +369,8 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 template <>
 Status Cast<std::string>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
-                                  "Input is missing. The operator Cast expects one and only one input");
+  if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(),
+                                              "Input is missing. The operator Cast expects one and only one input");
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, TensorShape(shape));
   Status st;

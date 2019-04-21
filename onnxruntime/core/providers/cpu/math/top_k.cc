@@ -64,7 +64,7 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
   if (in_dims.at(axis_parsed) < k) {
     ostringstream err_msg;
     err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
-    return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, p_op_kernel_context->Kernel().Node(), err_msg.str());
   }
 
   const int64_t rows = SizeToDim(axis_parsed, in_dims);
@@ -143,8 +143,8 @@ TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_in
 template <>
 Status TopK<9, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
-                                  "input count mismatch, expected 1 input - the tensor to be processed");
+  if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, p_op_kernel_context->Kernel().Node(),
+                                              "input count mismatch, expected 1 input - the tensor to be processed");
   return TopKImpl(p_op_kernel_context, X, axis_, k_);
 }
 
@@ -161,13 +161,13 @@ template <>
 Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
   const Tensor* Y = p_op_kernel_context->Input<Tensor>(1);
-  if (X == nullptr || Y == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
-                                                  "input count mismatch, expected 2 inputs - "
-                                                  "the tensor to be processed and a tensor containing k value");
+  if (X == nullptr || Y == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, p_op_kernel_context->Kernel().Node(),
+                                                              "input count mismatch, expected 2 inputs - "
+                                                              "the tensor to be processed and a tensor containing k value");
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
-  if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
+  if (y_shape.size() != 1 || y_shape[0] != 1) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, p_op_kernel_context->Kernel().Node(), "k tensor should be a 1D tensor of size 1");
   unsigned parsed_input_k = gsl::narrow_cast<unsigned>(Y->template Data<int64_t>()[0]);
-  if (parsed_input_k <= 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k should be greater than 0");
+  if (parsed_input_k <= 0) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, p_op_kernel_context->Kernel().Node(), "value of k should be greater than 0");
   return TopKImpl(p_op_kernel_context, X, axis_, parsed_input_k);
 }
 

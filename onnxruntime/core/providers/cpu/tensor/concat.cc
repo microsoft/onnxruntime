@@ -15,7 +15,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prepare& p) const {
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   const Tensor& inputs_0 = *tensor_pointer;
   const auto& inputs_0_dims = inputs_0.Shape().GetDims();
   const size_t inputs_0_rank = inputs_0_dims.size();
@@ -30,20 +30,22 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   for (int index = 1; index < input_count; index++) {
     size_t num_elements = 1;
     tensor_pointer = ctx->Input<Tensor>(index);
-    if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
     auto& inputs_n = *tensor_pointer;
     const auto& inputs_n_dims = inputs_n.Shape().GetDims();
     const size_t inputs_n_rank = inputs_n_dims.size();
-    ORT_ENFORCE(inputs_n_rank == inputs_0_rank, "Ranks of input data are different, cannot concatenate them, "
-                "expected rank: ", std::to_string(inputs_0_rank), " got: ", std::to_string(inputs_n_rank));
+    ORT_ENFORCE(inputs_n_rank == inputs_0_rank,
+                "Ranks of input data are different, cannot concatenate them, "
+                "expected rank: ",
+                std::to_string(inputs_0_rank), " got: ", std::to_string(inputs_n_rank));
     // Ensure all the other (non-concat) axes match
     for (int axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
       num_elements *= inputs_n_dims[axis_index];
       if (axis_index == axis)
         continue;
       ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
-                        "Non concat axis dimensions must match: Axis ", 
-                        axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index], 
+                        "Non concat axis dimensions must match: Axis ",
+                        axis_index, " has mismatched dimensions of ", inputs_n_dims[axis_index],
                         " and ", inputs_0_dims[axis_index]);
     }
     tensor_num_elements[index] = num_elements;
@@ -58,7 +60,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
 
   // Calculate the shape of the output tensor
   std::vector<int64_t> dims(inputs_0_rank);
-  size_t num_elements = 1; // cache size of the first input along the way
+  size_t num_elements = 1;  // cache size of the first input along the way
   for (int dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
     dims[dimension_index] = inputs_0_dims[dimension_index];
     num_elements *= inputs_0_dims[dimension_index];
@@ -66,7 +68,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   tensor_num_elements[0] = num_elements;
   dims[axis] = concat_axis_size;
   TensorShape output_shape(dims);
- 
+
   auto& concat_result = *ctx->Output(0, output_shape);
   p.output_tensor = &concat_result;
   p.output_num_elements = output_shape.Size();
@@ -75,7 +77,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   // there is no need to proceed further
   if (p.output_num_elements == 0)
     return Status::OK();
-    
+
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
   p.output_axis_pitch = 1;
   for (auto i = int64_t(inputs_0_rank); i-- > axis;)

@@ -167,7 +167,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         break;
       }
       default:
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported pooling size : ");
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Unsupported pooling size : ");
     }
 
     return Status::OK();

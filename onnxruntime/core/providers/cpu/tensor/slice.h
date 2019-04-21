@@ -22,7 +22,8 @@ class SliceBase {
   }
 
   // compute output_dims without steps (Slice V1-9 & DynamicSlice)
-  Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+  Status PrepareForCompute(const OpKernelContext* context,
+                           const std::vector<int64_t>& raw_starts,
                            const std::vector<int64_t>& raw_ends,
                            const std::vector<int64_t>& raw_axes,
                            const std::vector<int64_t>& input_dimensions,
@@ -30,7 +31,8 @@ class SliceBase {
                            std::vector<int64_t>& output_dims) const;
 
   // compute output_dims with steps (Slice V10)
-  Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+  Status PrepareForCompute(const OpKernelContext* context,
+                           const std::vector<int64_t>& raw_starts,
                            const std::vector<int64_t>& raw_ends,
                            const std::vector<int64_t>& raw_axes,
                            const std::vector<int64_t>& raw_steps,

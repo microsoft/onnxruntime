@@ -348,7 +348,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   int batch_size = gsl::narrow<int>(X_shape[1]);
   int input_size = gsl::narrow<int>(X_shape[2]);
 
-  Status status = ValidateInputs(context, X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size);
+  Status status = ValidateInputs(&context, X, W, R, B, sequence_lens, initial_h, initial_c, P, batch_size);
   ORT_RETURN_IF_ERROR(status);
 
   // LSTM outputs are optional but must be in the same order
@@ -512,7 +512,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   return Status::OK();
 }
 
-Status DeepCpuLstmOp::ValidateInputs(const OpKernelContext& context,
+Status DeepCpuLstmOp::ValidateInputs(const OpKernelContext* context,
                                      const Tensor& X, const Tensor& W, const Tensor& R, const Tensor* B,
                                      const Tensor* sequence_lens, const Tensor* initial_h, const Tensor* initial_c,
                                      const Tensor* P, int batch_size) const {
@@ -528,7 +528,7 @@ Status DeepCpuLstmOp::ValidateInputs(const OpKernelContext& context,
         initial_c_shape[1] != batch_size ||
         initial_c_shape[2] != hidden_size_)
 
-      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(),
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(),
                                 "Input initial_c must have shape {",
                                 num_directions_, ",", batch_size, ",", hidden_size_, "}. Actual:", initial_c_shape);
   }
@@ -540,7 +540,7 @@ Status DeepCpuLstmOp::ValidateInputs(const OpKernelContext& context,
         p_shape[0] != num_directions_ ||
         p_shape[1] != 3 * hidden_size_)
 
-      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Input P must have shape {",
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Input P must have shape {",
                                 num_directions_, ",", 3 * hidden_size_, "}. Actual:", p_shape);
   }
 

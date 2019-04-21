@@ -27,9 +27,9 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   // Set all axes_ indices to 1 in output_dims and check for duplicates
   for (size_t axis : axes_) {
     if (axis >= output_dims.size())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an out of range axis");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "'axes' has an out of range axis");
     if (output_dims[axis] != 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has a duplicate axis");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "'axes' has a duplicate axis");
     output_dims[axis] = 1;
   }
 

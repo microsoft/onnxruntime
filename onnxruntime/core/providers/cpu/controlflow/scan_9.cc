@@ -356,7 +356,7 @@ Status ScanImpl::SetupInputs() {
 
       MLValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = TransposeBase::DoTranspose(context_, permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = TransposeBase::DoTranspose(&context_, permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -488,7 +488,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = TransposeBase::DoTranspose(context_, permutations, temporary_output_tensor, *output);
+      status = TransposeBase::DoTranspose(&context_, permutations, temporary_output_tensor, *output);
       ORT_RETURN_IF_ERROR(status);
     }
   }

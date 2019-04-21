@@ -13,7 +13,7 @@ namespace onnxruntime {
 template <>
 Status Softmax<float>::Compute(OpKernelContext* ctx) const {
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape input_shape{X.Shape()};
 

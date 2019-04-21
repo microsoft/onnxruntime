@@ -458,12 +458,12 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
     C = input_dims[1];
     b_dim = B;
     if (B < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions with B > 0.");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                "Input shape must have either [C] or [B,C] dimensions with B > 0.");
     }
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape must have either [C] or [B,C] dimensions with B > 0.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                              "Input shape must have either [C] or [B,C] dimensions with B > 0.");
   }
 
   // Frequency holder allocate [B..output_size_]
@@ -574,8 +574,8 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   } else if (X->DataType() == DataTypeImpl::GetType<std::string>()) {
     s = ComputeImpl<std::string>(ctx);
   } else {
-    s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-               "Invalid type of the input argument");
+    s = ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                           "Invalid type of the input argument");
   }
 
   return s;

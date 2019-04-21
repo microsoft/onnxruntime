@@ -18,7 +18,7 @@ class Flatten final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
-    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
 
     const TensorShape& X_shape = X->Shape();
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis_, "The rank of input tensor must be >= axis");

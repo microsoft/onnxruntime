@@ -48,19 +48,20 @@ REG_ONE_HOT_OP(float, string, int64_t);
 REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 
-Status ValidateInputs(const Tensor* depth,
+Status ValidateInputs(const OpKernelContext* context,
+                      const Tensor* depth,
                       const Tensor* values) {
   // validation scenarios
   // depth should be scalar and > 0
   if (!depth->Shape().IsScalar()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument for depth; it's not a scalar.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Invalid argument for depth; it's not a scalar.");
   }
 
   // values Rank 1 tensor containing exactly two elements
   if (!(values->Shape().NumDimensions() == 1 && values->Shape().Size() == 2)) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Invalid argument for values; either it's rank is more than 1"
-                  " or it has more than 2 elements");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                              "Invalid argument for values; either it's rank is more than 1"
+                              " or it has more than 2 elements");
   }
 
   return Status::OK();
@@ -106,13 +107,13 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const auto* depth = p_op_kernel_context->Input<Tensor>(1);
   const auto* values = p_op_kernel_context->Input<Tensor>(2);
 
-  ORT_RETURN_IF_ERROR(ValidateInputs(depth, values));
+  ORT_RETURN_IF_ERROR(ValidateInputs(p_op_kernel_context, depth, values));
 
   // prepare output shape
   const auto* depth_data = depth->Data<depth_type>();
   const int64_t depth_val = static_cast<int64_t>(*depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
   if (depth_val <= 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Depth is negative.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, p_op_kernel_context->Kernel().Node(), "Depth is negative.");
   }
 
   const auto& indices_shape = indices->Shape();

@@ -301,8 +301,8 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     size_t tokens = 0;  // length in utf8 chars
     if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
                        tokens)) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Input string contains invalid utf8 chars: " + s);
     }
     max_tokens = std::max(max_tokens, tokens);
     ++curr_input;
@@ -391,8 +391,8 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
     const auto& s = *curr_input;
     std::wstring wstr = converter.from_bytes(s);
     if (wstr == wconv_error) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid utf8 chars in the input: " + s);
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                "Invalid utf8 chars in the input: " + s);
     }
 
     std::set<Match> matches;
@@ -607,10 +607,10 @@ Status Tokenizer::ExpressionTokenize(OpKernelContext* ctx,
 Status Tokenizer::Compute(OpKernelContext* ctx) const {
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   if (X->DataType() != DataTypeImpl::GetType<std::string>()) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "tensor(string) expected as input");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                              "tensor(string) expected as input");
   }
 
   auto& input_shape = X->Shape();
@@ -624,8 +624,8 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
     N = input_dims[0];
     C = input_dims[1];
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input dimensions are either [C] or [N][C] allowed");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                              "Input dimensions are either [C] or [N][C] allowed");
   }
 
   // Empty input

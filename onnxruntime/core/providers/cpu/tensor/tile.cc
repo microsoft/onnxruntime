@@ -82,19 +82,19 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 
 Status Tile::Compute(OpKernelContext* ctx) const {
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "Input count of Tile OP mismatch, the first one is empty");
   const Tensor& input_tensor = *tensor_pointer;
   const auto& input_shape = input_tensor.Shape();
   const size_t input_rank = input_shape.NumDimensions();
   tensor_pointer = ctx->Input<Tensor>(1);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the second one is empty");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "Input count of Tile OP mismatch, the second one is empty");
   const Tensor& repeats_tensor = *tensor_pointer;
   if (input_rank < 1)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "the tensor to be tiled using Tile OP must be atleast 1 dimensional");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "the tensor to be tiled using Tile OP must be atleast 1 dimensional");
   if (repeats_tensor.Shape().NumDimensions() != 1)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must be 1 dimensional");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "'repeat' input tensor must be 1 dimensional");
   if (size_t(repeats_tensor.Shape().Size()) != input_rank)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();

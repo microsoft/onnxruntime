@@ -57,7 +57,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   auto* graph_output_shape = graph_output->Shape();
 
   if (!graph_output_shape) {
-    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Subgraph must have the shape set for all outputs but ",
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Subgraph must have the shape set for all outputs but ",
                               graph_output->Name(), " did not.");
   }
 
@@ -340,7 +340,7 @@ void LoopStateVariable::Next() {
 }
 
 // fill in a symbolic dimension in the overall output using the output shape from an iteration of the subgraph
-static Status MakeShapeConcrete(const OpKernelContext& context, const TensorShape& per_iteration_shape, TensorShape& final_shape) {
+static Status MakeShapeConcrete(const OpKernelContext* context, const TensorShape& per_iteration_shape, TensorShape& final_shape) {
   auto num_dims_per_iteration = per_iteration_shape.NumDimensions();
   auto final_shape_offset = final_shape.NumDimensions() - num_dims_per_iteration;
   for (size_t i = 0; i < num_dims_per_iteration; ++i) {
@@ -349,7 +349,7 @@ static Status MakeShapeConcrete(const OpKernelContext& context, const TensorShap
       final_shape[i + final_shape_offset] = per_iteration_shape[i];
     } else {
       if (existing_value != per_iteration_shape[i]) {
-        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(),
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(),
                                   "Mismatch between expected shape and shape from first output",
                                   final_shape, " is not compatible with ", per_iteration_shape);
       }
@@ -399,7 +399,7 @@ Status OutputIterator::Initialize() {
     // copy the shape from the input initial value which will have a concrete shape.
     // +1 to skip the sequence_len input if v8
     auto* input = context_.Input<Tensor>(is_v8_ ? output_index_ + 1 : output_index_);
-    status = MakeShapeConcrete(context_, input->Shape(), final_shape_);
+    status = MakeShapeConcrete(&context_, input->Shape(), final_shape_);
     ORT_RETURN_IF_ERROR(status);
 
     is_concrete_shape_ = true;
@@ -473,7 +473,7 @@ Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, MLValue&
   ORT_ENFORCE(!is_concrete_shape_, "If shape was concrete we shouldn't be using a custom allocator");
 
   // update the final shape now that we can fill in the symbolic dimension with an actual value
-  auto status = MakeShapeConcrete(context_, shape, final_shape_);
+  auto status = MakeShapeConcrete(&context_, shape, final_shape_);
   ORT_RETURN_IF_ERROR(status);
 
   is_concrete_shape_ = true;

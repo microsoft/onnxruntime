@@ -65,9 +65,9 @@ Status CastMap::Compute(OpKernelContext* context) const {
     float_input = true;
   } else if (input_type != DataTypeImpl::GetType<std::map<int64_t, std::string>>()) {
     return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
-"Invalid input type of value: ",
-                           input_type,
-                           " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
+                              "Invalid input type of value: ",
+                              input_type,
+                              " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
   }
 
   Status status;
@@ -88,9 +88,8 @@ Status CastMap::Compute(OpKernelContext* context) const {
       break;
     }
     default:
-      return Status(ONNXRUNTIME,
-                    INVALID_ARGUMENT,
-                    ("Unexpected CAST_TO value of " + std::to_string(static_cast<std::underlying_type<CAST_TO>::type>(cast_to_))));
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                ("Unexpected CAST_TO value of " + std::to_string(static_cast<std::underlying_type<CAST_TO>::type>(cast_to_))));
   }
 
   return status;

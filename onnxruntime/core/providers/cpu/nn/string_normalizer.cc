@@ -133,8 +133,8 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
     if (caseaction == StringNormalizer::LOWER || caseaction == StringNormalizer::UPPER) {
       std::wstring wstr = converter.from_bytes(s);
       if (wstr == wconv_error) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input contains invalid utf8 chars at: " + static_cast<const std::string&>(s));
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                  "Input contains invalid utf8 chars at: " + static_cast<const std::string&>(s));
       }
       // In place transform
       loc.ChangeCase(caseaction, wstr);
@@ -204,27 +204,27 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   using namespace string_normalizer;
 
   auto X = ctx->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   auto& input_dims = X->Shape().GetDims();
 
   size_t N = 0;
   size_t C = 0;
   if (input_dims.size() == 1) {
     if (input_dims[0] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Single dimension value must be greater than 0");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                "Single dimension value must be greater than 0");
     }
     C = input_dims[0];
   } else if (input_dims.size() == 2) {
     if (input_dims[0] != 1 || input_dims[1] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                "Input dimensions are either[C > 0] or [1][C > 0] allowed");
     }
     N = 1;
     C = input_dims[1];
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                              "Input dimensions are either[C > 0] or [1][C > 0] allowed");
   }
 
   Status status;
@@ -266,8 +266,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         const std::string& s = *first;
         std::wstring wstr = converter.from_bytes(s);
         if (wstr == wconv_error) {
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Input contains invalid utf8 chars at: " + s);
+          return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                                    "Input contains invalid utf8 chars at: " + s);
         }
         locale.ChangeCase(compare_caseaction_, wstr);
         if (0 == wstopwords_.count(wstr)) {

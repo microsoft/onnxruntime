@@ -160,7 +160,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       break;
     }
     default:
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size : ");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Unsupported pooling size : ");
   }
 
   return Status::OK();
@@ -175,7 +175,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
 
   size_t pooling_dims = input_dims - 2;
   if (pooling_dims > 3) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Unsupported pooling size.");
   }
   if (!global_pooling_) {
     ORT_RETURN_IF_NOT(pooling_dims == kernel_shape_.size(), "kernel_shape num_dims is not compatible with X num_dims.");
@@ -378,7 +378,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       break;
     }
     default:
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size : ");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Unsupported pooling size : ");
   }
 
   return Status::OK();

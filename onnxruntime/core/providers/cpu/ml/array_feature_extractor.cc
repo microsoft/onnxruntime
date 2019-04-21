@@ -57,7 +57,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
   const T* x_data = X.template Data<T>();
 
   if (x_num_dims == 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: X input has empty dimensions.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Invalid argument: X input has empty dimensions.");
   }
 
   const int64_t stride = x_shape[x_num_dims - 1];
@@ -69,13 +69,13 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
 
   // validate Y
   if (num_indices == 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Y argument: num_indices = 0");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Invalid Y argument: num_indices = 0");
   }
 
   for (int64_t i = 0; i < num_indices; ++i) {
     if (y_data[i] >= stride) {
       return ORT_MAKE_OP_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT, *this,
+          ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
           "Invalid Y argument: index is out of range: Y[", i, "] (", y_data[i], ") >=", stride);
     }
   }

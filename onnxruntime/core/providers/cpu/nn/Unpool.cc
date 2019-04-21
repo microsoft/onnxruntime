@@ -26,7 +26,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 Status MaxUnpool::Compute(OpKernelContext* context) const {
   // Get pooled values tensor
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const TensorShape& X_shape = X->Shape();
   const float* X_data = X->template Data<float>();
 
@@ -35,7 +35,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   // Supported sizes check
   size_t pooling_dims = X_shape.NumDimensions() - 2;
   if (pooling_dims > 3) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Unsupported pooling size.");
   }
 
   // Get pooled index tensor
@@ -64,7 +64,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   if (num_inputs_ == 3) {
     auto tensor_shape = context->Input<Tensor>(2);
-    if (tensor_shape == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (tensor_shape == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
     ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
     // Turn the shape tensor data into an actual shape

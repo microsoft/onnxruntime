@@ -24,7 +24,7 @@ namespace onnxruntime {
 template <>
 Status LRN<float>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
 
   Tensor* Y = context->Output(0, X->Shape());
 

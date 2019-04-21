@@ -46,37 +46,34 @@ ZipMapOp::ZipMapOp(const OpKernelInfo& info)
 
 common::Status ZipMapOp::Compute(OpKernelContext* context) const {
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& x_shape = X.Shape();
   const vector<int64_t> x_dims = x_shape.GetDims();
 
   if (x_dims.empty()) {
-    return Status(ONNXRUNTIME,
-                  INVALID_ARGUMENT,
-                  "Zipmap does not support empty dim count");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                              "Zipmap does not support empty dim count");
   }
 
   int64_t batch_size = x_dims.size() > 1 ? x_dims[0] : 1;
   int64_t features_per_batch = x_dims[x_dims.size() - 1];
 
   if (x_dims.size() > 2) {
-    return Status(ONNXRUNTIME,
-                  INVALID_ARGUMENT,
-                  "Zipmap only supports 1D or 2D input tensors");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                              "Zipmap only supports 1D or 2D input tensors");
   }
 
   const float* x_data = X.template Data<float>();
 
   if (using_strings_) {
     if (features_per_batch != static_cast<int64_t>(classlabels_strings_.size())) {
-      return Status(ONNXRUNTIME,
-                    INVALID_ARGUMENT,
-                    "Input features_per_batch[" + std::to_string(features_per_batch) +
-                        "] != number of classlabels[" + std::to_string(classlabels_strings_.size()) + "]");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Input features_per_batch[" + std::to_string(features_per_batch) +
+                                    "] != number of classlabels[" + std::to_string(classlabels_strings_.size()) + "]");
     }
     auto* y_data = context->Output<std::vector<std::map<std::string, float>>>(0);
-    if (y_data == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (y_data == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
 
     //auto* y_data = Y->template MutableData<std::vector<std::map<std::string, float>>>();
     y_data->resize(batch_size);
@@ -91,13 +88,12 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
     }
   } else {
     if (features_per_batch != static_cast<int64_t>(classlabels_int64s_.size())) {
-      return Status(ONNXRUNTIME,
-                    INVALID_ARGUMENT,
-                    "Input features_per_batch[" + std::to_string(features_per_batch) +
-                        "] != number of classlabels[" + std::to_string(classlabels_int64s_.size()) + "]");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Input features_per_batch[" + std::to_string(features_per_batch) +
+                                    "] != number of classlabels[" + std::to_string(classlabels_int64s_.size()) + "]");
     }
     auto* y_data = context->Output<std::vector<std::map<std::int64_t, float>>>(0);
-    if (y_data == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (y_data == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
     //auto* y_data = Y->template MutableData<std::vector<std::map<int64_t, float>>>();
     y_data->resize(batch_size);
     int64_t current_weight_0 = 0;

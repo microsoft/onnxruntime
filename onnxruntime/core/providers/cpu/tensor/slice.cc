@@ -92,7 +92,8 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 }  // namespace
 
 // Slice V1-9 & DynamicSlice
-Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
+Status SliceBase::PrepareForCompute(const OpKernelContext* context,
+                                    const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& input_dimensions,
@@ -112,9 +113,9 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
     auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "'axes' has an axis outside of the tensor dimension count");
     if (unique_axes.find(axis) != unique_axes.end())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "'axes' has duplicates");
     unique_axes.insert(axis);
 
     // process start
@@ -140,7 +141,8 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // DynamicSlice & Slice V10
-Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
+Status SliceBase::PrepareForCompute(const OpKernelContext* context,
+                                    const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& raw_steps,
@@ -162,15 +164,15 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
     auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
     if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "'axes' has an axis outside of the tensor dimension count");
     if (unique_axes.find(axis) != unique_axes.end())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "'axes' has duplicates");
     unique_axes.insert(axis);
 
     // process step
     auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
     if (step == 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "'step' value cannot be 0");
     steps[axis] = step;
 
     // process start
@@ -314,12 +316,12 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
     FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
-    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
+    ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_starts, input_ends, input_axes, input_steps,
                                           input_dimensions, starts, steps, output_dims));
   }
   // Slice V1-9
   else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
+    ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, attr_starts_, attr_ends_, attr_axes_,
                                           input_dimensions, starts, output_dims));
   }
 

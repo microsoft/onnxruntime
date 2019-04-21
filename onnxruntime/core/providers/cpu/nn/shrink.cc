@@ -29,13 +29,13 @@ inline T ShrinkCore(const T& val, float bias, float lambd) {
 }
 
 template <class T>
-Status ShrinkImpl(const OpKernelContext& context, const Tensor* input, Tensor* output, float bias, float lambd) {
+Status ShrinkImpl(const OpKernelContext* context, const Tensor* input, Tensor* output, float bias, float lambd) {
   EigenMap<T>(*output) = EigenMap<T>(*input).unaryExpr([bias, lambd](const T& val) { return ShrinkCore<T>(val, bias, lambd); });
   return Status::OK();
 }
 
 template <>
-Status ShrinkImpl<MLFloat16>(const OpKernelContext& context, const Tensor* input, Tensor* output, float bias, float lambd) {
+Status ShrinkImpl<MLFloat16>(const OpKernelContext* context, const Tensor* input, Tensor* output, float bias, float lambd) {
   const auto& span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
   auto* output_data = output->template MutableData<MLFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const MLFloat16& val) {
@@ -46,7 +46,7 @@ Status ShrinkImpl<MLFloat16>(const OpKernelContext& context, const Tensor* input
 }
 
 template <>
-Status ShrinkImpl<BFloat16>(const OpKernelContext& context, const Tensor* input, Tensor* output, float bias, float lambd) {
+Status ShrinkImpl<BFloat16>(const OpKernelContext* context, const Tensor* input, Tensor* output, float bias, float lambd) {
   const auto& span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
   auto* output_data = output->template MutableData<BFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const BFloat16& val) {
@@ -57,15 +57,15 @@ Status ShrinkImpl<BFloat16>(const OpKernelContext& context, const Tensor* input,
 }
 
 template <>
-Status ShrinkImpl<bool>(const OpKernelContext& context, const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context.Kernel().Node(),
+Status ShrinkImpl<bool>(const OpKernelContext* context, const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
+  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
                             "Input types for the Shrink operator are constrained "
                             "to all numeric types only. Got bool type here.");
 }
 
 template <>
-Status ShrinkImpl<std::string>(const OpKernelContext& context, const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context.Kernel().Node(),
+Status ShrinkImpl<std::string>(const OpKernelContext* context, const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
+  return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
                             "Input types for the Shrink operator are constrained "
                             "to all numeric types only. Got std::string type here.");
 }
@@ -79,7 +79,7 @@ Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
   auto* output = p_op_kernel_context->Output(0, input->Shape());
   const auto& dtype = input->DataType();
   Status status;
-  DispatchOnTensorTypeWithReturn(dtype, status, ShrinkImpl, *p_op_kernel_context, input, output, bias_, lambd_);
+  DispatchOnTensorTypeWithReturn(dtype, status, ShrinkImpl, p_op_kernel_context, input, output, bias_, lambd_);
   return status;
 }
 }  // namespace onnxruntime

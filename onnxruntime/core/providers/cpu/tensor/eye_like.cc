@@ -18,16 +18,14 @@ ONNX_CPU_OPERATOR_KERNEL(
                                           DataTypeImpl::GetTensorType<double>(),
                                           DataTypeImpl::GetTensorType<uint64_t>(),
                                           DataTypeImpl::GetTensorType<int64_t>(),
-                                          DataTypeImpl::GetTensorType<int32_t>()
-                                      })
-                        .TypeConstraint("T2",
-                                        std::vector<MLDataType>{
-                                            DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<double>(),
-                                            DataTypeImpl::GetTensorType<uint64_t>(),
-                                            DataTypeImpl::GetTensorType<int64_t>(),
-                                            DataTypeImpl::GetTensorType<int32_t>()
-                                        }),
+                                          DataTypeImpl::GetTensorType<int32_t>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{
+                            DataTypeImpl::GetTensorType<float>(),
+                            DataTypeImpl::GetTensorType<double>(),
+                            DataTypeImpl::GetTensorType<uint64_t>(),
+                            DataTypeImpl::GetTensorType<int64_t>(),
+                            DataTypeImpl::GetTensorType<int32_t>()}),
     EyeLike);
 
 Status EyeLike::Compute(OpKernelContext* context) const {
@@ -55,7 +53,7 @@ template <typename T>
 Status EyeLike::ComputeImpl(OpKernelContext* context, const Tensor* T1) const {
   const std::vector<int64_t>& input_dims = T1->Shape().GetDims();
   if (input_dims.size() != 2) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "EyeLike : Input tensor dimension is not 2");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Input tensor dimension is not 2");
   }
 
   // set output tensor shape same as input tensor and set all values to zero
@@ -65,7 +63,7 @@ Status EyeLike::ComputeImpl(OpKernelContext* context, const Tensor* T1) const {
       input_dims[0],
       input_dims[1]);
   output_mat.setZero();
-  
+
   if ((k_ >= 0 && k_ >= input_dims[1]) || (k_ < 0 && std::abs(k_) >= input_dims[0])) {
     return Status::OK();
   }

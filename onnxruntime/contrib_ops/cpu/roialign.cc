@@ -272,12 +272,12 @@ template <typename T>
 Status ROIAlign<T>::Compute(OpKernelContext* context) const {
   const Tensor* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Null input X ptr");
   }
 
   const Tensor* rois_ptr = context->Input<Tensor>(1);
   if (!rois_ptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Null rois_ptr");
   }
 
   auto& x_dims = X_ptr->Shape();
@@ -286,10 +286,10 @@ Status ROIAlign<T>::Compute(OpKernelContext* context) const {
 
   // validate rois_dims
   if (rois_dims.NumDimensions() != EXPECTED_NUM_ROI_DIMS) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Number of dimensions for rois should be exactly 2");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Number of dimensions for rois should be exactly 2");
   }
   if (rois_dims[1] != EXPECTED_SECOND_ROI_DIM) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Second dimension for rois should be exactly 5");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Second dimension for rois should be exactly 5");
   }
 
   auto& Y = *context->Output(0, {rois_dims[0], x_dims[1], pooled_h_, pooled_w_});

@@ -302,7 +302,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   int batch_size = gsl::narrow<int>(X_shape[1]);
   int input_size = gsl::narrow<int>(X_shape[2]);
 
-  auto status = ValidateCommonRnnInputs(context, X, W, R, B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
+  auto status = ValidateCommonRnnInputs(&context, X, W, R, B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
   ORT_RETURN_IF_ERROR(status);
 
   // GRU outputs are optional but must be in the same order

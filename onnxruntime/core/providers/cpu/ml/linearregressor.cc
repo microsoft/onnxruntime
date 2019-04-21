@@ -24,8 +24,8 @@ template <>
 Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   if (X->Shape().NumDimensions() == 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape needs to be at least a single dimension.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                              "Input shape needs to be at least a single dimension.");
   }
 
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];

@@ -78,7 +78,7 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
   float* y_data = Y->template MutableData<float>();
   const vector<int64_t>& x_dims = x_shape.GetDims();
   if (x_dims.empty()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: input has empty dimensions.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Invalid argument: input has empty dimensions.");
   }
 
   size_t x_size = x_shape.Size();
@@ -95,7 +95,7 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
   } else {
     std::ostringstream err_msg;
     err_msg << "Either both scale and offset can be of feature size (" << stride << ") or 1";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, err_msg.str());
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), err_msg.str());
   }
   return Status::OK();
 }

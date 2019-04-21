@@ -239,14 +239,14 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
   return Status::OK();
 }
 
-Status TransposeBase::DoTranspose(const OpKernelContext& context, const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+Status TransposeBase::DoTranspose(const OpKernelContext* context, const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
   Status status = Status::OK();
 
   auto input_type = input.DataType();
   auto output_type = output.DataType();
 
   if (input_type != output_type) {
-    status = ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context.Kernel().Node(), "Mismatched data types between input and output Tensors. ",
+    status = ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Mismatched data types between input and output Tensors. ",
                                 input_type, " != ", output_type);
   } else {
     status = DoUntypedTranspose(permutations, input, output);
@@ -267,7 +267,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(rank);
   const std::vector<int64_t>* p_perm;
   std::vector<int64_t> default_perm(rank);
-  const auto& status = ComputeOutputShape(*ctx, X, output_dims, default_perm, p_perm);
+  const auto& status = ComputeOutputShape(ctx, X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;
 

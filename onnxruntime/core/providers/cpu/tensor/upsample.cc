@@ -57,15 +57,16 @@ void UpsampleNearest2x(
 }
 
 template <typename T>
-Status UpsampleNearest(const T* input,
+Status UpsampleNearest(const OpKernelContext* context,
+                       const T* input,
                        T* output,
                        const TensorShape& input_shape,
                        const TensorShape& output_shape,
                        const vector<float>& scales) {
   if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value is nullptr");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Upsample: input/output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   if (scales.size() == 4 && scales[0] == 1 && scales[1] == 1 && scales[2] == 2 && scales[3] == 2) {
     UpsampleNearest2x<T>(input_shape[0], input_shape[1], input_shape[2], input_shape[3], input, output);
@@ -103,9 +104,9 @@ Status upsampleLiner(const T* input,
                      const TensorShape& output_shape,
                      const vector<float>& scales) {
   if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value is nullptr");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Upsample: input/output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
     std::vector<int64_t> val1, val2;
@@ -214,7 +215,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
   const std::vector<int64_t>& dims = X->Shape().GetDims();
   if (dims.size() != scales.size()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Upsample: input tensor's dimension does not match the scales.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Upsample: input tensor's dimension does not match the scales.");
   }
 
   std::vector<int64_t> Y_dims;
@@ -225,12 +226,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales);
+      return UpsampleNearest<T>(context, X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales);
     case UpsampleMode::LINEAR: {
       //What's the correct behavior of linear mode is not clear right now,
       //Only support bilinear with 4D tensor to keep consistent with previous behavior
       if (dims.size() != 4)
-        return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
 
       const int64_t batch_size = dims[0], num_channels = dims[1];
       const int64_t input_height = dims[2], input_width = dims[3];
@@ -240,7 +241,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       return Status::OK();
     }
     default:
-      return Status(ONNXRUNTIME, FAIL, "Upsample: unexpected mode");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Upsample: unexpected mode");
   }
 }
 

@@ -34,7 +34,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
               input_dimensions_.size(), ").");
 
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const auto& x_dims = X.Shape().GetDims();
 

@@ -101,7 +101,7 @@ Status RandomUniform::Compute(OpKernelContext* ctx) const {
 
 Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   Tensor* Y = nullptr;
 
@@ -123,7 +123,7 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
 
 Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   Tensor* Y = nullptr;
 
@@ -220,12 +220,12 @@ static Status MultinomialCompute(OpKernelContext* ctx,
 
 Status Multinomial::Compute(OpKernelContext* ctx) const {
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   auto& X_dims = X.Shape().GetDims();
 
   if (X_dims.empty()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Empty dimensions for input tensor");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "Empty dimensions for input tensor");
   }
 
   const auto batch_size = X_dims[0];
@@ -233,13 +233,13 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
 
   // validate inputs
   if (batch_size < 1) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "batch_size is < 1");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "batch_size is < 1");
   }
   if (num_classes < 1) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "num_classes is < 1");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "num_classes is < 1");
   }
   if (num_samples_ < 1) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "num_samples is < 1");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "num_samples is < 1");
   }
 
   Tensor* Y = ctx->Output(0, TensorShape({batch_size, num_samples_}));

@@ -8,7 +8,7 @@ namespace onnxruntime {
 
 Status Size::Compute(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
-  if (input_tensor == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (input_tensor == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, ctx->Kernel().Node(), "input count mismatch");
   TensorShape scalar_shape;
   Tensor* p_output_tensor = ctx->Output(0, scalar_shape);
   int64_t* p_output_scalar = p_output_tensor->template MutableData<int64_t>();

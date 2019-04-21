@@ -11,22 +11,22 @@ namespace onnxruntime {
 
 class InstanceNormHelper {
  public:
-  static common::Status ValidateInputs(const Tensor* input, const Tensor* scale, const Tensor* B) {
+  static common::Status ValidateInputs(const OpKernelContext* context, const Tensor* input, const Tensor* scale, const Tensor* B) {
     if (input->Shape().NumDimensions() < 3) {
       std::ostringstream ostr;
       ostr << "Invalid input data: number of dimensions is less than 3: " << input->Shape().NumDimensions();
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), ostr.str());
     }
     if (scale->Shape().NumDimensions() != 1) {
       std::ostringstream ostr;
       ostr << "Invalid input scale: number of dimensions is not 1: " << scale->Shape().NumDimensions();
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), ostr.str());
     }
     if (scale->Shape().Size() != input->Shape().GetDims()[1]) {
       std::ostringstream ostr;
       ostr << "Mismatch between input data and scale: size of scale != input channel count "
            << scale->Shape().Size() << " vs. " << input->Shape().GetDims()[1];
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), ostr.str());
     }
 
     if (B->Shape().NumDimensions() != 1) {

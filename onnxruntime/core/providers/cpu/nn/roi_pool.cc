@@ -15,7 +15,7 @@ template <>
 Status RoiPool<float>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* R = context->Input<Tensor>(1);
-  if (X == nullptr || R == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (X == nullptr || R == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
 
   int batch_size = static_cast<int>(X->Shape()[0]);
   int channels = static_cast<int>(X->Shape()[1]);

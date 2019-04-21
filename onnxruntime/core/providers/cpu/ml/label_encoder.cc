@@ -22,7 +22,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
 
 Status LabelEncoder::Compute(OpKernelContext* context) const {
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& shape = X.Shape();
   Tensor& Y = *context->Output(0, TensorShape(shape));
@@ -31,7 +31,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
 
   if (input_type == DataTypeImpl::GetType<std::string>()) {
     if (Y.DataType() != DataTypeImpl::GetType<int64_t>())
-      return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Input of tensor(string) must have output of tensor(int64)");
 
     auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());
     auto output = gsl::make_span(Y.template MutableData<int64_t>(), shape.Size());
@@ -48,7 +48,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
                   });
   } else {
     if (Y.DataType() != DataTypeImpl::GetType<std::string>())
-      return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Input of tensor(int64) must have output of tensor(string)");
 
     auto input = gsl::make_span(X.template Data<int64_t>(), shape.Size());
     auto output = gsl::make_span(Y.template MutableData<std::string>(), shape.Size());

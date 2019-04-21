@@ -21,13 +21,13 @@ class MeanVarianceNormalization_0 : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
-    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
 
     const auto dims = X->Shape().GetDims();
 
     if (dims.size() < 4) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input is expected to have four dimensions corresponding to [N,C,H,W]");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
+                                "Input is expected to have four dimensions corresponding to [N,C,H,W]");
     }
 
     const int64_t N = dims[0];

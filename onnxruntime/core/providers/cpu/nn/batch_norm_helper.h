@@ -25,7 +25,7 @@ class BatchNormHelper {
     //constexpr int kMaxCudaNumDims = 5;
 
     if (X->Shape().GetDims().empty()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input X: Empty dimensions");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), "Invalid input X: Empty dimensions");
     }
 
     int64_t num_channels = X->Shape().GetDims()[1];

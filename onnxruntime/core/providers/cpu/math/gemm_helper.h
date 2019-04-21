@@ -8,7 +8,7 @@ namespace onnxruntime {
 
 class GemmHelper {
  public:
-  GemmHelper(const OpKernelContext& context, const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
+  GemmHelper(const OpKernelContext* context, const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
     //dimension check
     ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
     ORT_ENFORCE(right.NumDimensions() == 2);
@@ -31,14 +31,14 @@ class GemmHelper {
     }
 
     if (right[k_dim] != K_)
-      status_ = ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context.Kernel().Node(),
+      status_ = ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(),
                                    "GEMM: Dimension mismatch, W: ",
                                    right.ToString(),
                                    " K: " + std::to_string(K_),
                                    " N:" + std::to_string(N_));
 
     if (!IsValidBroadcast(bias, M_, N_))
-      status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
+      status_ = ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Gemm: Invalid bias shape for broadcast");
 
     // it is possible the input is empty tensor, for example the output of roipool in fast rcnn.
     ORT_ENFORCE(M_ >= 0 && K_ > 0 && N_ >= 0);

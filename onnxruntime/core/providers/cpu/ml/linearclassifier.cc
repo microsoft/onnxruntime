@@ -57,8 +57,8 @@ Status LinearClassifier<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
   if (shape.NumDimensions() == 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape needs to be at least a single dimension.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(),
+                              "Input shape needs to be at least a single dimension.");
   }
 
   int64_t stride = shape.NumDimensions() == 1 ? shape[0] : shape[1];

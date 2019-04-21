@@ -129,7 +129,7 @@ Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_b
   }
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(*context, F->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ComputeKernelShape(context, F->Shape(), kernel_shape));
 
   std::vector<int64_t> output_padding(output_padding_);
   if (output_padding.empty()) {

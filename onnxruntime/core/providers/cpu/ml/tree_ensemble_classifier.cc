@@ -299,7 +299,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   const TensorShape& x_shape = X.Shape();
   vector<int64_t> x_dims = x_shape.GetDims();
   if (x_dims.empty()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "X dims is empty.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "X dims is empty.");
   }
 
   int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];  // TODO(task 495): how does this work in the case of 3D tensors?
@@ -470,7 +470,7 @@ common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::map<int64_t, floa
       default: {
         std::ostringstream err_msg;
         err_msg << "Invalid mode of value: " << static_cast<std::underlying_type<NODE_MODE>::type>(mode);
-        return Status(ONNXRUNTIME, INVALID_ARGUMENT, err_msg.str());
+        return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, *this, err_msg.str());
       }
     }
     ORT_ENFORCE(treeindex >= 0);

@@ -20,7 +20,7 @@ class ImageScaler final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* X = context->Input<Tensor>(0);
-    if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    if (X == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
 
     const auto dims = X->Shape().GetDims();
 

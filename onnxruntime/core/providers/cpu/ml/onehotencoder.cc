@@ -87,7 +87,7 @@ common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
     if (int_idx != cats_int64s_.cend())
       y_data[i * num_categories_ + int_idx->second] = 1.0f;
     else if (!zeros_)
-      return Status(ONNXRUNTIME, FAIL, "Unknown Category and zeros = 0.");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Unknown Category and zeros = 0.");
   }
   return Status::OK();
 }
@@ -111,7 +111,7 @@ common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) c
     if (str_idx != cats_strings_.cend())
       y_data[i * num_categories_ + str_idx->second] = 1.0f;
     else if (!zeros_)
-      return Status(ONNXRUNTIME, FAIL, "Unknown Category and zeros = 0.");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Unknown Category and zeros = 0.");
   }
   return Status::OK();
 }

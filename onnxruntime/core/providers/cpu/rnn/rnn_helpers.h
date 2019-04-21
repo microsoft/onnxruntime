@@ -75,7 +75,7 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
 }
 
 // validate the common inputs to RNN, LSTM and GRU operators
-Status ValidateCommonRnnInputs(const OpKernelContext& ctx,
+Status ValidateCommonRnnInputs(const OpKernelContext* ctx,
                                const Tensor& X,
                                const Tensor& W,
                                const Tensor& R,

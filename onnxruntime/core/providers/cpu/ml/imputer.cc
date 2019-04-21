@@ -69,16 +69,16 @@ common::Status ComputeByType(OpKernelContext* context,
                              T replaced_value,
                              const std::vector<T>& imputed_values) {
   if (imputed_values.empty()) {
-    return Status(ONNXRUNTIME, FAIL, "Empty value of imputed values.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Empty value of imputed values.");
   }
 
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& x_shape = X.Shape();
   auto& dims = x_shape.GetDims();
   if (dims.empty()) {
-    return Status(ONNXRUNTIME, FAIL, "Empty input dimensions.");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Empty input dimensions.");
   }
 
   const T* x_data = X.template Data<T>();
@@ -121,7 +121,7 @@ common::Status ImputerOp::Compute(OpKernelContext* context) const {
   } else if (input_type == DataTypeImpl::GetType<int64_t>()) {
     return ComputeByType<int64_t>(context, replaced_value_int64_, imputed_values_int64_);
   } else {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid type");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, context->Kernel().Node(), "Invalid type");
   }
 }
 }  // namespace ml

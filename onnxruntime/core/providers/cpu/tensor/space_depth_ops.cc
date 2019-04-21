@@ -31,7 +31,7 @@ typedef Eigen::TensorMap<Eigen::Tensor<float, IntermediateTensorRank, Eigen::Row
 template <>
 Status SpaceToDepth<float>::Compute(OpKernelContext* context) const {
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const Tensor& input = *tensor_pointer;
   ORT_ENFORCE(input.Shape().NumDimensions() == 4);
   const int64_t batch = input.Shape().GetDims().at(0);
@@ -60,7 +60,7 @@ Status SpaceToDepth<float>::Compute(OpKernelContext* context) const {
 template <>
 Status DepthToSpace<float>::Compute(OpKernelContext* context) const {
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (tensor_pointer == nullptr) return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "input count mismatch");
   const Tensor& input = *tensor_pointer;
   ORT_ENFORCE(input.Shape().NumDimensions() == 4);
 

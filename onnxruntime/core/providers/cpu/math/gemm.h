@@ -33,7 +33,7 @@ class Gemm : public OpKernel {
     const auto X = context->Input<Tensor>(0);
     const auto W = context->Input<Tensor>(1);
     const auto B = context->Input<Tensor>(2);
-    GemmHelper helper(*context, X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
+    GemmHelper helper(context, X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
 
     if (!helper.State().IsOK())
       return helper.State();

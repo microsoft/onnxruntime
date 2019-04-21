@@ -52,7 +52,7 @@ common::Status BinarizerOp<T>::Compute(OpKernelContext* context) const {
 
     float tmp = static_cast<float>(x_val);  // this cast is necessary because isnan doesn't work otherwise.
     if (std::isnan(tmp)) {
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Input data with index: " + std::to_string(i) + " is NaN");
+      return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Input data with index: " + std::to_string(i) + " is NaN");
     }
     y_val = x_val > threshold_ ? static_cast<T>(1) : static_cast<T>(0);
   }

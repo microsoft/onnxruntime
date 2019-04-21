@@ -26,7 +26,7 @@ template <>
 Status IsNaN<float>::Compute(OpKernelContext* context) const {
   const Tensor* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Null input ptr");
   }
   auto& X = *X_ptr;
   auto& dims = X.Shape();
@@ -41,7 +41,7 @@ template <>
 Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   const Tensor* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, FAIL, context->Kernel().Node(), "Null input ptr");
   }
   auto X_data = X_ptr->template Data<MLFloat16>();
   auto& dims = X_ptr->Shape();

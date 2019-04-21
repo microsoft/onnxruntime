@@ -22,7 +22,7 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
     ss << "Hardmax inputs N, D and N * D must be < " << INT32_MAX << ". N=" << tmpN << ", D=" << tmpD;
     std::string msg = ss.str();
 
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, msg);
+    return ORT_MAKE_OP_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, ctx->Kernel().Node(), msg);
   }
 
   const int N = gsl::narrow_cast<int>(tmpN);
