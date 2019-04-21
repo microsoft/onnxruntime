@@ -8,10 +8,36 @@ import json
 
 from google.protobuf.json_format import MessageToJson
 
+import predict_pb2
+import onnx_ml_pb2
+
 # Current models only have one input and one output
 def get_io_name(model_file_name):
   sess = onnxruntime.InferenceSession(model_file_name)
   return sess.get_inputs()[0].name, sess.get_outputs()[0].name
+
+
+def gen_input_pb(pb_full_path, input_name, output_name, request_file_path):
+  t = onnx_ml_pb2.TensorProto()
+  with open(pb_full_path, 'rb') as fin:
+      t.ParseFromString(fin.read())
+  predict_request = predict_pb2.PredictRequest()
+  predict_request.inputs[input_name].CopyFrom(t)
+  predict_request.output_filter.append(output_name)
+
+  with open(request_file_path, "wb") as fout:
+      fout.write(predict_request.SerializeToString())
+
+
+def gen_output_pb(pb_full_path, output_name, response_file_path):
+  t = onnx_ml_pb2.TensorProto()
+  with open(pb_full_path, 'rb') as fin:
+      t.ParseFromString(fin.read())
+  predict_response = predict_pb2.PredictResponse()
+  predict_response.outputs[output_name].CopyFrom(t)
+
+  with open(response_file_path, "wb") as fout:
+      fout.write(predict_response.SerializeToString())
 
 
 def tensor2dict(full_path):
@@ -25,7 +51,7 @@ def tensor2dict(full_path):
   return data
 
 
-def gen_input(pb_full_path, input_name, output_name, json_file_path):
+def gen_input_json(pb_full_path, input_name, output_name, json_file_path):
   data = tensor2dict(pb_full_path)
 
   inputs = {}
@@ -40,7 +66,7 @@ def gen_input(pb_full_path, input_name, output_name, json_file_path):
     json.dump(req, outfile)
 
 
-def gen_output(pb_full_path, output_name, json_file_path):
+def gen_output_json(pb_full_path, output_name, json_file_path):
   data = tensor2dict(pb_full_path)
 
   output = {}
@@ -75,8 +101,10 @@ def gen_req_resp(model_zoo, test_data):
         src = os.path.join(src_folder, test)
         dst = os.path.join(dst_folder, test)
         os.makedirs(dst, exist_ok=True)
-        gen_input(os.path.join(src, 'input_0.pb'), iname, oname, os.path.join(dst, 'request.json'))
-        gen_output(os.path.join(src, 'output_0.pb'), oname, os.path.join(dst, 'response.json'))
+        gen_input_json(os.path.join(src, 'input_0.pb'), iname, oname, os.path.join(dst, 'request.json'))
+        gen_output_json(os.path.join(src, 'output_0.pb'), oname, os.path.join(dst, 'response.json'))
+        gen_input_pb(os.path.join(src, 'input_0.pb'), iname, oname, os.path.join(dst, 'request.pb'))
+        gen_output_pb(os.path.join(src, 'output_0.pb'), oname, os.path.join(dst, 'response.pb'))
 
 
 if __name__ == '__main__':

@@ -72,3 +72,10 @@ def json_response_validation(cls, resp, expected_resp_json_file):
 
     actual_response = json.loads(resp.content.decode('utf-8'))
     cls.assertTrue(actual_response['outputs'])
+
+
+def pb_response_validation(cls, resp, expected_resp_pb_file):
+    cls.assertEqual(resp.status_code, 200)
+    cls.assertTrue(resp.headers.get('x-ms-request-id'))
+    cls.assertEqual(resp.headers.get('Content-Type'), 'application/octet-stream')
+
