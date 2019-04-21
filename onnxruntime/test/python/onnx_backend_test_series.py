@@ -92,6 +92,9 @@ backend_test.exclude(r'('
 '|^test_resize_nearest_cpu.*'
 '|^test_resize_upsample_linear_cpu.*'
 '|^test_resize_upsample_nearest_cpu.*'
+'|^test_isinf_cpu.*'
+'|^test_isinf_negative_cpu.*'
+'|^test_isinf_positive_cpu.*'
 ')')
 
 # import all test cases at global scope to make

@@ -1,0 +1,21 @@
+nGraph EP test model:¸
+
+A
+A	node1_outnode_1"Add
+&
+	node1_out
+B	node2_outnode_2"Mul
+%
+	node2_outZnode_3"UnSupportedOpnGraph EP test graphZ
+A
+
+
+Z
+B
+
+
+b
+Z
+
+
+B

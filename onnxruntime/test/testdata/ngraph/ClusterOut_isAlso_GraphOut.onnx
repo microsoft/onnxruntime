@@ -1,0 +1,32 @@
+nGraph EP test model:ò
+
+A
+AYnode_1"Add
+
+Y
+B	node2_outnode_2"Mul
+-
+	node2_out	node3_outnode_3"UnSupportedOp
+
+	node3_out
+CZnode_4"AddnGraph EP test graphZ
+A
+
+
+Z
+B
+
+
+Z
+C
+
+
+b
+Y
+
+
+b
+Z
+
+
+B
