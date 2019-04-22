@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"7a112a6f930aac375da5a38d744ccda93e37632c",
+               "commitHash":"83dd62659fc07d5b7fa93b5d1c1879f93509c7db",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -139,7 +139,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"cf794d3b741a6278df169e58461f8529f43bce5d",
+               "commitHash":"1456fe2fac0cd074bbbb8630ba003a7c325d015b",
                "repositoryUrl":"https://github.com/eigenteam/eigen-git-mirror.git"
             }
          }
@@ -287,6 +287,15 @@
             "git":{
                "commitHash":"c8ebe0da0776c1a6347139b074a901bd57fae499",
                "repositoryUrl":"https://github.com/onnx/onnx-tensorrt.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"950fbf183274ab7d2092f99bab6c809ae87c7054",
+               "repositoryUrl":"https://github.com/NervanaSystems/ngraph.git"
             }
          }
       }

@@ -24,10 +24,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
-
-#ifdef USE_EIGEN_THREADPOOL
-#include <unsupported/Eigen/CXX11/ThreadPool>
-#endif
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -37,10 +34,6 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
-
-#ifndef USE_EIGEN_THREADPOOL
-class TaskThreadPool;
-#endif
 
 /**
  * SessionState should be modified by the inference session class only.
@@ -168,13 +161,8 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool* GetThreadPool() const { return thread_pool_; }
-  void SetThreadPool(Eigen::NonBlockingThreadPool* p_pool) { thread_pool_ = p_pool; }
-#else
-  TaskThreadPool* GetThreadPool() const { return thread_pool_; }
-  void SetThreadPool(TaskThreadPool* p_pool) { thread_pool_ = p_pool; }
-#endif
+  onnxruntime::concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
+  void SetThreadPool(onnxruntime::concurrency::ThreadPool* p_pool) { thread_pool_ = p_pool; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -223,11 +211,7 @@ class SessionState {
       std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool* thread_pool_ = nullptr;
-#else
-  TaskThreadPool* thread_pool_ = nullptr;
-#endif
+  onnxruntime::concurrency::ThreadPool* thread_pool_ = nullptr;
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

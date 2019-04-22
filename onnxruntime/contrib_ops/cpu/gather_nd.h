@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -41,8 +42,8 @@ public:
   explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 private:
-  Status GatherNumber(const Prepare& p) const;
-  Status GatherString(const Prepare& p) const;
+  Status GatherNumber(const Prepare& p, const onnxruntime::concurrency::ThreadPool* ttp) const;
+  Status GatherString(const Prepare& p, const onnxruntime::concurrency::ThreadPool* ttp) const;
 };
 
 } // namespace contrib

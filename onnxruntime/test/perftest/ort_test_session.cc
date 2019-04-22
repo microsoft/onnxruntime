@@ -25,7 +25,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run(const OrtValue* const*
   return duration_seconds;
 }
 
-OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, PerformanceTestConfig& performance_test_config,
+OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo* m)
     : input_names_(m->GetInputCount()) {
   SessionOptionsWrapper sf(env);
@@ -36,6 +36,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, PerformanceTestConfi
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("MKL-DNN is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
+#ifdef USE_NGRAPH
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+#else
+    ORT_THROW("nGraph is not supported in this build");
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA

@@ -28,7 +28,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   std::vector<OrtValue*> ort_inputs;
   std::vector<std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>> ort_inputs_cleanup;
   std::vector<const char*> input_names;
-  for (int i = 0; i < inputs.size(); i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
     ort_inputs.emplace_back(OrtCreateTensorWithDataAsOrtValue(env->Info(env), (void*)inputs[i].values.data(), inputs[i].values.size() * sizeof(inputs[i].values[0]), inputs[i].dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
     ort_inputs_cleanup.emplace_back(ort_inputs.back(), OrtReleaseValue);
@@ -176,7 +176,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 
   size_t ElementCount() const {
     int64_t count = 1;
-    for (int i = 0; i < size(); i++)
+    for (size_t i = 0; i < size(); i++)
       count *= (*this)[i];
     return count;
   }

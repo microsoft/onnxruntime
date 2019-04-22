@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <mutex>
 
 // onnxruntime dependencies
 #include <core/common/common.h>
@@ -16,8 +17,10 @@
 #include "test_configuration.h"
 #include "heap_buffer.h"
 #include "test_session.h"
+#include "OrtValueList.h"
 
 class ITestCase;
+class TestModelInfo;
 
 namespace onnxruntime {
 namespace perftest {
@@ -54,6 +57,8 @@ struct PerformanceResult {
       std::sort(sorted_time.begin(), sorted_time.end());
 
       outfile << std::endl;
+      outfile << "Min Latency is " << sorted_time[0] << "sec" << std::endl;
+      outfile << "Max Latency is " << sorted_time[total - 1] << "sec" << std::endl;
       outfile << "P50 Latency is " << sorted_time[n50] << "sec" << std::endl;
       outfile << "P90 Latency is " << sorted_time[n90] << "sec" << std::endl;
       outfile << "P95 Latency is " << sorted_time[n95] << "sec" << std::endl;
@@ -84,6 +89,11 @@ class PerformanceRunner {
   bool Initialize();
   Status RunOneIteration(bool isWarmup = false);
 
+  Status FixDurationTest();
+  Status RepeatedTimesTest();
+  Status ForkJoinRepeat();
+  Status RunParallelDuration();
+
   inline Status RunFixDuration() {
     while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
       ORT_RETURN_IF_ERROR(RunOneIteration());
@@ -99,15 +109,16 @@ class PerformanceRunner {
   }
 
  private:
-  OrtEnv* env_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
-
-  std::unordered_map<std::string, OrtValue*> feeds_;
-  std::vector<OrtValue*> input_values_;
+  TestModelInfo* test_model_info_;
+  std::unique_ptr<TestSession> session_;
+  OrtValueArray inputs_;
   HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
-  TestSession* session_;
+
+  // TODO: Convert to OrtMutex
+  std::mutex results_mutex_;
 };
 }  // namespace perftest
 }  // namespace onnxruntime

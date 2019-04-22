@@ -116,6 +116,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
+    parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
@@ -135,6 +136,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
+    parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
+    parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -271,9 +274,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     return True
 
 def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
-    """Sets up the test data, downloading it if needed."""
-    if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
-        raise BuildError("Failed to set up test data.")
+    if test_data_url is not None:
+        """Sets up the test data, downloading it if needed."""
+        if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
+            raise BuildError("Failed to set up test data.")
 
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
@@ -308,6 +312,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
+                 "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -320,9 +325,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
-                  # TensorRT provider currently only supports full_protobuf option.
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_tensorrt else "OFF"),
+                  # nGraph and TensorRT providers currently only supports full_protobuf option.
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
+                 "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -478,9 +484,15 @@ def setup_tensorrt_vars(args):
                              "tensorrt_home='{}' valid={}."
                              .format(tensorrt_home, tensorrt_home_valid))
 
+        # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests 
+        os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
+
+        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes).  
+        os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"  
+        
     return tensorrt_home
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -495,7 +507,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
 
         if enable_python_tests:
             # Disable python tests for TensorRT because many tests are not supported yet
-            if enable_tensorrt:
+            if enable_tensorrt or enable_ngraph:
+                print("NOT RUNNING")
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
@@ -556,17 +569,30 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         else:
             run_subprocess([exe] + cmd, cwd=cwd)
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_tensorrt):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
+
         if is_windows():
             cwd = os.path.join(cwd, config)
-        if use_tensorrt:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
-        elif use_cuda:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
+        if nightly_build:
+            if use_tensorrt:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt', '--nightly_build'], cwd=cwd)
+            elif use_cuda:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda', '--nightly_build'], cwd=cwd)
+            elif use_ngraph:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_ngraph', '--nightly-build'], cwd=cwd)
+            else:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--nightly_build'], cwd=cwd)
         else:
-            run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
+            if use_tensorrt:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
+            elif use_cuda:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
+            elif use_ngraph:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_ngraph'], cwd=cwd)
+            else:
+                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
         if is_ubuntu_1604():
             run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
 
@@ -696,8 +722,9 @@ def main():
             update_submodules(source_dir)
 
         if args.enable_onnx_tests or args.download_test_data:
-            if not args.test_data_url or not args.test_data_checksum:
-               raise UsageError("The test_data_url and test_data_checksum arguments are required.")
+            if args.download_test_data:
+                if not args.test_data_url or not args.test_data_checksum:
+                   raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
         path_to_protoc_exe = None
@@ -716,10 +743,12 @@ def main():
     if (args.build):
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
-    if (args.test):
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, args.enable_pybind, args.use_tvm, args.use_tensorrt)
+    if args.test :
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
+                              args.enable_pybind if not args.skip_onnx_tests else False,
+                              args.use_tvm, args.use_tensorrt, args.use_ngraph)
         # run the onnx model tests if requested explicitly.
-        if (args.enable_onnx_tests):
+        if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
             onnx_test_data_dir = '/data/onnx'
             if is_windows() or not os.path.exists(onnx_test_data_dir):
@@ -732,6 +761,8 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', False, 2)
             elif args.x86 or platform.system() == 'Darwin':
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
+            elif args.use_ngraph:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
               # TODO: parallel executor test fails on MacOS
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
@@ -741,8 +772,9 @@ def main():
 
     if args.build:
         if args.build_wheel:
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_tensorrt)
-    
+            nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, nightly_build)
+
     if args.gen_doc:
         generate_documentation(source_dir, build_dir, configs)
 

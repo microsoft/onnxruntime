@@ -39,7 +39,7 @@ class SliceBase {
                            std::vector<int64_t>& steps,
                            std::vector<int64_t>& output_dims) const;
 
-  // Slice V10 & DynamicSlice 
+  // Slice V10 & DynamicSlice
   void FillVectorsFromInput(const OpKernelContext* context,
                             std::vector<int64_t>& input_starts,
                             std::vector<int64_t>& input_ends,
