@@ -15,7 +15,7 @@ class Executor {
  public:
   Executor(std::shared_ptr<HostingEnvironment> hosting_env, std::string request_id) : env_(hosting_env),
                                                                                       request_id_(std::move(request_id)),
-                                                                                      using_raw_data(true) {}
+                                                                                      using_raw_data_(true) {}
 
   // Prediction method
   google::protobuf::util::Status Predict(const std::string& model_name,
@@ -26,7 +26,7 @@ class Executor {
  private:
   std::shared_ptr<HostingEnvironment> env_;
   const std::string request_id_;
-  bool using_raw_data;
+  bool using_raw_data_;
 
   google::protobuf::util::Status SetMLValue(const onnx::TensorProto& input_tensor,
                                             OrtAllocatorInfo* cpu_allocator_info,
