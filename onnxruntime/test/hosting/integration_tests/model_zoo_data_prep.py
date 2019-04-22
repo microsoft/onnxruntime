@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import os
 import sys
 import shutil
@@ -79,7 +82,7 @@ def gen_output_json(pb_full_path, output_name, json_file_path):
     json.dump(resp, outfile)
 
 
-def gen_req_resp(model_zoo, test_data):
+def gen_req_resp(model_zoo, test_data, copy_model=True):
   opsets = [name for name in os.listdir(model_zoo) if os.path.isdir(os.path.join(model_zoo, name))]
   for opset in opsets:
     os.makedirs(os.path.join(test_data, opset), exist_ok=True)
@@ -94,7 +97,9 @@ def gen_req_resp(model_zoo, test_data):
       src_folder = os.path.join(current_model_folder, model)
       dst_folder = os.path.join(current_data_folder, model)
 
-      shutil.copy2(os.path.join(src_folder, 'model.onnx'), dst_folder)
+      if copy_model:
+        shutil.copy2(os.path.join(src_folder, 'model.onnx'), dst_folder)
+
       iname, oname = get_io_name(os.path.join(src_folder, 'model.onnx'))
       model_test_data = [name for name in os.listdir(src_folder) if os.path.isdir(os.path.join(src_folder, name))]
       for test in model_test_data:
@@ -111,4 +116,5 @@ if __name__ == '__main__':
   model_zoo = os.path.realpath(sys.argv[1])
   test_data = os.path.realpath(sys.argv[2])
 
+  os.makedirs(test_data, exist_ok=True)
   gen_req_resp(model_zoo, test_data)
