@@ -32,7 +32,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'tensorrt'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -80,6 +80,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_mkl = false;
+  bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -129,6 +130,8 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
+            enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
@@ -220,6 +223,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_ngraph) {  //TODO: Re-order the priority?
+#ifdef USE_NGRAPH
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+#else
+      fprintf(stderr, "nGraph is not supported in this build");
       return -1;
 #endif
     }
