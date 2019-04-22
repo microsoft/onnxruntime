@@ -112,20 +112,20 @@ std::shared_ptr<KernelRegistry> GetMklDnnKernelRegistry() {
 }
 }  // namespace mkl_dnn
 
-std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapability(
-    const onnxruntime::GraphViewer& graph_viewer,
-    const std::vector<const KernelRegistry*>& kernel_registries) const {
-  ORT_UNUSED_PARAMETER(kernel_registries);
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-
+bool MKLDNNExecutionProvider::RunSubgraph(const onnxruntime::GraphViewer& graph_viewer, 
+                                          const std::vector<const KernelRegistry*>& kernel_registries,
+                                          std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
   // MKLDNN_SUBGRAPH environment variable
-  const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
-  int use_subgraph = 0;
-  if (env != nullptr)
-    use_subgraph = atoi(env);
+  bool use_subgraph = true;
 
-  if (use_subgraph == 0) {
+  const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
+  int use_subgraph_env = 0;
+  if (env != nullptr)
+    use_subgraph_env = atoi(env);
+
+  if (use_subgraph_env == 0) {
+    use_subgraph = false;
     for (auto& node : graph_viewer.Nodes()) {
       for (auto registry : kernel_registries) {
         if (registry->TryFindKernel(node, Type()) != nullptr) {
@@ -136,6 +136,19 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
         }
       }
     }
+  }
+  return use_subgraph;
+}
+
+std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapability(
+    const onnxruntime::GraphViewer& graph_viewer,
+    const std::vector<const KernelRegistry*>& kernel_registries) const {
+  ORT_UNUSED_PARAMETER(kernel_registries);
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
+  // ORT_MKLDNN_SUBGRAPH environment variable
+  if (RunSubgraph(graph_viewer, kernel_registries, result) == false){
     return result;
   }
 
@@ -162,7 +175,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
       // can we fuse (at mkldnn level) nodes?
       bool fused = false;
-      if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
+      if (!sub_var.subgraph_node_indexes.empty() && node->OpType() == "Relu") {
         if (sub_var.subgraph_ptr->mklnodes.back().name == "BatchNormalization" || sub_var.subgraph_ptr->mklnodes.back().name == "Conv") {
           sub_var.subgraph_ptr->mklnodes.back().name += "-Relu";
           fused = true;
@@ -220,7 +233,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
       auto temp_index = node_index + 1;
       if (temp_index < graph_viewer.MaxNodeIndex()) {
-        if (sub_var.subgraph_node_indexes.size() > 0) {
+        if (!sub_var.subgraph_node_indexes.empty()) {
           // if next node is mkldnn node and if it's input is not output of current node
           //   if next node input is output of any of the nodes in sub-graph continue
           // else
@@ -248,7 +261,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             }
           }
         }
-        if (sub_var.subgraph_node_indexes.size() > 0) {
+        if (!sub_var.subgraph_node_indexes.empty()) {
           if (static_cast<int>(node->GetOutputEdgesCount()) > 1) {
             // If current node has branches
             //    iterate and see if all nodes are mkldnn ops OR
@@ -286,14 +299,14 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
         }
       }
     } else {
-      if (sub_var.subgraph_node_indexes.size() >= 1) {
+      if (!sub_var.subgraph_node_indexes.empty()) {
         CreateMetaDef(sub_var, subgraph_attributes, result);
         subgraph_attributes.clear();
       }
     }
     node_index++;
   }  // graph_viewer node iterator ends
-  if (sub_var.subgraph_node_indexes.size() >= 1) {
+  if (!sub_var.subgraph_node_indexes.empty()) {
     CreateMetaDef(sub_var, subgraph_attributes, result);
     subgraph_attributes.clear();
   }
@@ -341,7 +354,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(SubgraphVariables& sub_var, const No
 
 Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (auto* fused_node : fused_nodes) {
+  for (const auto* fused_node : fused_nodes) {
     auto attributes = fused_node->GetAttributes();
     NodeComputeInfo compute_info;
 
