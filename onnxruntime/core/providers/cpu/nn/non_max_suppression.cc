@@ -11,16 +11,15 @@ limitations under the License.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */
 
-#include "contrib_ops/cpu/non_max_suppression.h"
+#include "non_max_suppression.h"
 #include <queue>
 
 namespace onnxruntime {
-namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
     NonMaxSuppression,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    10,
     kCpuExecutionProvider,
     KernelDefBuilder(),
     NonMaxSuppression);
@@ -35,7 +34,7 @@ void NonMaxSuppression::MaxMin(const float& lhs, const float& rhs, float& min, f
   }
 }
 
-bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index1, int32_t box_index2, float iou_threshold) const {
+bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t box_index2, float iou_threshold) const {
   float x1_min, y1_min, x1_max, y1_max, x2_min, y2_min, x2_max, y2_max;
   // center_point_box_ only support 0 or 1
   if (0 == center_point_box_) {
@@ -88,7 +87,7 @@ bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int32_t box_index
 }
 
 Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShape& boxes_shape, const TensorShape& scores_shape,
-                                          int32_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const {
+                                          int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const {
   ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 3, "boxes must be a 3D tensor.");
   ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 3, "scores must be a 3D tensor.");
 
@@ -104,7 +103,7 @@ Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShap
 
   const Tensor* max_output_boxes_per_class_tensor = ctx->Input<Tensor>(2);
   if (max_output_boxes_per_class_tensor != nullptr) {
-    max_output_boxes_per_class = *(max_output_boxes_per_class_tensor->Data<int32_t>());
+    max_output_boxes_per_class = *(max_output_boxes_per_class_tensor->Data<int64_t>());
     max_output_boxes_per_class = max_output_boxes_per_class > 0 ? max_output_boxes_per_class : 0;
   }
 
@@ -132,7 +131,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   auto& boxes_shape = boxes->Shape();
   auto& scores_shape = scores->Shape();
 
-  int32_t max_output_boxes_per_class = 0;
+  int64_t max_output_boxes_per_class = 0;
   float iou_threshold = 0;
   // Not so sure for the value range of score_threshold, so set a bool to indicate whether it has this input
   bool has_score_threshold = false;
@@ -152,7 +151,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
   struct ScoreIndexPair {
     float score;
-    int32_t index;
+    int64_t index;
   };
 
   auto LessCompare = [](const ScoreIndexPair& lhs, const ScoreIndexPair& rhs) {
@@ -168,12 +167,12 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
       std::priority_queue<ScoreIndexPair, std::deque<ScoreIndexPair>, decltype(LessCompare)> sorted_scores_with_index(LessCompare);
       for (int64_t box_index = 0; box_index < num_boxes_; ++box_index) {
         if (!has_score_threshold || (has_score_threshold && scores_data[box_score_offset + box_index] > score_threshold)) {
-          sorted_scores_with_index.emplace(ScoreIndexPair({scores_data[box_score_offset + box_index], static_cast<int32_t>(box_index)}));
+          sorted_scores_with_index.emplace(ScoreIndexPair({scores_data[box_score_offset + box_index], box_index}));
         }
       }
 
       ScoreIndexPair next_top_score;
-      std::vector<int32_t> selected_indicies_inside_class;
+      std::vector<int64_t> selected_indicies_inside_class;
       // Get the next box with top score, filter by iou_threshold_
       while (!sorted_scores_with_index.empty()) {
         next_top_score = sorted_scores_with_index.top();
@@ -189,11 +188,11 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         }
 
         if (selected) {
-          if (max_output_boxes_per_class > 0 && selected_indicies_inside_class.size() >= max_output_boxes_per_class) {
+          if (max_output_boxes_per_class > 0 && static_cast<int64_t>(selected_indicies_inside_class.size()) >= max_output_boxes_per_class) {
             break;
           }
           selected_indicies_inside_class.push_back(next_top_score.index);
-          tmp_selected_indices.push_back(selected_index(static_cast<int32_t>(batch_index), static_cast<int32_t>(class_index), next_top_score.index));
+          tmp_selected_indices.push_back(selected_index(batch_index, class_index, next_top_score.index));
         }
       }  //while
     }    //for class_index
@@ -202,10 +201,9 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
   int32_t num_selected = static_cast<int32_t>(tmp_selected_indices.size());
   Tensor* selected_indices = ctx->Output(0, {num_selected, 3});
   ORT_ENFORCE(selected_indices);
-  memcpy(selected_indices->MutableData<int32_t>(), tmp_selected_indices.data(), num_selected * sizeof(selected_index));
+  memcpy(selected_indices->MutableData<int64_t>(), tmp_selected_indices.data(), num_selected * sizeof(selected_index));
 
   return Status::OK();
 }
 
-}  // namespace contrib
 }  // namespace onnxruntime
