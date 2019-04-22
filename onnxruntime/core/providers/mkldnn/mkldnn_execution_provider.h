@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/mkldnn/subgraph/subgraph.h"
 
 namespace mkldnn {
 struct memory;
@@ -28,6 +29,17 @@ struct MKLDNNExecutionProviderInfo {
   MKLDNNExecutionProviderInfo() = default;
 };
 
+struct MKLContext {
+  AllocateFunc allocate_func = nullptr;
+  DestroyFunc release_func = nullptr;
+  AllocatorHandle allocator = nullptr;
+
+  MKLContext(AllocateFunc allocate_func, DestroyFunc release_func, AllocatorHandle alloc)
+      : allocate_func(allocate_func),
+        release_func(release_func),
+        allocator(alloc) {}
+};
+
 // Logical device representation.
 class MKLDNNExecutionProvider : public IExecutionProvider {
  public:
@@ -42,6 +54,13 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph,
+                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
   std::shared_ptr<mkldnn::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {
     auto iter = weights_mem_map_.find(weight_key);
     if (iter != weights_mem_map_.end())
@@ -50,7 +69,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   }
 
   void SetWeightsMemoryBuffer(const std::string& weight_key,
-                        const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
+                              const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
     weights_mem_map_.insert(std::make_pair(weight_key, filter_dst_mem));
   }
 
@@ -70,6 +89,22 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   // Save reordered memory buffers in list so that memory is not freed.
   std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
   OrtMutex mutex_;
+
+  // SUBGRAPH
+ private:
+  void CreateMetaDef(SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
+                     std::vector<std::unique_ptr<ComputeCapability>>& result) const;
+
+ public:
+  const std::shared_ptr<Subgraph> GetMklSubgraph(const std::string& subgraph_id) {
+    auto iter = mkl_subgraphs_.find(subgraph_id);
+    if (iter != mkl_subgraphs_.end())
+      return iter->second;
+    return nullptr;
+  }
+
+ private:
+  mutable std::unordered_map<std::string, std::shared_ptr<Subgraph>> mkl_subgraphs_;
 };
 
 }  // namespace onnxruntime
