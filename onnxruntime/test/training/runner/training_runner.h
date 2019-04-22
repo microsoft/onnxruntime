@@ -15,10 +15,11 @@ class TrainingRunner {
  public:
   struct Parameters {
     std::string model_path_;
-    std::string model_with_loss_func_path_;
-    std::string model_with_training_graph_path_;
-    std::string model_trained_path_;
-    std::string model_trained_with_loss_func_path_;
+    std::string model_with_loss_func_path_;          // To save the model after adding loss func.
+    std::string model_with_training_graph_path_;     // To save the model after adding loss func and backward graph.
+    std::string model_actual_running_graph_path_;    // To save the model with the actual running graph after transformations.
+    std::string model_trained_path_;                 // To save the model after training.
+    std::string model_trained_with_loss_func_path_;  // To save the model with loss func after training.
     LossFunctionInfo loss_func_info_;
 
     // For some model, loss function's input "prediction" is not the model output.
@@ -44,6 +45,12 @@ class TrainingRunner {
 
     // post_evaluation_callback_ is called when a batch of evaluation is done.
     std::function<void(size_t /*num_of_test_sample_run*/)> post_evaluation_callback_;
+
+#ifdef USE_CUDA
+    // Use CUDA providers or not.
+    // TODO: support a list of providers.
+    bool use_cuda_ = false;
+#endif
   };
 
   TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params);

@@ -20,23 +20,21 @@ const static float LEARNING_RATE = 0.1f;
 const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
 const static int NUM_SAMPLES_FOR_EVALUATION = 100;
-
-//const static std::string MODEL_NAME = "mnist_fc_model";
-//const static vector<int64_t> IMAGE_DIMS = {1, 784};
-//const static vector<int64_t> LABEL_DIMS = {1, 10};
-
-//const static std::string MODEL_NAME = "mnist_conv";
-const static std::string MODEL_NAME = "mnist_conv_batch_unknown";
-const static vector<int64_t> IMAGE_DIMS = {1, 1, 28, 28};
+const static vector<int64_t> IMAGE_DIMS = {1, 784};  //{1, 1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {1, 10};
-const static std::string ORIGINAL_MODEL_PATH = MODEL_NAME + ".onnx";
-const static std::string GENERATED_MODEL_WITH_COST_PATH = MODEL_NAME + "_with_cost.onnx";
-const static std::string BACKWARD_MODEL_PATH = MODEL_NAME + "_bw.onnx";
-const static std::string TRAINED_MODEL_PATH = MODEL_NAME + "_trained.onnx";
-const static std::string TRAINED_MODEL_WITH_COST_PATH = MODEL_NAME + "_with_cost_trained.onnx";
 const static std::string MNIST_DATA_PATH = "mnist_data";
 
-int main(int /*argc*/, char* /*args*/[]) {
+int main(int argc, char* args[]) {
+  if (argc < 2) {
+    printf("Incorrect command line for %s\n", args[0]);
+#ifdef USE_CUDA
+    printf("usage: exe_name model_name [gpu]\n");
+#else
+    printf("usage: exe_name model_name\n");
+#endif
+    return -1;
+  }
+
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                   logging::Severity::kWARNING,
@@ -54,14 +52,17 @@ int main(int /*argc*/, char* /*args*/[]) {
   TrainingRunner::Parameters params;
 
   // Init params.
-  params.model_path_ = ORIGINAL_MODEL_PATH;
-  params.model_with_loss_func_path_ = GENERATED_MODEL_WITH_COST_PATH;
-  params.model_with_training_graph_path_ = BACKWARD_MODEL_PATH;
-  params.model_trained_path_ = TRAINED_MODEL_PATH;
-  params.model_trained_with_loss_func_path_ = TRAINED_MODEL_WITH_COST_PATH;
+  std::string model_name = args[1];
+  params.model_path_ = model_name + ".onnx";
+  params.model_with_loss_func_path_ = model_name + "_with_cost.onnx";
+  params.model_with_training_graph_path_ = model_name + "_bw.onnx";
+  params.model_actual_running_graph_path_ = model_name + "_bw_running.onnx";
+  params.model_trained_path_ = model_name + "_trained.onnx";
+  params.model_trained_with_loss_func_path_ = model_name + "_with_cost_trained.onnx";
   params.loss_func_info_ = {"SoftmaxCrossEntropy", "predictions", "labels", "loss", kMSDomain};
   params.model_prediction_name_ = "predictions";
-  params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};
+  //params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};
+  params.weights_not_to_train_ = {""};
   params.batch_size_ = BATCH_SIZE;
   params.num_of_epoch_ = NUM_OF_EPOCH;
   params.learning_rate_ = LEARNING_RATE;
@@ -112,6 +113,10 @@ int main(int /*argc*/, char* /*args*/[]) {
     true_count = 0;
     total_loss = 0.0f;
   };
+
+#ifdef USE_CUDA
+  params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
+#endif
 
   TrainingRunner runner(trainingData, testData, params);
   RETURN_IF_FAIL(runner.Initialize());

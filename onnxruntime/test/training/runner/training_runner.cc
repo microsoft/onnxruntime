@@ -11,6 +11,10 @@
 #include "core/training/training_optimizer.h"
 #include "core/training/weight_updater.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_execution_provider.h"
+#endif
+
 using namespace std;
 
 namespace onnxruntime {
@@ -56,10 +60,21 @@ Status TrainingRunner::Initialize() {
                                       TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
   }
 
+#ifdef USE_CUDA
+  if (params_.use_cuda_) {
+    CUDAExecutionProviderInfo xp_info;
+    ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+  }
+#endif
+
   return session_.Initialize();
 }
 
 Status TrainingRunner::Run() {
+  if (!params_.model_actual_running_graph_path_.empty()) {
+    ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD));
+  }
+
   printf("Before training \n");
   ORT_RETURN_IF_ERROR(Evaluate(session_, false));
 

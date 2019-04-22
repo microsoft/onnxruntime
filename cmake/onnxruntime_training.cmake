@@ -21,9 +21,16 @@ file(GLOB_RECURSE onnxruntime_training_runner_srcs
     "${ONNXRUNTIME_ROOT}/test/training/runner/*.cc"
 )
 add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs})
-add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx)
+add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
+
 onnxruntime_add_include_to_target(onnxruntime_training_runner  onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
+
+if (onnxruntime_USE_CUDA)
+target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${onnxruntime_CUDNN_HOME}/include)
+else()
 target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
+endif()
+
 set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_runner_srcs})
 
