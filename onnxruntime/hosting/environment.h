@@ -21,7 +21,7 @@ class HostingEnvironment {
   ~HostingEnvironment() = default;
   HostingEnvironment(const HostingEnvironment&) = delete;
 
-  const logging::Logger& GetAppLogger();
+  const logging::Logger& GetAppLogger() const;
   std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
   logging::Severity GetLogSeverity() const;
 

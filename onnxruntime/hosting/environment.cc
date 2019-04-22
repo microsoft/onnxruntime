@@ -46,7 +46,7 @@ const std::vector<std::string>& HostingEnvironment::GetModelOutputNames() const 
   return model_output_names_;
 }
 
-const logging::Logger& HostingEnvironment::GetAppLogger() {
+const logging::Logger& HostingEnvironment::GetAppLogger() const {
   return default_logging_manager_.DefaultLogger();
 }
 
