@@ -50,7 +50,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
     auto end_data = input_data + total_items;
     std::transform(
         input_data, end_data, output_data, [](auto v) {
-          return (std::isinf(v) && !(v < std::numeric_limits<T>::lowest()));
+          return (v == std::numeric_limits<T>::infinity());
         });
 
   } else if (detect_negative) {
@@ -58,7 +58,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
     auto end_data = input_data + total_items;
     std::transform(
         input_data, end_data, output_data, [](auto v) {
-          return (std::isinf(v) && (v < std::numeric_limits<T>::lowest()));
+          return (v == -std::numeric_limits<T>::infinity());
         });
   } else {
     // all false
@@ -69,18 +69,20 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
 
 Status IsInf::Compute(OpKernelContext* context) const {
   const Tensor* X_ptr = context->Input<Tensor>(0);
-  auto& X = *X_ptr;
-  auto& shape = X.Shape();
+  const auto& X = *X_ptr;
+  const auto& shape = X.Shape();
   auto& Y = *context->Output(0, shape);
 
   using namespace isinf_internal;
 
-  if (X.DataType() == DataTypeImpl::GetType<float>()) {
+  auto dtype = X.DataType();
+  if (dtype == DataTypeImpl::GetType<float>()) {
     ComputeImpl<float>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
-  } else if (X.DataType() == DataTypeImpl::GetType<double>()) {
+  } else if (dtype == DataTypeImpl::GetType<double>()) {
     ComputeImpl<double>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
   } else {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported input data type");
+    // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
+    ORT_THROW("Data type X must be float or double, but instead got ", dtype);
   }
 
   return Status::OK();
