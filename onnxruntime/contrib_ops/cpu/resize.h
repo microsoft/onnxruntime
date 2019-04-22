@@ -12,7 +12,6 @@ template <typename T>
 class Resize : public Upsample<T> {
  public:
   Resize(const OpKernelInfo& info) : Upsample<T>(info) {
-    UpsampleBase::resizable = true;
   }
 
   Status Compute(OpKernelContext* context) const override {
