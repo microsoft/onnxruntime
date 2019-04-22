@@ -113,8 +113,7 @@ std::vector<std::string> GetStackTrace();
 #define ORT_MAKE_OP_STATUS(category, code, node, ...)            \
   ::onnxruntime::common::Status(::onnxruntime::common::category, \
                                 ::onnxruntime::common::code,     \
-                                ::onnxruntime::MakeString("[OpType:", __VA_ARGS__))
-//                                ::onnxruntime::MakeString("[OpType:", node.OpType(), ";Name:", node.Name(), "]", __VA_ARGS__))
+                                ::onnxruntime::MakeString("[OpType:", node.OpType(), ";Name:", node.Name(), "]", __VA_ARGS__))
 
 // Check condition. if not met, return status.
 #define ORT_RETURN_IF_NOT(condition, ...)                                                 \
