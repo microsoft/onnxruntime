@@ -29,6 +29,7 @@ if(NOT NUMPY_INCLUDE_DIR)
   endif(${NUMPY_NOT_FOUND})
 endif(NOT NUMPY_INCLUDE_DIR)
 
+
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.cc"
@@ -42,13 +43,22 @@ add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
+
+if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+endif()
+
+if (onnxruntime_USE_MKLDNN)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_MKLDNN=1)
+endif()
+
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined -Xlinker --gc-sections")
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
@@ -59,6 +69,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_NGRAPH}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -78,16 +89,19 @@ set(onnxruntime_pybind11_state_dependencies
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 if (MSVC)
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
+          ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES} ${ONNXRUNTIME_SO_LINK_FLAG})
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES}
+          ${ONNXRUNTIME_SO_LINK_FLAG})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY} ${ONNXRUNTIME_SO_LINK_FLAG} debug ${onnxruntime_EXTERNAL_LIBRARIES_DEBUG} optimized ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY}
+          ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-Xlinker -rpath=\$ORIGIN")
 endif()
 
@@ -163,16 +177,35 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/VERSION_NUMBER
+      $<TARGET_FILE_DIR:${test_data_target}>
 )
 
 if (onnxruntime_USE_MKLDNN)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${MKLDNN_LIB_DIR}/${MKLDNN_SHARED_LIB}
+    COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
+
+if (onnxruntime_USE_NGRAPH)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_TVM)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD

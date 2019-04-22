@@ -52,9 +52,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  for (const auto& index : node_index) {
-    const Node* node = graph.GetNode(index);
-    graph_build.AddNode(*node);
+  for (const auto& node : graph.Nodes()) {
+    graph_build.AddNode(node);
   }
   ORT_ENFORCE(graph_build.Resolve().IsOK());
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
@@ -71,33 +70,27 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
   auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->supportsModel(string_buf.data(), string_buf.size(), supported_nodes_vector);
-  model_proto.release_graph();
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  std::set<int> supported_nodes_set;
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
-      std::set<size_t> node_set(group.begin(), group.end()); //slx
-      //std::set<size_t> node_set;
-      //for (const auto& index : group) {
-      //  node_set.insert(node_index[index]);
-      //}
+      std::unordered_set<size_t> node_set;
+      node_set.reserve(group.size());
+      for (const auto& index : group) {
+        node_set.insert(node_index[index]);
+      }
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
-      std::map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
-      std::set<const NodeArg*> erased;
+      std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+      std::unordered_set<const NodeArg*> erased;
       int input_order = 0;
       int output_order = 0;
 
       for (const auto& index : group) {
-        supported_nodes_set.insert(index);
-        sub_graph->nodes.push_back(index);
-        const auto& node = graph.GetNode(index);
-        //supported_nodes_set.insert(node_index[index]);
-        //sub_graph->nodes.push_back(node_index[index]);
-        //const auto& node = graph.GetNode(node_index[index]);
+        sub_graph->nodes.push_back(node_index[index]);
+        const auto& node = graph.GetNode(node_index[index]);
 
         for (const auto& input : node->InputDefs()) {
           const auto& it = fused_outputs.find(input);
@@ -118,10 +111,10 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         // to the output list
         if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
           for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-            const auto& node_index = it->GetNode().Index();
+            const auto& node_idx = it->GetNode().Index();
             const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
 
-            if (node_set.find(node_index) != node_set.end()) {
+            if (node_set.find(node_idx) != node_set.end()) {
               const auto& iter = fused_inputs.find(output);
 
               if (iter != fused_inputs.end()) {
@@ -209,6 +202,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, int> input_map;
     const auto& input_defs = fused_node->InputDefs();
+    input_map.reserve(input_defs.size());
     for (int i = 0, end = input_defs.size(); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
     }
@@ -216,6 +210,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Build map from output name to its index in output definitions
     std::unordered_map<std::string, int> output_map;
     const auto& output_defs = fused_node->OutputDefs();
+    output_map.reserve(output_defs.size());
     for (int i = 0, end = output_defs.size(); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
@@ -245,7 +240,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     const auto& graph_output = model_proto.graph().output();
-    std::set<string> graph_outputs_set;
+    std::unordered_set<string> graph_outputs_set;
+    graph_outputs_set.reserve(graph_output.size());
     for (int i = 0, end = graph_output.size(); i < end; ++i) {
       graph_outputs_set.insert(graph_output[i].name());
     }
@@ -289,8 +285,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetwork());
     auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
-    trt_builder->setMaxBatchSize(kMaxBatchSize);
-    trt_builder->setMaxWorkspaceSize(kMaxWorkSpaceSize);
+
+    const char* batch_env = getenv("ORT_TENSORRT_MAX_BATCH_SIZE");
+    if (batch_env) {
+      const int max_batch_size = atoi(batch_env);
+      SetMaxBatchSize(max_batch_size);
+    }    
+    
+    const char* workspace_env = getenv("ORT_TENSORRT_MAX_WORKSPACE_SIZE");
+    if (workspace_env) {
+      const size_t max_workspace_size = atoi(workspace_env);
+      SetMaxWorkspaceSize(max_workspace_size);
+    } 
+    
+    trt_builder->setMaxBatchSize(max_batch_size_);
+    trt_builder->setMaxWorkspaceSize(max_workspace_size_);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
     ORT_ENFORCE(trt_engine != nullptr);
 
@@ -337,6 +346,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         dim_size *= dimensions.d[j];
       }
       output_dim_sizes[bindingIndex] = dim_size;
+
+      const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
+      if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
+        output_shapes[bindingIndex].pop_back();
+      }
     }
 
     ORT_ENFORCE(trt_engine->getNbBindings() == (num_inputs + num_outputs));
@@ -357,7 +371,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(), engines_[context->node_name].get(), contexts_[context->node_name].get(),
-            input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name]};
+            input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_};
       *state = p.release();
       return 0;
     };
@@ -407,6 +421,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
 
       // Run TRT inference
+      std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       trt_state->context->enqueue(batch_size, &buffers[0], stream, nullptr);
 
       // Copy TRT outputs to output tensors

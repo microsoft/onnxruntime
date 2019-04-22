@@ -58,6 +58,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   for (auto& provider : provider_types_) {
     if (provider != onnxruntime::kCpuExecutionProvider &&
         provider != onnxruntime::kMklDnnExecutionProvider &&
+        provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
         provider != onnxruntime::kTensorrtExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
@@ -65,7 +66,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     }
   }
 
-  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximise efficiency.
+  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximize efficiency.
   // e.g. data on GPU prior to an 'If' node. The 'If' must run on CPU, but if the subgraph is GPU based it could
   // consume the data from GPU and we shouldn't insert a memcpy from GPU to CPU prior to the If node, and one from
   // CPU back to GPU when beginning execution of the subgraph. To do that requires inspecting the subgraph (and any

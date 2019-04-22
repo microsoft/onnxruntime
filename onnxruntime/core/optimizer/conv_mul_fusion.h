@@ -8,10 +8,10 @@ namespace onnxruntime {
 
 class ConvMulFusion : public onnxruntime::GraphTransformer {
  public:
-  ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion", "Fusing Mul into Conv") {}
+  ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion") {}
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 };
 
 }  // namespace onnxruntime

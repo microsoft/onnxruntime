@@ -277,7 +277,6 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       // Use tokenexp
       re2::RE2::Options options;
       options.set_longest_match(true);
-      options.set_posix_syntax(true);
       std::unique_ptr<re2::RE2> regex(new re2::RE2(tokenexp, options));
       if (!regex->ok()) {
         ORT_THROW("Can not digest regex: ", regex->error());
@@ -614,21 +613,14 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
                   "tensor(string) expected as input");
   }
 
-  auto& input_dims = X->Shape().GetDims();
+  auto& input_shape = X->Shape();
+  auto& input_dims = input_shape.GetDims();
   size_t N = 0;
   size_t C = 0;
   if (input_dims.size() == 1) {
     N = 1;
-    if (input_dims[0] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid C dimension value");
-    }
     C = input_dims[0];
   } else if (input_dims.size() == 2) {
-    if (input_dims[0] < 1 || input_dims[1] < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Invalid N and/or C dimension values");
-    }
     N = input_dims[0];
     C = input_dims[1];
   } else {
@@ -636,7 +628,20 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
                   "Input dimensions are either [C] or [N][C] allowed");
   }
 
+  // Empty input
   Status s;
+  if (input_shape.Size() == 0) {
+    std::vector<int64_t> output_dims;
+    if (input_dims.size() == 2) {
+      output_dims.push_back(input_dims[0]);
+    }
+    output_dims.push_back(0);
+
+    TensorShape output_shape(output_dims);
+    ctx->Output(0, output_shape);
+    return s;
+  }
+
   if (char_tokenezation_) {
     s = CharTokenize(ctx, N, C, input_dims);
   } else {

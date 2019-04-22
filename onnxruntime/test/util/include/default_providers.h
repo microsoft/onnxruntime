@@ -10,6 +10,7 @@ namespace test {
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_arena = true);
+std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();

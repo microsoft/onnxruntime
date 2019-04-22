@@ -1182,7 +1182,8 @@ MlasPool(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1210,6 +1211,9 @@ Arguments:
     Input - Supplies the input tensor.
 
     Output - Supplies the output tensor.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
 
 Return Value:
 
@@ -1315,13 +1319,27 @@ Return Value:
         }
     }
 
+#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#else
+    //
+    // Use an external thread pool if one is provided.
+    // TODO: change to use MlasExecuteThreaded
+
+    if (!(ThreadPool == nullptr)) {
+        std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
+        ThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+        return;
+    }
+#endif
+
     //
     // Execute the pooling kernel routine.
     //
 
-#if defined(MLAS_USE_OPENMP)
+#if defined(_OPENMP)
 
-    #pragma omp parallel for
+#pragma omp parallel for
     for (int64_t c = 0; c < int64_t(TotalChannelCount); c++) {
         PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
     }
@@ -1331,5 +1349,4 @@ Return Value:
     PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
 
 #endif
-
 }

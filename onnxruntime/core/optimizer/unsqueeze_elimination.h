@@ -3,16 +3,29 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
-class UnsqueezeElimination : public onnxruntime::GraphTransformer {
+/**
+@Class UnsqueezeElimination
+
+Rewrite rule that eliminates an unsqueeze operator that takes as input an initializer.
+
+It is attempted to be triggered only on nodes with op type "Unsqueeze".
+*/
+class UnsqueezeElimination : public RewriteRule {
  public:
-  UnsqueezeElimination() noexcept : onnxruntime::GraphTransformer("EliminateUnsqueeze", "Eliminate unsqueeze node") {}
+  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Unsqueeze"};
+  }
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
+
+  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
 };
 
 }  // namespace onnxruntime

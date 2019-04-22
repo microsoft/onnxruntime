@@ -10,8 +10,10 @@ namespace test {
 
 void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
-                            const std::unordered_map<std::string, float> attribs = {}) {
-  OpTester test(szOp);
+                            const std::unordered_map<std::string, float> attribs = {},
+                            bool is_tensorrt_supported = true,
+                            int opset_version = 7) {
+  OpTester test(szOp, opset_version);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
@@ -24,7 +26,13 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   test.AddInput<float>("X", dims, input_vals);
   test.AddOutput<float>("Y", dims, expected_vals);
-  test.Run();
+
+  // Disable TensorRT on unsupported tests
+  std::unordered_set<std::string> excluded_providers;
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 std::vector<float> input_vals = {
@@ -92,17 +100,7 @@ TEST(ActivationOpTest, ThresholdedRelu) {
   TestUnaryElementwiseOp("ThresholdedRelu",
                          input_vals,
                          [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}});
-}
-
-TEST(ActivationOpTest, ScaledTanh) {
-  static constexpr float alpha = 2.0f;
-  static constexpr float beta = 1.5f;
-
-  TestUnaryElementwiseOp("ScaledTanh",
-                         input_vals,
-                         [](float x) { return alpha * tanh(beta * x); },
-                         {{"alpha", alpha}, {"beta", beta}});
+                         {{"alpha", alpha}}, true, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -183,6 +181,25 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
   test.Run();
 }
 
+#ifndef DISABLE_CONTRIB_OPS
+TEST(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
+  float alpha = 0.1f;
+  TestUnaryElementwiseOp("ThresholdedRelu",
+                         input_vals,
+                         [alpha](float x) { return (x >= alpha) ? x : 0; },
+                         {{"alpha", alpha}}, true, 1);
+}
+
+TEST(ActivationOpTest, ScaledTanh) {
+  static constexpr float alpha = 2.0f;
+  static constexpr float beta = 1.5f;
+
+  TestUnaryElementwiseOp("ScaledTanh",
+                         input_vals,
+                         [](float x) { return alpha * tanh(beta * x); },
+                         {{"alpha", alpha}, {"beta", beta}});
+}
+
 TEST(ActivationOpTest, ParametricSoftplus) {
   static constexpr float alpha = 2.0f;
   static constexpr float beta = 1.5f;
@@ -198,6 +215,7 @@ TEST(ActivationOpTest, ParametricSoftplus) {
                          },
                          {{"alpha", alpha}, {"beta", beta}});
 }
+#endif
 
 TEST(ActivationOpTest, Softplus) {
   TestUnaryElementwiseOp("Softplus",
@@ -207,7 +225,7 @@ TEST(ActivationOpTest, Softplus) {
                              return x + logf(expf(-x) + 1);
                            else
                              return logf(expf(x) + 1);
-                         });
+                         }, {}, false);
 }
 
 TEST(ActivationOpTest, Softsign) {

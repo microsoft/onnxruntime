@@ -38,14 +38,10 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "Eigen/src/Core/arch/CUDA/Half.h"
+#include "Eigen/src/Core/arch/GPU/Half.h"
 
 #if defined(USE_MLAS)
 #include "core/mlas/inc/mlas.h"
-#endif
-
-#ifdef USE_MKLDNN
-#include "mkldnn.h"
 #endif
 
 namespace onnxruntime {
@@ -110,7 +106,7 @@ void GemmEigen(
 // will delegate the Caffe math functions that are BLAS-related to either the
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
-// when USE_MKLDNN and USE_MKLML are defined, use cblas APIs for MKLML
+// when USE_MKLML is defined, use cblas APIs for MKLML
 #if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
@@ -142,26 +138,11 @@ void Gemm<float, CPUMathUtil>(
     float* C,
     CPUMathUtil* /*provider*/,
     MLDataType /*math_type*/) {
-#if defined(USE_MKLDNN)
-  int lda = (int)((TransA == CblasTrans) ? M : K);
-  int ldb = (int)((TransB == CblasTrans) ? K : N);
-  int M_ = (int)M;
-  int N_ = (int)N;
-  int K_ = (int)K;
-  // mkldnn_sgemm expects col major matrices, so we need to swap the operands A and B
-  auto status = mkldnn_sgemm(TransB == CblasNoTrans ? "N" : "T",
-                             TransA == CblasNoTrans ? "N" : "T",
-                             &N_, &M_, &K_,
-                             &alpha, B, &ldb,
-                             A, &lda,
-                             &beta, C, &N_);
-  if (status != mkldnn_success) {
-    ORT_THROW("mkldnn_sgemm failed with status: ", status);
-  }
-#elif defined(USE_MLAS)
+#if defined(USE_MLAS)
   int lda = (int)((TransA == CblasNoTrans) ? K : M);
   int ldb = (int)((TransB == CblasNoTrans) ? N : K);
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
+  // TODO: Make this use the operator threadpool
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, nullptr);
 #else
   GemmEigen<float>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 #endif
@@ -273,19 +254,8 @@ void GemmEx<float, CPUMathUtil>(
     float* C,
     const int ldc,
     CPUMathUtil*) {
-#if defined(USE_MKLDNN)
-  // mkldnn_sgemm expects col major matrices, so we need to swap the operands A and B
-  auto status = mkldnn_sgemm(TransB == CblasNoTrans ? "N" : "T",
-                             TransA == CblasNoTrans ? "N" : "T",
-                             &N, &M, &K,
-                             &alpha, B, &ldb,
-                             A, &lda,
-                             &beta, C, &ldc);
-  if (status != mkldnn_success) {
-    ORT_THROW("mkldnn_sgemm failed with status: ", status);
-  }
-#elif defined(USE_MLAS)
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+#if defined(USE_MLAS)
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
 #else
   using OuterStride = Eigen::OuterStride<Eigen::Dynamic>;
   using StridedMap = Eigen::Map<Eigen::MatrixXf, 0, OuterStride>;
@@ -779,6 +749,26 @@ SPECIALIZED_REDUCEMAX(int32_t)
 SPECIALIZED_REDUCEMAX(int64_t)
 
 #undef SPECIALIZED_REDUCEMAX
+
+#define SPECIALIZED_ROWWISESUM(T)                                 \
+  template <>                                                     \
+  void RowwiseSum<T, CPUMathUtil>(                                \
+      const int N, const int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, N) =                                     \
+        ConstEigenMatrixMap<T>(x, D, N).colwise().sum();          \
+  }
+SPECIALIZED_ROWWISESUM(float)
+#undef SPECIALIZED_ROWWISESUM
+
+#define SPECIALIZED_COLWISESUM(T)                                 \
+  template <>                                                     \
+  void ColwiseSum<T, CPUMathUtil>(                                \
+      const int N, const int D, const T* x, T* y, CPUMathUtil*) { \
+    EigenVectorMap<T>(y, D) =                                     \
+        ConstEigenMatrixMap<T>(x, D, N).rowwise().sum();          \
+  }
+SPECIALIZED_COLWISESUM(float)
+#undef SPECIALIZED_COLWISESUM
 
 #define SPECIALIZED_ROWWISEMAX(T)                                 \
   template <>                                                     \

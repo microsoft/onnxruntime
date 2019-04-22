@@ -45,6 +45,32 @@ class TestResultStat {
 
   std::string ToString();
 
+  TestResultStat& operator += (const TestResultStat& result) {
+    total_test_case_count += result.total_test_case_count;
+    total_model_count     += result.total_model_count;
+    succeeded             += result.succeeded;
+    not_implemented       += result.not_implemented;
+    load_model_failed     += result.load_model_failed;
+    throwed_exception     += result.throwed_exception;
+    result_differs        += result.result_differs;
+    skipped               += result.skipped;
+    invalid_graph         += result.invalid_graph;
+
+    for(const auto& s:result.not_implemented_kernels) {
+        AddNotImplementedKernels(s);
+    }
+
+    for(const auto& s:result.failed_kernels) {
+        AddNotImplementedKernels(s);
+    }
+
+    for(const auto& s:result.failed_test_cases) {
+        AddNotImplementedKernels(s);
+    }
+
+    return *this;
+  }
+
  private:
   onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;

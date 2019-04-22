@@ -14,7 +14,7 @@ OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   throw std::runtime_error("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
-    : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
+    : value(other.value), provider_factories(other.provider_factories) {
 }
 
 ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
@@ -51,8 +51,16 @@ ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options) {
   options->value.profile_file_prefix.clear();
 }
 
-ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions*) {}
-ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions*) {}
+// enable the memory pattern optimization.
+// The idea is if the input shapes are the same, we could trace the internal memory allocation
+// and generate a memory pattern for future request. So next time we could just do one allocation
+// with a big chunk for all the internal memory allocation.
+ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options) {
+  options->value.enable_mem_pattern = true;
+}
+ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
+  options->value.enable_mem_pattern = false;
+}
 
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
@@ -75,13 +83,20 @@ ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, u
   options->value.session_log_verbosity_level = session_log_verbosity_level;
 }
 
+// Set Graph optimization level.
+// Returns 0 on success and -1 otherwise
+// Available options are : 0, 1, 2.
+ORT_API(int, OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level) {
+  if (graph_optimization_level >= static_cast<uint32_t>(onnxruntime::TransformerLevel::MaxTransformerLevel)) {
+    return -1;
+  }
+  options->value.graph_optimization_level = static_cast<onnxruntime::TransformerLevel>(graph_optimization_level);
+  return 0;
+}
+
 ///How many threads in the session thread pool.
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
   if (session_thread_pool_size <= 0) return -1;
   options->value.session_thread_pool_size = session_thread_pool_size;
   return 0;
-}
-
-ORT_API(void, OrtAppendCustomOpLibPath, _In_ OrtSessionOptions* options, const char* lib_path) {
-  options->custom_op_paths.emplace_back(lib_path);
 }

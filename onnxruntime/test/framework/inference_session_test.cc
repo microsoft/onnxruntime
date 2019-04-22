@@ -31,6 +31,8 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/optimizer/dummy_graph_transformer.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 #include "gtest/gtest.h"
 
@@ -681,9 +683,10 @@ static void TestBindHelper(const std::string& log_str,
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, run_provider_type);
 
-  std::stringstream s1;
-  p_model->ToProto().SerializeToOstream(&s1);
-  ASSERT_TRUE(session_object.Load(s1).IsOK());
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -709,9 +712,10 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, kCpuExecutionProvider);
 
-  std::stringstream s1;
-  p_model->ToProto().SerializeToOstream(&s1);
-  ASSERT_TRUE(session_object.Load(s1).IsOK());
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
@@ -869,9 +873,10 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
 
-  std::stringstream s1;
-  model_proto.SerializeToOstream(&s1);
-  auto status = session_object.Load(s1);
+  std::string s1;
+  model_proto.SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   status = session_object.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -942,12 +947,12 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
@@ -1234,7 +1239,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  for (int i = 0; i < Y_data.size(); ++i)
+  for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
@@ -1257,7 +1262,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     if (seq_start > 0) {
       // continue from truncated sequence
       ASSERT_TRUE(fetches.size() == output_names.size());
-      for (int i_output = 0; i_output < output_names.size(); ++i_output) {
+      for (size_t i_output = 0; i_output < output_names.size(); ++i_output) {
         auto iter = init_state_map.find(output_names[i_output]);
         if (iter != init_state_map.end())
           truncated_feeds.insert(std::make_pair(iter->second, fetches[i_output]));
@@ -1341,6 +1346,52 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   int run_number = 0;
   run_test(run_number++);
   run_test(run_number++);
+}
+
+// This test validates the RegisterTransformer API
+// It creates and registers a dummy transformer and after session initialize
+// validates that this transformer was called regardless of the graph optimization level set.
+TEST(InferenceSessionTests, TestRegisterTransformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = static_cast<TransformerLevel>(i);
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+
+    // Create and register dummy graph transformer
+    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
+    session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
+
+    session_object.Load(model_uri);
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+
+    // Validate transformer was called after Session.Initialize
+    ASSERT_TRUE(dummy_transformer->IsTransformerInvoked());
+  }
+}
+
+// This test validates session initialize is successful when all the pre-defined
+// L1 and L2 transformers are enabled.
+TEST(InferenceSessionTests, TestL1AndL2Transformers) {
+  // Models which cover all transformers.
+  std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
+                                              "testdata/transform/abs-id-max.onnx",
+                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/matmul_add_fusion/2Input/model.onnx",
+                                              "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
+                                              "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
+
+  for (const auto& model_uri : test_model_uris) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = TransformerLevel::Level2;
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+    ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+  }
 }
 
 }  // namespace test

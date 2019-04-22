@@ -7,20 +7,20 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <mutex>
 
 // onnxruntime dependencies
 #include <core/common/common.h>
-#include <core/common/logging/sinks/clog_sink.h>
-#include <core/common/logging/logging.h>
 #include <core/common/status.h>
-#include <core/graph/onnx_protobuf.h>
-#include <core/framework/environment.h>
-#include <core/session/inference_session.h>
 #include <core/platform/env.h>
-#include <core/session/IOBinding.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "test_configuration.h"
 #include "heap_buffer.h"
+#include "test_session.h"
+#include "OrtValueList.h"
+
+class ITestCase;
+class TestModelInfo;
 
 namespace onnxruntime {
 namespace perftest {
@@ -36,7 +36,7 @@ struct PerformanceResult {
     std::ofstream outfile;
     outfile.open(path, std::ofstream::out | std::ofstream::app);
     if (!outfile.good()) {
-      LOGF_DEFAULT(ERROR, "failed to open result file");
+      printf("failed to open result file");
       return;
     }
 
@@ -44,7 +44,7 @@ struct PerformanceResult {
       outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << "," << average_CPU_usage << "," << runs << std::endl;
     }
 
-    if (time_costs.size() > 0 && f_include_statistics) {
+    if (!time_costs.empty() && f_include_statistics) {
       std::vector<double> sorted_time = time_costs;
 
       size_t total = sorted_time.size();
@@ -57,6 +57,8 @@ struct PerformanceResult {
       std::sort(sorted_time.begin(), sorted_time.end());
 
       outfile << std::endl;
+      outfile << "Min Latency is " << sorted_time[0] << "sec" << std::endl;
+      outfile << "Max Latency is " << sorted_time[total - 1] << "sec" << std::endl;
       outfile << "P50 Latency is " << sorted_time[n50] << "sec" << std::endl;
       outfile << "P90 Latency is " << sorted_time[n90] << "sec" << std::endl;
       outfile << "P95 Latency is " << sorted_time[n95] << "sec" << std::endl;
@@ -70,9 +72,9 @@ struct PerformanceResult {
 
 class PerformanceRunner {
  public:
-  PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config)
-      : env_(env), performance_test_config_(test_config) {}
+  PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config);
 
+  ~PerformanceRunner();
   Status Run();
 
   inline const PerformanceResult& GetResult() const { return performance_result_; }
@@ -81,14 +83,16 @@ class PerformanceRunner {
     performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path,
                                    performance_test_config_.run_config.f_dump_statistics);
   }
-  ~PerformanceRunner() {
-    if (session_object_ != nullptr) OrtReleaseSession(session_object_);
-  }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerformanceRunner);
 
  private:
   bool Initialize();
   Status RunOneIteration(bool isWarmup = false);
+
+  Status FixDurationTest();
+  Status RepeatedTimesTest();
+  Status ForkJoinRepeat();
+  Status RunParallelDuration();
 
   inline Status RunFixDuration() {
     while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
@@ -105,20 +109,16 @@ class PerformanceRunner {
   }
 
  private:
-  OrtEnv* env_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
-  // not owned
-  OrtSession* session_object_ = nullptr;
-  std::vector<const char*> input_names_;
-  std::unordered_map<std::string, OrtValue*> feeds_;
-  std::vector<OrtValue*> input_values_;
+  TestModelInfo* test_model_info_;
+  std::unique_ptr<TestSession> session_;
+  OrtValueArray inputs_;
   HeapBuffer b_;
-  std::vector<std::string> output_names_;
-  // The same size with output_names_.
-  // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
-  std::vector<const char*> output_names_raw_ptr;
-  std::vector<OrtValue*> output_values_;
+  std::unique_ptr<ITestCase> test_case_;
+
+  // TODO: Convert to OrtMutex
+  std::mutex results_mutex_;
 };
 }  // namespace perftest
 }  // namespace onnxruntime

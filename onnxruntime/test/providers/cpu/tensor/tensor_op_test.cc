@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/providers/cpu/tensor/crop.h"
+#include "contrib_ops/cpu/crop.h"
 #include "core/util/math.h"
 
 using namespace ONNX_NAMESPACE;
@@ -12,13 +12,15 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
+// Disable TensorRT on some of the tests because of unsupported data types
+
 TEST(TensorOpTest, Reshape) {
   OpTester test("Reshape");
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});  // Nuphar only supports reshape shape from initializer
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyDim) {
@@ -27,7 +29,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
   test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
   test.AddInput<int64_t>("shape", {0}, {}, true);
   test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithInitializer) {
@@ -36,7 +38,7 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Identity) {
@@ -52,7 +54,7 @@ TEST(TensorOpTest, IdentityString) {
   std::vector<std::string> X{"this", "is", "a", "test", "for", "identity"};
   test.AddInput<std::string>("input", {2, 3}, X);
   test.AddOutput<std::string>("output", {2, 3}, X);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ShapeTest2D) {
@@ -60,7 +62,7 @@ TEST(TensorOpTest, ShapeTest2D) {
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<int64_t>("shape", {2}, {2, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ShapeTest3D) {
@@ -68,7 +70,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 
   test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 template <typename SrcType,
@@ -83,7 +85,7 @@ void TestCastOp(const std::initializer_list<SrcType>& input,
   test.AddAttribute("to", toType);
   test.AddInput<SrcType>("input", dimensions, input);
   test.AddOutput<DstType>("output", dimensions, output);
-  test.Run(expect_result, expected_failure_string);
+  test.Run(expect_result, expected_failure_string, {kTensorrtExecutionProvider});
 }
 
 template <typename SrcType>
@@ -302,6 +304,34 @@ TEST(TensorOpTest, CastToString) {
   TestCastOp(int_16_input, int_string_data, shape, TensorProto::STRING);
 }
 
+std::pair<float, float> MeanStdev(std::vector<float>& v) {
+  float sum = std::accumulate(v.begin(), v.end(), 0.0f);
+  float mean = sum / v.size();
+
+  std::vector<float> diff(v.size());
+  std::transform(v.begin(), v.end(), diff.begin(),
+                 std::bind(std::minus<float>(), std::placeholders::_1, mean));
+  float sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0f);
+  float stdev = std::sqrt(sq_sum / v.size());
+
+  return std::make_pair(mean, stdev);
+}
+
+void Normalize(std::vector<float>& v,
+               std::pair<float, float>& mean_stdev, bool normalize_variance) {
+  float mean = mean_stdev.first;
+  float stdev = mean_stdev.second;
+
+  std::transform(v.begin(), v.end(), v.begin(),
+                 std::bind(std::minus<float>(), std::placeholders::_1, mean));
+
+  if (normalize_variance) {
+    std::transform(v.begin(), v.end(), v.begin(),
+                   std::bind(std::divides<float>(), std::placeholders::_1, stdev));
+  }
+}
+
+#ifndef DISABLE_CONTRIB_OPS
 TEST(TensorOpTest, CropBorderOnly) {
   const int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
@@ -353,31 +383,31 @@ TEST(TensorOpTest, CropBorderAndScale) {
   test.Run();
 }
 
-std::pair<float, float> MeanStdev(std::vector<float>& v) {
-  float sum = std::accumulate(v.begin(), v.end(), 0.0f);
-  float mean = sum / v.size();
+TEST(TensorOpTest, ImageScalerTest) {
+  const int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 3.0f,
+      3.0f, 5.0f,
 
-  std::vector<float> diff(v.size());
-  std::transform(v.begin(), v.end(), diff.begin(),
-                 std::bind2nd(std::minus<float>(), mean));
-  float sq_sum = std::inner_product(diff.begin(), diff.end(), diff.begin(), 0.0f);
-  float stdev = std::sqrt(sq_sum / v.size());
+      3.0f, 5.0f,
+      7.0f, 9.0f};
 
-  return std::make_pair(mean, stdev);
-}
+  float scale = 2.0f;
+  std::vector<float> bias = {1.0f, 2.0f};
 
-void Normalize(std::vector<float>& v,
-               std::pair<float, float>& mean_stdev, bool normalize_variance) {
-  float mean = mean_stdev.first;
-  float stdev = mean_stdev.second;
+  std::vector<float> result = {
+      3.0f, 7.0f,
+      7.0f, 11.0f,
 
-  std::transform(v.begin(), v.end(), v.begin(),
-                 std::bind2nd(std::minus<float>(), mean));
+      8.0f, 12.0f,
+      16.0f, 20.0f};
 
-  if (normalize_variance) {
-    std::transform(v.begin(), v.end(), v.begin(),
-                   std::bind2nd(std::divides<float>(), stdev));
-  }
+  OpTester test("ImageScaler");
+  test.AddAttribute("scale", scale);
+  test.AddAttribute("bias", bias);
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, result);
+  test.Run();
 }
 
 void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
@@ -473,6 +503,21 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.Run();
 }
 
+TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
+  // across_channels: true, normalize_variance: true
+  MeanVarianceNormalizationAcrossChannels(true, true);
+
+  // across_channels: true, normalize_variance: false
+  MeanVarianceNormalizationAcrossChannels(true, false);
+
+  // across_channels: false, normalize_variance: false
+  MeanVarianceNormalizationPerChannel(false, false);
+
+  // across_channels: false, normalize_variance: true
+  MeanVarianceNormalizationPerChannel(false, true);
+}
+#endif
+
 void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   const int64_t N = 2, C = 2, H = 2, W = 3;
 
@@ -560,50 +605,12 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
-  // across_channels: true, normalize_variance: true
-  MeanVarianceNormalizationAcrossChannels(true, true);
-
-  // across_channels: true, normalize_variance: false
-  MeanVarianceNormalizationAcrossChannels(true, false);
-
-  // across_channels: false, normalize_variance: false
-  MeanVarianceNormalizationPerChannel(false, false);
-
-  // across_channels: false, normalize_variance: true
-  MeanVarianceNormalizationPerChannel(false, true);
 
   // axes: {0, 1, 2, 3} for across_channels
   MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
 
   // Default (axes: {0, 2, 3}) for non across_channels
   MeanVarianceNormalizationFunctionDefaultPerChannel();
-}
-
-TEST(TensorOpTest, ImageScalerTest) {
-  const int64_t N = 1, C = 2, H = 2, W = 2;
-  std::vector<float> X = {
-      1.0f, 3.0f,
-      3.0f, 5.0f,
-
-      3.0f, 5.0f,
-      7.0f, 9.0f};
-
-  float scale = 2.0f;
-  std::vector<float> bias = {1.0f, 2.0f};
-
-  std::vector<float> result = {
-      3.0f, 7.0f,
-      7.0f, 11.0f,
-
-      8.0f, 12.0f,
-      16.0f, 20.0f};
-
-  OpTester test("ImageScaler");
-  test.AddAttribute("scale", scale);
-  test.AddAttribute("bias", bias);
-  test.AddInput<float>("input", {N, C, H, W}, X);
-  test.AddOutput<float>("output", {N, C, H, W}, result);
-  test.Run();
 }
 
 }  // namespace test

@@ -19,6 +19,8 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 
+#include "core/platform/ort_mutex.h"
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -297,10 +299,20 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   // GRU outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
-  Tensor* Y = context.Output(/*index*/ 0, Y_dims);  // TODO: Adjust for how optional outputs gets implemented
+  Tensor* Y = context.Output(/*index*/ 0, Y_dims);
 
   TensorShape Y_h_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_h = context.Output(/*index*/ 1, Y_h_dims);
+
+  // Reset output and return if max sequence length is 0
+  if (sequence_lens != nullptr) {
+    int32_t max_sequence_length = *std::max_element(sequence_lens->Data<int32_t>(), sequence_lens->Data<int32_t>() + sequence_lens->Shape().Size());
+    if (max_sequence_length == 0) {
+      if (Y != nullptr) std::fill_n(Y->MutableData<T>(), Y_dims.Size(), T{});
+      if (Y_h != nullptr) std::fill_n(Y_h->MutableData<T>(), Y_h_dims.Size(), T{});
+      return Status::OK();
+    }
+  }
 
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
@@ -384,9 +396,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[3],
         clip_);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
-
-  }
-  else {
+  } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
         seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
@@ -781,20 +791,24 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
     prev_Ht_end = output_end;
   }
 
-  if (output_sequence) {
-    // copy last output to final_hidden_state
-    for (int i = 0; i < batch_size_; i++) {
-      const int seq_len = sequence_lengths[i];
+  // copy last output to final_hidden_state
+  for (int i = 0; i < batch_size_; i++) {
+    const int seq_len = sequence_lengths[i];
+    if (seq_len == 0) {
+      auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
+      std::fill_n(final_hidden_state_dst, hidden_size_, T{});
+      continue;
+    } else if (output_sequence) {
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
     }
+  }
 
-    if (direction_ == kReverse) {
-      ReverseSequence<T>(outputs, original_outputs,
-                         sequence_lengths, seq_length_,
-                         batch_size_, hidden_size_, num_directions);
-    }
+  if (output_sequence && direction_ == kReverse) {
+    ReverseSequence<T>(outputs, original_outputs,
+                       sequence_lengths, seq_length_,
+                       batch_size_, hidden_size_, num_directions);
   }
 }
 
