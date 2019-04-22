@@ -10,12 +10,12 @@ class ModelZooTests(unittest.TestCase):
     server_ip = '127.0.0.1'
     server_port = 54321
     url_pattern = 'http://{0}:{1}/v1/models/{2}/versions/{3}:predict'
-    hosting_app_path = '/home/klein/code/onnxruntime/build/Linux/Debug/onnxruntime_hosting'
+    hosting_app_path = ''
     log_level = 'verbose'
     server_ready_in_seconds = 2
     need_data_preparation = False
     need_data_cleanup = False
-    model_zoo_test_data_path = '/home/klein/code/temp/64/test_data'
+    model_zoo_test_data_path = ''
     supported_opsets = ['opset_7', 'opset_8', 'opset_9']
     skipped_models = ['tiny_yolov2']
 
