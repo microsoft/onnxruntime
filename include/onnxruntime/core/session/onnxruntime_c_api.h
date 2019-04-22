@@ -212,6 +212,7 @@ ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
 // The idea is if the input shapes are the same, we could trace the internal memory allocation
 // and generate a memory pattern for future request. So next time we could just do one allocation
 // with a big chunk for all the internal memory allocation.
+// Note: memory pattern optimization is only available when SequentialExecution enabled.
 ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 
