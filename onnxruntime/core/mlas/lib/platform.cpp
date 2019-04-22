@@ -162,22 +162,4 @@ Return Value:
 
 #endif
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-
-    //
-    // Retrieve the number of processors in the system.
-    //
-
-    SYSTEM_INFO SystemInfo;
-
-    GetSystemInfo(&SystemInfo);
-
-    if (SystemInfo.dwNumberOfProcessors <= MLAS_MAXIMUM_THREAD_COUNT) {
-        this->MaximumThreadCount = int32_t(SystemInfo.dwNumberOfProcessors);
-    } else {
-        this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
-    }
-
-#endif
-
 }

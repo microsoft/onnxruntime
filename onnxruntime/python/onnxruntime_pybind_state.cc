@@ -34,13 +34,20 @@
 #define BACKEND_MKLML ""
 #endif
 
+#if USE_NGRAPH
+#define BACKEND_NGRAPH "-NGRAPH"
+#include "core/providers/ngraph/ngraph_execution_provider.h"
+#else
+#define BACKEND_NGRAPH ""
+#endif
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -55,6 +62,9 @@
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
+#ifdef USE_NGRAPH
+#include "core/providers/ngraph/ngraph_provider_factory.h"
+#endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
@@ -67,6 +77,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
@@ -216,6 +227,11 @@ void InitializeSession(InferenceSession* sess) {
   {
     const bool enable_cpu_mem_arena = true;
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
+  }
+#endif
+#if USE_NGRAPH
+  {
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
   }
 #endif
 

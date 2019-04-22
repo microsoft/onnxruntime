@@ -8,7 +8,15 @@
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267)
 #endif
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #else
 #include "task_thread_pool.h"
 #endif
@@ -58,10 +66,10 @@ class Barrier {
   bool notified_;
 };
 
-class ThreadPool::Impl : public Eigen::NonBlockingThreadPool {
+class ThreadPool::Impl : public Eigen::ThreadPool {
  public:
   Impl(const std::string& name, int num_threads)
-      : Eigen::NonBlockingThreadPool(num_threads) {
+      : Eigen::ThreadPool(num_threads) {
     ORT_UNUSED_PARAMETER(name);
   }
 
