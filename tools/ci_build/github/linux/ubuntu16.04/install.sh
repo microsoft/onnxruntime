@@ -72,9 +72,6 @@ for onnx_version in "3376d4438aaadfba483399fa249b841153152bc0" "6f91908b6a894278
   pip3 uninstall -y onnx
 done
 
-aria2c -q -d /tmp/src  http://bitbucket.org/eigen/eigen/get/3.3.5.tar.bz2
-tar -jxf /tmp/src/eigen-eigen-b3f3d4950030.tar.bz2 -C /usr/include
-mv /usr/include/eigen-eigen-b3f3d4950030 /usr/include/eigen3
 chmod 0777 /data/onnx
 rm -rf /tmp/src
 

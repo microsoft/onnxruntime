@@ -38,7 +38,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "Eigen/src/Core/arch/CUDA/Half.h"
+#include "Eigen/src/Core/arch/GPU/Half.h"
 
 #if defined(USE_MLAS)
 #include "core/mlas/inc/mlas.h"
@@ -141,7 +141,8 @@ void Gemm<float, CPUMathUtil>(
 #if defined(USE_MLAS)
   int lda = (int)((TransA == CblasNoTrans) ? K : M);
   int ldb = (int)((TransB == CblasNoTrans) ? N : K);
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
+  // TODO: Make this use the operator threadpool
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, nullptr);
 #else
   GemmEigen<float>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 #endif
@@ -254,7 +255,7 @@ void GemmEx<float, CPUMathUtil>(
     const int ldc,
     CPUMathUtil*) {
 #if defined(USE_MLAS)
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
 #else
   using OuterStride = Eigen::OuterStride<Eigen::Dynamic>;
   using StridedMap = Eigen::Map<Eigen::MatrixXf, 0, OuterStride>;

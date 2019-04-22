@@ -53,6 +53,12 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
+  // enable the memory pattern optimization.
+  // The idea is if the input shapes are the same, we could trace the internal memory allocation
+  // and generate a memory pattern for future request. So next time we could just do one allocation
+  // with a big chunk for all the internal memory allocation.
+  bool enable_mem_pattern = true;
+
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
@@ -396,18 +402,8 @@ class InferenceSession {
   std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 
-// Environment for this session
-// not used now; we'll need it when we introduce threadpool
-// statically allocated pointer, no need to manage its lifetime.
-//Env* env_;
-
-// Threadpool for this session
-//thread::ThreadPool thread_pool_; // not used for now; will add it later when implementing RunAsync
-#ifdef USE_EIGEN_THREADPOOL
-  std::unique_ptr<Eigen::NonBlockingThreadPool> thread_pool_;
-#else
-  std::unique_ptr<TaskThreadPool> thread_pool_;
-#endif
+  // Threadpool for this session
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;

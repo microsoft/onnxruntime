@@ -11,11 +11,12 @@
 #include <sstream>
 #include <unordered_set>
 #include <list>
+#include <thread>
 
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/platform/notification.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/threadpool.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
@@ -48,10 +49,6 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
-
-#ifdef USE_EIGEN_THREADPOOL
-#include <unsupported/Eigen/CXX11/ThreadPool>
-#endif
 
 using namespace ONNX_NAMESPACE;
 
@@ -102,21 +99,18 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
 
   InitLogger(logging_manager);
 
-  // currently the threadpool is used by the parallel executor only and hence
-  // there is no point creating it when only sequential execution is enabled.
-  if (!session_options.enable_sequential_execution) {
-    int pool_size = session_options_.session_thread_pool_size == 0
+  // The threadpool is currently evolving.  We will always create a per session threadpool.
+  // Beyond this, we will create a global thread pool to share across sessions.
+  {
+    int pool_size = session_options_.session_thread_pool_size <= 0
                         ? std::thread::hardware_concurrency() / 2
                         : session_options_.session_thread_pool_size;
 
-#ifdef USE_EIGEN_THREADPOOL
-    thread_pool_ = std::make_unique<Eigen::NonBlockingThreadPool>(pool_size);
-#else
-    thread_pool_ = std::make_unique<TaskThreadPool>(pool_size);
-#endif
+    thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("SESSION", pool_size);
   }
 
   session_state_.SetThreadPool(thread_pool_.get());
+  session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern && session_options.enable_sequential_execution);
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
