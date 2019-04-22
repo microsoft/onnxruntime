@@ -24,7 +24,7 @@ HostingEnvironment::HostingEnvironment(logging::Severity severity) : severity_(s
   session = std::make_unique<onnxruntime::InferenceSession>(options_, &default_logging_manager_);
 }
 
-common::Status HostingEnvironment::InitializeModel(std::string model_path) {
+common::Status HostingEnvironment::InitializeModel(const std::string& model_path) {
   auto status = session->Load(model_path);
   if (!status.IsOK()) {
     return status;
@@ -46,7 +46,7 @@ const std::vector<std::string>& HostingEnvironment::GetModelOutputNames() const 
   return model_output_names_;
 }
 
-const logging::Logger& HostingEnvironment::GetAppLogger() {
+const logging::Logger& HostingEnvironment::GetAppLogger() const {
   return default_logging_manager_.DefaultLogger();
 }
 
