@@ -5,6 +5,7 @@ import unittest
 import random
 import os
 import test_util
+import sys
 
 class ModelZooTests(unittest.TestCase):
     server_ip = '127.0.0.1'
@@ -12,7 +13,8 @@ class ModelZooTests(unittest.TestCase):
     url_pattern = 'http://{0}:{1}/v1/models/{2}/versions/{3}:predict'
     hosting_app_path = ''  # Required
     log_level = 'verbose'
-    server_ready_in_seconds = 2
+    server_ready_in_seconds = 10
+    server_off_in_seconds = 100
     need_data_preparation = False
     need_data_cleanup = False
     model_zoo_model_path = ''  # Required
@@ -51,35 +53,49 @@ class ModelZooTests(unittest.TestCase):
                 test_util.test_log('\t\t{0}'.format(data))
         test_util.test_log('-----------------------')
 
+        self.server_port = random.randint(30000, 40000)
         for model_path, data_paths in model_data_map.items():
-            test_util.test_log('Current model: {0}'.format(model_path))
             hosting_app_proc = None
-            self.server_port = random.randint(30000, 50000)
             try:
                 cmd = [self.hosting_app_path, '--http_port', str(self.server_port), '--model_path', os.path.join(model_path, 'model.onnx'), '--logging_level', self.log_level]
                 test_util.test_log(cmd)
-                hosting_app_proc = test_util.launch_hosting_app(cmd, self.server_ready_in_seconds)
-
-                test_util.test_log('Run tests...')
+                hosting_app_proc = test_util.launch_hosting_app(cmd, self.server_ip, self.server_port, self.server_ready_in_seconds)
+               
+                test_util.test_log('[{0}] Run tests...'.format(model_path))
                 for test in data_paths:
-                    test_util.test_log('Current: {0}'.format(test))
+                    test_util.test_log('[{0}] Current: {0}'.format(model_path, test))
 
-                    test_util.test_log('JSON payload testing ....')
+                    test_util.test_log('[{0}] JSON payload testing ....'.format(model_path))
                     url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
                     with open(os.path.join(test, 'request.json')) as f:
                         request_payload = f.read()
                     resp = test_util.make_http_request(url, json_request_headers, request_payload)
                     test_util.json_response_validation(self, resp, os.path.join(test, 'response.json'))
 
-                    test_util.test_log('Protobuf payload testing ....')
+                    test_util.test_log('[{0}] Protobuf payload testing ....'.format(model_path))
                     url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 54321)
                     with open(os.path.join(test, 'request.pb'), 'rb') as f:
                         request_payload = f.read()
                     resp = test_util.make_http_request(url, pb_request_headers, request_payload)
                     test_util.pb_response_validation(self, resp, os.path.join(test, 'response.pb'))
             finally:
-                test_util.shutdown_hosting_app(hosting_app_proc)
+                test_util.shutdown_hosting_app(hosting_app_proc, self.server_off_in_seconds)
 
 
 if __name__ == '__main__':
-    unittest.main()
+    loader = unittest.TestLoader()
+
+    test_classes = [ModelZooTests]
+
+    test_suites = []
+    for tests in test_classes:
+        tests.hosting_app_path = sys.argv[1]
+        tests.model_zoo_model_path = sys.argv[2]
+        tests.model_zoo_test_data_path = sys.argv[3]
+
+        test_suites.append(loader.loadTestsFromTestCase(tests))
+
+    suites = unittest.TestSuite(test_suites)
+    runner = unittest.TextTestRunner(verbosity=2)
+
+    results = runner.run(suites)

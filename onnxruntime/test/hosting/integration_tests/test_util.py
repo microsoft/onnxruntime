@@ -10,6 +10,8 @@ import time
 import requests
 import json
 import datetime
+import socket
+import errno
 
 import predict_pb2
 import onnx_ml_pb2
@@ -43,23 +45,54 @@ def compare_floats(a, b, rel_tol=0.0001):
     return True
 
 
-def launch_hosting_app(cmd, wait_server_ready_in_seconds):
+def wait_service_up(server, port, timeout=1):
+    s = socket.socket()
+    if timeout:
+        end = time.time() + timeout
+
+    while True:
+        try:
+            if timeout:
+                next_timeout = end - time.time()
+                if next_timeout < 0:
+                    return False
+                else:
+            	    s.settimeout(next_timeout)
+            
+            s.connect((server, port))
+        except socket.timeout as err:
+            if timeout:
+                return False
+        except Exception as err:
+            pass
+        else:
+            s.close()
+            return True
+
+
+def launch_hosting_app(cmd, server_ip, server_port, wait_server_ready_in_seconds):
     test_log('Launching hosting app: [{0}]'.format(' '.join(cmd)))
     hosting_app_proc = subprocess.Popen(cmd)
     test_log('Hosting app PID: {0}'.format(hosting_app_proc.pid))
-    test_log('Sleep {0} second(s) to wait for server initialization'.format(wait_server_ready_in_seconds))
-    time.sleep(wait_server_ready_in_seconds)
+    test_log('Wait up to {0} second(s) for server initialization'.format(wait_server_ready_in_seconds))
+    wait_service_up(server_ip, server_port, wait_server_ready_in_seconds)
 
     return hosting_app_proc
 
 
-def shutdown_hosting_app(hosting_app_proc):
+def shutdown_hosting_app(hosting_app_proc, wait_for_server_off_in_seconds):
     if hosting_app_proc is not None:
         test_log('Shutdown hosting app')
         hosting_app_proc.kill()
-        test_log('PID {0} has been killed: {1}'.format(hosting_app_proc.pid, is_process_killed(hosting_app_proc.pid)))
 
-    return
+        while not is_process_killed(hosting_app_proc.pid):
+            hosting_app_proc.wait(timeout=wait_for_server_off_in_seconds)
+            test_log('PID {0} has been killed: {1}'.format(hosting_app_proc.pid, is_process_killed(hosting_app_proc.pid)))
+
+        # Additional sleep to make sure the resource has been freed.
+        time.sleep(1)
+
+    return True
 
 
 def make_http_request(url, request_headers, payload):
