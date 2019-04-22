@@ -350,7 +350,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"shrink", "test case is wrong"},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
-      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"}
+      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
+      {"test_mod_bcast", "not implemented"},
+      {"test_mod_float_mixed_sign_example", "not implemented"},
+      {"test_mod_fmod_mixed_sign_example", "not implemented"},
+      {"test_mod_int64_mixed_sign_example", "not implemented"}
   };
 
 #ifdef USE_CUDA
