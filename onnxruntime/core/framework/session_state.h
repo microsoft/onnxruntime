@@ -121,6 +121,16 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
+  /**
+  Set enable memory pattern flag
+  */
+  void SetEnableMemoryPattern(bool flag);
+
+  /**
+  Get enable memory pattern flag
+  */
+  bool GetEnableMemoryPattern() const;
+
   struct NodeInfo {
     /**
      *
@@ -197,6 +207,8 @@ class SessionState {
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_;
 
+  // switch for enable memory pattern optimization or not.
+  bool enable_mem_pattern_ = true;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
