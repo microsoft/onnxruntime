@@ -32,7 +32,7 @@ struct SubgraphParams {
 template <typename T>
 class SubgraphPrimitive : public PrimitiveBase {
  public:
-  explicit SubgraphPrimitive(const ONNXRunTimeTensor* input_tensors,
+  SubgraphPrimitive(const ONNXRunTimeTensor* input_tensors,
                              const SubgraphParams& params)
       : cpu_engine_(GetEngine()) {
     context_.stream.reset(new mkldnn::stream(mkldnn::stream::kind::eager));
