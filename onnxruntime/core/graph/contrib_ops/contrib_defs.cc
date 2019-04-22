@@ -797,12 +797,12 @@ of [N, 0] then [N, 0].
           "An optional string. Token's regular expression in basic POSIX format"
           " (http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
           " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
-          " 'tokenexp' and 'sepexp' should be set.",
+          " 'tokenexp' and 'separators' should be set.",
           AttributeProto::STRING,
           OPTIONAL)
       .Attr(
           "separators",
-          "an optional list of strings attribute that contains a separator - regular expressions to match separators"
+          "an optional list of strings attribute that contains a list of separators - regular expressions to match separators"
           " Two consecutive segments in X connected by a separator would be divided into two tokens."
           " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
           " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"

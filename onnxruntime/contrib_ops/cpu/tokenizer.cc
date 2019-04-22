@@ -26,12 +26,12 @@ class Tokenizer final : public OpKernel {
   Status CharTokenize(OpKernelContext* context, size_t N, size_t C,
                       const std::vector<int64_t>& input_dims) const;
 
-  Status SeparatorTokenize(OpKernelContext* context, size_t N, size_t C,
-                           const std::vector<int64_t>& input_dims) const;
+  Status SeparatorExpressionTokenizer(OpKernelContext* context, size_t N, size_t C,
+                                      const std::vector<int64_t>& input_dims) const;
 
-  Status ExpressionTokenize(OpKernelContext* ctx,
-                            size_t N, size_t C,
-                            const std::vector<int64_t>& input_dims) const;
+  Status TokenExpression(OpKernelContext* ctx,
+                         size_t N, size_t C,
+                         const std::vector<int64_t>& input_dims) const;
 
   bool mark_{false};
   std::string pad_value_;
@@ -77,11 +77,15 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
   status = info.GetAttrs("separators", separators);
   if (!status.IsOK()) {
     status = info.GetAttr("tokenexp", &tokenexp);
-    ORT_ENFORCE(status.IsOK(), "Either one of the sepexp OR tokenexp attributes required but none is set");
+    ORT_ENFORCE(status.IsOK(), "Either one of the separators OR tokenexp attributes required but none is set");
     ORT_ENFORCE(!tokenexp.empty(), "Expecting a non-empty tokenexp");
   } else {
     ORT_ENFORCE(!separators.empty(), "separators must not be empty");
-    char_tokenezation_ = (separators.size() == 1 && separators[0].empty());
+    if (separators.size() == 1) {
+      if (separators[0].empty() || separators[0] == ".") {
+        char_tokenezation_ = true;
+      }
+    }
   }
 
   ORT_ENFORCE(!char_tokenezation_ || mincharnum_ < 2,
@@ -189,9 +193,9 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   return Status::OK();
 }
 
-Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
-                                    size_t N, size_t C,
-                                    const std::vector<int64_t>& input_dims) const {
+Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
+                                               size_t N, size_t C,
+                                               const std::vector<int64_t>& input_dims) const {
   using namespace re2;
   std::vector<std::vector<StringPiece>> rows;
   rows.reserve(N * C);
@@ -226,7 +230,7 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
         StringPiece submatch;
 
         bool match = true;
-        while (match) {
+        do {
           match = sep->Match(text, start_pos, end_pos, anchor, &submatch, 1);
           if (match) {
             // Record  pos/len
@@ -264,7 +268,7 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
               tokens.emplace_back(text.data() + start_pos, trailing_len);
             }
           }
-        }
+        } while (match);
       }  // row
       // Replace the row with the results of this tokenezation
       row.swap(tokens);
@@ -330,9 +334,9 @@ Status Tokenizer::SeparatorTokenize(OpKernelContext* ctx,
   return Status::OK();
 }
 
-Status Tokenizer::ExpressionTokenize(OpKernelContext* ctx,
-                                     size_t N, size_t C,
-                                     const std::vector<int64_t>& input_dims) const {
+Status Tokenizer::TokenExpression(OpKernelContext* ctx,
+                                  size_t N, size_t C,
+                                  const std::vector<int64_t>& input_dims) const {
   using namespace re2;
   // Represents a token that will be output after
   // first is the index, second is the size;
@@ -498,10 +502,10 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
     s = CharTokenize(ctx, N, C, input_dims);
   } else {
     if (!separators_.empty()) {
-      s = SeparatorTokenize(ctx, N, C, input_dims);
+      s = SeparatorExpressionTokenizer(ctx, N, C, input_dims);
     } else {
       assert(regex_ != nullptr);
-      s = ExpressionTokenize(ctx, N, C, input_dims);
+      s = TokenExpression(ctx, N, C, input_dims);
     }
   }
   return s;
