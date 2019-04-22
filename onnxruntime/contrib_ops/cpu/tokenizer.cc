@@ -99,7 +99,7 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       for (const auto& sep : separators) {
         std::unique_ptr<re2::RE2> regex(new re2::RE2(sep, options));
         if (!regex->ok()) {
-          ORT_THROW("Can not digest sepexp: ", sep, " ", regex->error());
+          ORT_THROW("Can not digest separators: ", sep, " ", regex->error());
         }
         separators_.push_back(std::move(regex));
       }
