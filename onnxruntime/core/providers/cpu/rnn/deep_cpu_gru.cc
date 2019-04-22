@@ -397,7 +397,6 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         clip_);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
   } else {
->>>>>>> remove unnessary ttp from UniDirectionalGru
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc, logger,
         seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
@@ -409,12 +408,12 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
   }
 
-if (!output.empty())
-  DumpMatrix("Y", output.data(), seq_length* num_directions_* batch_size, hidden_size_);
+  if (!output.empty())
+    DumpMatrix("Y", output.data(), seq_length * num_directions_ * batch_size, hidden_size_);
 
-DumpMatrix("Y_h", hidden_output.data(), num_directions_* batch_size, hidden_size_);
+  DumpMatrix("Y_h", hidden_output.data(), num_directions_ * batch_size, hidden_size_);
 
-return Status::OK();
+  return Status::OK();
 }
 
 //
