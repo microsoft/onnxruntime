@@ -84,6 +84,14 @@ Status IExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", mlvalue_idx);
   }
 
+  // If fence is available, check whether async read has completed or not.
+  Fence_t fence = GetMLValue(mlvalue_idx).Fence();
+  if (fence && !fence->CanRelease())
+  {
+      // Async data reading is not done yet, defer mem release until Session.run() end.
+      return Status::OK();
+  }
+  
   all_values_[mlvalue_idx] = MLValue();
   return Status::OK();
 }
