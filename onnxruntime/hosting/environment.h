@@ -26,7 +26,7 @@ class HostingEnvironment {
   logging::Severity GetLogSeverity() const;
 
   common::Status
-  InitializeModel(std::string model_path);
+  InitializeModel(const std::string& model_path);
   const std::vector<std::string>& GetModelOutputNames() const;
 
   std::unique_ptr<onnxruntime::InferenceSession> session;
