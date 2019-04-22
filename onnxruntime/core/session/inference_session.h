@@ -53,6 +53,12 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
+  // enable the memory pattern optimization.
+  // The idea is if the input shapes are the same, we could trace the internal memory allocation
+  // and generate a memory pattern for future request. So next time we could just do one allocation
+  // with a big chunk for all the internal memory allocation.
+  bool enable_mem_pattern = true;
+
   // enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
