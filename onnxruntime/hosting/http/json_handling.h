@@ -25,6 +25,10 @@ google::protobuf::util::Status GenerateResponseInJson(const onnxruntime::hosting
 // Constructs JSON error message from error code object and error message
 std::string CreateJsonError(http::status error_code, const std::string& error_message);
 
+// Escapes a string following the JSON standard
+// Mostly taken from here: https://stackoverflow.com/questions/7724448/simple-json-string-escape-for-c/33799784#33799784
+std::string escape_string(const std::string& message);
+
 }  // namespace hosting
 }  // namespace onnxruntime
 

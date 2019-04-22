@@ -77,7 +77,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
             y_d[ph] = Yh;
           }
         };
-        const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+        const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
         break;
       }
@@ -116,7 +116,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
             }
           }
         };
-        const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+        const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
         break;
       }
@@ -162,7 +162,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
             }
           }
         };
-        const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+        const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
         break;
       }

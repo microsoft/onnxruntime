@@ -22,11 +22,11 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   // New dimension count is the current dimensions + the number of entries in axes_
   // Initialize output_dims to 0 in each axis initially
-  std::vector<int64_t> output_dims(axes_.size() + input_tensor.Shape().GetDims().size(), 0);
+  std::vector<int64_t> output_dims(axes_.size() + input_tensor.Shape().NumDimensions(), 0);
 
   // Set all axes_ indices to 1 in output_dims and check for duplicates
-  for (size_t axis : axes_) {
-    if (axis >= output_dims.size())
+  for (int64_t axis : axes_) {
+    if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an out of range axis");
     if (output_dims[axis] != 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has a duplicate axis");

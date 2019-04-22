@@ -1,0 +1,20 @@
+#-------------------------------------------------------------------------
+# Copyright(C) 2019 Intel Corporation.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
+FROM ubuntu:16.04
+
+
+RUN apt-get update && \
+	apt-get install -y sudo \
+	build-essential curl \
+	libcurl4-openssl-dev \
+	libssl-dev wget \
+	python 3.6 python3-pip \
+	python3-dev git
+RUN pip3 install --upgrade pip
+RUN pip3 install numpy onnx
+
+RUN pip3 install onnxruntime-ngraph
+WORKDIR /code

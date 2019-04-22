@@ -1,0 +1,13 @@
+diff --git a/cmake/external_protobuf.cmake b/cmake/external_protobuf.cmake
+index 47977b3..1a66e1c 100644
+--- a/cmake/external_protobuf.cmake
++++ b/cmake/external_protobuf.cmake
+@@ -23,7 +23,7 @@ include(ExternalProject)
+
+ # This version of PROTOBUF is required by Microsoft ONNX Runtime.
+ set(NGRAPH_PROTOBUF_GIT_REPO_URL "https://github.com/protocolbuffers/protobuf")
+-set(NGRAPH_PROTOBUF_GIT_TAG "v3.5.2")
++set(NGRAPH_PROTOBUF_GIT_TAG "v3.6.1")
+
+ ExternalProject_Add(
+     ext_protobuf
