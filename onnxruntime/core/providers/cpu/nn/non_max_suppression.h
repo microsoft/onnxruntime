@@ -7,7 +7,6 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 class NonMaxSuppression final : public OpKernel {
  public:
@@ -22,10 +21,10 @@ class NonMaxSuppression final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  bool SuppressByIOU(const float* boxes_data, int32_t box_index1, int32_t box_index2, float iou_threshold) const;
+  bool SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t box_index2, float iou_threshold) const;
   void MaxMin(const float& lhs, const float& rhs, float& min, float& max) const;
   Status ParepareCompute(OpKernelContext* ctx, const TensorShape& boxes_shape, const TensorShape& scores_shape,
-                         int32_t& max_output_boxes_per_batch, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const;
+                         int64_t& max_output_boxes_per_batch, float& iou_threshold, float& score_threshold, bool& has_score_threshold) const;
 
  private:
   int64_t center_point_box_;
@@ -35,12 +34,11 @@ class NonMaxSuppression final : public OpKernel {
   int64_t num_boxes_;
 
   struct selected_index {
-    selected_index(int32_t batch_index, int32_t class_index, int32_t box_index)
+    selected_index(int64_t batch_index, int64_t class_index, int64_t box_index)
         : batch_index_(batch_index), class_index_(class_index), box_index_(box_index) {}
-    int32_t batch_index_ = 0;
-    int32_t class_index_ = 0;
-    int32_t box_index_ = 0;
+    int64_t batch_index_ = 0;
+    int64_t class_index_ = 0;
+    int64_t box_index_ = 0;
   };
 };
-}  // namespace contrib
 }  // namespace onnxruntime
