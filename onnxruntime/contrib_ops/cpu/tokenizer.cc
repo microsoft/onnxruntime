@@ -79,12 +79,11 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
     status = info.GetAttr("tokenexp", &tokenexp);
     ORT_ENFORCE(status.IsOK(), "Either one of the separators OR tokenexp attributes required but none is set");
     ORT_ENFORCE(!tokenexp.empty(), "Expecting a non-empty tokenexp");
+    char_tokenezation_ = (tokenexp == ".");
   } else {
     ORT_ENFORCE(!separators.empty(), "separators must not be empty");
-    if (separators.size() == 1) {
-      if (separators[0].empty() || separators[0] == ".") {
-        char_tokenezation_ = true;
-      }
+    if (separators.size() == 1 && separators[0].empty()) {
+      char_tokenezation_ = true;
     }
   }
 
