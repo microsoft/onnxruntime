@@ -481,7 +481,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     auto sf2 = sf.clone();
 
 ////////////////////////////////////////////////////////
-    ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(sf2, pyOpDomain));
+//  ORT_THROW_ON_ERROR(OrtAddCustomOpDomain(sf2, pyOpDomain));
 ////////////////////////////////////////////////////////
 
     sf2.SetSessionLogId(info->GetTestCaseName().c_str());

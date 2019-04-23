@@ -537,7 +537,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr);
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -592,7 +592,7 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr);
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();

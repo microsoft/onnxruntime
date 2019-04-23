@@ -598,18 +598,21 @@ using google::protobuf::RepeatedPtrField;
 Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
-             IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions) : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, model_functions) {}
+             //IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+             SchemaRegistryManagerPtr schema_registry_manager,
+             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions) : Graph(graph_proto, domain_to_version, ir_version, schema_registry_manager, nullptr, model_functions) {}
 
 Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
-             IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+             //IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+             SchemaRegistryManagerPtr schema_registry_manager,
              Graph* parent_graph,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : graph_proto_{graph_proto},
       graph_type_{Type::Main},
-      schema_registry_(schema_registry),
+      //schema_registry_(schema_registry),
+      schema_registry_manager_(schema_registry_manager),
       graph_resolve_needed_(true),
       graph_proto_sync_needed_(false),
       domain_to_version_(domain_to_version),
@@ -706,7 +709,7 @@ Graph::Graph(GraphProto* graph_proto,
 
 Graph::Graph(Graph& parent_graph, ONNX_NAMESPACE::GraphProto& subgraph_proto)
     : Graph(&subgraph_proto,
-            parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
+            parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), /*parent_graph.schema_registry_*/parent_graph.schema_registry_manager_,
             &parent_graph) {
 }
 
@@ -1639,7 +1642,8 @@ Status Graph::VerifyNodeAndOpMatch() {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
-  ctx.set_schema_registry(schema_registry_.get());
+  //ctx.set_schema_registry(schema_registry_.get());
+  ctx.set_schema_registry(schema_registry_manager_.get());
 
   LexicalScopeContext lsc{resolve_context_.inputs_and_initializers};
 
@@ -1680,7 +1684,8 @@ Status Graph::VerifyNodeAndOpMatch() {
       }
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
-      node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
+      //node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
+      node.op_ = schema_registry_manager_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
       if (node.op_ && node.op_->Deprecated()) {
         node.op_ = nullptr;
@@ -2004,7 +2009,16 @@ Node& Graph::AddNode(const Node& other) {
                            definitions.output_defs,
                            &other.GetAttributes(),
                            other.Domain());
-
+/*
+  if (schema_registry_manager_->NewRegistry(&new_node)) { // new registry for external operators
+    auto domain_map = schema_registry_manager_->GetLatestOpsetVersions(false);
+    for (auto domain : domain_map) {
+      if (domain_to_version_.find(domain.first) == domain_to_version_.end()) {
+        domain_to_version_[domain.first] = domain.second;
+      }
+    }
+  }
+*/
   return new_node;
 }
 
@@ -2081,6 +2095,15 @@ Node& Graph::AddNode(const std::string& name,
   node->Init(name, op_type, description, inputs, outputs, attributes, domain);
   if (0 != op_type.compare(kNoOp)) {
     graph_proto_sync_needed_ = true;
+  }
+
+  if (schema_registry_manager_->NewRegistry(node)) { // new registry for external operators
+    auto domain_map = schema_registry_manager_->GetLatestOpsetVersions(false);
+    for (auto domain : domain_map) {
+      if (domain_to_version_.find(domain.first) == domain_to_version_.end()) {
+        domain_to_version_[domain.first] = domain.second;
+      }
+    }
   }
 
   return *node;
@@ -2490,8 +2513,8 @@ bool Graph::ReleaseNode(NodeIndex index) {
   return true;
 }
 
-IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
-  return schema_registry_;
+SchemaRegistryManagerPtr Graph::GetSchemaRegistryManager() const {
+  return schema_registry_manager_;//schema_registry_;
 }
 
 Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_graph,

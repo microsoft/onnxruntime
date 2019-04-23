@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -16,6 +17,7 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
+#include <list>
 #include <mutex>
 #include <deque>
 #include "sstream"
@@ -136,7 +138,29 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
   @remarks The schema registry priority is the reverse of registration order. i.e. the last registry added will be
   searched first for a matching OpSchema.
   */
-  void RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchemaCollection> registry);
+  SchemaRegistryManager() {}
+
+  SchemaRegistryManager(const std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>& registry_list) {
+    for (auto registry : registry_list) {
+      RegisterRegistry(registry);
+    }
+  }
+
+  void RegisterRegistry(IOnnxRuntimeOpSchemaCollectionPtr registry);
+
+  void SetNewRegistryFunc(std::function<IOnnxRuntimeOpSchemaCollectionPtr(void*)> new_registry_func) {
+      new_registry_func_ = new_registry_func;
+  }
+
+  bool NewRegistry(void* info) {
+    auto registry = new_registry_func_(info);
+    if (registry) {
+        RegisterRegistry(registry);
+        return true;
+    } else {
+        return false;
+    }
+  }
 
   /** Gets the latest opset versions.
   @param is_onnx_only If true, return the latest ONNX schemas. If false, return the latest schemas for all domains.
@@ -163,7 +187,9 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
       int* earliest_opset_where_unchanged) const override;
 
  private:
-  std::deque<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> registries;
+  std::deque<IOnnxRuntimeOpSchemaCollectionPtr> registries;
+  std::function<IOnnxRuntimeOpSchemaCollectionPtr(void*)> new_registry_func_ =
+      [] (void*) { return nullptr; };
 };
 
 }  // namespace onnxruntime

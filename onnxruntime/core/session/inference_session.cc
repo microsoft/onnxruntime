@@ -48,6 +48,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/external_ops/pyop.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -226,11 +227,61 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   return status;
 }
 
+SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
+{
+  auto schema_registry_manager = std::make_shared<SchemaRegistryManager>();
+  for (auto schema_collection : custom_schema_registries_) {
+    schema_registry_manager->RegisterRegistry(schema_collection);
+  }
+  auto new_registry_func = [&] (void* info) {
+    auto node = reinterpret_cast<Node*>(info);
+    if (node->OpType() == "PyOp") {
+      std::string domain, module, compute, shape_infer;
+      ONNX_TYPES input_types, output_types;
+      domain  = node->Domain();
+      module  = node->GetAttributes().find("module")->second.s();
+      compute = node->GetAttributes().find("compute")->second.s();
+      shape_infer = node->GetAttributes().find("shape_infer")->second.s();
+      for (const auto& input_arg: node->InputDefs()) {
+        auto elem_type = input_arg->ToProto().type().tensor_type().elem_type();
+        if (elem_type == 0) {
+          input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+        }
+      }
+      for (const auto& output_arg: node->OutputDefs()) {
+        auto elem_type = output_arg->ToProto().type().tensor_type().elem_type();
+        if (elem_type == 0) {
+          output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+        }
+      }
+      auto pyop = new PyCustomOp(module.c_str(), compute.c_str(), shape_infer.c_str(), input_types, output_types);
+      auto op_domain = OrtCreateCustomOpDomain(domain.c_str());
+      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(op_domain, pyop));
+      AddCustomOpDomains({op_domain});
+/*
+      auto pyOp = new PyCustomOp ("testpyop",
+                                  "compute",
+                                  "shape",
+                                  {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
+                                  {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
+      auto pyOpDomain = OrtCreateCustomOpDomain("randy");
+      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyOpDomain, pyOp));
+      AddCustomOpDomains({pyOpDomain});
+*/
+      return custom_schema_registries_.back();
+    } else {
+      return IOnnxRuntimeOpSchemaCollectionPtr();
+    }
+  };
+  schema_registry_manager->SetNewRegistryFunc(new_registry_func);
+  return schema_registry_manager;
+}
+
 template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   model_location_ = ToWideString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
-    return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_location_, model, CreateSchemaRegistryManager());
   };
 
   common::Status st = Load(loader, "model_loading_uri");
@@ -254,7 +305,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, CreateSchemaRegistryManager());
   };
 
   return Load(loader, "model_loading_proto");
@@ -263,7 +314,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+                                    CreateSchemaRegistryManager());
   };
 
   return Load(loader, "model_loading_proto");
@@ -280,7 +331,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
                     "Failed to load model because protobuf parsing failed.");
     }
 
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, CreateSchemaRegistryManager());
   };
 
   return Load(loader, "model_loading_istream");
