@@ -16,17 +16,22 @@
 
 namespace openvino_ep {
 
-/*
+
 void OpenVINONode::CreateEltwiseLayer(
     std::shared_ptr<InferenceEngine::Builder::Network>& builder,
     int EltwiseType, //1-SUM/ADD, 2-MUL
     std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
     std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
 
+        std::cout << "In eltwise" << std::endl;
+
+//   auto eltwise_layer =
+    //   std::make_shared<InferenceEngine::Builder::EltwiseLayer>(
+        //   onnx_node_->Name());
+
   auto eltwise_layer =
       std::make_shared<InferenceEngine::Builder::EltwiseLayer>(
-          onnx_node_->Name());
-
+          "AddLayer");
   //
   // *** Set inputs ***
   //
@@ -57,9 +62,9 @@ void OpenVINONode::CreateEltwiseLayer(
 			auto input_name = input_defs_[i]->Name();
 			in_ov_node = openvino_io_map[input_name];
 		} else {
-			in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
+			in_ov_node = onnx_openvino_map[&(input_edges_[1].GetNode())];
 		}
-		InferenceEngine::idx_t in_port = 0;
+		InferenceEngine::idx_t in_port = 1;
 		input_connections_.push_back( { in_ov_node, in_port });
 
     } else {
@@ -112,5 +117,5 @@ void OpenVINONode::CreateEltwiseLayer(
 
   layerID_ = builder->addLayer(*eltwise_layer);
 }
-*/
+
 } // namespce openvino_ep

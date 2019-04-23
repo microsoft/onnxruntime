@@ -65,7 +65,6 @@ void OpenVINONode::CreateScaleShiftLayer(
       }
       InferenceEngine::idx_t in_port = 0;
       input_connections_.push_back( { in_ov_node, in_port });
-      std::cout << "End of X" << std::endl;
 
     } else if (formal_name == "scale") {
 
@@ -112,11 +111,11 @@ void OpenVINONode::CreateScaleShiftLayer(
         float den = var_tensor[i] + epsilon;
         float den_sqrt = sqrt(den);
         new_scale[i] = scale_tensor[i]/den_sqrt;
-        std::cout << "New scale is " << new_scale[i] << std::endl;
+        // std::cout << "New scale is " << new_scale[i] << std::endl;
 
         float num = scale_tensor[i] * mean_tensor[i] * -1;
         new_bias[i] = num/den_sqrt + bias_tensor[i];
-        std::cout << "New bias is " << new_bias[i] << std::endl;
+        // std::cout << "New bias is " << new_bias[i] << std::endl;
     }
     auto ptrWeights = InferenceEngine::make_shared_blob(
           InferenceEngine::TensorDesc(precision,{num_channels},

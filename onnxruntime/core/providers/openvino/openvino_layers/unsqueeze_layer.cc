@@ -26,7 +26,8 @@ void OpenVINONode::CreateUnsqueezeLayer(
 
     // auto unsqueeze_layer =
         // std::make_shared<InferenceEngine::Builder::ReshapeLayer>(onnx_node_->Name());
-    auto const_layer = std::make_shared<InferenceEngine::Builder::ConstLayer>(onnx_node_->Name());
+    // auto const_layer = std::make_shared<InferenceEngine::Builder::ConstLayer>(onnx_node_->Name());
+    auto const_layer = std::make_shared<InferenceEngine::Builder::ConstLayer>("Const");
 
   //
   // *** Set inputs ***

@@ -235,6 +235,8 @@ void OpenVINONode::CreateOpenVINOLayer(
 	*/
 	} else if (onnx_node_->OpType() == "AveragePool"){
 		CreatePoolingLayer(builder,2,onnx_openvino_map, openvino_io_map);
+	} else if (onnx_node_->OpType() == "Mul"){
+		CreateEltwiseLayer(builder,2,onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "SoftMax") {
 		CreateSoftMaxLayer(builder, onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "MatMul") {
@@ -411,6 +413,11 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetwork() {
 
 
   std::cout << "builder ready\n";
+
+  auto layers = builder->getLayers();
+  for(auto layer : layers){
+      std::cout << "Layer Name is " << layer.getName() << std::endl;
+  }
 
   auto inetworkptr = builder->build();
 
