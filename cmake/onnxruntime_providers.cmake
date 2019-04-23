@@ -24,6 +24,10 @@ if(onnxruntime_USE_MKLDNN)
   set(PROVIDERS_MKLDNN onnxruntime_providers_mkldnn)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES mkldnn)
 endif()
+if(onnxruntime_USE_NGRAPH)
+  set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES ngraph)
+endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
@@ -180,6 +184,26 @@ if (onnxruntime_USE_TENSORRT)
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4996)
   endif()
+endif()
+
+if (onnxruntime_USE_NGRAPH)
+  include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
+  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_ngraph_cc_srcs})
+  add_library(onnxruntime_providers_ngraph ${onnxruntime_providers_ngraph_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_ngraph onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_ngraph ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_ngraph PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_ngraph PROPERTIES LINKER_LANGUAGE CXX)
+
+  target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
+  target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
+
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

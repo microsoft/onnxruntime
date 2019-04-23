@@ -134,13 +134,15 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const int64_t suffix_dim_size = indices_shape.Size() / prefix_dim_size;
 
   // Split indices into matrix of size prefix_dim_size x suffix_dim_size
-  Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {{prefix_dim_size, suffix_dim_size}};
+  Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {
+    {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
   const auto* indices_data = indices->Data<in_type>();
   typename EigenTensorTypes<in_type, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
 
   // Split output into 3-Tensor of size:
   //   prefix_dim_size x depth x suffix_dim_size.
-  Eigen::array<Eigen::DenseIndex, 3> output_dims_e = {{prefix_dim_size, depth_val, suffix_dim_size}};
+  Eigen::array<Eigen::DenseIndex, 3> output_dims_e = {
+    {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(depth_val), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
   auto* output_data = output->MutableData<out_type>();
   typename EigenTensorTypes<out_type, 3>::EigenTensorMap output_tensor_e(output_data, output_dims_e);
 
