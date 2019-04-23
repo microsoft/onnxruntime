@@ -174,7 +174,7 @@ class MklPool : public MklKernel {
     return Status::OK();
   }
 
-  Status Submit(const ONNXRunTimeTensor* input_tensors,
+  Status Bind(const ONNXRunTimeTensor* input_tensors,
                  ONNXRunTimeTensor* const output_tensors) {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
