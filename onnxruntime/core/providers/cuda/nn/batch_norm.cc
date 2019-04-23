@@ -6,6 +6,8 @@
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include <math.h>
+#include <sstream>
 
 using namespace std;
 namespace onnxruntime {
@@ -111,6 +113,25 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
       mean_data,
       var_data,
       epsilon_));
+
+  if (X->DataType() == DataTypeImpl::GetType<float>()) {
+    auto size = x_shape.Size();
+    float* input_buffer = new float[size];
+    float* output_buffer = new float[size];
+    cudaMemcpy(input_buffer, x_data, 4 * size, cudaMemcpyDeviceToHost); 
+    cudaMemcpy(output_buffer, y_data, 4 * size, cudaMemcpyDeviceToHost); 
+    for (int i = 0; i < size; ++i) {
+      if (std::isnan(output_buffer[i])) {
+        //std::ostringstream oss;
+        auto min = input_buffer[0];
+        auto max = input_buffer[0];
+       // return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, oss.str());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output is NaN " + std::to_string(input_buffer[i]));
+      }
+    }
+    delete[] input_buffer;
+    delete[] output_buffer;
+  }
 
   return Status::OK();
 }
