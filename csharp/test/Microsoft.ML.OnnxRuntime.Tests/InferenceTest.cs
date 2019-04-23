@@ -213,6 +213,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             // 16-bit float not supported type in C#.
             var skipModels = new List<String>() {
+                "tf_inception_v2",
                 "fp16_inception_v1",
                 "fp16_shufflenet",
                 "fp16_tiny_yolov2" };
