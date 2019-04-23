@@ -245,8 +245,15 @@ class MklBatchNorm : public MklKernel {
                  ONNXRunTimeTensor* const output_tensors) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    if (!primitive_created_.IsOK())
+    if (!primitive_created_.IsOK()) {
+      // abort as MKLDNN cannot execute this. but
+      // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
+      // fix for test_averagepool_1d_default node test
+      auto xshape = input_tensors[input_index].shape;
+      auto xdim = input_tensors[input_index].ndim;
+      AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
       return primitive_created_;
+    }
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {
       src_mem_->set_data_handle(input_tensors[input_index].data);
