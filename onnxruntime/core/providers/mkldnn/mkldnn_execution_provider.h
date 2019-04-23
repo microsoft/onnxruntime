@@ -92,7 +92,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
 
   // SUBGRAPH
  private:
-  bool MKLDNNExecutionProvider::RunSubgraph(const onnxruntime::GraphViewer& graph_viewer,
+  bool RunSubgraph(const onnxruntime::GraphViewer& graph_viewer,
                                             const std::vector<const KernelRegistry*>& kernel_registries,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const;
   void CreateMetaDef(SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
