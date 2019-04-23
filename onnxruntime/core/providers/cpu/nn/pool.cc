@@ -399,9 +399,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   return Status::OK();
 }  // namespace onnxruntime
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     AveragePool,
-    7,
+    7, 9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, AveragePool>);
 
@@ -413,8 +413,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxPool,
-    1,
-    7,
+    1, 7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, MaxPool<1 /*VERSION*/>>);
 
