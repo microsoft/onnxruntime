@@ -14,6 +14,7 @@ class CUDAFence : public IFence {
   virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
   virtual void AfterUsedAsInput(int queue_id) override;
   virtual void AfterUsedAsOutput(int queue_id) override;
+  virtual bool CanRelease() override;
 
  private:
   cudaEvent_t read_event_;
