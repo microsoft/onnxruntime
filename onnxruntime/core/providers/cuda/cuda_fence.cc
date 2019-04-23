@@ -42,6 +42,10 @@ void CUDAFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int
   }
 }
 
+bool CUDAFence::CanRelease() {
+    return cudaEventQuery(read_event_) == cudaSuccess;
+}
+
 void CUDAFence::AfterUsedAsInput(int queue_id) {
   // update read fence
   cudaStream_t stream = provider_->GetStream(queue_id);
