@@ -42,7 +42,7 @@ class MklKernel {
     ORT_UNUSED_PARAMETER(cpu_engine);
   }
 
-  virtual Status Compute(const ONNXRunTimeTensor* input_tensors,
+  virtual Status Submit(const ONNXRunTimeTensor* input_tensors,
                          ONNXRunTimeTensor* const output_tensors) = 0;
 
  protected:

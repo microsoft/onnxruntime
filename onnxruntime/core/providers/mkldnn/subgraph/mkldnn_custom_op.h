@@ -164,7 +164,7 @@ class SubgraphPrimitive : public PrimitiveBase {
   Status Compute(const ONNXRunTimeTensor* input_tensors, ONNXRunTimeTensor* const output_tensors) {
     Status status;
     for (auto& kernel : context_.kernels) {
-      status = kernel->Compute(input_tensors, output_tensors);
+      status = kernel->Submit(input_tensors, output_tensors);
       if (!status.IsOK())
         break;
     }
