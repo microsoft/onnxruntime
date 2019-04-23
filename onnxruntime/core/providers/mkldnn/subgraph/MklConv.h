@@ -161,23 +161,30 @@ class MklConv : public MklKernel {
           {src_dims_mkl}, MklDnnType<T>(), fmt));
     }
 
-    ORT_RETURN_IF_ERROR(ValidateInputShape(x_shape, w_shape));
+    primitive_created_ = ValidateInputShape(x_shape, w_shape);
+    if (!primitive_created_.IsOK())
+      return primitive_created_;
 
     std::vector<int64_t> kernel_shape;
-    ORT_RETURN_IF_ERROR(ComputeKernelShape(w_shape, kernel_shape));
+    primitive_created_ = ComputeKernelShape(w_shape, kernel_shape);
+    if (!primitive_created_.IsOK())
+      return primitive_created_;
+
     const size_t kernel_rank = kernel_shape.size();
 
     if (kernel_rank + 2 != input_tensors[input_index + 1].ndim) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
+      primitive_created_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
                              " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
                              " W: ", w_shape.ToString().c_str());
+      return primitive_created_;
     }
 
     for (size_t i = 0; i < kernel_rank; ++i) {
       if (kernel_shape[i] != w_shape[i + 2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
+        primitive_created_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
                                " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
                                " W: ", w_shape.ToString().c_str());
+        return primitive_created_;
       }
     }
 
@@ -199,7 +206,10 @@ class MklConv : public MklKernel {
     std::vector<int64_t> y_dims;
     y_dims.insert(y_dims.begin(), {N, M});
     TensorShape input_shape = x_shape.Slice(2);
-    ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &y_dims));
+    primitive_created_ = InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &y_dims);
+    if (!primitive_created_.IsOK())
+      return primitive_created_;
+
     TensorShape y_shape(y_dims);
     primitive_dst_shape_ = TensorShape(y_dims);
     TensorShape output_shape = y_shape.Slice(2);
@@ -365,7 +375,8 @@ class MklConv : public MklKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net);
     }
-    return Status::OK();
+    primitive_created_ = Status::OK();
+    return primitive_created_;
   }
 
   virtual void ReorderWeights(const ONNXRunTimeTensor* input_tensors, mkldnn::engine& cpu_engine) override {
@@ -411,7 +422,10 @@ class MklConv : public MklKernel {
 
   Status Compute(const ONNXRunTimeTensor* input_tensors,
                  ONNXRunTimeTensor* const output_tensors) {
-    int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
+    if (!primitive_created_.IsOK())
+      return primitive_created_;
+
+	int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     const T* filter_data = reinterpret_cast<const T*>(input_tensors[input_index + 1].data);
     const T* bias_data = mklnode_ptr_->num_inputs == 3 ? reinterpret_cast<const T*>(input_tensors[input_index + 2].data) : nullptr;

@@ -189,8 +189,9 @@ class SubgraphPrimitive : public PrimitiveBase {
     // dst format of current node to src format of next node
     mkldnn::memory::format source_format = mkldnn::memory::format::any;  // ONNXRuntime format
     for (auto& kernel : context_.kernels) {
-      kernel->CreatePrimitives(input_tensors, cpu_engine_, context_.net, source_format);
-      kernel->ReorderWeights(input_tensors, cpu_engine_);
+      Status status = kernel->CreatePrimitives(input_tensors, cpu_engine_, context_.net, source_format);
+      if (status.IsOK())
+		kernel->ReorderWeights(input_tensors, cpu_engine_);
     }
   }
 
