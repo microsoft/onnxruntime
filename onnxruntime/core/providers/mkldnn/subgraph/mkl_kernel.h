@@ -90,7 +90,7 @@ class MklKernel {
   void AllocateMemoryAndReorderIfNeeded(ONNXRunTimeTensor* const output_tensors, const DType& dtype) {
     // End of sub-graph. Allocate memory and get the output
     auto& y_dims = primitive_dst_shape_.GetDims();
-    AllocateOutputTensor1(output_tensors, mklnode_ptr_->output_index,
+    AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index,
                           &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()),
                           dtype);
     if (primitive_dst_format_ != ort_source_format_) {
@@ -100,18 +100,7 @@ class MklKernel {
     }
   }
 
-  void AllocateOutputTensor1(ONNXRunTimeTensor* const output_tensors, int index, const int64_t* shape, size_t dim, const DType& dtype) {
-    output_tensors[index].dtype = dtype;
-    output_tensors[index].ndim = dim;
-    output_tensors[index].shape = new int64_t[dim];
-    memcpy(output_tensors[index].shape, shape, sizeof(int64_t) * dim);
-    int64_t data_size = 1;
-    for (auto j = 0; j < output_tensors[index].ndim; j++)
-      data_size *= output_tensors[index].shape[j];
-    output_tensors[index].data = (*(mkl_context_->allocate_func))(mkl_context_->allocator, sizeof(double) * data_size, 64);
-  }
-
-  void AllocateOutputTensor(ONNXRunTimeTensor* const output_tensors, int index, int64_t* shape, size_t dim, const DType& dtype) {
+  void AllocateOutputTensor(ONNXRunTimeTensor* const output_tensors, int index, const int64_t* shape, size_t dim, const DType& dtype) {
     output_tensors[index].dtype = dtype;
     output_tensors[index].ndim = dim;
     output_tensors[index].shape = new int64_t[dim];

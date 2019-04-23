@@ -25,8 +25,6 @@ class BatchNormHelper {
     constexpr int kNumInputBiasDimensions = 1;
     constexpr int kNumInputMeanDimensions = 1;
     constexpr int kNumInputVarianceDimensions = 1;
-    //constexpr int kMinCudaNumDims = 4;
-    //constexpr int kMaxCudaNumDims = 5;
 
     if (xshape.GetDims().empty()) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input X: Empty dimensions");

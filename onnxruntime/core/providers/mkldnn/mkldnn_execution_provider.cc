@@ -321,7 +321,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(SubgraphVariables& sub_var, const No
 
   auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->name = "MkldnnCustomOp" + std::to_string(sub_var.subgraph_index);
-  meta_def->domain = kMklDnnExecutionProvider;
+  meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   meta_def->inputs = sub_var.inputs;
