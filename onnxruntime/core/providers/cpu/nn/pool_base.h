@@ -148,6 +148,8 @@ class PoolBase {
       }
 
       ORT_ENFORCE(strides_.size() == kernel_shape_.size());
+      ORT_ENFORCE(dilations_.size() == kernel_shape_.size(),
+                  "Dilations dimensions should match kernel shape");
     }
   }
 
@@ -208,7 +210,7 @@ class PoolBase {
           if (ceil_mode == 0) {
             *out_size = (in_size - dilation * (kernel - 1) - 1) / stride + 1;
           } else {
-            *out_size = (int64_t) ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
+            *out_size = (int64_t)ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
           }
           break;
         case AutoPadType::SAME_LOWER: {
@@ -219,7 +221,7 @@ class PoolBase {
           if (ceil_mode == 0) {
             *out_size = (in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1;
           } else {
-            *out_size = (int64_t) ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
+            *out_size = (int64_t)ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
           }
           break;
         }
@@ -240,8 +242,13 @@ class PoolBase {
         }
       }
     } else {
-      *out_size = static_cast<int64_t>(
-          static_cast<float>(in_size + *pad_head + *pad_tail - kernel) / stride + 1);
+      if (ceil_mode == 0) {
+        *out_size = static_cast<int64_t>(
+            static_cast<float>(in_size + *pad_head + *pad_tail - dilation * (kernel - 1) -1) / (float) stride + 1);
+      } else {
+        *out_size = static_cast<int64_t>(
+            static_cast<float>(ceil((in_size + *pad_head + *pad_tail - dilation * (kernel - 1) -1) / (float) stride + 1)));
+      }
     }
   }
 
