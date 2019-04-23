@@ -431,7 +431,6 @@ class MklConv : public MklKernel {
       auto xdim = input_tensors[input_index].ndim;
       AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
       return primitive_created_;
-   
 	}
 
     const T* filter_data = reinterpret_cast<const T*>(input_tensors[input_index + 1].data);
