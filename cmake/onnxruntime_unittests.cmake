@@ -582,11 +582,21 @@ if (onnxruntime_BUILD_HOSTING)
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 
+  onnxruntime_protobuf_generate(
+          APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/hosting/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf
+          PROTOS ${ONNXRUNTIME_ROOT}/hosting/protobuf/predict.proto ${ONNXRUNTIME_ROOT}/hosting/protobuf/onnx-ml.proto
+          LANGUAGE python
+          TARGET onnxruntime_hosting_tests
+          OUT_VAR hosting_test_py)
+
   add_custom_command(
     TARGET onnxruntime_hosting_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/hosting_test
     COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_integration_test_hosting_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/hosting_test/
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE_DIR:${test_data_target}>/*_pb2.py
       $<TARGET_FILE_DIR:${test_data_target}>/hosting_test/
   )
 
