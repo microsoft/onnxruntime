@@ -32,7 +32,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'tensorrt'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -80,6 +80,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_mkl = false;
+  bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
@@ -129,6 +130,8 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
+            enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
@@ -220,6 +223,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "MKL-DNN is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_ngraph) {  //TODO: Re-order the priority?
+#ifdef USE_NGRAPH
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+#else
+      fprintf(stderr, "nGraph is not supported in this build");
       return -1;
 #endif
     }
@@ -339,7 +350,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"shrink", "test case is wrong"},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
-      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"}
+      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
+      {"test_mod_bcast", "not implemented"},
+      {"test_mod_float_mixed_sign_example", "not implemented"},
+      {"test_mod_fmod_mixed_sign_example", "not implemented"},
+      {"test_mod_int64_mixed_sign_example", "not implemented"}
   };
 
 #ifdef USE_CUDA
@@ -366,6 +381,43 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 
 #if defined(__GNUG__) && !defined(__LP64__)
   broken_tests["nonzero_example"] = "failed: type mismatch";
+#endif
+
+#ifdef DISABLE_CONTRIB_OPS
+  broken_tests["coreml_SqueezeNet_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Permute_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_ReLU_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Padding-Upsampling-Normalizer_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["tiny_yolov2"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Pooling_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Padding_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Normalizer_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_ImageNet_small"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_ImageNet_large"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_linear_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_leakyrelu_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_hard_sigmoid_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_elu_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Dense_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_Conv2D_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_VGG16_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_Resnet50_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_Inceptionv3_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_FNS-Candy_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["coreml_AgeNet_ImageNet"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_thresholdedrelu_ImageNet_large"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_thresholdedrelu_ImageNet_small"] = "This model uses contrib ops.";
+  broken_tests["keras2coreml_thresholdedrelu_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
+  broken_tests["thresholdedrelu"] = "This model uses contrib ops.";
+  broken_tests["thresholdedrelu_default"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_default_axes"] = "This model uses contrib ops.";
+  broken_tests["thresholdedrelu_example"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_neg failed"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_start_out_of_bounds"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
+  broken_tests["dynamic_slice_neg"] = "This model uses contrib ops.";
 #endif
 
   int result = 0;

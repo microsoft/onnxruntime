@@ -46,7 +46,7 @@ endif()
 
 if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
-endif()   
+endif()
 
 if (onnxruntime_USE_MKLDNN)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_MKLDNN=1)
@@ -58,7 +58,7 @@ onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined -Xlinker --gc-sections")
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
@@ -69,6 +69,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_NGRAPH}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -188,6 +189,23 @@ if (onnxruntime_USE_MKLDNN)
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
+
+if (onnxruntime_USE_NGRAPH)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_CODEGEN_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_CPU_BACKEND_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_IOMP5MD_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_MKLDNN_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_MKLML_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB}
+		${ngraph_LIBRARIES}/${NGRAPH_TBB_SHARED_LIB_2}
+        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_TVM)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD

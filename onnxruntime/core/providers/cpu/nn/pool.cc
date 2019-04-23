@@ -70,7 +70,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
           y_d[ph] = Yh;
         }
       };
-      const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
       break;
     }
@@ -109,7 +109,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
           }
         }
       };
-      const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
       break;
     }
@@ -156,7 +156,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
           }
         }
       };
-      const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
       break;
     }
@@ -201,7 +201,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            output_dims.data(),
            X->template Data<float>(),
            Y->template MutableData<float>(),
-           const_cast<ThreadPool*>(thread_pool));
+           const_cast<concurrency::ThreadPool*>(thread_pool));
 
   return Status::OK();
 }
@@ -286,7 +286,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
           if (i_d != nullptr) i_d[ph] = c * x_step + h_index;
         }
       };
-      const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
       break;
     }
@@ -332,7 +332,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
           }
         }
       };
-      const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
       break;
     }
@@ -388,7 +388,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
           }
         }
       };
-      const_cast<ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
 
       break;
     }

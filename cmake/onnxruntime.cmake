@@ -19,7 +19,7 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
 endforeach()
 
-add_custom_command(OUTPUT ${SYMBOL_FILE} 
+add_custom_command(OUTPUT ${SYMBOL_FILE}
   COMMAND ${PYTHON_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py" --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}" --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
   DEPENDS ${SYMBOL_FILES}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
@@ -35,10 +35,11 @@ if(UNIX)
   if (APPLE)
     set(BEGIN_WHOLE_ARCHIVE -Xlinker -all_load)
     set(END_WHOLE_ARCHIVE -Xlinker -noall_load)
+    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -dead_strip")
   else()
     set(BEGIN_WHOLE_ARCHIVE -Xlinker --whole-archive)
     set(END_WHOLE_ARCHIVE -Xlinker --no-whole-archive)
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined")
+    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections")
   endif()
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${SYMBOL_FILE}")
@@ -58,9 +59,10 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_NGRAPH}
     ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
-    onnxruntime_providers    
+    onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
     onnxruntime_framework
