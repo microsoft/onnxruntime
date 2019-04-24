@@ -512,8 +512,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
 
         if enable_python_tests:
             # Disable python tests for TensorRT because many tests are not supported yet
-            if enable_tensorrt or enable_ngraph:
-                print("NOT RUNNING")
+            if enable_tensorrt :
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
@@ -554,6 +553,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         cmd = []
         if provider:
           cmd += ["-e", provider]
+          if provider == 'mkldnn':
+             cmd += ['-c', '1']
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
@@ -565,15 +566,10 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
 
+        run_subprocess([exe] + cmd, cwd=cwd)
         if enable_parallel_executor_test:
-          run_subprocess([exe] + cmd, cwd=cwd)
-          if provider == 'mkldnn':
-            #limit concurrency to 1
-            run_subprocess([exe,'-x', '-c', '1'] + cmd, cwd=cwd)
-          else:
-            run_subprocess([exe,'-x'] + cmd, cwd=cwd)
-        else:
-            run_subprocess([exe] + cmd, cwd=cwd)
+          run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+
 
 def run_hosting_tests(build_dir, configs):
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests'])
