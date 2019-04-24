@@ -360,7 +360,7 @@ void Node::Init(const std::string& name,
   description_ = description;
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
-  domain_ = domain;
+  domain_ = op_type == "PyOp" ? std::to_string(reinterpret_cast<size_t>(this)) : domain;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
   }

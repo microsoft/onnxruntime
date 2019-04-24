@@ -235,38 +235,55 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
   }
   auto new_registry_func = [&] (void* info) {
     auto node = reinterpret_cast<Node*>(info);
-    if (node->Domain() == "PyOp") {
-      std::string module, class_name, compute, shape_infer;
-      ONNX_TYPES input_types, output_types;
-      module      = node->GetAttributes().find("module")->second.s();
-      class_name  = node->OpType();
-      compute     = node->GetAttributes().find("compute")->second.s();
-      shape_infer = node->GetAttributes().find("shape_infer")->second.s();
+
+    if (node->OpType() == "PyOp") {
+
+      ONNX_TYPES input_types;
       for (const auto& input_arg: node->InputDefs()) {
         auto elem_type = input_arg->ToProto().type().tensor_type().elem_type();
         if (elem_type == 0) {
           input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
         }
-      }
+      }//for
+      ORT_ENFORCE(input_types.size() > 0, "PyOp node inputs not specified");
+   
+      ONNX_TYPES output_types;
       for (const auto& output_arg: node->OutputDefs()) {
         auto elem_type = output_arg->ToProto().type().tensor_type().elem_type();
         if (elem_type == 0) {
           output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
         }
-      }
+      }//for
+      ORT_ENFORCE(output_types.size() > 0, "PyOp node outputs not specified");
+
       ONNX_ATTRS attrs;
-      attrs["A"] = "a";
-      attrs["B"] = "b";
-      attrs["C"] = "c";
-      auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(), class_name.c_str(), compute.c_str(), shape_infer.c_str());
-      auto pyop_domain = OrtCreateCustomOpDomain(node->Domain().c_str());
+      std::string module, class_name, compute = "compute", shape_infer = "shape_infer", domain = node->Domain();
+      for (const auto& iter: node->GetAttributes()) {
+          if (!iter.second.has_s()) {
+              LOGS(*session_logger_, WARNING) << "PyOp only accept string attribute";
+              continue;
+          }
+          if (iter.first == "module")           module            = iter.second.s();
+          else if (iter.first == "class_name")  class_name        = iter.second.s();
+          else if (iter.first == "compute")     compute           = iter.second.s();
+          else if (iter.first == "shape_infer") shape_infer       = iter.second.s();
+          else                                  attrs[iter.first] = iter.second.s();
+      }//for
+
+      ORT_ENFORCE (    module != "", "PyOp module not specified");
+      ORT_ENFORCE (class_name != "", "PyOp class name not specified");
+      auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(),
+                                 class_name.c_str(), compute.c_str(), shape_infer.c_str(),
+                                 [this] (const char* msg) { LOGS(*session_logger_, INFO) << msg; });
+      auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
       ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));
       AddCustomOpDomains({pyop_domain});
       return custom_schema_registries_.back();
     } else {
       return IOnnxRuntimeOpSchemaCollectionPtr();
     }
-  };
+  };//new_registry_func
+
   schema_registry_manager->SetNewRegistryFunc(new_registry_func);
   return schema_registry_manager;
 }

@@ -13,6 +13,7 @@
 using ONNX_TYPES = std::vector<ONNXTensorElementDataType>;
 using ONNX_ATTRS = std::unordered_map<std::string, std::string>;
 using ORT_SHAPE  = OrtTensorTypeAndShapeInfo;
+using LOG_FUNC   = std::function<void(const char*)>;
 
 typedef bool INIT();
 typedef bool PYFUNC(const char*,
@@ -92,9 +93,10 @@ struct PyCustomKernel {
                     const std::string&       module,
                     const std::string&       class_name,
                     const std::string&       compute,
-                    const std::string&       shape_infer): 
-                    ort_(ort), attrs_(attrs), module_(module),
-                    class_name_(class_name), compute_(compute), shape_infer_(shape_infer) {
+                    const std::string&       shape_infer,
+                    LOG_FUNC                 logging_func): 
+                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
+                    compute_(compute), shape_infer_(shape_infer), logging_func_(logging_func) {
         instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
         ORT_ENFORCE(nullptr != instance_, GetPyWrapper().lastErr());
     }
@@ -121,7 +123,7 @@ struct PyCustomKernel {
         }
 
 //       ORT_ENFORCE (GetPyWrapper().pyFunc(module_.c_str(), shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim), GetPyWrapper().lastErr());
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim, [](const char*){}), GetPyWrapper().lastErr());
+        ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr());
         ORT_ENFORCE (output.size() > index, "output count is less then ort output index");
         ort_.SetDimensions(info, (const int64_t*)output[index], output_dim[index][0]);
         for (auto mem: output) {
@@ -143,7 +145,7 @@ struct PyCustomKernel {
         }
 
 //      ORT_ENFORCE (GetPyWrapper().pyFunc(module_.c_str(), compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim), GetPyWrapper().lastErr());
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim, [](const char*){}), GetPyWrapper().lastErr());
+        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr());
         for (size_t i = 0; i < output.size(); ++i) {
             OrtValue* ort_output  = ort_.KernelContext_GetOutput(context, i, output_dim[i].data(), output_dim[i].size());
             char* output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
@@ -200,6 +202,7 @@ private:
     std::string compute_;
     std::string shape_infer_;
     void* instance_ = nullptr;
+    LOG_FUNC    logging_func_;
 };
 
 struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
@@ -210,18 +213,20 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
                const std::string&   module,
                const std::string&   class_name,
                const std::string&   compute     = "compute",
-               const std::string&   shape_infer = "shape_infer"):
+               const std::string&   shape_infer = "shape_infer",
+               LOG_FUNC             logging_func = [](const char*){}):
                attrs_(attrs),
                input_types_(input_types),
                output_types_(output_types),
                module_(module), class_name_(class_name), compute_(compute),
-               shape_infer_(shape_infer) { OrtCustomOp::version = ORT_API_VERSION; } 
+               shape_infer_(shape_infer), logging_func_(logging_func) {
+               OrtCustomOp::version = ORT_API_VERSION; } 
  
     void* CreateKernel (onnxruntime::CustomOpApi api, const OrtKernelInfo*) {
-        return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, shape_infer_);
+        return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, shape_infer_, logging_func_);
     }
 
-    const char* GetName() const { return class_name_.c_str(); }
+    const char* GetName() const { return "PyOp"/*class_name_.c_str()*/; }
 
     size_t GetInputTypeCount() const { return input_types_.size(); }
     ONNXTensorElementDataType GetInputType(size_t index) const { return input_types_[index]; }
@@ -237,6 +242,7 @@ private:
     std::string class_name_;
     std::string compute_;
     std::string shape_infer_;
+    LOG_FUNC    logging_func_;
 };//PyCusomOp
 
 }
