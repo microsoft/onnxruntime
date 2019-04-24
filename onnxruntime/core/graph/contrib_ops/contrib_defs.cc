@@ -736,7 +736,8 @@ activation and leaky_relu_alpha.)DOC")
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
   Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
   The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
-  the second mode will be used. The first mode breaks each input string into tokens by removing separators.
+  the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
+  "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
 
   Let's assume "separators" is [" "] and consider an example.
   If input is
@@ -750,6 +751,9 @@ activation and leaky_relu_alpha.)DOC")
 
  whose shape is [2, 5] because you can find at most 5 tokens per input string.
  Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
+
+ If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
+ will be broken part into individual characters.
 
  For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
  The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
@@ -798,14 +802,11 @@ of [N, 0] then [N, 0].
           OPTIONAL)
       .Attr(
           "separators",
-          "an optional list of strings (type: AttributeProto::STRINGS), each single string in this attribute is a separator."
+          "an optional list of strings attribute that contains a list of separators - regular expressions to match separators"
           " Two consecutive segments in X connected by a separator would be divided into two tokens."
           " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
           " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
-          " one should set the separators to [\"\"], which contains only one empty string."
-          " If 'separators' is a L-element array, there will be L rounds of tokenization using one stop word."
-          " More specifically, in the first round, the first element in 'separators' is used to tokenize each string in the input."
-          " Then, the second element in 'separators' will be used to tokenize the resulted strings produced at the first round.",
+          " one should set the 'separators' to [\"\"], which contains an empty string.",
           AttributeProto::STRINGS,
           OPTIONAL)
       .Attr(
