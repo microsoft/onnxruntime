@@ -172,15 +172,19 @@ ThreadPool::ThreadPool(const std::string& name, int num_threads)
 void ThreadPool::Schedule(std::function<void()> fn) { impl_->Schedule(fn); }
 
 void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
-  if (total <= 0) {
+  if (total <= 0) return;
+  
+  if (total == 1){
+    fn(0);
     return;
-  }
+    }
 
   impl_->ParallelFor(total, fn);
 }
 
 void ThreadPool::ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
-  if (last <= first) {
+  if (last < first) return;
+  if (last == first) {
     fn(first, last);
     return;
   }
