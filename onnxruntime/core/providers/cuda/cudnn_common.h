@@ -33,8 +33,11 @@ class CudnnDataTensor final {
   CudnnDataTensor();
   ~CudnnDataTensor();
 
-  Status Set(cudnnDataType_t dataType, int64_t max_seq_length, int64_t batch_size, int64_t data_size,
-             int64_t seq_lengths_size, const int32_t* seq_lengths);
+  Status Set(cudnnDataType_t dataType,
+             int64_t max_seq_length,
+             int64_t batch_size,
+             int64_t data_size,
+             const int32_t* seq_lengths);
 
   operator cudnnRNNDataDescriptor_t() const { return tensor_; }
 

@@ -76,8 +76,11 @@ Status CudnnDataTensor::CreateTensorIfNeeded() {
   return Status::OK();
 }
 
-Status CudnnDataTensor::Set(cudnnDataType_t dataType, int64_t max_seq_length, int64_t batch_size, int64_t data_size,
-                            int64_t seq_lengths_size, const int32_t* seq_lengths) {
+Status CudnnDataTensor::Set(cudnnDataType_t dataType,
+                            int64_t max_seq_length,
+                            int64_t batch_size,
+                            int64_t data_size,
+                            const int32_t* seq_lengths) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   cudnnRNNDataLayout_t layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_PACKED;
