@@ -10,6 +10,7 @@ CMake creates a target to this project
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <PlatformTarget Condition=" '$(PlatformTarget)' == '' ">x64</PlatformTarget>    
     <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
   </PropertyGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
