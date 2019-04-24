@@ -62,5 +62,9 @@ std::unique_ptr<logging::Logger> HostingEnvironment::GetLogger(const std::string
   return default_logging_manager_.CreateLogger(id, severity_, false);
 }
 
+onnxruntime::InferenceSession* HostingEnvironment::GetSession() const {
+  return session.get();
+}
+
 }  // namespace hosting
 }  // namespace onnxruntime

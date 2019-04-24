@@ -114,7 +114,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   run_options.run_log_verbosity_level = static_cast<unsigned int>(env_->GetLogSeverity());
   run_options.run_tag = request_id_;
 
-  auto status = env_->session->Run(run_options, name_ml_value_map, output_names, &outputs);
+  auto status = env_->GetSession()->Run(run_options, name_ml_value_map, output_names, &outputs);
 
   if (!status.IsOK()) {
     LOGS(*logger, ERROR) << "Run() failed."

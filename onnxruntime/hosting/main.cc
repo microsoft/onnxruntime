@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
     LOGS(logger, VERBOSE) << "Initialize Model Successfully!";
   }
 
-  status = env->session->Initialize();
+  status = env->GetSession()->Initialize();
   if (!status.IsOK()) {
     LOGS(logger, FATAL) << "Session Initialization Failed:" << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
     exit(EXIT_FAILURE);
