@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import unittest
 import subprocess
 import time
@@ -6,6 +9,7 @@ import requests
 import json
 
 import test_util
+
 
 class HttpJsonPayloadTests(unittest.TestCase):
     server_ip = '127.0.0.1'
@@ -94,6 +98,5 @@ class HttpJsonPayloadTests(unittest.TestCase):
         self.assertTrue(r.headers.get('x-ms-request-id'))
 
 
-
-if __name__=='__main__':
+if __name__ == '__main__':
     unittest.main()
