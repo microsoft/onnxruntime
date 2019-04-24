@@ -235,12 +235,12 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
   }
   auto new_registry_func = [&] (void* info) {
     auto node = reinterpret_cast<Node*>(info);
-    if (node->OpType() == "PyOp") {
-      std::string domain, module, compute, shape_infer;
+    if (node->Domain() == "PyOp") {
+      std::string module, class_name, compute, shape_infer;
       ONNX_TYPES input_types, output_types;
-      domain  = node->Domain();
-      module  = node->GetAttributes().find("module")->second.s();
-      compute = node->GetAttributes().find("compute")->second.s();
+      module      = node->GetAttributes().find("module")->second.s();
+      class_name  = node->OpType();
+      compute     = node->GetAttributes().find("compute")->second.s();
       shape_infer = node->GetAttributes().find("shape_infer")->second.s();
       for (const auto& input_arg: node->InputDefs()) {
         auto elem_type = input_arg->ToProto().type().tensor_type().elem_type();
@@ -254,20 +254,14 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
           output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
         }
       }
-      auto pyop = new PyCustomOp(module.c_str(), compute.c_str(), shape_infer.c_str(), input_types, output_types);
-      auto op_domain = OrtCreateCustomOpDomain(domain.c_str());
-      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(op_domain, pyop));
-      AddCustomOpDomains({op_domain});
-/*
-      auto pyOp = new PyCustomOp ("testpyop",
-                                  "compute",
-                                  "shape",
-                                  {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32},
-                                  {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
-      auto pyOpDomain = OrtCreateCustomOpDomain("randy");
-      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyOpDomain, pyOp));
-      AddCustomOpDomains({pyOpDomain});
-*/
+      ONNX_ATTRS attrs;
+      attrs["A"] = "a";
+      attrs["B"] = "b";
+      attrs["C"] = "c";
+      auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(), class_name.c_str(), compute.c_str(), shape_infer.c_str());
+      auto pyop_domain = OrtCreateCustomOpDomain(node->Domain().c_str());
+      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));
+      AddCustomOpDomains({pyop_domain});
       return custom_schema_registries_.back();
     } else {
       return IOnnxRuntimeOpSchemaCollectionPtr();

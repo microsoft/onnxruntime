@@ -464,7 +464,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
   size_t data_count = info->GetDataCount();
 
 ////////////////////////////////////////////////////////
-
+/*
   auto pyOp = new PyCustomOp ("testpyop",
                               "compute",
                               "shape",
@@ -472,7 +472,7 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
                               {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32});
   auto pyOpDomain = OrtCreateCustomOpDomain("randy");
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyOpDomain, pyOp));
-
+*/
 ////////////////////////////////////////////////////////
 
   try {
