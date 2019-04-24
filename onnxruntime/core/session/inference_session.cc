@@ -49,6 +49,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/external_ops/pyop.h"
+#include "core/framework/tensorprotoutils.h"
 
 #ifdef USE_EIGEN_THREADPOOL
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -238,40 +239,38 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
 
     if (node->OpType() == "PyOp") {
 
-      ONNX_TYPES input_types;
-      for (const auto& input_arg: node->InputDefs()) {
-        auto elem_type = input_arg->ToProto().type().tensor_type().elem_type();
-        if (elem_type == 0) {
-          input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
-        }
-      }//for
-      ORT_ENFORCE(input_types.size() > 0, "PyOp node inputs not specified");
-   
-      ONNX_TYPES output_types;
-      for (const auto& output_arg: node->OutputDefs()) {
-        auto elem_type = output_arg->ToProto().type().tensor_type().elem_type();
-        if (elem_type == 0) {
-          output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
-        }
-      }//for
-      ORT_ENFORCE(output_types.size() > 0, "PyOp node outputs not specified");
-
       ONNX_ATTRS attrs;
+      ONNX_TYPES input_types, output_types;
       std::string module, class_name, compute = "compute", shape_infer = "shape_infer", domain = node->Domain();
+
       for (const auto& iter: node->GetAttributes()) {
-          if (!iter.second.has_s()) {
-              LOGS(*session_logger_, WARNING) << "PyOp only accept string attribute";
-              continue;
+
+          if (iter.second.has_s()) {
+              if      (iter.first == "module")      module            = iter.second.s();
+              else if (iter.first == "class_name")  class_name        = iter.second.s();
+              else if (iter.first == "compute")     compute           = iter.second.s();
+              else if (iter.first == "shape_infer") shape_infer       = iter.second.s();
+              else                                  attrs[iter.first] = iter.second.s();
+          } else if (iter.second.ints_size() > 0) {
+              if (iter.first == "input_types") {
+                  for (int ii = 0; ii < iter.second.ints_size(); ++ii) {
+                      input_types.push_back(utils::CApiElementTypeFromProtoType(iter.second.ints(ii)));
+                  }
+              } else if (iter.first == "output_types") {
+                  for (int ii = 0; ii < iter.second.ints_size(); ++ii) {
+                      output_types.push_back(utils::CApiElementTypeFromProtoType(iter.second.ints(ii)));
+                  }
+              }
+          } else {
+              LOGS(*session_logger_, WARNING) << "PyOp only accept string or tensorproto attribute";
           }
-          if (iter.first == "module")           module            = iter.second.s();
-          else if (iter.first == "class_name")  class_name        = iter.second.s();
-          else if (iter.first == "compute")     compute           = iter.second.s();
-          else if (iter.first == "shape_infer") shape_infer       = iter.second.s();
-          else                                  attrs[iter.first] = iter.second.s();
       }//for
 
-      ORT_ENFORCE (    module != "", "PyOp module not specified");
-      ORT_ENFORCE (class_name != "", "PyOp class name not specified");
+      ORT_ENFORCE (        module  != "", "PyOp module not specified");
+      ORT_ENFORCE (    class_name  != "", "PyOp class name not specified");
+      ORT_ENFORCE (!input_types.empty() , "PyOp node inputs not specified");
+      ORT_ENFORCE (!output_types.empty(), "PyOp node outputs not specified");
+
       auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(),
                                  class_name.c_str(), compute.c_str(), shape_infer.c_str(),
                                  [this] (const char* msg) { LOGS(*session_logger_, INFO) << msg; });
