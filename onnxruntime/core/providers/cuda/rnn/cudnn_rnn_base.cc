@@ -261,11 +261,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                    workspace_cuda.get(),
                                                    workspace_bytes));
   } else {
-    auto sen_lens_size = sequence_lens->Shape().Size();
     CudnnDataTensor x_desc;
-    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sen_lens_size, sequence_lens_data);
+    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
     CudnnDataTensor y_desc;
-    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sen_lens_size, sequence_lens_data);
+    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
 
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
                                                      rnn_desc_,
