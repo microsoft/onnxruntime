@@ -27,7 +27,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      6,                                                          \
+      9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
