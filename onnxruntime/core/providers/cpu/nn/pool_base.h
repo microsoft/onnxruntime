@@ -158,7 +158,7 @@ class PoolBase {
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
                                      std::vector<int64_t>* pads,
-                                     std::vector<int64_t>& dilations,
+                                     const std::vector<int64_t>& dilations,
                                      int64_t ceil_mode) const {
     ORT_ENFORCE(input_shape.Size() > 0);
     std::vector<int64_t> output_dims;
@@ -173,7 +173,7 @@ class PoolBase {
   inline void InferOutputSize(const std::vector<int64_t>& input_dims,
                               std::vector<int64_t>* output_dims,
                               std::vector<int64_t>* pads,
-                              std::vector<int64_t>& dilations,
+                              const std::vector<int64_t>& dilations,
                               int64_t ceil_mode) const {
     ORT_ENFORCE(input_dims.size() >= 2);
     if (global_pooling_) {

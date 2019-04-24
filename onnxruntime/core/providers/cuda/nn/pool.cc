@@ -177,7 +177,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, ceil_mode_);
+  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, this->ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());

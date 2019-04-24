@@ -226,7 +226,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
     need_dilation |= n > 1;
 
   if (OpKernel::Node().OutputDefs().size() == 1 && !need_dilation) {
-		//return PoolBase::Compute(context, MlasMaximumPooling);
+		return PoolBase::Compute(context, MlasMaximumPooling);
   }
 
   const Tensor* X = context->Input<Tensor>(0);
