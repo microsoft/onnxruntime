@@ -736,7 +736,8 @@ activation and leaky_relu_alpha.)DOC")
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
   Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
   The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
-  the second mode will be used. The first mode breaks each input string into tokens by removing separators.
+  the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
+  "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
 
   Let's assume "separators" is [" "] and consider an example.
   If input is
@@ -750,6 +751,9 @@ activation and leaky_relu_alpha.)DOC")
 
  whose shape is [2, 5] because you can find at most 5 tokens per input string.
  Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
+
+ If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
+ will be broken part into individual characters.
 
  For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
  The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
@@ -798,14 +802,11 @@ of [N, 0] then [N, 0].
           OPTIONAL)
       .Attr(
           "separators",
-          "an optional list of strings (type: AttributeProto::STRINGS), each single string in this attribute is a separator."
+          "an optional list of strings attribute that contains a list of separators - regular expressions to match separators"
           " Two consecutive segments in X connected by a separator would be divided into two tokens."
           " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
           " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
-          " one should set the separators to [\"\"], which contains only one empty string."
-          " If 'separators' is a L-element array, there will be L rounds of tokenization using one stop word."
-          " More specifically, in the first round, the first element in 'separators' is used to tokenize each string in the input."
-          " Then, the second element in 'separators' will be used to tokenize the resulted strings produced at the first round.",
+          " one should set the 'separators' to [\"\"], which contains an empty string.",
           AttributeProto::STRINGS,
           OPTIONAL)
       .Attr(
@@ -874,64 +875,6 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           "keepdims",
           "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
           AttributeProto::INT);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(NonMaxSuppression)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(
-Filter out boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
-Bounding boxes with score less than score_threshold are removed. Bounding box format is indicated by attribute center_point_box.
-Note that this algorithm is agnostic to where the origin is in the coordinate system and more generally is invariant to
-orthogonal transformations and translations of the coordinate system; thus translating or reflections of the coordinate system
-result in the same boxes being selected by the algorithm.
-The selected_indices output is a set of integers indexing into the input collection of bounding boxes representing the selected boxes.
-The bounding box coordinates corresponding to the selected indices can then be obtained using the Gather or GatherND operation.
-Note: The boxes doesn't has class dimension which means it alwasy has scores calculated for different classes on same box.)DOC")
-      .Input(
-          0,
-          "boxes",
-          "An input tensor with shape [num_batches, spatial_dimension, 4]. The single box data format is indicated by center_point_box.",
-          "tensor(float)")
-      .Input(
-          1,
-          "scores",
-          "An input tensor with shape [num_batches, num_classes, spatial_dimension]",
-          "tensor(float)")
-      .Input(
-          2,
-          "max_output_boxes_per_class",
-          "Integer representing the maximum number of boxes to be selected per batch per class. It is a scalar.",
-          "tensor(int32)",
-          OpSchema::Optional)
-      .Input(
-          3,
-          "iou_threshold",
-          "Float representing the threshold for deciding whether boxes overlap too much with respect to IOU. It is scalar. Value range [0, 1].",
-          "tensor(float)",
-          OpSchema::Optional)
-      .Input(
-          4,
-          "score_threshold",
-          "Float representing the threshold for deciding when to remove boxes based on score. It is a scalar",
-          "tensor(float)",
-          OpSchema::Optional)
-      .Output(
-          0,
-          "selected_indices",
-          "selected indices from the boxes tensor. [num_selected_indices, 3], the selected indices format is [batch_index, class_index, box_index].",
-          "tensor(int32)")
-      .Attr(
-          "center_point_box",
-          "Integer indicate the format of the box data. The default is 0."
-          "0 - the box data is supplied as [y1, x1, y2, x2] where (y1, x1) and (y2, x2) are the coordinates of any diagonal pair of box corners"
-          "and the coordinates can be provided as normalized (i.e., lying in the interval [0, 1]) or absolute. Mostly used for TF models."
-          "1 - the box data is supplied as [x_center, y_center, width, height]. Mostly used for Pytoch models.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto selected_indices_type = ctx.getOutputType(0)->mutable_tensor_type();
-        selected_indices_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
-      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)

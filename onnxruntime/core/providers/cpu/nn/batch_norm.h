@@ -32,6 +32,13 @@ class BatchNorm : public OpKernel {
   explicit BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
     auto st = op_kernel_info.GetAttr<float>("epsilon", &epsilon_);
     ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
+    
+    // opset 6-8
+    int64_t spatial;
+    if (op_kernel_info.GetAttr<int64_t>("spatial", &spatial).IsOK()) { 
+      ORT_ENFORCE(spatial == 1, "BatchNormalization kernel for CPU provider does not support non-spatial cases");
+    }
+
     //TODO: momentum
   }
 
