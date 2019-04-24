@@ -24,15 +24,5 @@ void ReorderBidirectionalDataInSequence(const int32_t seq_length,
                                         T* reordered_data,
                                         const size_t N);
 
-template <typename T>
-void RnnMaskImpl(const int32_t num_directions,
-                 const int32_t seq_length,
-                 const int32_t batch_size,
-                 const int32_t hidden_size,
-                 const int32_t* sequence_lens,
-                 T* y_output_data,
-                 T* y_h_output_data,
-                 const size_t N);
-
 }  // namespace cuda
 }  // namespace onnxruntime

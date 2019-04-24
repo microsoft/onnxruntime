@@ -59,6 +59,38 @@ cudnnDataType_t CudnnTensor::GetDataType() {
     ORT_THROW("cuDNN engine currently supports only single/double/half precision data types.");
 }
 
+CudnnDataTensor::CudnnDataTensor()
+    : tensor_(nullptr) {
+}
+
+CudnnDataTensor::~CudnnDataTensor() {
+  if (tensor_ != nullptr) {
+    cudnnDestroyRNNDataDescriptor(tensor_);
+    tensor_ = nullptr;
+  }
+}
+
+Status CudnnDataTensor::CreateTensorIfNeeded() {
+  if (!tensor_)
+    CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDataDescriptor(&tensor_));
+  return Status::OK();
+}
+
+Status CudnnDataTensor::Set(cudnnDataType_t dataType, int64_t max_seq_length, int64_t batch_size, int64_t data_size,
+                            int64_t seq_lengths_size, const int32_t* seq_lengths) {
+  ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
+
+  cudnnRNNDataLayout_t layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_PACKED;
+  float padding_fill = 0.0f;
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNDataDescriptor(tensor_, dataType, layout,
+                                                  static_cast<int>(max_seq_length),
+                                                  static_cast<int>(batch_size),
+                                                  static_cast<int>(data_size),
+                                                  seq_lengths,
+                                                  static_cast<void*>(&padding_fill)));
+  return Status::OK();
+}
+
 CudnnFilterDescriptor::CudnnFilterDescriptor() : desc_(nullptr) {
   cudnnCreateFilterDescriptor(&desc_);
 }
