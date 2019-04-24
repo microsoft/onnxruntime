@@ -9,7 +9,7 @@ import function_tests
 if __name__ == '__main__':
     loader = unittest.TestLoader()
 
-    test_classes = [function_tests.HttpJsonPayloadTests]
+    test_classes = [function_tests.HttpJsonPayloadTests, function_tests.HttpProtobufPayloadTests]
 
     test_suites = []
     for tests in test_classes:
