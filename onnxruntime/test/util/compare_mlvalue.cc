@@ -14,7 +14,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "Eigen/Core"
-#include "Eigen/src/Core/arch/CUDA/Half.h"
+#include "Eigen/src/Core/arch/GPU/Half.h"
 
 using namespace onnxruntime;
 

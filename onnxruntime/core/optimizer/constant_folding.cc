@@ -56,6 +56,8 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
 
 bool ConstantFolding::SatisfyCondition(const Graph& graph, const Node& node) {
   return excluded_op_types_.find(node.OpType()) == excluded_op_types_.end() &&
+         // constant folding is not currently supported in subgraphs.
+         node.ImplicitInputDefs().size() == 0 &&
          graph_utils::AllNodeInputsAreConstant(graph, node);
 }
 

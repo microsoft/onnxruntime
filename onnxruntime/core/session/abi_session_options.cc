@@ -51,8 +51,16 @@ ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options) {
   options->value.profile_file_prefix.clear();
 }
 
-ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions*) {}
-ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions*) {}
+// enable the memory pattern optimization.
+// The idea is if the input shapes are the same, we could trace the internal memory allocation
+// and generate a memory pattern for future request. So next time we could just do one allocation
+// with a big chunk for all the internal memory allocation.
+ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options) {
+  options->value.enable_mem_pattern = true;
+}
+ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
+  options->value.enable_mem_pattern = false;
+}
 
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
@@ -79,7 +87,7 @@ ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, u
 // Returns 0 on success and -1 otherwise
 // Available options are : 0, 1, 2.
 ORT_API(int, OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level) {
-  if (graph_optimization_level >= static_cast<uint32_t>(onnxruntime::TransformerLevel::MaxTransformerLevel)){
+  if (graph_optimization_level >= static_cast<uint32_t>(onnxruntime::TransformerLevel::MaxTransformerLevel)) {
     return -1;
   }
   options->value.graph_optimization_level = static_cast<onnxruntime::TransformerLevel>(graph_optimization_level);
