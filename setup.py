@@ -25,6 +25,9 @@ elif '--use_cuda' in sys.argv:
         package_name = 'ort-gpu-nightly'
         nightly_build = True
         sys.argv.remove('--nightly_build')
+elif '--use_ngraph' in sys.argv:
+    package_name = 'onnxruntime-ngraph'
+    sys.argv.remove('--use_ngraph')
 
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
@@ -43,6 +46,8 @@ except ImportError:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.0', 'libmklml_intel.so', 'libiomp5.so']
+  # nGraph Libs
+  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
 elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib'] # TODO add libmklml and libiomp5 later.
 else:

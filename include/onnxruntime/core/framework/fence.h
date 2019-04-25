@@ -45,6 +45,11 @@ class IFence {
      This should update the write fence of the MLValue
   */
   virtual void AfterUsedAsOutput(int queue_id) = 0;
+
+  /**
+  Called by executor before release MLValue to see whether async data read is finished or not. This is non-blocking.
+  */
+  virtual bool CanRelease() = 0;
 };
 using Fence_t = IFence*;
 using FencePtr = std::shared_ptr<IFence>;

@@ -7,11 +7,10 @@
 #include <cctype>
 
 namespace onnxruntime {
-namespace contrib {
 template <typename T>
-class ROIAlign final : public OpKernel {
+class RoiAlign final : public OpKernel {
  public:
-  explicit ROIAlign(const OpKernelInfo& info) : OpKernel(info) {
+  explicit RoiAlign(const OpKernelInfo& info) : OpKernel(info) {
     // mode
     std::string mode_tmp;
     if (info.GetAttr<std::string>("mode", &mode_tmp).IsOK()) {
@@ -22,16 +21,16 @@ class ROIAlign final : public OpKernel {
       }
     }
 
-    // pooled_h
-    int64_t pooled_h_tmp;
-    if (info.GetAttr<int64_t>("pooled_h", &pooled_h_tmp).IsOK()) {
-      pooled_h_ = pooled_h_tmp;
+    // output_height
+    int64_t output_height_tmp;
+    if (info.GetAttr<int64_t>("output_height", &output_height_tmp).IsOK()) {
+      output_height_ = output_height_tmp;
     }
 
-    // pooled_w
-    int64_t pooled_w_tmp;
-    if (info.GetAttr<int64_t>("pooled_w", &pooled_w_tmp).IsOK()) {
-      pooled_w_ = pooled_w_tmp;
+    // output_width
+    int64_t output_width_tmp;
+    if (info.GetAttr<int64_t>("output_width", &output_width_tmp).IsOK()) {
+      output_width_ = output_width_tmp;
     }
 
     // sampling_ratio
@@ -52,12 +51,11 @@ class ROIAlign final : public OpKernel {
 
  private:
   std::string mode_{"avg"};
-  int64_t pooled_h_{1};
-  int64_t pooled_w_{1};
+  int64_t output_height_{1};
+  int64_t output_width_{1};
   int64_t sampling_ratio_{0};
   float spatial_scale_{1.0f};
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ROIAlign);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoiAlign);
 };
-}  // namespace contrib
 }  // namespace onnxruntime

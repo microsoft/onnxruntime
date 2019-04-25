@@ -124,6 +124,13 @@ file(GLOB_RECURSE onnxruntime_test_providers_cpu_src
   )
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
+if (onnxruntime_USE_NGRAPH)
+  file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src
+    "${TEST_SRC_DIR}/providers/ngraph/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
+endif()
+
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
 
@@ -172,6 +179,10 @@ if(onnxruntime_USE_MKLDNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_mkldnn)
 endif()
 
+if(onnxruntime_USE_NGRAPH)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -187,6 +198,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_NGRAPH}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

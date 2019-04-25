@@ -44,10 +44,19 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// External threadpool definition
+// Forward declare the thread pool implementation class.
 //
-#include "core/platform/threadpool.h"
-using namespace onnxruntime::concurrency;
+// N.B. Avoid including onnxruntime headers here to keep the dependencies for
+// standalone MLAS test executables smaller.
+//
+
+namespace onnxruntime {
+    namespace concurrency {
+        class ThreadPool;
+    };
+};
+
+using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
 
 //
 // Activation routines.
@@ -98,7 +107,7 @@ MlasSgemm(
     float beta,
     float* C,
     size_t ldc,
-    ThreadPool* ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -127,8 +136,8 @@ struct MLAS_CONV_PARAMETERS {
     size_t InputSize;
     size_t OutputSize;
     size_t K;
-    size_t ThreadCount;
     MLAS_CONV_ALGORITHM Algorithm;
+    int32_t ThreadCount;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -157,7 +166,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
-    int32_t ThreadPoolLimit
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
@@ -169,7 +178,7 @@ MlasConv(
     const float* Bias,
     float* WorkingBuffer,
     float* Output,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -194,7 +203,7 @@ MlasPool(
     const int64_t* OutputShape,
     const float* Input,
     float* Output,
-    ThreadPool *ExternalThreadPool
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //

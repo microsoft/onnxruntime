@@ -517,7 +517,7 @@ TrialConv2D(
                     FilterCount,
                     &Activation,
                     &WorkingBufferSize,
-                    0);
+                    nullptr);
 
     size_t OutputHeight = size_t(OutputHeight64);
     size_t OutputWidth = size_t(OutputWidth64);

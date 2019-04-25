@@ -60,17 +60,11 @@ class DeepCpuGruOp final : public OpKernel {
   rnn::detail::Direction direction_;
   int num_directions_;
 
-  int hidden_size_ = 0;
+  int hidden_size_ {};
   float clip_;
-  int linear_before_reset_ = 0;
+  int linear_before_reset_ {};
 
   rnn::detail::ActivationFuncs activation_funcs_;
-
-  // Threadpool for operator. If concurrent Compute calls are possible, it will be shared
-  // across them. mutable due to this.
-  // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
-  // cost on every call.
-  mutable onnxruntime::concurrency::ThreadPool ttp_{"DEEPCPU_GRU", (int)std::thread::hardware_concurrency()};
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;
