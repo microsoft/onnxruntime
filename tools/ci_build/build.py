@@ -519,11 +519,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 warnings.warn("onnx is not installed. Following test cannot be run.")
                 onnx_test = False
             if onnx_test:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
+                # run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),'--output_dir','test_models'], cwd=cwd)
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
-                if config != 'Debug':
-                    run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
+                # if config != 'Debug':
+                #     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
             if not args.skip_keras_test:
                 try:
                     import onnxmltools
