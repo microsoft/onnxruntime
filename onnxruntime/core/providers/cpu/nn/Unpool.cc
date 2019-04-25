@@ -45,23 +45,23 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
 
-  // Calculate output tensor shape from attributes
-  std::vector<int64_t> inferredOutputShape(X_shape.NumDimensions());
+  std::vector<int64_t> inferredOutputShape;
+  if (!kernel_shape_.empty())
+  {
+    // Calculate output tensor shape from attributes
+    inferredOutputShape = std::vector<int64_t>(X_shape.NumDimensions());
 
-  // Copy batch and channel dims
-  inferredOutputShape[0] = X_shape[0];
-  inferredOutputShape[1] = X_shape[1];
+    // Copy batch and channel dims
+    inferredOutputShape[0] = X_shape[0];
+    inferredOutputShape[1] = X_shape[1];
 
-  // For feature dims calculate reversing the formula used for Maxpool
-  for (auto dim = 0; dim < kernel_shape_.size(); ++dim) {
-    inferredOutputShape[dim + 2] = (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim + 2] + pads_[kernel_shape_.size() + dim + 4]) + kernel_shape_[dim];
+    // For feature dims calculate reversing the formula used for Maxpool
+    for (auto dim = 0; dim < kernel_shape_.size(); ++dim) {
+      inferredOutputShape[dim + 2] = (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim + 2] + pads_[kernel_shape_.size() + dim + 4]) + kernel_shape_[dim];
+    }
   }
 
-  // If outputshape is provided use that to infer additional padding.
-  std::vector<int64_t> inferredPads;
   std::vector<int64_t> givenOutputShape;
-  bool padsInferred = false;
-
   if (num_inputs_ == 3) {
     auto tensor_shape = context->Input<Tensor>(2);
     if (tensor_shape == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
@@ -69,17 +69,25 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
     // Turn the shape tensor data into an actual shape
     const int64_t* p_shape = tensor_shape->template Data<int64_t>();
-    std::vector<int64_t> shape{p_shape, p_shape + tensor_shape->Shape().Size()};
-    givenOutputShape = shape;
+    givenOutputShape = std::vector<int64_t>(p_shape, p_shape + tensor_shape->Shape().Size());
+  }
 
+  std::vector<int64_t> inferredPads;
+  bool padsInferred = false;
+  if (!inferredOutputShape.empty() && !givenOutputShape.empty())
+  {
+    ORT_RETURN_IF_NOT(inferredOutputShape.size() == givenOutputShape.size(), 
+      "Dimension mismatch between inferred and provided output shapes.");
+      
+    // both inferred and given output shape exist, try infer pads.
     inferredPads.resize(inferredOutputShape.size() * 2, 0);
 
     // calculate if output shape has any padding over the inferred shape for feature dims.
-    for (auto dim = 2; dim < shape.size(); dim++) {
-      ORT_RETURN_IF_NOT(inferredOutputShape[dim] <= shape[dim], "Incorrect output shape");
+    for (auto dim = 2; dim < givenOutputShape.size(); dim++) {
+      ORT_RETURN_IF_NOT(!inferredOutputShape.empty() && inferredOutputShape[dim] <= givenOutputShape[dim], "Incorrect output shape");
 
-      int64_t inferredPad = shape[dim] - inferredOutputShape[dim];
-      ORT_RETURN_IF_NOT(inferredPad <= kernel_shape_[dim - 2], "Incorrect output shape");
+      int64_t inferredPad = givenOutputShape[dim] - inferredOutputShape[dim];
+      ORT_RETURN_IF_NOT(!kernel_shape_.empty() && inferredPad <= kernel_shape_[dim - 2], "Incorrect output shape");
 
       if (inferredPad > 0) {
         padsInferred = true;
@@ -93,18 +101,19 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     }
   }
 
+  std::vector<int64_t> &outputShape = !givenOutputShape.empty() ? givenOutputShape : inferredOutputShape;
   // unpool
   int64_t totalPooledElem = 1;
   int64_t totalOutputElem = 1;
 
   for (auto dim = 0; dim < X_shape.NumDimensions(); dim++) {
     totalPooledElem *= X_shape[dim];
-    totalOutputElem *= inferredOutputShape[dim];
+    totalOutputElem *= outputShape[dim];
   }
 
   // if there are no pads inferred from outputshape simply create the new unpooled tensor
   if (!padsInferred) {
-    TensorShape shape(inferredOutputShape);
+    TensorShape shape(outputShape);
 
     Tensor* Y = context->Output(0, shape);
     auto Y_data = Y->template MutableData<float>();
@@ -119,7 +128,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     // create the tensor with the inferred dims and add the padding.
 
     // Generate tensor with inferred dims.
-    TensorShape shape(inferredOutputShape);
+    TensorShape shape(outputShape);
 
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -141,7 +150,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
       out[I_data[curElem]] = X_data[curElem];
     }
 
-    std::vector<int64_t> output_dims(inferredOutputShape);
+    std::vector<int64_t> output_dims(outputShape);
     size_t dimension_count = output_dims.size();
 
     std::vector<int64_t> input_starts;
@@ -155,7 +164,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     }
 
     // setup output object
-    TensorShape output_shape(givenOutputShape);
+    TensorShape output_shape(outputShape);
     Tensor* Y = context->Output(0, output_shape);
     auto Y_data = Y->template MutableData<float>();
 
