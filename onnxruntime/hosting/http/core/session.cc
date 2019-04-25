@@ -94,12 +94,16 @@ template <typename Body, typename Allocator>
 void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator> >&& req) {
   HttpContext context{};
   context.request = std::move(req);
-  // TODO: set request id
 
-  auto status = ExecuteUserFunction(context);
+  // Special handle the liveness probe endpoint for orchestration systems like Kubernetes.
+  if (context.request.method() == http::verb::get && context.request.target().to_string() == "/") {
+    context.response.body() = "Healthy";
+  } else {
+    auto status = ExecuteUserFunction(context);
 
-  if (status != http::status::ok) {
-    routes_.on_error(context);
+    if (status != http::status::ok) {
+      routes_.on_error(context);
+    }
   }
 
   context.response.keep_alive(context.request.keep_alive());
