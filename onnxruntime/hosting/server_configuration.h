@@ -46,7 +46,7 @@ class ServerConfiguration {
 
   ServerConfiguration() {
     desc.add_options()("help,h", "Shows a help message and exits");
-    desc.add_options()("logging_level", po::value(&logging_level_str)->default_value(logging_level_str), "Logging level. Allowed options (case sensitive): verbose, info, warning, error, fatal");
+    desc.add_options()("log_level", po::value(&log_level_str)->default_value(log_level_str), "Logging level. Allowed options (case sensitive): verbose, info, warning, error, fatal");
     desc.add_options()("model_path", po::value(&model_path)->required(), "Path to ONNX model");
     desc.add_options()("address", po::value(&address)->default_value(address), "The base HTTP address");
     desc.add_options()("http_port", po::value(&http_port)->default_value(http_port), "HTTP port to listen to requests");
@@ -77,7 +77,7 @@ class ServerConfiguration {
     Result result = ValidateOptions();
 
     if (result == Result::ContinueSuccess) {
-      logging_level = supported_log_levels[logging_level_str];
+      logging_level = supported_log_levels[log_level_str];
     }
 
     return result;
@@ -86,13 +86,13 @@ class ServerConfiguration {
  private:
   po::options_description desc{"Allowed options"};
   po::variables_map vm{};
-  std::string logging_level_str = "verbose";
+  std::string log_level_str = "info";
 
   // Print help and return if there is a bad value
   Result ValidateOptions() {
-    if (vm.count("logging_level") &&
-        supported_log_levels.find(logging_level_str) == supported_log_levels.end()) {
-      PrintHelp(std::cerr, "logging_level must be one of verbose, info, warning, error, or fatal");
+    if (vm.count("log_level") &&
+        supported_log_levels.find(log_level_str) == supported_log_levels.end()) {
+      PrintHelp(std::cerr, "log_level must be one of verbose, info, warning, error, or fatal");
       return Result::ExitFailure;
     } else if (num_http_threads <= 0) {
       PrintHelp(std::cerr, "num_http_threads must be greater than 0");
@@ -129,4 +129,3 @@ class ServerConfiguration {
 
 }  // namespace hosting
 }  // namespace onnxruntime
-

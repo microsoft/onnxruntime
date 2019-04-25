@@ -9,7 +9,7 @@ ONNX Hosting provides a REST API for prediction. The goal of the project is to m
 ONNX Hosting: host an ONNX model for inferencing with ONNXRuntime
 Allowed options:
   -h [ --help ]                   Shows a help message and exits
-  --logging_level arg (=verbose)  Logging level. Allowed options (case 
+  --log_level arg (=info)         Logging level. Allowed options (case 
                                   sensitive): verbose, info, warning, error, 
                                   fatal
   -m [ --model_path ] arg         Path to ONNX model

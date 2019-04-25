@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
   auto env = std::make_shared<hosting::HostingEnvironment>(config.logging_level);
   auto logger = env->GetAppLogger();
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
-  LOGS(logger, VERBOSE) << "Model path: " << config.model_path;
+  LOGS(logger, INFO) << "Model path: " << config.model_path;
 
   auto status = env->InitializeModel(config.model_path);
   if (!status.IsOK()) {
@@ -47,8 +47,8 @@ int main(int argc, char* argv[]) {
   app.RegisterStartup(
       [env](const auto& details) -> void {
         auto logger = env->GetAppLogger();
-        LOGS(logger, VERBOSE) << "Listening at: "
-                              << "http://" << details.address << ":" << details.port;
+        LOGS(logger, INFO) << "Listening at: "
+                           << "http://" << details.address << ":" << details.port;
       });
 
   app.RegisterError(

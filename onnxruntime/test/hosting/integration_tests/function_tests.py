@@ -26,7 +26,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cmd = [cls.hosting_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--logging_level', cls.log_level]
+        cmd = [cls.hosting_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--log_level', cls.log_level]
         print('Launching hosting app: [{0}]'.format(' '.join(cmd)))
         cls.hosting_app_proc = subprocess.Popen(cmd)
         print('Hosting app PID: {0}'.format(cls.hosting_app_proc.pid))
@@ -156,7 +156,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cmd = [cls.hosting_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--logging_level', cls.log_level]
+        cmd = [cls.hosting_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--log_level', cls.log_level]
         print('Launching hosting app: [{0}]'.format(' '.join(cmd)))
         cls.hosting_app_proc = subprocess.Popen(cmd)
         print('Hosting app PID: {0}'.format(cls.hosting_app_proc.pid))
