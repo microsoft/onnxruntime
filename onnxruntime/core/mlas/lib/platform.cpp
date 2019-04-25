@@ -34,18 +34,23 @@ MLAS_PLATFORM MlasPlatform;
 #define _XCR_XFEATURE_ENABLED_MASK 0
 #endif
 
-inline uint64_t
+inline
+uint64_t
 MlasReadExtendedControlRegister(
-    unsigned int ext_ctrl_reg) {
+    unsigned int ext_ctrl_reg
+    )
+{
 #if defined(_WIN32)
   return _xgetbv(ext_ctrl_reg);
 #else
   uint32_t eax, edx;
 
-  __asm__(
+  __asm__
+  (
       "xgetbv"
-      : "=a"(eax), "=d"(edx)
-      : "c"(ext_ctrl_reg));
+      : "=a" (eax), "=d" (edx)
+      : "c" (ext_ctrl_reg)
+  );
 
   return ((uint64_t)edx << 32) | eax;
 #endif
@@ -54,7 +59,8 @@ MlasReadExtendedControlRegister(
 #endif
 
 MLAS_PLATFORM::MLAS_PLATFORM(
-    void)
+    void
+    )
 /*++
 
 Routine Description:
@@ -71,6 +77,7 @@ Return Value:
 
 --*/
 {
+
 #if defined(MLAS_TARGET_AMD64_IX86)
 
   //
@@ -97,6 +104,7 @@ Return Value:
 #endif
 
   if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
+
     //
     // Check if the operating system supports saving SSE and AVX states.
     //
@@ -104,6 +112,7 @@ Return Value:
     uint64_t xcr0 = MlasReadExtendedControlRegister(_XCR_XFEATURE_ENABLED_MASK);
 
     if ((xcr0 & 0x6) == 0x6) {
+
 #if defined(MLAS_TARGET_IX86)
 
       this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
@@ -124,6 +133,7 @@ Return Value:
 #endif
 
       if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+
         if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
           this->KernelZeroRoutine = MlasSgemmKernelZeroAvx512F;
           this->KernelAddRoutine = MlasSgemmKernelAddAvx512F;
@@ -136,6 +146,7 @@ Return Value:
         this->TanhKernelRoutine = MlasTanhKernelFma3;
 
       } else {
+
         this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
         this->KernelAddRoutine = MlasSgemmKernelAddAvx;
       }
@@ -145,6 +156,7 @@ Return Value:
       this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
 
 #endif
+
     }
   }
 
@@ -161,9 +173,9 @@ Return Value:
   GetSystemInfo(&SystemInfo);
 
   if (SystemInfo.dwNumberOfProcessors <= MLAS_MAXIMUM_THREAD_COUNT) {
-    this->MaximumThreadCount = int32_t(SystemInfo.dwNumberOfProcessors);
+      this->MaximumThreadCount = int32_t(SystemInfo.dwNumberOfProcessors);
   } else {
-    this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+      this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
   }
 
 #endif
