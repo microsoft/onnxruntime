@@ -2,7 +2,7 @@
 
 ## Supported architectures
 
-|           | x86_32       | x86_64       | ARM32        | ARM64        |
+|           | x86_32       | x86_64       | ARM32v7      | ARM64        |
 |-----------|:------------:|:------------:|:------------:|:------------:|
 |Windows    | YES          | YES          |  YES         | YES          |
 |Linux      | YES          | YES          |  YES         | YES          |
@@ -15,26 +15,19 @@
 |Windows 10   | YES          | YES         |Must use VS 2017 or the latest VS2015|
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
-|Ubuntu 17.x  | YES          | YES         |                            |
-|Ubuntu 18.x  | YES          | YES         |                            |
-|Fedora 23    | YES          | YES         |                            |
-|Fedora 24    | YES          | YES         |                            |
-|Fedora 25    | YES          | YES         |                            |
-|Fedora 26    | YES          | YES         |                            |
-|Fedora 27    | YES          | YES         |                            |
-|Fedora 28    | YES          | NO          |Cannot build GPU kernels but can run them |
 
 * Red Hat Enterprise Linux and CentOS are not supported.
-* GCC 4.x and below are not supported. If you are using GCC 7.0+, you'll need to upgrade eigen to a newer version before compiling ONNX Runtime.
+* Other version of Ubuntu might work but we don't support them officially.
+* GCC 4.x and below are not supported.
 
 OS/Compiler Matrix:
 
-| OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang |
-|-------------|:------------:|:----------------:|:---------------:|
-|Windows 10   | YES          | Not tested       | planning      |
-|Linux        | NO           | YES(gcc>=5.0)    | YES             |
+| OS/Compiler | Supports VC  | Supports GCC     |
+|-------------|:------------:|:----------------:|
+|Windows 10   | YES          | Not tested       |
+|Linux        | NO           | YES(gcc>=5.0)    |
 
-ONNX Runtime python binding only supports Python 3.x. Please use python 3.5+.
+ONNX Runtime python binding only supports Python 3.5, 3.6 and 3.7.
 
 ## Build
 1. Checkout the source tree:
@@ -56,7 +49,7 @@ The build script runs all unit tests by default (for native builds and skips tes
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
-## Build x86 
+## Build x86
 1. For Windows, just add --x86 argument when launching build.bat
 2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
@@ -82,7 +75,7 @@ The complete list of build flavors can be seen by running `./build.sh --help` or
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
 
 ONNX Runtime is built and tested with CUDA 9.1 and CUDNN 7.1 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3).
-CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017. 
+CUDA versions from 9.1 up to 10.0, and CUDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`.
  - The path to the CUDNN installation (include the `cuda` folder in the path) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. The CUDNN path should contain `bin`, `include` and `lib` directories.
@@ -95,8 +88,8 @@ You can build with:
 ./build.bat --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path> (Windows)
 ```
 
-Depending on compatibility between the CUDA, CUDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset. 
-- CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions 
+Depending on compatibility between the CUDA, CUDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
+- CUDA 10.0 is known to work with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
   - https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/
 - CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
 
@@ -113,8 +106,8 @@ To use the 14.11 toolset with a later version of Visual Studio 2017 you have two
 2. Alternatively if you have CMake 3.12 or later you can specify the toolset version via the `--msvc_toolset` build script parameter.
    - e.g. `.\build.bat --msvc_toolset 14.11`
 
-_Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.  
-e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\. 
+_Side note: If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
+e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
 If you want to build with an earlier version, you must temporarily remove the 'CUDA x.y.*' files for later versions from this directory._
 
 ### MKL-DNN/MKLML
@@ -124,11 +117,11 @@ To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries
 ### TensorRT
 ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6. 
+The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 9.0/CUDA 10.0, CUDNN 7.1 and TensorRT 5.0.2.6.
 
  - The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
  - The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
- - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`. 
+ - The path to the CUDNN installation (path to folder that contains libcudnn.so) must be provided via the CUDNN_PATH environment variable, or `--cudnn_home parameter`.
 - The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 You can build from source on Linux by using the following `cmd` from the onnxruntime directory:
@@ -320,10 +313,10 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ### Cross compiling on Windows
 #### Using Visual C++ compilers
-1. Download and install Visual C++ compilers and libraries for ARM(64). 
+1. Download and install Visual C++ compilers and libraries for ARM(64).
    If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
-   
-2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable. 
+
+2. Use `build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
 
 ### Using other compilers
 (TODO)
