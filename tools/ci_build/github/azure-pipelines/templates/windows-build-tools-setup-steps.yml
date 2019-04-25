@@ -30,7 +30,7 @@ steps:
       displayName: 'Download python'
       inputs:
         targetType: 'inline'
-        script: 'Invoke-WebRequest -MaximumRetryCount 3 -OutFile "$(Build.SourcesDirectory)\installer.exe"  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
+        script: 'Invoke-WebRequest -OutFile "$(Build.SourcesDirectory)\installer.exe"  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
 
     - task: CmdLine@1
       displayName: 'Run python installer'
