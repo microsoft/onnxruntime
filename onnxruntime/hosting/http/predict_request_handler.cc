@@ -37,10 +37,10 @@ void Predict(const std::string& name,
              /* in, out */ HttpContext& context,
              std::shared_ptr<HostingEnvironment> env) {
   auto logger = env->GetLogger(context.request_id);
-  LOGS(*logger, VERBOSE) << "Name: " << name << " Version: " << version << " Action: " << action;
+  LOGS(*logger, INFO) << "Model Name: " << name << ", Version: " << version << ", Action: " << action;
 
   if (!context.client_request_id.empty()) {
-    LOGS(*logger, VERBOSE) << "x-ms-client-request-id: [" << context.client_request_id << "]";
+    LOGS(*logger, INFO) << "x-ms-client-request-id: [" << context.client_request_id << "]";
   }
 
   // Request and Response content type information
