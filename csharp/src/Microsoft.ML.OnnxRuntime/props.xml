@@ -10,9 +10,15 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
 
-  <ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x64'">
    <Link>
       <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x64/native/onnxruntime.lib</AdditionalDependencies>
+   </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x86'">
+   <Link>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x86/native/onnxruntime.lib</AdditionalDependencies>
    </Link>
   </ItemDefinitionGroup>
 
@@ -21,7 +27,7 @@
                         Exists('packages.$(MSBuildProjectName).config')">
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'x64'">
-      <Link>onnxruntime.dll</Link>    
+      <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -42,6 +48,33 @@
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libiomp5md.dll"
           Condition="'$(PlatformTarget)' == 'x64' AND
                      Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libiomp5md.dll')">
+      <Link>libiomp5md.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\onnxruntime.dll"
+          Condition="'$(PlatformTarget)' == 'x86'">
+      <Link>onnxruntime.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mkldnn.dll"
+          Condition="'$(PlatformTarget)' == 'x86' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mkldnn.dll')">
+      <Link>mkldnn.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mklml.dll"
+          Condition="'$(PlatformTarget)' == 'x86' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mklml.dll')">
+      <Link>mklml.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\libiomp5md.dll"
+          Condition="'$(PlatformTarget)' == 'x86' AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\libiomp5md.dll')">
       <Link>libiomp5md.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
