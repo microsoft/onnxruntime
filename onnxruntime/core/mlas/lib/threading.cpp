@@ -74,27 +74,29 @@ MlasExecuteThreaded(
     MLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
     int32_t Iterations,
-    MLAS_THREADPOOL* ThreadPool) {
-  //
-  // Execute the routine directly if only one iteration is specified.
-  //
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    //
+    // Execute the routine directly if only one iteration is specified.
+    //
 
-  if (Iterations == 1) {
-    ThreadedRoutine(Context, 0);
-    return;
-  }
+    if (Iterations == 1) {
+        ThreadedRoutine(Context, 0);
+        return;
+    }
 
 #ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
-  MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 #else
-  //
-  // Schedule the threaded iterations using the thread pool object.
-  //
+    //
+    // Schedule the threaded iterations using the thread pool object.
+    //
 
-  if (ThreadPool != nullptr) {
-    ThreadPool->ParallelFor(Iterations, [&](int32_t tid) { ThreadedRoutine(Context, tid); });
-    return;
-  }
+    if (ThreadPool != nullptr) {
+        ThreadPool->ParallelFor(Iterations, [&](int32_t tid) { ThreadedRoutine(Context, tid); });
+        return;
+    }
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
@@ -139,13 +141,14 @@ MlasExecuteThreaded(
 
 #endif
 
-  //
-  // Execute the routine for the specified number of iterations.
-  //
+    //
+    // Execute the routine for the specified number of iterations.
+    //
+
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
     for (int32_t tid = 0; tid < Iterations; tid++) {
-      ThreadedRoutine(Context, tid);
+        ThreadedRoutine(Context, tid);
     }
 }
