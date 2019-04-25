@@ -24,7 +24,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     pads.assign(kernel_shape.size(), 0);
   }
 
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
   const float* X_data = X->template Data<float>();
@@ -182,7 +182,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
   }
 
   std::vector<int64_t> pads = pads_;
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
   // Get access to the internal threadpool
@@ -216,9 +216,15 @@ Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
 
 template <>
 Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) const {
-  // Use MLAS pooling if the index output tensor is not used.
-  if (OpKernel::Node().OutputDefs().size() == 1) {
-    return PoolBase::Compute(context, MlasMaximumPooling);
+  // Use MLAS pooling if the index output tensor is not used
+  // and also if dilation is not required
+
+  bool need_dilation = false;
+  for (auto n : dilations_)
+    need_dilation |= n > 1;
+
+  if (OpKernel::Node().OutputDefs().size() == 1 && !need_dilation) {
+		return PoolBase::Compute(context, MlasMaximumPooling);
   }
 
   const Tensor* X = context->Input<Tensor>(0);
@@ -229,7 +235,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> kernel_shape = kernel_shape_;
 
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
   Tensor* I = context->Output(1, TensorShape(output_dims));
 
@@ -255,6 +261,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t x_step = height;
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
+      const int64_t dilation_h = dilations_[0];
 
       std::function<void(int32_t)> work_object = [&](int32_t c) {
         const float* x_d = X_data + c * x_step;
@@ -262,11 +269,11 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
         for (int64_t ph = 0; ph < pooled_height; ++ph) {
           int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0], height);
+          int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
           hstart = std::max(hstart, static_cast<int64_t>(0));
           float Yh = std::numeric_limits<float>::lowest();
           int64_t h_index = -1;
-          for (int64_t h = hstart; h < hend; ++h) {
+          for (int64_t h = hstart; h < hend; h += dilation_h) {
             if (x_d[h] > Yh) {
               Yh = x_d[h];
               h_index = h;
@@ -285,6 +292,8 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t x_step = height * width;
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
+      const int64_t dilation_h = dilations_[0];
+      const int64_t dilation_w = dilations_[1];
 
       std::function<void(int32_t)> work_object = [&](int32_t c) {
         const float* x_d = X_data + c * x_step;
@@ -293,18 +302,18 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
 
         for (int64_t ph = 0; ph < pooled_height; ++ph) {
           int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0], height);
+          int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
           hstart = std::max(hstart, static_cast<int64_t>(0));
           for (int64_t pw = 0; pw < pooled_width; ++pw) {
             int64_t wstart = pw * stride_w() - pads[1];
-            int64_t wend = std::min(wstart + kernel_shape[1], width);
+            int64_t wend = std::min(wstart + kernel_shape[1] * dilation_w - dilation_w + 1, width);
             wstart = std::max(wstart, static_cast<int64_t>(0));
             const int64_t pool_index = ph * pooled_width + pw;
             float Yh = std::numeric_limits<float>::lowest();
             int64_t h_index = -1;
             int64_t w_index = -1;
-            for (int64_t h = hstart; h < hend; ++h) {
-              for (int64_t w = wstart; w < wend; ++w) {
+            for (int64_t h = hstart; h < hend; h += dilation_h) {
+              for (int64_t w = wstart; w < wend; w += dilation_w) {
                 const int64_t input_index = h * width + w;
                 if (x_d[input_index] > Yh) {
                   Yh = x_d[input_index];
@@ -328,6 +337,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       int64_t x_step = height * width * depth;
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
+      const int64_t dilation_h = dilations_[0];
+      const int64_t dilation_w = dilations_[1];
+      const int64_t dilation_d = dilations_[2];
 
       std::function<void(int32_t)> work_object = [&](int32_t c) {
         const float* x_d = X_data + c * x_step;
@@ -336,15 +348,15 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
 
         for (int64_t ph = 0; ph < pooled_height; ++ph) {
           int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0], height);
+          int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
           hstart = std::max(hstart, static_cast<int64_t>(0));
           for (int64_t pw = 0; pw < pooled_width; ++pw) {
             int64_t wstart = pw * stride_w() - pads[1];
-            int64_t wend = std::min(wstart + kernel_shape[1], width);
+            int64_t wend = std::min(wstart + kernel_shape[1] * dilation_w - dilation_w + 1, width);
             wstart = std::max(wstart, static_cast<int64_t>(0));
             for (int64_t pd = 0; pd < pooled_depth; ++pd) {
               int64_t dstart = pd * stride_d() - pads[2];
-              int64_t dend = std::min(dstart + kernel_shape[2], depth);
+              int64_t dend = std::min(dstart + kernel_shape[2] * dilation_d - dilation_d + 1, depth);
               dstart = std::max(dstart, static_cast<int64_t>(0));
               const int64_t pool_index =
                   ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
@@ -352,9 +364,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
               int64_t h_index = -1;
               int64_t w_index = -1;
               int64_t d_index = -1;
-              for (int64_t h = hstart; h < hend; ++h) {
-                for (int64_t w = wstart; w < wend; ++w) {
-                  for (int64_t d = dstart; d < dend; ++d) {
+              for (int64_t h = hstart; h < hend; h += dilation_h) {
+                for (int64_t w = wstart; w < wend; w += dilation_w) {
+                  for (int64_t d = dstart; d < dend; d += dilation_d) {
                     const int64_t input_index = h * width * depth + w * depth + d;
                     if (x_d[input_index] > Yh) {
                       Yh = x_d[input_index];
@@ -384,22 +396,33 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   return Status::OK();
 }  // namespace onnxruntime
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    AveragePool,
+    7, 9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Pool<float, AveragePool>);
+
 ONNX_CPU_OPERATOR_KERNEL(
     AveragePool,
-    7,
+    10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, AveragePool>);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MaxPool,
-    1,
-    7,
+    1, 7,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pool<float, MaxPool<1 /*VERSION*/>>);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    MaxPool,
+    8, 9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    Pool<float, MaxPool<8 /*VERSION*/>>);
+
 ONNX_CPU_OPERATOR_KERNEL(
     MaxPool,
-    8,
+    10,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     Pool<float, MaxPool<8 /*VERSION*/>>);
 
