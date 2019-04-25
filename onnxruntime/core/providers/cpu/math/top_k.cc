@@ -56,7 +56,8 @@ struct ValueCmp {
 };
 
 // Core TopK implementation
-Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, const unsigned k) {
+Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, unsigned k) {
+
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
   auto axis_parsed = HandleNegativeAxis(axis, in_dims.size());
@@ -66,6 +67,8 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
     err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
     return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
   }
+  // reset k on zero
+  if (k == 0) k = static_cast<unsigned>(X->Shape().GetDims()[axis_parsed]);
 
   const int64_t rows = SizeToDim(axis_parsed, in_dims);
   const int64_t cols = X->Shape().Size() / rows;
@@ -131,7 +134,7 @@ template <>
 TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   int64_t k_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_temp).IsOK());
-  ORT_ENFORCE(k_temp > 0);
+  ORT_ENFORCE(k_temp >= 0);
   k_ = gsl::narrow_cast<unsigned>(k_temp);
 
   int64_t axis_temp;
@@ -167,7 +170,7 @@ Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
   if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
   unsigned parsed_input_k = gsl::narrow_cast<unsigned>(Y->template Data<int64_t>()[0]);
-  if (parsed_input_k <= 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k should be greater than 0");
+  if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
   return TopKImpl(p_op_kernel_context, X, axis_, parsed_input_k);
 }
 
