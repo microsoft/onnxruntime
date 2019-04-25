@@ -33,4 +33,3 @@ SupportedContentType GetResponseContentType(const HttpContext& context);
 
 }  // namespace hosting
 }  // namespace onnxruntime
-

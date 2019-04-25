@@ -82,7 +82,11 @@ void Predict(const std::string& name,
     context.response.set(http::field::content_type, "application/json");
   } else {
     response_body = predict_response.SerializeAsString();
-    context.response.set(http::field::content_type, "application/octet-stream");
+    if (context.request.find("Accept") != context.request.end() && context.request["Accept"] != "*/*") {
+      context.response.set(http::field::content_type, context.request["Accept"].to_string());
+    } else {
+      context.response.set(http::field::content_type, "application/octet-stream");
+    }
   }
 
   // Build HTTP response
