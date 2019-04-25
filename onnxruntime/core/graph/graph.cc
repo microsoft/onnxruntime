@@ -939,13 +939,13 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             // If this Graph was built manually, remove the implicit input from the graph outputs if it is present there
             // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
             // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
-            if (!loaded_from_model_file) {
+            /*if (!loaded_from_model_file) {
               auto in_ordered_graph_outputs = find(graph_output_order_.cbegin(), graph_output_order_.cend(), node_arg);
               if (in_ordered_graph_outputs == graph_output_order_.cend()) {
                 graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
                                      graph_outputs_.end());
               }
-            }
+            }*/
           }
         }
       }
@@ -2219,10 +2219,8 @@ void Graph::CleanUnusedInitializers() {
 
 GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
 Status Graph::SetGraphInputsOutputs() {
-  // Reset graph inputs/outputs/value info state.
+  // Reset graph inputs excluding initializers/value_info.
   graph_inputs_excluding_initializers_.clear();
-  graph_inputs_including_initializers_.clear();
-  graph_outputs_.clear();
   value_info_.clear();
 
   // Flag indicates that this graph is loaded from model file.
@@ -2231,10 +2229,11 @@ Status Graph::SetGraphInputsOutputs() {
   // and outputs will be inferred.
   const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
 
-  // if something is coming from outer scope, consider it already added
-  std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
-
   if (loaded_from_model_file) {
+    // Reset graph inputs/outputs.
+    graph_inputs_including_initializers_.clear();
+    graph_outputs_.clear();
+
     // Name to NodeArg mapping of all graph initializers.
     std::unordered_map<std::string, const NodeArg*> graph_initializers;
 
@@ -2303,48 +2302,21 @@ Status Graph::SetGraphInputsOutputs() {
 
   } else {
     std::unordered_map<std::string, const NodeArg*> output_name_to_node_arg;
-    std::vector<std::string> ordered_output_names;
 
-    // add any explicitly ordered inputs
-    for (auto* node_arg : graph_input_order_) {
-      if (!node_arg || !node_arg->Exists()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered inputs");
-      }
+    // if something is coming from outer scope, consider it already added
+    std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
 
-      added_input_names.insert(node_arg->Name());
-      graph_inputs_including_initializers_.push_back(node_arg);
-      if (name_to_initial_tensor_.find(node_arg->Name()) == name_to_initial_tensor_.end()) {
-        graph_inputs_excluding_initializers_.push_back(node_arg);
-      }
-    }
-
-    // add any explicitly ordered outputs
-    for (auto* node_arg : graph_output_order_) {
-      if (!node_arg || !node_arg->Exists()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered outputs");
-      }
-      output_name_to_node_arg.insert({node_arg->Name(), node_arg});
-      ordered_output_names.push_back(node_arg->Name());
-    }
-
-    // add all other outputs
+    // Collect all nodes' outputs
     for (const auto& node : Nodes()) {
       for (const auto* output_def : node.OutputDefs()) {
         if (output_def->Exists()) {
-          auto& name = output_def->Name();
-          // check it wasn't in the explicitly ordered outputs
-          if (output_name_to_node_arg.find(name) == output_name_to_node_arg.cend()) {
-            output_name_to_node_arg.insert({name, output_def});
-            ordered_output_names.push_back(name);
-          }
+          output_name_to_node_arg.insert({output_def->Name(), output_def});
         }
       }
     }
 
     // Init graph output args with copy of all node output args.
     auto graph_output_args = output_name_to_node_arg;
-    std::unordered_set<Node*> inner_nodes;
-
     for (const auto& node : Nodes()) {
       // Go thru all node's inputs.
       for (const auto* input_arg : node.InputDefs()) {
@@ -2360,8 +2332,9 @@ Status Graph::SetGraphInputsOutputs() {
           const std::string& name = input_arg->Name();
           if (added_input_names.end() == added_input_names.find(name)) {
             // This graph input has not been added into <graph_inputs_>.
-            graph_inputs_including_initializers_.push_back(input_arg);
-
+            if (!graph_inputs_manually_set) {
+              graph_inputs_including_initializers_.push_back(input_arg);
+            }
             if (name_to_initial_tensor_.find(name) == name_to_initial_tensor_.end()) {
               graph_inputs_excluding_initializers_.push_back(input_arg);
             }
@@ -2377,12 +2350,10 @@ Status Graph::SetGraphInputsOutputs() {
       }
     }
 
-    // Set graph outputs
-    auto end = graph_output_args.end();
-    for (auto& name : ordered_output_names) {
-      auto graph_output = graph_output_args.find(name);
-      if (graph_output != end) {
-        graph_outputs_.push_back(graph_output->second);
+    if (!graph_outputs_manually_set) {
+      // Set graph outputs
+      for (auto& graph_output : graph_output_args) {
+        graph_outputs_.push_back(graph_output.second);
       }
     }
   }

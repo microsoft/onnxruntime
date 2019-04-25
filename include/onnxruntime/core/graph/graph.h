@@ -734,8 +734,10 @@ class Graph {
   Any graph inputs not in this list will be appended to the ordered graph input list, in the order that they were first
   used by Nodes (i.e. the order of Node creation implicitly determines the ordering).
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetInputOrder(const std::vector<const NodeArg*> inputs) {
-    graph_input_order_ = inputs;
+  void SetInputs(const std::vector<const NodeArg*> inputs) {
+    graph_inputs_including_initializers_ = inputs;
+    graph_inputs_manually_set = true;
+    //graph_input_order_ = inputs;
   }
 
   /** When programmatically constructing a Graph, explicitly set the order to use for graph outputs when the graph is
@@ -745,8 +747,10 @@ class Graph {
   Any graph outputs not in this list will be appended to the ordered graph output list, in the order that they were first
   produced by Nodes (i.e. the order of Node creation implicitly determines the ordering).
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetOutputOrder(const std::vector<const NodeArg*> outputs) {
-    graph_output_order_ = outputs;
+  void SetOutputs(const std::vector<const NodeArg*> outputs) {
+    graph_outputs_ = outputs;
+    graph_outputs_manually_set = true;
+    //graph_output_order_ = outputs;
   }
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
@@ -945,12 +949,14 @@ class Graph {
 
   // Full list of graph inputs. Matches number and order of inputs in the GraphProto.
   std::vector<const NodeArg*> graph_inputs_including_initializers_;
+  bool graph_inputs_manually_set = false;
 
   // Graph inputs excluding initializers.
   std::vector<const NodeArg*> graph_inputs_excluding_initializers_;
 
   // Graph outputs.
   std::vector<const NodeArg*> graph_outputs_;
+  bool graph_outputs_manually_set = false;
 
   // Graph value_info.
   std::vector<const NodeArg*> value_info_;
@@ -977,10 +983,10 @@ class Graph {
   std::unordered_set<std::string> outer_scope_node_arg_names_;
 
   // Explicit graph input order to be used when constructing a Graph manually.
-  std::vector<const NodeArg*> graph_input_order_;
+  //std::vector<const NodeArg*> graph_input_order_;
 
   // Explicit graph output order to be used when constructing a Graph manually.
-  std::vector<const NodeArg*> graph_output_order_;
+  //std::vector<const NodeArg*> graph_output_order_;
 };
 
 }  // namespace onnxruntime
