@@ -1012,17 +1012,6 @@ TEST(MathOpTest, Erf) {
 
 const int ModOp_ver = 10;
 
-//TEST(ModOpTest, Float_mixed_sign) {
-//  OpTester test("Mod", ModOp_ver);
-//  test.AddAttribute<int64_t>("fmod", 1);
-//
-//  test.AddInput<float>("X", {6}, {-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f});
-//  test.AddInput<float>("Y", {6}, {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f});
-//  test.AddOutput<float>("Z", {6}, {2.f, -3.f, 5.f, -2.f, 3.f, 3.f});
-//
-//  test.Run();
-//}
-
 TEST(ModOpTest, Fmod_float_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
   test.AddAttribute<int64_t>("fmod", 1);
