@@ -110,7 +110,6 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   std::vector<int64_t> kernel_shape = kernel_shape_;
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> strides = strides_;
-  std::vector<int64_t> dilations = dilations_;
 
   if (global_pooling_) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
@@ -118,7 +117,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, ceil_mode_);
+  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
@@ -169,7 +168,6 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   std::vector<int64_t> kernel_shape = this->kernel_shape_;
   std::vector<int64_t> pads = this->pads_;
   std::vector<int64_t> strides = this->strides_;
-  std::vector<int64_t> dilations = this->dilations_;
 
   if (this->global_pooling_) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
@@ -177,7 +175,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, this->ceil_mode_);
+  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, this->dilations_, this->ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());

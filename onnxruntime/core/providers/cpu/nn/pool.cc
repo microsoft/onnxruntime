@@ -17,7 +17,6 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> kernel_shape = kernel_shape_;
-  std::vector<int64_t> dilations = dilations_;
 
   if (global_pooling_) {
     const auto& input_dims = x_shape.GetDims();
@@ -25,7 +24,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     pads.assign(kernel_shape.size(), 0);
   }
 
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, ceil_mode_);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
   const float* X_data = X->template Data<float>();
@@ -183,8 +182,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
   }
 
   std::vector<int64_t> pads = pads_;
-  std::vector<int64_t> dilations = dilations_;
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, ceil_mode_);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
   // Get access to the internal threadpool
@@ -236,9 +234,8 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
 
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> kernel_shape = kernel_shape_;
-  std::vector<int64_t> dilations = dilations_;
 
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations, ceil_mode_);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
   Tensor* I = context->Output(1, TensorShape(output_dims));
 

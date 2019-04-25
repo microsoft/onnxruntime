@@ -181,48 +181,40 @@ class PoolBase {
     } else {
       for (size_t dim = 0; dim < input_dims.size() - 2; ++dim) {
         int64_t dim_size = 0;
-        ComputeSizeAndPad(static_cast<int>(input_dims[dim + 2]),
-                          strides_[dim],
-                          kernel_shape_[dim],
-                          &pads->at(dim),
-                          &pads->at(input_dims.size() + dim - 2),
-                          dilations[dim],
-                          ceil_mode,
-                          &dim_size);
+        ComputeSizePadDilations(static_cast<int>(input_dims[dim + 2]),
+                                strides_[dim],
+                                kernel_shape_[dim],
+                                &pads->at(dim),
+                                &pads->at(input_dims.size() + dim - 2),
+                                dilations[dim],
+                                ceil_mode,
+                                &dim_size);
         output_dims->push_back(dim_size);
       }
     }
   }
 
-  inline void ComputeSizeAndPad(const int64_t in_size,
-                                const int64_t stride,
-                                const int64_t kernel,
-                                int64_t* pad_head,
-                                int64_t* pad_tail,
-                                int64_t dilation,
-                                int64_t ceil_mode,
-                                int64_t* out_size) const {
+  inline void ComputeSizePadDilations(const int64_t in_size,
+                                      const int64_t stride,
+                                      const int64_t kernel,
+                                      int64_t* pad_head,
+                                      int64_t* pad_tail,
+                                      int64_t dilation,
+                                      int64_t ceil_mode,
+                                      int64_t* out_size) const {
     if (auto_pad_ != AutoPadType::NOTSET) {
       switch (auto_pad_) {
         case AutoPadType::VALID:
           *pad_head = 0;
           *pad_tail = 0;
-          if (ceil_mode == 0) {
-            *out_size = (in_size - dilation * (kernel - 1) - 1) / stride + 1;
-          } else {
-            *out_size = (int64_t)ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
-          }
+          *out_size = ComputeOutputSize(in_size, stride, kernel, 0, dilation, ceil_mode);
           break;
         case AutoPadType::SAME_LOWER: {
           int64_t legacy_target_size = (in_size + stride - 1) / stride;
           int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
           *pad_head = (pad_needed + 1) / 2;
           *pad_tail = pad_needed - *pad_head;
-          if (ceil_mode == 0) {
-            *out_size = (in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1;
-          } else {
-            *out_size = (int64_t)ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
-          }
+          *out_size = ComputeOutputSize(in_size, stride, kernel, pad_needed, dilation, ceil_mode);
           break;
         }
         case AutoPadType::SAME_UPPER: {
@@ -230,11 +222,7 @@ class PoolBase {
           int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
           *pad_head = pad_needed / 2;
           *pad_tail = pad_needed - *pad_head;
-          if (ceil_mode == 0) {
-            *out_size = (in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1;
-          } else {
-            *out_size = (int64_t)ceil((in_size - dilation * (kernel - 1) - 1) / (float) stride + 1);
-          }
+          *out_size = ComputeOutputSize(in_size, stride, kernel, pad_needed, dilation, ceil_mode);
           break;
         }
         default: {
@@ -242,13 +230,20 @@ class PoolBase {
         }
       }
     } else {
-      if (ceil_mode == 0) {
-        *out_size = static_cast<int64_t>(
-            static_cast<float>(in_size + *pad_head + *pad_tail - dilation * (kernel - 1) -1) / (float) stride + 1);
-      } else {
-        *out_size = static_cast<int64_t>(
-            static_cast<float>(ceil((in_size + *pad_head + *pad_tail - dilation * (kernel - 1) -1) / (float) stride + 1)));
-      }
+      *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head + *pad_tail, dilation, ceil_mode);
+    }
+  }
+
+  inline int64_t ComputeOutputSize(int64_t in_size,
+                                   int64_t stride,
+                                   int64_t kernel,
+                                   int64_t pad_needed,
+                                   int64_t dilation,
+                                   int64_t ceil_mode) const {
+    if (ceil_mode == 0) {
+      return static_cast<int64_t>(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1);
+    } else {
+      return static_cast<int64_t>(ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
     }
   }
 
