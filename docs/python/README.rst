@@ -52,6 +52,11 @@ replaces *scikit-learn* to compute the predictions.
 Changes
 -------
 
+0.4.0
+^^^^^
+
+ONNX 1.5 support, C-API custom ops, Graph optimization support
+
 0.3.1
 ^^^^^
 
