@@ -137,10 +137,10 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 groups.emplace_back();
                 newSubGraph = false;
             }
+            std::cout << "* Selected Op " << node.OpType() << " : " << node.Name() << std::endl;
             groups.back().emplace_back(node.Index());
         }
         else{
-            std::cout << "Op not supported " << node.OpType() << std::endl;
             //This node is not supported
             newSubGraph = true;
         }
