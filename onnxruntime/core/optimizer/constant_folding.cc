@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
@@ -19,17 +18,19 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
     if (!node) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+      continue;
     }
 
-    // TODO Further investigate if this is needed here.
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
     // Check if constant folding can be applied on this node.
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
-        // constant folding is not currently supported in subgraphs.
-        node->ImplicitInputDefs().size() != 0 ||
+        // constant folding is not currently supported for control flow operators.
+        graph_utils::ContainsSubgraph(*node) ||
+        // if the node output is in the graph output, we will get a graph with no nodes.
+        // TODO check if this is allowed in ONNX and ORT.
+        graph.IsNodeOutputsInGraphOutputs(*node) ||
         !graph_utils::AllNodeInputsAreConstant(graph, *node)) {
       continue;
     }

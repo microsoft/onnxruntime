@@ -390,6 +390,10 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   return true;
 }
 
+bool ContainsSubgraph(Node& node) {
+  return !node.GetAttributeNameToMutableSubgraphMap().empty();
+}
+
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
   RemoveGraphEdges(graph, output_edges);

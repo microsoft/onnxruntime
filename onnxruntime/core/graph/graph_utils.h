@@ -38,6 +38,9 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input);
 /** Checks if the given node has only constant inputs (initializers). */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
 
+/** Checks if this node contains a subgraph (this is the case for control flow operators, such as If, Scan, Loop). */
+bool ContainsSubgraph(Node& node);
+
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
 

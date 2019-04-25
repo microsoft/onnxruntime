@@ -16,8 +16,7 @@ namespace onnxruntime {
 
 namespace transformer_utils {
 
-/** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */
-static std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
+std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
   return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_RuleBasedTransformer";
 }
 
