@@ -778,14 +778,14 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
   std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f,
                                   0.0f, 0.0f, 0.0f, 0.0f};
   std::vector<float> expected_Y = {-0.0325528607f, 0.0774837881f, -0.275918573f, -0.00228558504f,
-                                   -0.0559310019f, 0.101836264f, -0.275918573f, 0.00228558504f,
+                                   -0.0559310019f, 0.101836264f, -0.275918573f, -0.00228558504f,
 
                                    -0.0577347837f, 0.0796165839f, 0.0f, 0.0f,
                                    -0.0456649922f, 0.0462125242f, 0.0f, 0.0f};
   std::vector<float> expected_Y_h = {-0.0577347837f, 0.0796165839f,
                                      -0.275918573f, -0.00228558504f,
                                      -0.0559310019f, 0.101836264f,
-                                     -0.275918573f, 0.00228558504f};
+                                     -0.275918573f, -0.00228558504f};
 
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
 }
