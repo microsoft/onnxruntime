@@ -175,9 +175,9 @@ Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
                                                   "the tensor to be processed and a tensor containing k value");
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
   if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
-  unsigned parsed_input_k = gsl::narrow_cast<unsigned>(Y->template Data<int64_t>()[0]);
+  auto parsed_input_k = Y->template Data<int64_t>()[0];
   if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
-  return TopKImpl(p_op_kernel_context, X, axis_, parsed_input_k);
+  return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
 }
 
 // Register necessary kernels
