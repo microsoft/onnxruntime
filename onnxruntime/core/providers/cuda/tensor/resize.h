@@ -11,7 +11,7 @@ namespace cuda {
 template <typename T>
 class Resize : public Upsample<T> {
  public:
-  Resize(OpKernelInfo info) : Upsample(info) {
+  Resize(OpKernelInfo info) : Upsample<T>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
