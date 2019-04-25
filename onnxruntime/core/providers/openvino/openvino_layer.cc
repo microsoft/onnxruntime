@@ -23,7 +23,7 @@ const std::unordered_map<std::string, std::tuple<std::string, int>> OpenVINOLaye
     // mMap.emplace("Softmax",std::make_tuple("SoftMax",OpenVINOSoftMax));
     // mMap.emplace("Mul",std::make_tuple("EltwiseMul",OpenVINOEltwiseMul));
     // mMap.emplace("Sum",std::make_tuple("EltwiseSum",OpenVINOEltwiseSum));
-     mMap.emplace("Transpose",std::make_tuple("Permute",OpenVINOPermute));
+    // mMap.emplace("Transpose",std::make_tuple("Permute",OpenVINOPermute));
     //mMap.emplace("Identity",std::make_tuple("Ignored",10));
     // mMap.emplace("MatMul",std::make_tuple("FullyConnected",OpenVINOFullyConnected));
     // mMap.emplace("Unsqueeze",std::make_tuple("ScaleShift",OpenVINOReshape));

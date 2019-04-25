@@ -11,7 +11,7 @@ namespace test {
 TEST(OpenVINOExecutionProviderTest, IntegrationTest) {
 
     OpenVINOExecutionProviderInfo info;
-    static const std::string MODEL_URI = "/home/suryasid/Desktop/pcb_hmi_mar5.onnx";
+    static const std::string MODEL_URI = "/home/manohar/Desktop/hmi_model/pcb_hmi_mar5.onnx";
     // static const std::string MODEL_URI = "testdata/alexnet.onnx";
     SessionOptions so;
     so.session_logid = "OpenVINOGetCapability";

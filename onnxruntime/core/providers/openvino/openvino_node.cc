@@ -100,8 +100,7 @@ short* f32tof16Arrays(short* dst, const float *src, size_t nelem, float scale = 
 
 void* OpenVINONode::GetTensorData(const std::string& tensor_name, InferenceEngine::Precision precision) {
 
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  openvino_graph_->onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = openvino_graph_->GetInitializedTensor(tensor_name);
   float* fp32_data = (float*) tensor_proto->raw_data().c_str();
   void* return_ptr = nullptr;
 
@@ -121,8 +120,7 @@ void* OpenVINONode::GetTensorData(const std::string& tensor_name, InferenceEngin
 InferenceEngine::SizeVector OpenVINONode::GetDimsVector(
     const std::string& tensor_name) {
 
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  openvino_graph_->onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = openvino_graph_->GetInitializedTensor(tensor_name);
   InferenceEngine::SizeVector dims;
   for (int i = 0; i < tensor_proto->dims_size(); i++) {
     dims.push_back(size_t(tensor_proto->dims(i)));
@@ -134,8 +132,7 @@ InferenceEngine::SizeVector OpenVINONode::GetDimsVector(
 size_t OpenVINONode::GetTensorElemCount(
     const std::string& tensor_name) {
 
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  openvino_graph_->onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = openvino_graph_->GetInitializedTensor(tensor_name);
   size_t size = 1;
   for (int i = 0; i < tensor_proto->dims_size(); i++) {
     size *= tensor_proto->dims(i);
@@ -149,7 +146,9 @@ void OpenVINONode::InitializeOp(
     // TODO - ??? Surya will update the function to reflect the accurate EtlwiseType.
     //int EltwiseType = 1;
 
-		 if (onnx_node_->OpType() == "Conv") { CreateConvLayer(); }
+  if(is_input_node_) { CreateInputLayer() ; }
+  else if (is_output_node_) { CreateOutputLayer(); }
+  else if (onnx_node_->OpType() == "Conv") { CreateConvLayer(); }
 	else if (onnx_node_->OpType() == "Relu") { CreateReLULayer(); }
 	else if (onnx_node_->OpType() == "Transpose") { CreateTransposeLayer(); }
 	else if (onnx_node_->OpType() == "Concat") { CreateConcatLayer(); }

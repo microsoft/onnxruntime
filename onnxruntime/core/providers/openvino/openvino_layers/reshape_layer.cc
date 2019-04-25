@@ -41,8 +41,7 @@ void OpenVINONode::CreateReshapeLayer() {
 		      std::string W_name = onnx_node_->InputDefs()[i]->Name();
 		      auto num_dims = GetTensorElemCount(W_name);
 
-		      const ONNX_NAMESPACE::TensorProto* proto = nullptr;
-		      openvino_graph_->onnx_graph_->GetInitializedTensor(W_name, proto);
+		      const ONNX_NAMESPACE::TensorProto* proto = openvino_graph_->GetInitializedTensor(W_name);
 		      std::vector<int> shape;
 		      for(int n=0; n<num_dims; n++) {
 		    	  shape.push_back(int(proto->int64_data(n)));

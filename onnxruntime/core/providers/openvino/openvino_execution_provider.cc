@@ -46,21 +46,24 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     std::vector<std::vector<onnxruntime::NodeIndex>> groups;
     int counter = 0;
 
+    auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
+
     bool newSubGraph(true);
-    for (auto& node : graph_viewer.Nodes()) {
+    for (auto index : node_indexes) {
 
+        auto node = graph_viewer.GetNode(index);
 
-        auto layer = OpenVINOLayer(node.OpType());
+        auto layer = OpenVINOLayer(node->OpType());
 
         if (layer.getName() != "NotSupported" && layer.getOpsetVersion() >= opset_version) {
 
 
             if(layer.getName() == "FullyConnectedGemm"){
 
-                auto attributes = node.GetAttributes();
+                auto attributes = node->GetAttributes();
                 auto broadcast = attributes["broadcast"].i();
                 auto transB = attributes["transB"].i();
-                auto formal_params = node.Op()->inputs();
+                auto formal_params = node->Op()->inputs();
                 size_t output_size = 1;
                 size_t dims_c = 1;
 
@@ -69,10 +72,10 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
                     if(formal_name == "A"){
 
-                        auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(node.InputDefs()[i]->Shape()));
+                        auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(node->InputDefs()[i]->Shape()));
                         output_size *= shape_vector[0];
                     }else if (formal_name == "B"){
-                        std::string W_name = node.InputDefs()[i]->Name();
+                        std::string W_name = node->InputDefs()[i]->Name();
 
                         const ONNX_NAMESPACE::TensorProto* tensor_proto;
                         graph_viewer.GetInitializedTensor(W_name,tensor_proto);
@@ -88,7 +91,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                         }
 
                     }else if (formal_name == "C"){
-                        std::string name = node.InputDefs()[i]->Name();
+                        std::string name = node->InputDefs()[i]->Name();
 
                         const ONNX_NAMESPACE::TensorProto* tensor_proto;
                         graph_viewer.GetInitializedTensor(name,tensor_proto);
@@ -110,7 +113,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
             if(layer.getName() == "Norm"){
 
-                auto attributes = node.GetAttributes();
+                auto attributes = node->GetAttributes();
                 auto bias = attributes["bias"].f();
 
                 if(bias != 1){
@@ -125,27 +128,60 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 groups.emplace_back();
                 newSubGraph = false;
             }
-            std::cout << "* Selected Op " << node.OpType() << " : " << node.Name() << std::endl;
-            groups.back().emplace_back(node.Index());
+            std::cout << "* Selected Op " << node->OpType() << " : " << node->Name() << std::endl;
+            groups.back().emplace_back(index);
         }
         else{
           if(!newSubGraph) {
             std::cout << "\nEnd of chosen subgraph\n";
-            break;
+           // break;
           }
             //This node is not supported
             newSubGraph = true;
         }
     }
 
+    const InitializedTensorSet& all_izers = graph_viewer.GetAllInitializedTensors();
+
     for(const auto& group : groups){
         if(!group.empty()) {
             std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
             std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
+
+            ONNX_NAMESPACE::AttributeProto izers_attr;
+            izers_attr.set_name("initializers");
+            izers_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
+
+
             for (auto index : group) {
                 sub_graph->nodes.push_back(index);
                 auto node = graph_viewer.GetNode(index);
                 for (auto input : node->InputDefs()) {
+
+                  auto name =  input->Name();
+                  // Save initializers
+                  if(all_izers.find(name) != all_izers.end()) {
+
+                    //Make a copy of the tensorproto
+                    const ONNX_NAMESPACE::TensorProto* tensor_ptr = all_izers.at(name);
+                    ONNX_NAMESPACE::TensorProto* copy_tensor = new ONNX_NAMESPACE::TensorProto();
+                    copy_tensor->CopyFrom(*tensor_ptr);
+
+                    //Add to the Initializer attribute
+                    auto tensor = izers_attr.add_tensors();
+                    *tensor = *copy_tensor;
+
+                    // Print copied contents
+                    {
+                        auto name = tensor->name();
+                         float* ptr = (float*) tensor->raw_data().c_str();
+                         std::cout << name << " , " << ptr << std::endl;
+                    }
+
+                    continue;
+                  }
+
+
                     auto it = fused_outputs.find(input);
                     if (it != fused_outputs.end()) {
                         fused_outputs.erase(it);
@@ -167,6 +203,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
             meta_def->domain = "OpenVINO";
             meta_def->since_version = 1;
+            meta_def->attributes["initializers"] = izers_attr;
 
             for(auto input : fused_inputs){
                 meta_def->inputs.push_back(input->Name());

@@ -37,9 +37,14 @@ public:
   }
 
   bool IsInitializer(std::string name) {
-	  return (initializers_->find(name) == initializers_->end()) ?
+	  return (izers_map_.find(name) == izers_map_.end()) ?
 			  false : true;
   }
+
+  const ONNX_NAMESPACE::TensorProto* GetInitializedTensor(std::string name) {
+    return izers_map_.at(name);
+  }
+
   std::shared_ptr<OpenVINONode> GetTensorProducer(std::string name) {
 	  return tensor_producers_.at(name);
   }
@@ -68,6 +73,7 @@ private:
   std::map<std::string, std::shared_ptr<OpenVINONode>> tensor_producers_;
   onnxruntime::InitializedTensorSet* initializers_;
   std::map<std::string, InferenceEngine::Blob::Ptr> const_blob_map_;
+  std::map<std::string, const ONNX_NAMESPACE::TensorProto*> izers_map_;
 
 };
 }

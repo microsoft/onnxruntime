@@ -57,8 +57,34 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
 	num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
 	fused_node_ = fused_node;
+
+
+	// Make a local copy of the initializers
+	const auto& attributes = fused_node->GetAttributes();
+	const auto& izers_list = attributes.at("initializers").tensors();
+	for(const auto& izer : izers_list) {
+	  izers_map_.insert({izer.name(), &izer});
+	}
+
+	/*
+	for(auto iter : izers_map_) {
+	  auto name = iter.first;
+	  float* ptr = (float*) iter.second->raw_data().c_str();
+	  std::cout << name << " , " << ptr << std::endl;
+	}
+	*/
+
+
+
   builder_ = std::make_shared<InferenceEngine::Builder::Network>(fused_node_->Name());
 	onnx_graph_ = &(fused_node_->GetFunctionBody()->Body());
+
+	/*
+	auto inputs =  onnx_graph_->GetInputs();
+	auto inputaninits = onnx_graph_->GetInputsIncludingInitializers();
+	auto izer_list = onnx_graph_->GetAllInitializedTensors();
+	*/
+
   cnn_network_ = BuildCNNNetwork();
 
   // TODO: make this a debug option
@@ -87,6 +113,10 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetwork() {
 
   // Create Input nodes
   for(auto* input_arg : onnx_graph_->GetInputs()) {
+    if(IsInitializer(input_arg->Name())) {
+      //workaround for the input args & initializers bug
+      continue;
+    }
     auto input_node = std::make_shared<OpenVINONode>(input_arg, this);
     input_node->is_input_node_ = true;
     openvino_nodes_.push_back(input_node);
@@ -234,8 +264,15 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
 		size_t num_outputs, onnxruntime::AllocateFunc& output_allocator_func,
 		onnxruntime::AllocatorHandle& output_allocator_handle) {
 
-  num_inputs = 1;
-  //num_outputs = 1;
+  std::cout << "INFERENCE STARTED\n";
+  std::cout << "Num inputs: " << num_inputs << std::endl;
+  for (int i=0; i< num_inputs; i++) {
+    std::cout << "intput: " << i << std::endl;
+    for (int j=0; j < input_tensors[i].ndim; j++) {
+      std::cout << " dim " << j << " = " << input_tensors[i].shape[j];
+    }
+    std::cout << std::endl;
+  }
 
 	// Check I/O sizes
 	auto graph_input_info = cnn_network_->getInputsInfo();
