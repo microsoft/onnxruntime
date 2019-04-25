@@ -332,8 +332,13 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_i
 	fused_node_ = fused_node;
 	onnx_graph_ = &(fused_node_->GetFunctionBody()->Body());
   cnn_network_ = BuildCNNNetwork();
-  std::string file_name = "./conv_" + fused_node->Name();
-  cnn_network_->serialize( file_name+".xml", file_name+".bin");
+
+  // TODO: make this a debug option
+  // Uncomment the below code to enable dumping IE CNN graphs.
+  //std::string file_name = "./conv_" + fused_node->Name();
+  //cnn_network_->serialize( file_name+".xml", file_name+".bin");
+
+
   infer_requests_ = GetExecutableHandle(cnn_network_, device_id_, precision_);
 }
 
