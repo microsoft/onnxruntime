@@ -15,7 +15,6 @@
 #include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
-/*
 void OpenVINONode::CreateConcatLayer(
     std::shared_ptr<InferenceEngine::Builder::Network>& builder,
     std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
@@ -23,29 +22,35 @@ void OpenVINONode::CreateConcatLayer(
 
   auto concat_layer =
       std::make_shared<InferenceEngine::Builder::ConcatLayer>(
-          onnx_node_->Name());
+          "Concat");
 
   //
   // *** Set inputs ***
   //
   auto formal_params = onnx_node_->Op()->inputs();
+  std::cout << "Formal params size is " << formal_params.size() << std::endl;
+
 
   for (size_t i = 0; i < formal_params.size(); i++) {
     auto formal_name = formal_params[i].GetName();
 
     if (formal_name == "inputs") {
 
-      // Set Input info
-      std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
+        for(int j=0; j < input_defs_.size(); j++){
 
-      if (node_connects_to_graph_inputs_) {
-        auto input_name = input_defs_[i]->Name();
-        in_ov_node = openvino_io_map[input_name];
-      } else {
-        in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-      }
-      InferenceEngine::idx_t in_port = 0;
-      input_connections_.push_back( { in_ov_node, in_port });
+            std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
+
+            if (node_connects_to_graph_inputs_) {
+                auto input_name = input_defs_[j]->Name();
+                in_ov_node = openvino_io_map[input_name];
+            } else {
+                in_ov_node = onnx_openvino_map[&(input_edges_[j].GetNode())];
+            }
+           InferenceEngine::idx_t in_port = j;
+           input_connections_.push_back( { in_ov_node, in_port });
+        }
+
+      // Set Input info
 
     } else {
       std::stringstream msg;
@@ -94,6 +99,6 @@ void OpenVINONode::CreateConcatLayer(
 
 
   layerID_ = builder->addLayer(*concat_layer);
+  std::cout << "Concat done " << std::endl;
 }
-*/
 } // namespce openvino_ep

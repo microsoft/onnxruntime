@@ -72,7 +72,10 @@ void OpenVINONode::CreatePoolingLayer(
         InferenceEngine::idx_t out_port = 0;
         output_connections_.push_back( { out_ov_node, out_port });
 
-        } else {
+        } else if (formal_name == "Indices"){
+            // std::cout << "Indices" << std::endl;
+        }
+        else {
         std::stringstream msg;
         msg << "Node: " << onnx_node_->Name() << "| Param: " << formal_name
             << "not found";
@@ -83,66 +86,68 @@ void OpenVINONode::CreatePoolingLayer(
   //
   // *** Set attributes ***
   //
+    if(poolingType != 3){
 
-    auto attributes = onnx_node_->GetAttributes();
+        auto attributes = onnx_node_->GetAttributes();
 
-    auto strides_ints = attributes["strides"].ints();
-    std::vector<size_t> strides;
-    for (int i = 0; i < strides_ints.size(); i++) {
-        strides.push_back(size_t(strides_ints[i]));
-    }
-    pooling_layer->setStrides(strides);
-
-    auto auto_pad = attributes["auto_pad"].s();
-    std::vector<size_t> pad_begins, pad_ends;
-    int num_axes = strides_ints.size();
-
-    if (auto_pad == "VALID") { // No padding
-        for (int i = 0; i < num_axes; i++) {
-        pad_begins.push_back(0);
-        pad_ends.push_back(0);
+        auto strides_ints = attributes["strides"].ints();
+        std::vector<size_t> strides;
+        for (int i = 0; i < strides_ints.size(); i++) {
+            strides.push_back(size_t(strides_ints[i]));
         }
-    } else {
-        if (auto_pad == "NOTSET") {
-        auto pad_ints = attributes["pads"].ints();
-        int pads_size_mid = pad_ints.size() / 2;
-        for (int i = 0; i < pads_size_mid; i++) {
-            pad_begins.push_back(size_t(pad_ints[i]));
-            pad_ends.push_back(size_t(pad_ints[i + pads_size_mid]));
+        pooling_layer->setStrides(strides);
+
+        auto auto_pad = attributes["auto_pad"].s();
+        std::vector<size_t> pad_begins, pad_ends;
+        int num_axes = strides_ints.size();
+
+        if (auto_pad == "VALID") { // No padding
+            for (int i = 0; i < num_axes; i++) {
+            pad_begins.push_back(0);
+            pad_ends.push_back(0);
+            }
+        } else {
+            if (auto_pad == "NOTSET") {
+            auto pad_ints = attributes["pads"].ints();
+            int pads_size_mid = pad_ints.size() / 2;
+            for (int i = 0; i < pads_size_mid; i++) {
+                pad_begins.push_back(size_t(pad_ints[i]));
+                pad_ends.push_back(size_t(pad_ints[i + pads_size_mid]));
+            }
+
+            } else if (auto_pad == "SAME_UPPER") {
+            // TODO: fill these
+            throw "Max Pool layer: paddings SAME_UPPER not implemented";
+
+            } else if (auto_pad == "SAME_LOWER") {
+            // TODO: fill these
+            throw "Max Pool layer: paddings SAME_LOWER not implemented";
+
+            }
         }
+        pooling_layer->setPaddingsBegin(pad_begins);
+        pooling_layer->setPaddingsEnd(pad_ends);
 
-        } else if (auto_pad == "SAME_UPPER") {
-        // TODO: fill these
-        throw "Max Pool layer: paddings SAME_UPPER not implemented";
 
-        } else if (auto_pad == "SAME_LOWER") {
-        // TODO: fill these
-        throw "Max Pool layer: paddings SAME_LOWER not implemented";
-
+        auto kernel_shape_ints = attributes["kernel_shape"].ints();
+        std::vector<size_t> kernel_shape;
+        for (int i = 0; i < kernel_shape_ints.size(); i++) {
+            kernel_shape.push_back(size_t(kernel_shape_ints[i]));
         }
-    }
-    pooling_layer->setPaddingsBegin(pad_begins);
-    pooling_layer->setPaddingsEnd(pad_ends);
+        pooling_layer->setKernel(kernel_shape);
 
-
-    auto kernel_shape_ints = attributes["kernel_shape"].ints();
-    std::vector<size_t> kernel_shape;
-    for (int i = 0; i < kernel_shape_ints.size(); i++) {
-        kernel_shape.push_back(size_t(kernel_shape_ints[i]));
-    }
-    pooling_layer->setKernel(kernel_shape);
-
-    auto ceil_mode = attributes["ceil_mode"].i();
-    if(ceil_mode == 0){
-        pooling_layer->setRoundingType(InferenceEngine::Builder::PoolingLayer::RoundingType::FLOOR);
-    }else if (ceil_mode == 1){
-        pooling_layer->setRoundingType(InferenceEngine::Builder::PoolingLayer::RoundingType::CEIL);
+        auto ceil_mode = attributes["ceil_mode"].i();
+        if(ceil_mode == 0){
+            pooling_layer->setRoundingType(InferenceEngine::Builder::PoolingLayer::RoundingType::FLOOR);
+        }else if (ceil_mode == 1){
+            pooling_layer->setRoundingType(InferenceEngine::Builder::PoolingLayer::RoundingType::CEIL);
+        }
+        pooling_layer->setExcludePad(true);
     }
 
-    pooling_layer->setExcludePad(true);
     if(poolingType == 1){
         pooling_layer->setPoolingType(InferenceEngine::Builder::PoolingLayer::PoolingType::MAX);
-    }else if (poolingType == 2){
+    }else{
         pooling_layer->setPoolingType(InferenceEngine::Builder::PoolingLayer::PoolingType::AVG);
     }
 

@@ -45,18 +45,14 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
     std::vector<std::vector<onnxruntime::NodeIndex>> groups;
     int counter = 0;
-    int cnt = 0;
 
     bool newSubGraph(true);
     for (auto& node : graph_viewer.Nodes()) {
 
-        std::cout << "node.OpType()" << node.OpType() << std::endl;
 
         auto layer = OpenVINOLayer(node.OpType());
 
         if (layer.getName() != "NotSupported" && layer.getOpsetVersion() >= opset_version) {
-
-            cnt++;
 
 
             if(layer.getName() == "FullyConnectedGemm"){
@@ -121,10 +117,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                     std::cout << "LRN bias not equal to 1 is not supported " << std::endl;
                     break;
                 }
-            }
-
-            if(cnt == 7){
-                break;
             }
 
 

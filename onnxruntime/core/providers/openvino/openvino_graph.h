@@ -82,14 +82,14 @@ private:
         std::shared_ptr<InferenceEngine::Builder::Network>& builder,
         std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
         std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
-//   void CreateConcatLayer(
-//         std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-//         std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-//         std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
-//   void CreateNormLayer(
-//         std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-//         std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-//         std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
+  void CreateConcatLayer(
+        std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+        std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
+        std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
+  void CreateNormLayer(
+        std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+        std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
+        std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
   void CreateEltwiseLayer(
        std::shared_ptr<InferenceEngine::Builder::Network>& builder,
 	   int EltwiseType,

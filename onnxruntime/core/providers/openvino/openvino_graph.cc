@@ -223,22 +223,26 @@ void OpenVINONode::CreateOpenVINOLayer(
 		CreateReLULayer(builder, onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "Transpose") {
 		CreateTransposeLayer(builder, onnx_openvino_map, openvino_io_map);
-	// } else if (onnx_node_->OpType() == "Concat") {
-		// CreateConcatLayer(builder, onnx_openvino_map, openvino_io_map);
-	// } else if (onnx_node_->OpType() == "Norm") {
-		// CreateNormLayer(builder, onnx_openvino_map, openvino_io_map);
+	} else if (onnx_node_->OpType() == "Concat") {
+		CreateConcatLayer(builder, onnx_openvino_map, openvino_io_map);
+	} else if (onnx_node_->OpType() == "LRN") {
+		CreateNormLayer(builder, onnx_openvino_map, openvino_io_map);
 	// } else if (onnx_node_->OpType() == "Eltwise") {
 		// CreateEltwiseLayer(builder, EltwiseType, onnx_openvino_map, openvino_io_map);
 	// } else if (onnx_node_->OpType() == "ReLU") {
 		// CreateReLULayer(builder, onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "AveragePool"){
 		CreatePoolingLayer(builder,2,onnx_openvino_map, openvino_io_map);
+	} else if (onnx_node_->OpType() == "GlobalAveragePool"){
+		CreatePoolingLayer(builder,3,onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "MaxPool"){
 		CreatePoolingLayer(builder,1,onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "Mul"){
 		CreateScaleMulAddLayer(builder, precision, 1, onnx_openvino_map, openvino_io_map,blob_map);
 	} else if (onnx_node_->OpType() == "Add"){
 		CreateScaleMulAddLayer(builder, precision, 2,onnx_openvino_map, openvino_io_map,blob_map);
+	} else if (onnx_node_->OpType() == "Sum"){
+		CreateEltwiseLayer(builder, 1,onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "SoftMax") {
 		CreateSoftMaxLayer(builder, onnx_openvino_map, openvino_io_map);
 	} else if (onnx_node_->OpType() == "MatMul") {
@@ -419,12 +423,12 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetwork() {
   }
 
 
-  std::cout << "builder ready\n";
+//   std::cout << "builder ready\n";
 
-  auto layers = builder->getLayers();
-  for(auto layer : layers){
-      std::cout << "Layer Name is " << layer.getName() << std::endl;
-  }
+//   auto layers = builder->getLayers();
+//   for(auto layer : layers){
+//       std::cout << "Layer Name is " << layer.getName() << std::endl;
+//   }
 
 //   auto connections = builder->getLayerConnections(3);
 //   auto from_conn = connections[0].from();
@@ -619,11 +623,11 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
 						InferenceEngine::PrecisionTrait<
 								InferenceEngine::Precision::FP32>::value_type*>();
 
-        auto size = graph_output_blob->size();
+        // auto size = graph_output_blob->size();
 
-        for(int i=0; i< size; i++){
-            std::cout << "Output values " << graph_output_buffer[i] << std::endl;
-        }
+        // for(int i=0; i< size; i++){
+        //     std::cout << "Output values " << graph_output_buffer[i] << std::endl;
+        // }
 
 
 

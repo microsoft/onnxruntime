@@ -15,7 +15,6 @@
 #include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
-/*
 
 void OpenVINONode::CreateNormLayer(
     std::shared_ptr<InferenceEngine::Builder::Network>& builder,
@@ -89,6 +88,7 @@ void OpenVINONode::CreateNormLayer(
   auto attributes = onnx_node_->GetAttributes();
 
   // set alpha
+  norm_layer->setAcrossMaps(true);
   auto alpha = attributes["alpha"].f();
   norm_layer->setAlpha(alpha);
 
@@ -97,7 +97,7 @@ void OpenVINONode::CreateNormLayer(
   norm_layer->setBeta(beta);
 
   // set bias
-  auto bias = attributes["bias"].f();
+//   auto bias = attributes["bias"].f();
   // needs feedback
   //norm_layer->
 
@@ -108,5 +108,4 @@ void OpenVINONode::CreateNormLayer(
 
   layerID_ = builder->addLayer(*norm_layer);
 }
-*/
 } // namespce openvino_ep

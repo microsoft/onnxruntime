@@ -10,7 +10,7 @@ namespace onnxruntime {
     const int OpenVINOReLU = 9;
     const int OpenVINOReshape = 9;
     const int OpenVINOFullyConnected = 9;
-    const int OpenVINOMaxPooling = 7;
+    const int OpenVINOMaxPooling = 9;
     const int OpenVINOConcat = 9;
     const int OpenVINONormalize = 9;
     const int OpenVINOSoftMax = 9;

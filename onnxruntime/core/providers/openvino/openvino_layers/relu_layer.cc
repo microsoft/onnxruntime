@@ -20,10 +20,13 @@ void OpenVINONode::CreateReLULayer(
     std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
     std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
 
+//   auto relu_layer =
+//       std::make_shared<InferenceEngine::Builder::ReLULayer>(
+//           onnx_node_->Name());
+
   auto relu_layer =
       std::make_shared<InferenceEngine::Builder::ReLULayer>(
-          onnx_node_->Name());
-
+         "Relu");
   //
   // *** Set inputs ***
   //
@@ -86,6 +89,6 @@ void OpenVINONode::CreateReLULayer(
   layerID_ = builder->addLayer(*relu_layer);
 
   // Save to shared pointer to keep it allocated
-  layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(relu_layer);
+//   layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(relu_layer);
 }
 } // namespce openvino_ep
