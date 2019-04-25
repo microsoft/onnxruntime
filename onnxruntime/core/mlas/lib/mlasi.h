@@ -317,7 +317,7 @@ MlasGetMaximumThreadCount(
     return MlasPlatform.MaximumThreadCount;
 #elif _OPENMP
     return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#elif
+#else
     return 1;
 #endif
 }
