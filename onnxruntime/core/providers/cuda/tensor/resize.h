@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "upsample.h"
+#include "core/providers/cuda/tensor/upsample.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-class Resize : public Upsample {
+class Resize : public Upsample<T> {
  public:
   Resize(OpKernelInfo info) : Upsample(info) {
   }
