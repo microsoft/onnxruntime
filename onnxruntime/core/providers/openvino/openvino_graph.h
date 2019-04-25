@@ -169,8 +169,6 @@ private:
 
   std::vector<std::string> GetEnvLdLibraryPath();
 
-  void SetDevIDAndPrecision(std::string info, std::string& dev_id, InferenceEngine::Precision& prec);
-
   onnxruntime::Node* fused_node_;
   const onnxruntime::Graph* onnx_graph_;
   std::shared_ptr<InferenceEngine::CNNNetwork> cnn_network_;

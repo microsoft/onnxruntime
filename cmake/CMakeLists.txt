@@ -495,14 +495,42 @@ if (onnxruntime_USE_NGRAPH)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
+
     add_definitions(-DUSE_OPENVINO=1)
+
+	if (onnxruntime_USE_OPENVINO_SOURCE)
+	  include(openvino)
+	  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
+	  link_directories(${OPENVINO_LIB_DIR})
+	  #TODO: set plugin path var
+	endif()
+	
+	if (onnxruntime_USE_OPENVINO_BINARY)
+	    #TODO: set plugin path var
+	endif()
+	
+	if(onnxruntime_USE_OPENVINO_MYRIAD)
+		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_GPU_FP32)
+		add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_GPU_FP16)
+		add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_CPU_FP32)
+		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_VAD_R)
+		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+	endif()
+	
 endif()
 
-if (onnxruntime_USE_OPENVINO_SOURCE)
-  include(openvino)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
-  link_directories(${OPENVINO_LIB_DIR})
-endif()
 
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)

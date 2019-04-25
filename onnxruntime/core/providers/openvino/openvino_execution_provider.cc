@@ -26,19 +26,6 @@ constexpr const char* OpenVINO = "OpenVINO";
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderInfo& info)
 : IExecutionProvider {onnxruntime::kOpenVINOExecutionProvider} {
   (void)info;
-#ifdef onnxruntime_USE_OPENVINO_CPU_FP32
-  info_.device = "CPU_FP32";
-#elif onnxruntime_USE_OPENVINO_GPU_FP32
-  info_.device = "GPU_FP32";
-#elif openvino_USE_OPENVINO_GPU_FP16
-  info_.device = "GPU_FP16";
-#elif onnxruntime_USE_OPENVINO_MYRIAD
-  info_.device = "MYRIAD_FP16";
-#elif onnxruntime_USE_OPENVINO_VAD_R
-  info_.device = "HDDL_FP16";
-#else
-  info_.device = "CPU_FP32";
-#endif
 
   DeviceAllocatorRegistrationInfo device_info( {OrtMemTypeDefault, [](int) {return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(OPENVINO,OrtDeviceAllocator,0,OrtMemTypeDefault));}, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));

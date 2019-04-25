@@ -297,35 +297,44 @@ void OpenVINONode::ConnectToNeighbors(std::shared_ptr<InferenceEngine::Builder::
 
 }
 
-void OpenVINOGraph::SetDevIDAndPrecision(std::string info, std::string& dev_id,
-    InferenceEngine::Precision& prec) {
-  std::istringstream tokenStream(info);
-  char delimiter = '_';
-  std::vector<std::string> values;
-  std::string token;
 
-  while (std::getline(tokenStream, token, delimiter)) {
-    values.push_back(token);
-  }
-
-  dev_id = values[0];
-  std::string prec_str = values[1];
-  if(prec_str == "FP32") {
-    prec = InferenceEngine::Precision::FP32;
-  } else if (prec_str == "FP16") {
-    prec = InferenceEngine::Precision::FP16;
-  }
-
-
-  std::cout<< "OpenVINO EP device:" << dev_id << std::endl;
-  std::cout<< "OpenVINO EP precision:" << prec_str << std::endl;
-
-}
-
-OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info) {
+OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device_info*/) {
 	//TODO: parse device info to obtain the following values
 
-	SetDevIDAndPrecision(device_info, device_id_, precision_);
+
+  device_id_ = "CPU";
+  precision_ = InferenceEngine::Precision::FP32;
+  std::string precision_str = "FP32";
+
+#ifdef OPENVINO_CONFIG_CPU_FP32
+	device_id_ = "CPU";
+	precision_ = InferenceEngine::Precision::FP32;
+	precision_str = "FP32";
+#endif
+#ifdef OPENVINO_CONFIG_GPU_FP32
+	device_id_ = "GPU";
+	precision_ = InferenceEngine::Precision::FP32;
+	precision_str = "FP32";
+#endif
+#ifdef OPENVINO_CONFIG_GPU_FP16
+	device_id_ = "GPU";
+	precision_ = InferenceEngine::Precision::FP16;
+	precision_str = "FP16";
+#endif
+#ifdef OPENVINO_CONFIG_MYRIAD
+	device_id_ = "MYRIAD";
+	precision_ = InferenceEngine::Precision::FP16;
+	precision_str = "FP16";
+#endif
+#ifdef OPENVINO_CONFIG_VAD_R
+	device_id_ = "HDDL";
+	precision_ = InferenceEngine::Precision::FP16;
+	precision_str = "FP16";
+#endif
+
+  std::cout<< "OpenVINO EP device:" << device_id_ << std::endl;
+  std::cout<< "OpenVINO EP precision:" << precision_str << std::endl;
+
 
 	num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
