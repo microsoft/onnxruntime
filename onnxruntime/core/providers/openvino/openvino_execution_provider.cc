@@ -141,6 +141,10 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             groups.back().emplace_back(node.Index());
         }
         else{
+          if(!newSubGraph) {
+            std::cout << "\nEnd of chosen subgraph\n";
+            break;
+          }
             //This node is not supported
             newSubGraph = true;
         }
