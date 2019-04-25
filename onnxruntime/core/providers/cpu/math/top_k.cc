@@ -134,7 +134,7 @@ template <>
 TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   int64_t k_temp;
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("k", &k_temp).IsOK());
-  ORT_ENFORCE(k_temp >= 0);
+  ORT_ENFORCE(k_temp > 0);
   k_ = gsl::narrow_cast<unsigned>(k_temp);
 
   int64_t axis_temp;
