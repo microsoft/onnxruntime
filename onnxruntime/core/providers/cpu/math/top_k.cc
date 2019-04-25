@@ -56,7 +56,7 @@ struct ValueCmp {
 };
 
 // Core TopK implementation
-Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, unsigned k) {
+Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, const unsigned k) {
 
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
@@ -67,8 +67,14 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
     err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
     return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
   }
-  // reset k on zero
-  if (k == 0) k = static_cast<unsigned>(X->Shape().GetDims()[axis_parsed]);
+
+  if (k == 0) {
+    vector<int64_t> out_dims = in_dims;
+    out_dims[axis_parsed] = 0;
+    p_op_kernel_context->Output(0, out_dims);
+    p_op_kernel_context->Output(1, out_dims);
+    return Status::OK();
+  }
 
   const int64_t rows = SizeToDim(axis_parsed, in_dims);
   const int64_t cols = X->Shape().Size() / rows;
