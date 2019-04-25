@@ -47,20 +47,18 @@ CMake creates a target to this project
     <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
              Targets="Build"
              />
-    <!--<MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
+    <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Build" 
              Properties="Platform=AnyCPU"
-             />-->
+             />
   </Target>
 
-  <!--
   <Target Name="RunTest" AfterTargets="Build">
     <Message Importance="High" Text="Running CSharp tests..." />
     <Exec Command="dotnet test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration)" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>
-  -->
   
   <Target Name="CreatePackage">
     <Message Importance="High" Text="Bundling NuGet package ..." />
