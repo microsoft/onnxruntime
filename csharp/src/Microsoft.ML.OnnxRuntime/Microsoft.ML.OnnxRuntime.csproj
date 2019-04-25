@@ -12,7 +12,8 @@
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
-
+    <PlatformTarget Condition=" '$(PlatformTarget)' == '' ">x64</PlatformTarget>    
+    
     <!--- packaging properties -->
     <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
     <Authors>Microsoft</Authors>
