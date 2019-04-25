@@ -159,6 +159,15 @@ TEST(TopKOperator, InvalidKOpset9) {
           "Invalid value for attribute k");
 }
 
+TEST(TopKOperator, Top0DefaultAxisOpset10) {
+  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
+  std::vector<int64_t> input_dimensions = {2, 4};
+  std::vector<float> expected_vals = {};
+  std::vector<int64_t> expected_indices = {};
+  std::vector<int64_t> expected_dimensions = {2,0};
+  RunTest(10, 0, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
 TEST(TopKOperator, Top1DefaultAxisOpset10) {
   std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
   std::vector<int64_t> input_dimensions = {2, 4};
@@ -253,25 +262,6 @@ TEST(TopKOperator, Top1ExplicitAxisMultiDInputOpset10) {
   std::vector<int64_t> expected_dimensions = {2, 1, 2};
   int64_t axis = 1;
   RunTest(10, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);
-}
-
-TEST(TopKOperator, InvalidKOpset10) {
-  std::vector<float> input_vals = {0.1f, 0.3f, 0.2f, 0.4f, 0.1f, 0.3f, 0.3f, 0.2f};
-  std::vector<int64_t> input_dimensions = {2, 4};
-  std::vector<float> expected_vals = {0.4f, 0.3f, 0.2f, 0.1f, 0.3f, 0.3f, 0.2f, 0.1f};
-  std::vector<int64_t> expected_indices = {3, 1, 2, 0, 1, 2, 3, 0};
-  std::vector<int64_t> expected_dimensions = {2, 4};
-  RunTest(10,
-          0,
-          input_vals,
-          input_dimensions,
-          expected_vals,
-          expected_indices,
-          expected_dimensions,
-          false,
-          1,
-          OpTester::ExpectResult::kExpectFailure,
-          "value of k should be greater than 0");
 }
 
 }  // namespace test
