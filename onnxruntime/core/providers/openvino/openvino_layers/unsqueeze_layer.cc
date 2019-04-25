@@ -18,16 +18,17 @@
 namespace openvino_ep {
 
 void OpenVINONode::CreateUnsqueezeLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+    // std::shared_ptr<InferenceEngine::Builder::Network>& /*builder*/,
     InferenceEngine::Precision precision,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+    // std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& /*onnx_openvino_map*/,
+    // std::map<std::string, std::shared_ptr<OpenVINONode>>& /*openvino_io_map*/){
+    std::map<std::string, InferenceEngine::Blob::Ptr>& blob_map) {
 
 
     // auto unsqueeze_layer =
         // std::make_shared<InferenceEngine::Builder::ReshapeLayer>(onnx_node_->Name());
     // auto const_layer = std::make_shared<InferenceEngine::Builder::ConstLayer>(onnx_node_->Name());
-    auto const_layer = std::make_shared<InferenceEngine::Builder::ConstLayer>("Const");
+    // auto const_layer = std::make_shared<InferenceEngine::Builder::ConstLayer>("Const");
 
   //
   // *** Set inputs ***
@@ -35,6 +36,8 @@ void OpenVINONode::CreateUnsqueezeLayer(
         // InferenceEngine::idx_t src_port_idx = 0;
   //
     auto formal_params = onnx_node_->Op()->inputs();
+    InferenceEngine::Blob::Ptr weights;
+    std::string output_name;
     // std::vector<int64_t> size_vector;
 
     for(size_t i = 0; i < formal_params.size(); i++){
@@ -57,12 +60,12 @@ void OpenVINONode::CreateUnsqueezeLayer(
             InferenceEngine::SizeVector size;
             size.push_back(GetTensorElemCount(B_name));
 
-            auto ptrBiases = InferenceEngine::make_shared_blob(
+            weights = InferenceEngine::make_shared_blob(
                 InferenceEngine::TensorDesc(precision, size,
                     InferenceEngine::Layout::C), (float*)GetTensorData(B_name,precision));
 
             // const_layer->setPort(InferenceEngine::Port(size_vector));
-            const_layer->setData(ptrBiases);
+            // const_layer->setData(ptrBiases);
         } else {
             std::stringstream msg;
             msg << "Node: " << onnx_node_->Name() << "| Param: "
@@ -82,15 +85,18 @@ void OpenVINONode::CreateUnsqueezeLayer(
 
             std::cout << "In output" << std::endl;
 
-        std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-        if (node_connects_to_graph_outputs_) {
-            auto output_name = output_defs_[i]->Name();
-            out_ov_node = openvino_io_map[output_name];
-        } else {
-            out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-        }
-        InferenceEngine::idx_t out_port = 0;
-        output_connections_.push_back( { out_ov_node, out_port });
+            output_name = output_defs_[i]->Name();
+            std::cout << "Output Names " << output_name << std::endl;
+
+        // std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
+        // if (node_connects_to_graph_outputs_) {
+        //     auto output_name = output_defs_[i]->Name();
+        //     out_ov_node = openvino_io_map[output_name];
+        // } else {
+        //     out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
+        // }
+        // InferenceEngine::idx_t out_port = 0;
+        // output_connections_.push_back( { out_ov_node, out_port });
 
         } else {
         std::stringstream msg;
@@ -99,6 +105,8 @@ void OpenVINONode::CreateUnsqueezeLayer(
         throw msg.str();
         }
     }
+    blob_map.insert( {output_name,weights});
+    // const_blob_map_[output_name] = weights;
 
   //
   // *** Set attributes ***
@@ -136,7 +144,7 @@ void OpenVINONode::CreateUnsqueezeLayer(
     // unsqueeze_layer->setDims(new_dims);
 
 
-    layerID_ = builder->addLayer(*const_layer);
+    // layerID_ = builder->addLayer(*const_layer);
     // std::cout << "layerID_ " << layerID_ << std::endl;
     // std::cout << "layerID " << layerID << std::endl;
     // InferenceEngine::idx_t dst_port_idx = 0;

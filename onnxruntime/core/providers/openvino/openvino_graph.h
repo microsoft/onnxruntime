@@ -56,7 +56,9 @@ public:
       std::shared_ptr<InferenceEngine::Builder::Network>& builder,
       InferenceEngine::Precision precision,
       std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-      std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map_);
+      std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map_,
+      std::map<std::string, InferenceEngine::Blob::Ptr>& blob_map);
+
 
   void ConnectToNeighbors(
       std::shared_ptr<InferenceEngine::Builder::Network>& builder);
@@ -80,14 +82,14 @@ private:
         std::shared_ptr<InferenceEngine::Builder::Network>& builder,
         std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
         std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
-  /*void CreateConcatLayer(
-        std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-        std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-        std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
-  void CreateNormLayer(
-        std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-        std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-        std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);*/
+//   void CreateConcatLayer(
+//         std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+//         std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
+//         std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
+//   void CreateNormLayer(
+//         std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+//         std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
+//         std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
   void CreateEltwiseLayer(
        std::shared_ptr<InferenceEngine::Builder::Network>& builder,
 	   int EltwiseType,
@@ -123,11 +125,6 @@ private:
     std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
     std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
 
-  void CreateUnsqueezeLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    InferenceEngine::Precision precision,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
 
 
   void CreateScaleShiftLayer(
@@ -141,6 +138,21 @@ private:
     InferenceEngine::Precision precision,
     std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
     std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
+
+  void CreateUnsqueezeLayer(
+    // std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+    InferenceEngine::Precision precision,
+    // std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
+    // std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map);
+    std::map<std::string, InferenceEngine::Blob::Ptr>& blob_map);
+
+  void CreateScaleMulAddLayer(
+    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
+    InferenceEngine::Precision precision,
+    int type,
+    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
+    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map,
+    std::map<std::string,InferenceEngine::Blob::Ptr>& blob_map);
 
 };
 
@@ -180,6 +192,7 @@ private:
   std::vector<std::shared_ptr<OpenVINONode>> openvino_nodes_;
   std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>> onnx_openvino_map_;
   std::map<std::string, std::shared_ptr<OpenVINONode>> openvino_io_map_;
+  std::map<std::string, InferenceEngine::Blob::Ptr> const_blob_map_;
 
 };
 }
