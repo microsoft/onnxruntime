@@ -36,7 +36,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     std::vector<int64_t> pads = pads_;
     std::vector<int64_t> kernel_shape = kernel_shape_;
 
-    std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+    std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
     Tensor* Y = context->Output(0, TensorShape(output_dims));
 
     const float* X_data = X->template Data<float>();

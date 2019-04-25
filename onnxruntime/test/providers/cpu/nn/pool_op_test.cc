@@ -209,6 +209,99 @@ TEST(PoolTest, MaxPool1D_8_With_Index) {
   MaxPool1D_8_WithIndexTest(1 /*storage_order*/);
 }
 
+TEST(PoolTest, MaxPool_10_Dilation_1d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{3});
+  test.AddAttribute("dilations", vector<int64_t>{3});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1, -3, -2, -4, -6, -5, -4, -2};
+  std::vector<int64_t> x_dims = {1, 1, 12};
+  std::vector<int64_t> expected_dims = {1, 1, 6};
+  std::vector<float> expected_vals = {4, 3, 2, 4, -1, -2};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+	  1,  3,  2,  4, -1,
+	  5,  7,  6,  8, -2,
+	  9,  11, 10, 12, -3,
+	  13, 15, 14, 16, -4,
+      };
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 3};
+  std::vector<float> expected_vals = {10, 12, 10, 14, 16, 14};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+	  1,  3,  2,  4, -1,
+	  5,  7,  6,  8, -2,
+	  9,  11, 10, 12, -3,
+	  13, 15, 14, 16, -4,
+      };
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 3};
+  std::vector<float> expected_vals = {10, 12, 10};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+
+  std::vector<float> x_vals = {
+	  1,  3,  2,  4, -1,
+	  5,  7,  6,  8, -2,
+	  9,  11, 10, 12, -3,
+	  13, 15, 14, 16, -4,
+      };
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 3};
+  std::vector<float> expected_vals = {10, 12, 10, 10, 12, 10};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(PoolTest, GlobalMaxPool) {
   OpTester test("GlobalMaxPool");
 
@@ -460,6 +553,30 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
                                       0.2501f, 0.5806f, 0.5767f, 0.2462f,
                                       0.3585f, 0.6897f, 0.7144f, 0.3832f,
                                       0.1919f, 0.4124f, 0.4419f, 0.2213f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_10_ceil1_2d) {
+  OpTester test("AveragePool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("ceil_mode", (int64_t) 1);
+
+  std::vector<float> x_vals = {
+	  1,  3,  2,  4, 
+	  5,  7,  6,  8,
+	  9,  11, 10, 12, 
+	  13, 15, 14, 16,
+      };
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 3};
+  std::vector<float> expected_vals = {4.0f, 4.5f, 5.0f , 14.0f, 14.5f, 15.0f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);

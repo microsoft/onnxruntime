@@ -507,8 +507,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
 
         if enable_python_tests:
             # Disable python tests for TensorRT because many tests are not supported yet
-            if enable_tensorrt or enable_ngraph:
-                print("NOT RUNNING")
+            if enable_tensorrt :
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
