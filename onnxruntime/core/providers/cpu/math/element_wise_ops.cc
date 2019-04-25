@@ -1106,8 +1106,7 @@ void BroadCastFMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
 template <class T>
 inline T Modulus(T x, T y) {
   auto res = x % y;
-  if (res != 0 &&
-      ((res < 0 && y > 0) || (res > 0 && y < 0))) {
+  if ((res < 0 && y > 0) || (res > 0 && y < 0)) {
     res += y;
   }
   return static_cast<T>(res);
