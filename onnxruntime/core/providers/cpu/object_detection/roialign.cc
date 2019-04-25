@@ -25,18 +25,18 @@
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
-namespace contrib {
 const int64_t EXPECTED_NUM_ROI_DIMS = 2;
-const int64_t EXPECTED_SECOND_ROI_DIM = 5;
+const int64_t EXPECTED_SECOND_ROI_DIM = 4;
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                  \
-  ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                      \
-      ROIAlign,                                                           \
-      1,                                                                  \
-      data_type,                                                          \
-      KernelDefBuilder()                                                  \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
-      ROIAlign<data_type>);
+#define ADD_TYPED_ROIALIGN_OP(data_type)                                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
+      RoiAlign,                                                          \
+      10,                                                                \
+      data_type,                                                         \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+      RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);
 ADD_TYPED_ROIALIGN_OP(double);
@@ -151,7 +151,7 @@ void pre_calc_for_bilinear_interpolate(
 }
 
 template <typename T>
-void ROIAlignForward(
+void RoiAlignForward(
     int64_t nthreads,
     const T* bottom_data,
     float spatial_scale,
@@ -162,18 +162,18 @@ void ROIAlignForward(
     int64_t pooled_width,
     int64_t sampling_ratio,
     const T* bottom_rois,
-    int64_t roi_cols,
+    int64_t num_roi_cols,
     T* top_data,
     const std::string& mode,
+    const int64_t* batch_indices_ptr,
     const ThreadPool* ttp) {
   int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
 
   std::function<void(int32_t)> work_object = [&](int32_t n) {
     int64_t index_n = n * channels * pooled_width * pooled_height;
 
-    const T* offset_bottom_rois = bottom_rois + n * roi_cols;
-    const T roi_batch_ind = offset_bottom_rois[0];
-    offset_bottom_rois++;
+    const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
+    const auto roi_batch_ind = batch_indices_ptr[n];
 
     // Do not using rounding; this implementation detail is critical
     T roi_start_w = offset_bottom_rois[0] * spatial_scale;
@@ -264,53 +264,80 @@ void ROIAlignForward(
       }    // for ph
     }      // for c
   };       // for n
-  const_cast<ThreadPool*>(ttp)->ParallelFor((int32_t)n_rois, work_object);
+  const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
 }
 }  // namespace
 
 template <typename T>
-Status ROIAlign<T>::Compute(OpKernelContext* context) const {
+Status RoiAlign<T>::Compute(OpKernelContext* context) const {
+  using namespace onnxruntime::common;
+
+  // X
   const Tensor* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
   }
 
+  // rois
   const Tensor* rois_ptr = context->Input<Tensor>(1);
   if (!rois_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
   }
 
-  auto& x_dims = X_ptr->Shape();
+  // batch indices
+  const Tensor* batch_indices_ptr = context->Input<Tensor>(2);
+  if (!batch_indices_ptr) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
+  }
 
-  auto& rois_dims = rois_ptr->Shape();
+  const auto& x_dims = X_ptr->Shape();
+  const auto& rois_dims = rois_ptr->Shape();
+  const auto& batch_indices_dims = batch_indices_ptr->Shape();
+
+  if (batch_indices_dims.NumDimensions() != 1) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "Number of dimensions for batch indices should be exactly 1");
+  }
 
   // validate rois_dims
   if (rois_dims.NumDimensions() != EXPECTED_NUM_ROI_DIMS) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Number of dimensions for rois should be exactly 2");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "Number of dimensions for rois should be exactly " + std::to_string(EXPECTED_NUM_ROI_DIMS));
   }
   if (rois_dims[1] != EXPECTED_SECOND_ROI_DIM) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Second dimension for rois should be exactly 5");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "Second dimension for rois should be exactly " + std::to_string(EXPECTED_SECOND_ROI_DIM));
   }
 
-  auto& Y = *context->Output(0, {rois_dims[0], x_dims[1], pooled_h_, pooled_w_});
+  auto num_rois = batch_indices_dims[0];
+  auto num_rois_from_rois = rois_dims[0];
+  auto num_roi_cols = rois_dims[1];
+
+  // first dimension of batch_indices and rois should match
+  if (num_rois != num_rois_from_rois) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "First dimension (num_rois) of batch_indices and rois don't match");
+  }
+
+  auto& Y = *context->Output(0, {num_rois, x_dims[1], output_height_, output_width_});
   int64_t output_size = Y.Shape().Size();
-  ROIAlignForward<T>(
-      output_size,
+  RoiAlignForward<T>(
+      output_size,  // num threads
       X_ptr->Data<T>(),
       spatial_scale_,
-      x_dims[1],
-      x_dims[2],
-      x_dims[3],
-      pooled_h_,
-      pooled_w_,
+      x_dims[1],  // num channels
+      x_dims[2],  // height
+      x_dims[3],  // width
+      output_height_,
+      output_width_,
       sampling_ratio_,
       rois_ptr->Data<T>(),
-      rois_dims[1],
+      num_roi_cols,
       Y.template MutableData<T>(),
       mode_,
+      batch_indices_ptr->Data<int64_t>(),
       static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
 
   return Status::OK();
 }
-}  // namespace contrib
 }  // namespace onnxruntime

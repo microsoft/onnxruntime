@@ -96,9 +96,9 @@ If scale is not provided, crop the borders as provided.)DOC";
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
 
-  static const char* ThresholdedRelu_ver1_doc = R"DOC( 
-ThresholdedRelu takes one input data (Tensor<T>) and produces one output data 
-(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise, 
+  static const char* ThresholdedRelu_ver1_doc = R"DOC(
+ThresholdedRelu takes one input data (Tensor<T>) and produces one output data
+(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise,
 is applied to the tensor elementwise. )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ThresholdedRelu)
@@ -1014,61 +1014,6 @@ Example 4:
           {"tensor(float)"},
           "Constrain to tensor(float).")
       .SetDoc(R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ROIAlign)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr(
-          "spatial_scale",
-          "Multiplicative spatial scale factor to translate ROI coordinates "
-          "from their input spatial scale to the scale used when pooling, "
-          "i.e., spatial scale of the input feature map X relative to the "
-          "input image. E.g.; default is 1.0f. ",
-          AttributeProto::FLOAT,
-          1.f)
-      .Attr(
-          "pooled_h",
-          "default 1; Pooled output Y's height.",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
-      .Attr(
-          "pooled_w",
-          "default 1; Pooled output Y's width.",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
-      .Attr(
-          "sampling_ratio",
-          "Number of sampling points in the interpolation grid used to compute "
-          "the output value of each pooled output bin. If > 0, then exactly "
-          "sampling_ratio x sampling_ratio grid points are used. If == 0, then "
-          "an adaptive number of grid points are used (computed as "
-          "ceil(roi_width / pooled_w), and likewise for height). Default is 0.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
-          "mode",
-          "The pooling method. Two modes are supported: 'avg' and 'max'. "
-          "Default is 'avg'.",
-          AttributeProto::STRING,
-          std::string("avg"))
-      .Input(0, "X", "Input data tensor from the previous operator; 4-D feature map of shape (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and the width of the data.", "T")
-      .Input(1, "rois", "RoIs (Regions of Interest2) to pool over; rois is 2-D input of shape (num_rois, 5) given as [[batch_id, x1, y1, x2, y2], ...]. The RoIs' coordinates are in the coordinate system of the input image.", "T")
-      .Output(0, "Y", "RoI pooled output, 4-D tesnor of shape (num_rois, C, pooled_h, pooled_w). The r-th batch element Y[r-1] is a pooled feature map corresponding to the r-th RoI X[r-1].", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
-      .SetDoc(R"DOC(Region of Interest (RoI) align operation described in the
-  [Mask R-CNN paper](https://arxiv.org/abs/1703.06870).
-  RoIAlign consumes an input tensor X and region of interests (rois)
-  to apply pooling across each RoI; it produces a 4-D tensor of shape
-  (num_rois, C, pooled_h, pooled_w).
-
-  RoIAlign is proposed to avoid the misalignment by removing
-  quantizations while converting from original image into feature
-  map and from feature map into RoI feature; in each ROI bin,
-  the value of the sampled locations are computed directly
-  through bilinear interpolation.)DOC");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
