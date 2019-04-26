@@ -1,0 +1,55 @@
+# Dockerfile to run ONNXRuntime (default)
+
+# Ubuntu Base Image
+FROM ubuntu:16.04
+
+# Add conda to PATH
+ENV PATH /opt/miniconda/bin:$PATH
+WORKDIR /work/deps
+
+# Dependencies: Ubuntu-core
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends sudo \
+    libopenblas-base \
+    wget \
+    zip \
+    build-essential curl libcurl4-openssl-dev libssl-dev python3-dev git
+
+# Dependencies: conda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
+    /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
+    rm ~/miniconda.sh && \
+    /opt/miniconda/bin/conda clean -tipsy
+
+RUN conda install -y python=3.6 numpy && \
+    conda clean -aqy && \
+    rm -rf /opt/miniconda/pkgs && \
+    find / -type d -name __pycache__ -prune -exec rm -rf {} \;
+
+# Install cmake
+WORKDIR /code
+ADD https://cmake.org/files/v3.14/cmake-3.14.3-Linux-x86_64.sh /cmake-3.14.3-Linux-x86_64.sh
+RUN mkdir /opt/cmake
+RUN sh /cmake-3.14.3-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
+RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
+RUN cmake --version
+
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+
+# Prepare onnxruntime repository
+RUN git clone --recursive https://github.com/Microsoft/onnxruntime -b master --single-branch
+WORKDIR /code/onnxruntime
+
+# Start the TensorRT build
+RUN /bin/sh ./build.sh --config Release --build_wheel --update --build
+
+# Copy the ONNX Runtime wheel into the root directory
+RUN cp /code/onnxruntime/build/Linux/Release/dist/*.whl /code
+
+WORKDIR /code
+
+# Remove unecessary files to reduce image size
+RUN rm -rf onnxruntime opt/cmake/*
+
+# Install the onnxruntime-cpu wheel
+RUN pip install *.whl
