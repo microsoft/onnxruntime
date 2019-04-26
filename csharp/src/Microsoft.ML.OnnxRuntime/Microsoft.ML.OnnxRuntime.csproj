@@ -26,7 +26,7 @@
         Release Def:
 	Branch: $(BUILD_SOURCEBRANCH)
 	Commit: $(BUILD_SOURCEVERSION)
-	Build: $(BUILD_BUILDID)
+	Build: $(BUILD_BUILDURI)
     </PackageReleaseNotes>
 
     <!-- sourcelink flags -->
