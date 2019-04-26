@@ -59,7 +59,7 @@ CMake creates a target to this project
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>
-  
+
   <Target Name="CreatePackage">
     <Message Importance="High" Text="Bundling NuGet package ..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
