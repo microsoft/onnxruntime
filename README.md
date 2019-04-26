@@ -23,7 +23,7 @@ ONNX Runtime continuously strives to provide top performance for a broad and gro
 ### Alignment with ONNX Releases
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See ONNX version release details [here](https://github.com/onnx/onnx/releases).
 
-As of May 2019, ONNX Runtime supports ONNX 1.5.
+As of May 2019, ONNX Runtime supports ONNX 1.5. For ONNX Runtime and ONNX versioning compatibility, see [this table](https://github.com/Microsoft/onnxruntime/blob/master/docs/Versioning.md#version-matrix).
 
 ### Traditional ML support
 ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios.
