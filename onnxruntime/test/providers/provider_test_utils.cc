@@ -472,17 +472,14 @@ void OpTester::Run(ExpectResult expect_result,
             continue;
 
           //if node is not registered for the provider, skip
-          node.SetExecutionProviderType(provider_type);          
-          if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+          node.SetExecutionProviderType(provider_type);
+          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
-          // nGraph EP doesn't have kernels registered
-          if (!reg->IsEmpty()) {
-            const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
-            if (!kci) {
-              valid = false;
-              break;
-            }
+          const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
+          if (!kci) {
+            valid = false;
+            break;
           }
         }
 

@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
-#include "core/framework/op_kernel_context_internal.h"
-#include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 using namespace std;
@@ -287,11 +285,6 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-ConstEigenVectorMap<T> GenMap(const T* input, int32_t index, int64_t blocks) {
-  return ConstEigenVectorMap<T>(input + (index * blocks), blocks);
-}
-
-template <typename T>
 Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   std::vector<T> transposedInputData;
   int64_t block_size, blocks;
@@ -303,14 +296,12 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-    // Get access to the internal threadpool
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
-    std::function<void(int32_t)> work_object = [&](int32_t i) {
-      output_data[i] = GenMap<T>(input_data, i, blocks).mean();
-    };
-    const_cast<onnxruntime::concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)block_size, work_object);
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
+    }
   } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().mean();
@@ -361,14 +352,12 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-    // Get access to the internal threadpool
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-    auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
-    std::function<void(int32_t)> work_object = [&](int32_t i) {
-      output_data[i] = GenMap<T>(input_data, i, blocks).sum();
-    };
-    const_cast<onnxruntime::concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)block_size, work_object);
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+    for (int64_t i = 0; i < block_size; ++i) {
+      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
+    }
   } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();

@@ -236,11 +236,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
-      "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
 
-#if (defined (_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests] (ITestCase* l) {
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests](ITestCase* l) {
       std::unique_ptr<ITestCase> test_case_ptr(l);
       if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
         return;
@@ -253,15 +253,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests] (ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests](ITestCase* l) { tests.push_back(l); });
     if (enable_cuda) {
       for (auto it = tests.begin(); it != tests.end();) {
         auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
         if (iter != cuda_flaky_tests.end()) {
           delete *it;
           it = tests.erase(it);
-        }
-        else {
+        } else {
           ++it;
         }
       }
@@ -351,10 +350,13 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
-      {"test_mod_bcast", "not implemented"},
-      {"test_mod_float_mixed_sign_example", "not implemented"},
-      {"test_mod_fmod_mixed_sign_example", "not implemented"},
-      {"test_mod_int64_mixed_sign_example", "not implemented"}
+      {"tf_inception_v2", "result mismatch"},
+      {"tf_mobilenet_v2_1.0_224", "result mismatch"},
+      {"tf_mobilenet_v2_1.4_224", "result mismatch"},
+      {"tf_mobilenet_v1_1.0_224", "result mismatch"},
+      {"mobilenetv2-1.0", "result mismatch"},
+      {"mxnet_arcface", "result mismatch"},
+      {"mod_float_mixed_sign_example", "faulty test"}
   };
 
 #ifdef USE_NGRAPH
@@ -364,24 +366,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
 
 #ifdef USE_CUDA
-  broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_pads"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_precomputed_strides"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_precomputed_pads"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_strides"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_precomputed_same_upper"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_same_upper"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_same_lower"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
-
-  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
-  broken_tests["fp16_shufflenet"] = "still have issue on Linux";
-  broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
+  broken_tests["mxnet_arcface"] = "result mismatch";
 #endif
   // clang-format on
 
-#if defined (_WIN32) && !defined(_WIN64)
+#if defined(_WIN32) && !defined(_WIN64)
   broken_tests["vgg19"] = "failed: bad allocation";
 #endif
 
