@@ -305,18 +305,6 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
 }
 #endif
 
-TEST(GraphTransformationTests, TestShapeInferenceBug) {
-  string model_uri = MODEL_FOLDER + "faster_rcnn_resnet50_coco.onnx";
-
-  SessionOptions so;
-  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
-  so.graph_optimization_level = TransformerLevel::Level1;
-  InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-
-}
-
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";
 

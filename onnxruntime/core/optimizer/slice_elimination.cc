@@ -38,17 +38,6 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
     return false;
   }
 
-  auto in_size = node.InputDefs()[0]->Shape()->dim_size();
-  auto out_size = node.OutputDefs()[0]->Shape()->dim_size();
-  if (in_size != out_size) {
-    return false;
-  }
-  auto dimin = node.InputDefs()[0]->Shape()->dim(0).dim_value();
-  auto dimout = node.OutputDefs()[0]->Shape()->dim(0).dim_value();
-  if (dimin != dimout) {
-    return false;
-  }
-
   // For now eliminate slice operators if starts=0 and ends=MAX_INT.
   // TODO: Take into account the input's shape to get a tighter bound for the ends.
   for (size_t i = 0; i < axes.size(); ++i) {
