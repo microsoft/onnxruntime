@@ -55,7 +55,7 @@ Changes
 0.4.0
 ^^^^^
 
-ONNX 1.5 support, C-API custom ops, Graph optimization support
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v0.4.0
 
 0.3.1
 ^^^^^
