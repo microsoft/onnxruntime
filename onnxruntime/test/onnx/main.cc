@@ -359,6 +359,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"mod_float_mixed_sign_example", "faulty test"}
   };
 
+#ifdef USE_NGRAPH
+  broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+#endif
+
 #ifdef USE_CUDA
   broken_tests["mxnet_arcface"] = "result mismatch";
 #endif
