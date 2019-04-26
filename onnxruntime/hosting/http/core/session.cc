@@ -94,12 +94,16 @@ template <typename Body, typename Allocator>
 void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator> >&& req) {
   HttpContext context{};
   context.request = std::move(req);
-  // TODO: set request id
 
-  auto status = ExecuteUserFunction(context);
+  // Special handle the liveness probe endpoint for orchestration systems like Kubernetes.
+  if (context.request.method() == http::verb::get && context.request.target().to_string() == "/") {
+    context.response.body() = "Healthy";
+  } else {
+    auto status = ExecuteUserFunction(context);
 
-  if (status != http::status::ok) {
-    routes_.on_error(context);
+    if (status != http::status::ok) {
+      routes_.on_error(context);
+    }
   }
 
   context.response.keep_alive(context.request.keep_alive());
@@ -114,6 +118,12 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
 
   if (context.request.find("x-ms-client-request-id") != context.request.end()) {
     context.client_request_id = context.request["x-ms-client-request-id"].to_string();
+  }
+
+  if (path == "/score") {
+    // This is a shortcut since we have only one model instance currently.
+    // This code path will be removed once we start supporting multiple models or multiple versions of one model.
+    path = "/v1/models/default/versions/1:predict";
   }
 
   auto status = routes_.ParseUrl(context.request.method(), path, model_name, model_version, action, func);

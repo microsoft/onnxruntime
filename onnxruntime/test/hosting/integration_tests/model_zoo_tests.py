@@ -57,7 +57,7 @@ class ModelZooTests(unittest.TestCase):
         for model_path, data_paths in model_data_map.items():
             hosting_app_proc = None
             try:
-                cmd = [self.hosting_app_path, '--http_port', str(self.server_port), '--model_path', os.path.join(model_path, 'model.onnx'), '--logging_level', self.log_level]
+                cmd = [self.hosting_app_path, '--http_port', str(self.server_port), '--model_path', os.path.join(model_path, 'model.onnx'), '--log_level', self.log_level]
                 test_util.test_log(cmd)
                 hosting_app_proc = test_util.launch_hosting_app(cmd, self.server_ip, self.server_port, self.server_ready_in_seconds)
                

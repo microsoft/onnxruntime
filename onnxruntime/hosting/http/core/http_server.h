@@ -51,4 +51,3 @@ class App {
 };
 }  // namespace hosting
 }  // namespace onnxruntime
-
