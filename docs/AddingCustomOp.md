@@ -7,7 +7,7 @@ Note: These APIs are experimental and will change in the next release. They're r
 * Create an OrtCustomOpDomain with the domain name used by the custom ops
 * Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add
 * Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
-See [this](../onnxruntime/test/custom_op_shared_lib/test_custom_op.cc) for an example.
+See [this](../onnxruntime/test/shared_lib/test_inference.cc) for an example called MyCustomOp that uses the C++ helper API (onnxruntime_cxx_api.h).
 
 ### 2. Using RegisterCustomRegistry API
 * Implement your kernel and schema (if required) using the OpKernel and OpSchema APIs (headers are in the include folder).
