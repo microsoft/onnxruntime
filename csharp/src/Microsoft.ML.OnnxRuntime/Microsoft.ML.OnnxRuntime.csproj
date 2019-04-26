@@ -22,6 +22,12 @@
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
+    <PackageReleaseNotes>
+        Release Def:
+	Branch: $(BUILD_SOURCEBRANCH)
+	Commit: $(BUILD_SOURCEVERSION)
+	Build: $(BUILD_BUILDID)
+    </PackageReleaseNotes>
 
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
