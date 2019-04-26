@@ -47,11 +47,6 @@ public:
   static std::shared_ptr<OpenVINONode> MakeOutputLayer(std::string name,
       std::shared_ptr<InferenceEngine::Builder::Network>& builder);
 
-  void GenerateGraphConnections(
-      std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>> onnx_openvino_map,
-      std::map<std::string, std::shared_ptr<OpenVINONode>> openvino_io_map,
-      std::shared_ptr<InferenceEngine::Builder::Network>& builder);
-
   void CreateOpenVINOLayer(
       std::shared_ptr<InferenceEngine::Builder::Network>& builder,
       InferenceEngine::Precision precision,
@@ -67,7 +62,6 @@ private:
   InferenceEngine::SizeVector GetDimsVector(const std::string& tensor_name);
   void* GetTensorData(const std::string& tensor_name, InferenceEngine::Precision precision);
   size_t GetTensorElemCount(const std::string& tensor_name);
-  void IdentifyIONodes();
 
   void CreateConvLayer(
       std::shared_ptr<InferenceEngine::Builder::Network>& builder,
