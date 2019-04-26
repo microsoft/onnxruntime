@@ -278,7 +278,7 @@ bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion 
 }
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
-  auto node_domain = node.Domain();
+  const auto& node_domain = node.Domain();
   // Check if it uses the ONNX domain, which has two aliases; otherwise check if domains coincide
   return ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
           (domain == kOnnxDomain || domain == kOnnxDomainAlias)) ||
