@@ -14,20 +14,20 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
-void OpenVINONode::CreateScaleShiftImgLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    InferenceEngine::Precision precision,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+void OpenVINONode::CreateScaleShiftImgLayer() {
 
         std::cout << "In scale shift layer" << std::endl;
 
   auto scale_shift_img_layer =
       std::make_shared<InferenceEngine::Builder::ScaleShiftLayer>(
           onnx_node_->Name());
+
+  auto precision = openvino_graph_->precision_;
+
 
   //
   // *** Set inputs ***
@@ -47,21 +47,15 @@ void OpenVINONode::CreateScaleShiftImgLayer(
 
     if (formal_name == "input") {
 
-      // Set Input info
-      std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
 
-      auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(input_defs_[i]->Shape()));
+      auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(onnx_node_->InputDefs()[i]->Shape()));
       num_channels = shape_vector[1];
       std::cout << "Num of channels is " << num_channels << std::endl;
 
-      if (node_connects_to_graph_inputs_) {
-        auto input_name = input_defs_[i]->Name();
-        in_ov_node = openvino_io_map[input_name];
-      } else {
-        in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-      }
+      // Set Input info
       InferenceEngine::idx_t in_port = 0;
-      input_connections_.push_back( { in_ov_node, in_port });
+      auto in_tensor_name = onnx_node_->InputDefs()[i]->Name();
+      input_connections_info_.insert( { in_tensor_name, in_port });
 
     } else {
       std::stringstream msg;
@@ -97,15 +91,9 @@ void OpenVINONode::CreateScaleShiftImgLayer(
     if (formal_name == "output") {
         std::cout << "Output is set " << std::endl;
 
-      std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-      if (node_connects_to_graph_outputs_) {
-        auto output_name = output_defs_[i]->Name();
-        out_ov_node = openvino_io_map[output_name];
-      } else {
-        out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t out_port = 0;
-      output_connections_.push_back( { out_ov_node, out_port });
+      auto out_tensor_name = onnx_node_->OutputDefs()[i]->Name();
+      output_connections_info_.insert( { out_tensor_name, out_port });
 
     } else {
       std::stringstream msg;
@@ -115,6 +103,7 @@ void OpenVINONode::CreateScaleShiftImgLayer(
     }
   }
 
-  layerID_ = builder->addLayer(*scale_shift_img_layer);
+  layerID_ = openvino_graph_->GetBuilder()->addLayer(*scale_shift_img_layer);
+  layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(scale_shift_img_layer);
 }
 } // namespce openvino_ep

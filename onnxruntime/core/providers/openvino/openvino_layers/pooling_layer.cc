@@ -13,14 +13,12 @@
 #include "core/graph/graph.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
-void OpenVINONode::CreatePoolingLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    int poolingType,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+void OpenVINONode::CreatePoolingLayer(int poolingType) {
+
 
     auto pooling_layer =
         std::make_shared<InferenceEngine::Builder::PoolingLayer>(onnx_node_->Name());
@@ -35,16 +33,9 @@ void OpenVINONode::CreatePoolingLayer(
 
         if(formal_name == "X"){
 
-            std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
-
-            if(node_connects_to_graph_inputs_){
-                auto input_name = input_defs_[i]->Name();
-                in_ov_node = openvino_io_map[input_name];
-            }else{
-                in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-            }
             InferenceEngine::idx_t in_port = 0;
-            input_connections_.push_back({ in_ov_node, in_port});
+            auto in_tensor_name = onnx_node_->InputDefs()[i]->Name();
+            input_connections_info_.insert({ in_tensor_name, in_port});
         } else {
             std::stringstream msg;
             msg << "Node: " << onnx_node_->Name() << "| Param: "
@@ -62,15 +53,9 @@ void OpenVINONode::CreatePoolingLayer(
         auto formal_name = formal_params[i].GetName();
         if (formal_name == "Y") {
 
-        std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-        if (node_connects_to_graph_outputs_) {
-            auto output_name = output_defs_[i]->Name();
-            out_ov_node = openvino_io_map[output_name];
-        } else {
-            out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-        }
         InferenceEngine::idx_t out_port = 0;
-        output_connections_.push_back( { out_ov_node, out_port });
+        auto out_tensor_name = onnx_node_->OutputDefs()[i]->Name();
+        output_connections_info_.insert( { out_tensor_name, out_port });
 
         } else if (formal_name == "Indices"){
             // std::cout << "Indices" << std::endl;
@@ -151,6 +136,7 @@ void OpenVINONode::CreatePoolingLayer(
         pooling_layer->setPoolingType(InferenceEngine::Builder::PoolingLayer::PoolingType::AVG);
     }
 
-    layerID_ = builder->addLayer(*pooling_layer);
+    layerID_ = openvino_graph_->GetBuilder()->addLayer(*pooling_layer);
+    layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(pooling_layer);
 }
 }

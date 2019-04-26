@@ -16,104 +16,25 @@
 
 namespace openvino_ep {
 
-OpenVINONode::OpenVINONode() {
+OpenVINONode::OpenVINONode(const onnxruntime::NodeArg* nodearg, OpenVINOGraph* graph) {
   onnx_node_ = nullptr;
-  onnx_graph_ = nullptr;
+  onnx_nodearg_ = nodearg;
+  openvino_graph_ = graph;
   layerID_ = -1;
-  node_connects_to_graph_inputs_ = false;
-  node_connects_to_graph_outputs_ = false;
   is_input_node_ = false;
   is_output_node_ = false;
 }
 
 OpenVINONode::OpenVINONode(const onnxruntime::Node* node,
-    const onnxruntime::Graph* graph) :
-    onnx_node_ { node }, onnx_graph_ { graph } {
+    OpenVINOGraph* graph) {
+  onnx_node_ = node;
+  openvino_graph_ = graph;
+  onnx_nodearg_ = nullptr;
   is_input_node_ = false;
   is_output_node_ = false;
-  node_connects_to_graph_inputs_ = false;
-  node_connects_to_graph_outputs_ = false;
   layerID_ = -1;
-
-  for (auto iter = onnx_node_->InputDefs().begin();
-      iter != onnx_node_->InputDefs().end(); ++iter) {
-    input_defs_.push_back(*iter);
-  }
-
-  for (auto iter = onnx_node_->OutputDefs().begin();
-      iter != onnx_node_->OutputDefs().end(); ++iter) {
-    output_defs_.push_back(*iter);
-  }
-
-  for (auto iter = onnx_node_->InputEdgesBegin();
-        iter != onnx_node_->InputEdgesEnd(); ++iter) {
-      input_edges_.push_back(*iter);
-    }
-
-    for (auto iter = onnx_node_->OutputEdgesBegin();
-        iter != onnx_node_->OutputEdgesEnd(); ++iter) {
-      output_edges_.push_back(*iter);
-    }
-
-  for (auto graph_input : onnx_graph_->GetInputs()) {
-    for (auto node_input : onnx_node_->InputDefs()) {
-      if (node_input == graph_input) {
-        graph_input_defs_.push_back(node_input);
-        node_connects_to_graph_inputs_= true;
-      }
-    }
-  }
-
-  for (auto graph_output : onnx_graph_->GetOutputs()) {
-    for (auto node_output : onnx_node_->OutputDefs()) {
-      if (node_output == graph_output) {
-        graph_output_defs_.push_back(node_output);
-        node_connects_to_graph_outputs_= true;
-      }
-    }
-  }
-
 }
 
-
-std::shared_ptr<OpenVINONode> OpenVINONode::MakeInputLayer(
-    std::string name, const InferenceEngine::SizeVector& shape,
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder) {
-
-  auto input_layer = std::make_shared<InferenceEngine::Builder::InputLayer>(
-      name);
-  input_layer->setPort(InferenceEngine::Port(shape));
-  auto ov_layer = std::make_shared<OpenVINONode>();
-  ov_layer->layer_ = input_layer;
-  ov_layer->layerID_ = builder->addLayer(*ov_layer->layer_);
-  ov_layer->is_input_node_ = true;
-  return ov_layer;
-}
-
-std::shared_ptr<OpenVINONode> OpenVINONode::MakeOutputLayer(
-    std::string name,
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder) {
-  auto output_layer = std::make_shared<InferenceEngine::Builder::OutputLayer>(
-      name);
-  auto ov_layer = std::make_shared<OpenVINONode>();
-  ov_layer->layer_ = output_layer;
-  ov_layer->layerID_ = builder->addLayer(*ov_layer->layer_);
-  ov_layer->is_output_node_ = true;
-  return ov_layer;
-}
-
-
-InferenceEngine::SizeVector OpenVINONode::GetDimsVector(
-    const std::string& tensor_name) {
-
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
-  InferenceEngine::SizeVector dims;
-  for (int i = 0; i < tensor_proto->dims_size(); i++) {
-    dims.push_back(size_t(tensor_proto->dims(i)));
-  }
-  return dims;
-}
 
 float asfloat(uint32_t v) {
     union {
@@ -180,7 +101,7 @@ short* f32tof16Arrays(short* dst, const float *src, size_t nelem, float scale = 
 void* OpenVINONode::GetTensorData(const std::string& tensor_name, InferenceEngine::Precision precision) {
 
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
+  openvino_graph_->onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
   float* fp32_data = (float*) tensor_proto->raw_data().c_str();
   void* return_ptr = nullptr;
 
@@ -197,11 +118,24 @@ void* OpenVINONode::GetTensorData(const std::string& tensor_name, InferenceEngin
   return return_ptr;
 }
 
+InferenceEngine::SizeVector OpenVINONode::GetDimsVector(
+    const std::string& tensor_name) {
+
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  openvino_graph_->onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
+  InferenceEngine::SizeVector dims;
+  for (int i = 0; i < tensor_proto->dims_size(); i++) {
+    dims.push_back(size_t(tensor_proto->dims(i)));
+  }
+  return dims;
+}
+
+
 size_t OpenVINONode::GetTensorElemCount(
     const std::string& tensor_name) {
 
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
+  openvino_graph_->onnx_graph_->GetInitializedTensor(tensor_name, tensor_proto);
   size_t size = 1;
   for (int i = 0; i < tensor_proto->dims_size(); i++) {
     size *= tensor_proto->dims(i);
@@ -210,98 +144,48 @@ size_t OpenVINONode::GetTensorElemCount(
 }
 
 
-void OpenVINONode::CreateOpenVINOLayer(
-        std::shared_ptr<InferenceEngine::Builder::Network>& builder, InferenceEngine::Precision precision,
-	  std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-		std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map,
+void OpenVINONode::InitializeOp(
 		std::map<std::string, InferenceEngine::Blob::Ptr>& blob_map) {
     // TODO - ??? Surya will update the function to reflect the accurate EtlwiseType.
     //int EltwiseType = 1;
 
-	if (onnx_node_->OpType() == "Conv") {
-		CreateConvLayer(builder, precision, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "Relu") {
-		CreateReLULayer(builder, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "Transpose") {
-		CreateTransposeLayer(builder, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "Concat") {
-		CreateConcatLayer(builder, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "LRN") {
-		CreateNormLayer(builder, onnx_openvino_map, openvino_io_map);
-	// } else if (onnx_node_->OpType() == "Eltwise") {
-		// CreateEltwiseLayer(builder, EltwiseType, onnx_openvino_map, openvino_io_map);
-	// } else if (onnx_node_->OpType() == "ReLU") {
-		// CreateReLULayer(builder, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "AveragePool"){
-		CreatePoolingLayer(builder,2,onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "GlobalAveragePool"){
-		CreatePoolingLayer(builder,3,onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "MaxPool"){
-		CreatePoolingLayer(builder,1,onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "Mul"){
-		CreateScaleMulAddLayer(builder, precision, 1, onnx_openvino_map, openvino_io_map,blob_map);
-	} else if (onnx_node_->OpType() == "Add"){
-		CreateScaleMulAddLayer(builder, precision, 2,onnx_openvino_map, openvino_io_map,blob_map);
-	} else if (onnx_node_->OpType() == "Sum"){
-		CreateEltwiseLayer(builder, 1,onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "SoftMax") {
-		CreateSoftMaxLayer(builder, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "MatMul") {
-		CreateFCMatMulLayer(builder, precision, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "Gemm") {
-		CreateFCGemmLayer(builder, precision, onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "Unsqueeze") {
-		CreateUnsqueezeLayer(precision,blob_map);
-	} else if (onnx_node_->OpType() == "BatchNormalization") {
-		CreateScaleShiftLayer(builder,precision,onnx_openvino_map, openvino_io_map);
-	} else if (onnx_node_->OpType() == "ImageScaler") {
-		CreateScaleShiftImgLayer(builder,precision,onnx_openvino_map, openvino_io_map);
-	} else {
-		CreateReshapeLayer(builder, precision, onnx_openvino_map, openvino_io_map);
-    }
+		 if (onnx_node_->OpType() == "Conv") { CreateConvLayer(); }
+	else if (onnx_node_->OpType() == "Relu") { CreateReLULayer(); }
+	else if (onnx_node_->OpType() == "Transpose") { CreateTransposeLayer(); }
+	else if (onnx_node_->OpType() == "Concat") { CreateConcatLayer(); }
+	else if (onnx_node_->OpType() == "LRN") { CreateNormLayer(); }
+  //else if (onnx_node_->OpType() == "Eltwise") { CreateEltwiseLayer(EltwiseType); }
+  //else if (onnx_node_->OpType() == "ReLU") { CreateReLULayer(); }
+	else if (onnx_node_->OpType() == "AveragePool"){ CreatePoolingLayer(2); }
+	else if (onnx_node_->OpType() == "GlobalAveragePool"){ CreatePoolingLayer(3); }
+	else if (onnx_node_->OpType() == "MaxPool"){ CreatePoolingLayer(1); }
+	else if (onnx_node_->OpType() == "Mul"){ CreateScaleMulAddLayer(1 ,blob_map); }
+	else if (onnx_node_->OpType() == "Add"){ CreateScaleMulAddLayer(2, blob_map); }
+	else if (onnx_node_->OpType() == "Sum"){ CreateEltwiseLayer(1); }
+	else if (onnx_node_->OpType() == "SoftMax") { CreateSoftMaxLayer(); }
+	else if (onnx_node_->OpType() == "MatMul") { CreateFCMatMulLayer(); }
+	else if (onnx_node_->OpType() == "Gemm") { CreateFCGemmLayer(); }
+	else if (onnx_node_->OpType() == "Unsqueeze") { CreateUnsqueezeLayer(blob_map); }
+	else if (onnx_node_->OpType() == "BatchNormalization") { CreateScaleShiftLayer(); }
+	else if (onnx_node_->OpType() == "ImageScaler") { CreateScaleShiftImgLayer(); }
+	else if (onnx_node_->OpType() == "Reshape") { CreateReshapeLayer(); }
 }
 
+void OpenVINONode::ConnectToInputs() {
 
-void OpenVINONode::ConnectToNeighbors(std::shared_ptr<InferenceEngine::Builder::Network>& builder) {
-
-	// Connect to this nodes inputs
-	for(auto entry : input_connections_) {
-
+	for(auto entry : input_connections_info_) {
 		auto dest_layerID = layerID_;
-		auto dest_port_idx = entry.second;
-		auto src_node = entry.first;
-		auto src_layerID = src_node->layerID_;
-		InferenceEngine::idx_t src_port_idx = 0;
+		auto dest_port = entry.second;
 
-		// if input is an internal node, find appropriate port
-		if(!src_node->is_input_node_) {
-			for(auto out_conn : src_node->output_connections_) {
-				if( out_conn.first->layerID_ == dest_layerID) {
-					src_port_idx = out_conn.second;
-				}
-				break;
-			}
-		}
+		auto tensor_name = entry.first;
+		auto source_node = openvino_graph_->GetTensorProducer(tensor_name);
+		auto source_layerID = source_node->layerID_;
+		auto source_port = source_node->GetOutputPort(tensor_name);
 
-		InferenceEngine::PortInfo src_port_info(src_layerID, src_port_idx);
-		InferenceEngine::PortInfo dest_port_info(dest_layerID, dest_port_idx);
-		builder->connect(src_port_info, dest_port_info);
-	}
+		InferenceEngine::PortInfo src_port_info(source_layerID, source_port);
+		InferenceEngine::PortInfo dest_port_info(dest_layerID, dest_port);
+		openvino_graph_->GetBuilder()->connect(src_port_info, dest_port_info);
 
-	// Connect to Graph's output nodes, if required
-	if(node_connects_to_graph_outputs_) {
-		for(auto entry : output_connections_) {
-			auto dest_node = entry.first;
-			if(dest_node->is_output_node_){
-				auto dest_port_idx = 0;
-				auto dest_layerID = dest_node->layerID_;
-				auto src_layerID = layerID_;
-				auto src_port_idx = entry.second;
-				InferenceEngine::PortInfo src_port_info(src_layerID, src_port_idx);
-				InferenceEngine::PortInfo dest_port_info(dest_layerID, dest_port_idx);
-				builder->connect(src_port_info, dest_port_info);
-			}
-		}
 	}
 
 }

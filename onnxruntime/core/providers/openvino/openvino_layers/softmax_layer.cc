@@ -13,13 +13,11 @@
 #include "core/graph/graph.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
-void OpenVINONode::CreateSoftMaxLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+void OpenVINONode::CreateSoftMaxLayer() {
 
   auto softmax_layer =
       std::make_shared<InferenceEngine::Builder::SoftMaxLayer>(
@@ -36,16 +34,9 @@ void OpenVINONode::CreateSoftMaxLayer(
     if (formal_name == "input") {
 
       // Set Input info
-      std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
-
-      if (node_connects_to_graph_inputs_) {
-        auto input_name = input_defs_[i]->Name();
-        in_ov_node = openvino_io_map[input_name];
-      } else {
-        in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t in_port = 0;
-      input_connections_.push_back( { in_ov_node, in_port });
+      auto in_tensor_name = onnx_node_->InputDefs()[i]->Name();
+      input_connections_info_.insert({ in_tensor_name, in_port });
 
     }
     else {
@@ -64,15 +55,9 @@ void OpenVINONode::CreateSoftMaxLayer(
     auto formal_name = formal_params[i].GetName();
     if (formal_name == "output") {
 
-      std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-      if (node_connects_to_graph_outputs_) {
-        auto output_name = output_defs_[i]->Name();
-        out_ov_node = openvino_io_map[output_name];
-      } else {
-        out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t out_port = 0;
-      output_connections_.push_back( { out_ov_node, out_port });
+      auto out_tensor_name = onnx_node_->OutputDefs()[i]->Name();
+      output_connections_info_.insert({ out_tensor_name, out_port });
 
     } else {
       std::stringstream msg;
@@ -91,6 +76,7 @@ void OpenVINONode::CreateSoftMaxLayer(
   softmax_layer->setAxis(size_t(axis));
 
 
-  layerID_ = builder->addLayer(*softmax_layer);
+  layerID_ = openvino_graph_->GetBuilder()->addLayer(*softmax_layer);
+  layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(softmax_layer);
 }
 } // namespce openvino_ep

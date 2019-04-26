@@ -14,16 +14,14 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
 void OpenVINONode::CreateUnsqueezeLayer(
-    // std::shared_ptr<InferenceEngine::Builder::Network>& /*builder*/,
-    InferenceEngine::Precision precision,
-    // std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& /*onnx_openvino_map*/,
-    // std::map<std::string, std::shared_ptr<OpenVINONode>>& /*openvino_io_map*/){
     std::map<std::string, InferenceEngine::Blob::Ptr>& blob_map) {
 
+	auto precision = openvino_graph_->precision_;
 
     // auto unsqueeze_layer =
         // std::make_shared<InferenceEngine::Builder::ReshapeLayer>(onnx_node_->Name());
@@ -46,7 +44,7 @@ void OpenVINONode::CreateUnsqueezeLayer(
         if(formal_name == "data"){
 
 
-            auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(input_defs_[i]->Shape()));
+            auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(onnx_node_->InputDefs()[i]->Shape()));
             // shape_vector.push_back(1);
             // shape_vector.push_back(1);
             // InferenceEngine::SizeVector size_vector(shape_vector.begin(),shape_vector.end());
@@ -56,7 +54,7 @@ void OpenVINONode::CreateUnsqueezeLayer(
                 // std::cout << "Size vector is " << size_vector[i] << std::endl;
             // }
 
-            std::string B_name = input_defs_[i]->Name();
+            std::string B_name = onnx_node_->InputDefs()[i]->Name();
             InferenceEngine::SizeVector size;
             size.push_back(GetTensorElemCount(B_name));
 
@@ -85,7 +83,7 @@ void OpenVINONode::CreateUnsqueezeLayer(
 
             std::cout << "In output" << std::endl;
 
-            output_name = output_defs_[i]->Name();
+            output_name = onnx_node_->OutputDefs()[i]->Name();
             std::cout << "Output Names " << output_name << std::endl;
 
         // std::shared_ptr<OpenVINONode> out_ov_node = nullptr;

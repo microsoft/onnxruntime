@@ -18,6 +18,9 @@ namespace openvino_ep {
 
 class OpenVINOGraph {
 public:
+  InferenceEngine::Precision precision_;
+  const onnxruntime::Graph* onnx_graph_;
+
   OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info);
 
   std::shared_ptr<InferenceEngine::CNNNetwork> GetCNNNetwork();
@@ -27,6 +30,19 @@ public:
       size_t num_inputs, onnxruntime::ONNXRunTimeTensor* output_tensors,
       size_t num_outputs, onnxruntime::AllocateFunc& output_allocator_func,
       onnxruntime::AllocatorHandle& output_allocator_handle);
+
+
+  std::shared_ptr<InferenceEngine::Builder::Network> GetBuilder(){
+    return builder_;
+  }
+
+  bool IsInitializer(std::string name) {
+	  return (initializers_->find(name) == initializers_->end()) ?
+			  false : true;
+  }
+  std::shared_ptr<OpenVINONode> GetTensorProducer(std::string name) {
+	  return tensor_producers_.at(name);
+  }
 
 private:
   void TranslateToOpenVINOOperator(
@@ -42,16 +58,15 @@ private:
   std::vector<std::string> GetEnvLdLibraryPath();
 
   onnxruntime::Node* fused_node_;
-  const onnxruntime::Graph* onnx_graph_;
   std::shared_ptr<InferenceEngine::CNNNetwork> cnn_network_;
   size_t num_inf_reqs_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
-  InferenceEngine::Precision precision_;
+  std::shared_ptr<InferenceEngine::Builder::Network> builder_;
 
   std::vector<std::shared_ptr<OpenVINONode>> openvino_nodes_;
-  std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>> onnx_openvino_map_;
-  std::map<std::string, std::shared_ptr<OpenVINONode>> openvino_io_map_;
+  std::map<std::string, std::shared_ptr<OpenVINONode>> tensor_producers_;
+  onnxruntime::InitializedTensorSet* initializers_;
   std::map<std::string, InferenceEngine::Blob::Ptr> const_blob_map_;
 
 };

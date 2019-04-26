@@ -57,6 +57,7 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
 	num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
 	fused_node_ = fused_node;
+  builder_ = std::make_shared<InferenceEngine::Builder::Network>(fused_node_->Name());
 	onnx_graph_ = &(fused_node_->GetFunctionBody()->Body());
   cnn_network_ = BuildCNNNetwork();
 
@@ -84,36 +85,30 @@ std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
 
 std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetwork() {
 
-  // OpenVINO graph info
-  auto builder = std::make_shared<InferenceEngine::Builder::Network>(
-      fused_node_->Name());
-
-  // Generate Input nodes
-  for (auto input_arg : onnx_graph_->GetInputs()) {
-    auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(
-        *(input_arg->Shape()));
-    InferenceEngine::SizeVector size_vector(shape_vector.begin(),
-        shape_vector.end());
-    auto name = input_arg->Name();
-    auto ov_layer = OpenVINONode::MakeInputLayer(name, size_vector, builder);
-    openvino_io_map_.insert( { name, ov_layer });
+  // Create Input nodes
+  for(auto* input_arg : onnx_graph_->GetInputs()) {
+    auto input_node = std::make_shared<OpenVINONode>(input_arg, this);
+    input_node->is_input_node_ = true;
+    openvino_nodes_.push_back(input_node);
+    tensor_producers_.insert({input_arg->Name(), input_node});
   }
 
-  // Generate Output nodes
-  for (auto output_arg : onnx_graph_->GetOutputs()) {
-    auto name = output_arg->Name();
-    auto ov_layer = OpenVINONode::MakeOutputLayer(name, builder);
-    openvino_io_map_.insert( { name, ov_layer });
+  // Create Output nodes
+  for(auto* output_arg : onnx_graph_->GetOutputs()) {
+    auto output_node = std::make_shared<OpenVINONode>(output_arg, this);
+    output_node->is_output_node_ = true;
+    openvino_nodes_.push_back(output_node);
   }
 
 
-
-  // Generate op independent info for intermediate nodes (non graph I/O nodes)
+  // Create graph nodes
   for (int i = 0; i < onnx_graph_->NumberOfNodes(); i++) {
     auto* onnx_node = onnx_graph_->GetNode(i);
-    auto openvino_node = std::make_shared<OpenVINONode>(onnx_node, onnx_graph_);
+    auto openvino_node = std::make_shared<OpenVINONode>(onnx_node, this);
     openvino_nodes_.push_back(openvino_node);
-    onnx_openvino_map_.insert( { onnx_node, openvino_node });
+    for(auto* output_arg : onnx_node->OutputDefs()) {
+    	tensor_producers_.insert({output_arg->Name(), openvino_node});
+    }
   }
 
   // Create OpenVINO ops for intermediate node (non graph I/O nodes)
@@ -122,35 +117,17 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetwork() {
         //   openvino_node->CreateUnsqueezeLayer(precision_,const_blob_map_);
     //   }
     //   else{
-        openvino_node->CreateOpenVINOLayer(builder, precision_, onnx_openvino_map_, openvino_io_map_,const_blob_map_);
+        openvino_node->InitializeOp(const_blob_map_);
     //   }
   }
 
 
   // Connect the OpenVINO Graph
   for(auto openvino_node : openvino_nodes_) {
-	  openvino_node->ConnectToNeighbors(builder);
+	  openvino_node->ConnectToInputs();
   }
 
-
-//   std::cout << "builder ready\n";
-
-//   auto layers = builder->getLayers();
-//   for(auto layer : layers){
-//       std::cout << "Layer Name is " << layer.getName() << std::endl;
-//   }
-
-//   auto connections = builder->getLayerConnections(3);
-//   auto from_conn = connections[0].from();
-//   std::cout << "From connection is " << from_conn.layerId() << std::endl;
-//   auto to_conn = connections[0].to();
-//   std::cout << "To  connection is " << to_conn.layerId() << std::endl;
-
-//   from_conn = connections[1].from();
-//   std::cout << "From connection is " << from_conn.layerId() << std::endl;
-//   to_conn = connections[1].to();
-//   std::cout << "To  connection is " << to_conn.layerId() << std::endl;
-  auto inetworkptr = builder->build();
+  auto inetworkptr = builder_->build();
 
   std::cout << " builder built\n";
 

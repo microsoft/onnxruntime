@@ -14,6 +14,7 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
@@ -28,17 +29,15 @@ float* Get2DTransposedBuffer(float* src, size_t dimx, size_t dimy){
     return dst;
 }
 
-void OpenVINONode::CreateFCGemmLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    InferenceEngine::Precision precision,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+void OpenVINONode::CreateFCGemmLayer() {
 
   auto fc_gemm_layer =
       std::make_shared<InferenceEngine::Builder::FullyConnectedLayer>(
           onnx_node_->Name());
 
     size_t output_size = 1;
+
+    auto precision = openvino_graph_->precision_;
 
   //
   // *** Set inputs ***
@@ -54,22 +53,13 @@ void OpenVINONode::CreateFCGemmLayer(
     if (formal_name == "A") {
 
       // Set Input info
-      std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
-
-      auto input_name = input_defs_[i]->Name();
-      auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(input_defs_[i]->Shape()));
-      output_size *= shape_vector[0];
-      if (node_connects_to_graph_inputs_) {
-        in_ov_node = openvino_io_map[input_name];
-      } else {
-        in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t in_port = 0;
-      input_connections_.push_back( { in_ov_node, in_port });
+      auto in_tensor_name = onnx_node_->InputDefs()[i]->Name();
+      input_connections_info_.insert( { in_tensor_name , in_port });
 
     } else if (formal_name == "B") {
 
-        std::string W_name = input_defs_[i]->Name();
+        std::string W_name = onnx_node_->InputDefs()[i]->Name();
         auto dims = GetDimsVector(W_name);
         std::cout << "Dims 0 " << dims[0] << std::endl;
         std::cout << "Dims 1 " << dims[1] << std::endl;
@@ -102,7 +92,7 @@ void OpenVINONode::CreateFCGemmLayer(
           output_size *= dims[1];
       }
     } else if( formal_name == "C") {
-        std::string B_name = input_defs_[i]->Name();
+        std::string B_name = onnx_node_->InputDefs()[i]->Name();
         InferenceEngine::SizeVector size;
         size.push_back(GetTensorElemCount(B_name));
         auto ptrBiases = InferenceEngine::make_shared_blob(
@@ -127,15 +117,9 @@ void OpenVINONode::CreateFCGemmLayer(
     auto formal_name = formal_params[i].GetName();
     if (formal_name == "Y") {
 
-      std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-      if (node_connects_to_graph_outputs_) {
-        auto output_name = output_defs_[i]->Name();
-        out_ov_node = openvino_io_map[output_name];
-      } else {
-        out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t out_port = 0;
-      output_connections_.push_back( { out_ov_node, out_port });
+      auto out_tensor_name = onnx_node_->OutputDefs()[i]->Name();
+      output_connections_info_.insert( { out_tensor_name, out_port });
 
     } else {
       std::stringstream msg;
@@ -151,6 +135,7 @@ void OpenVINONode::CreateFCGemmLayer(
   fc_gemm_layer->setOutputNum(output_size);
   std::cout << "Output Size is " << output_size << std::endl;
 
-  layerID_ = builder->addLayer(*fc_gemm_layer);
+  layerID_ = openvino_graph_->GetBuilder()->addLayer(*fc_gemm_layer);
+  layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(fc_gemm_layer);
 }
 } // namespce openvino_ep

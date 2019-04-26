@@ -14,20 +14,18 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
-void OpenVINONode::CreateFCMatMulLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    InferenceEngine::Precision precision,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+void OpenVINONode::CreateFCMatMulLayer() {
 
   auto fc_matmul_layer =
       std::make_shared<InferenceEngine::Builder::FullyConnectedLayer>(
           onnx_node_->Name());
 
     size_t output_size = 1;
+    auto precision = openvino_graph_->precision_;
 
   //
   // *** Set inputs ***
@@ -42,21 +40,20 @@ void OpenVINONode::CreateFCMatMulLayer(
       // Set Input info
       std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
 
-      auto input_name = input_defs_[i]->Name();
-      auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(input_defs_[i]->Shape()));
+      // ?????
+      // Where is this code being used?
+      auto input_name = onnx_node_->InputDefs()[i]->Name();
+      auto shape_vector = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*(onnx_node_->InputDefs()[i]->Shape()));
       output_size *= shape_vector[0];
-      if (node_connects_to_graph_inputs_) {
-        in_ov_node = openvino_io_map[input_name];
-      } else {
-        in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-      }
+
       InferenceEngine::idx_t in_port = 0;
-      input_connections_.push_back( { in_ov_node, in_port });
+      auto in_tensor_name = onnx_node_->InputDefs()[i]->Name();
+      input_connections_info_.insert({ in_tensor_name, in_port });
 
     } else if (formal_name == "B") {
 
       // Set weights info
-      std::string W_name = input_defs_[i]->Name();
+      std::string W_name = onnx_node_->InputDefs()[i]->Name();
       InferenceEngine::SizeVector size;
       size.push_back(GetTensorElemCount(W_name));
       auto ptrWeights = InferenceEngine::make_shared_blob(
@@ -83,15 +80,9 @@ void OpenVINONode::CreateFCMatMulLayer(
     auto formal_name = formal_params[i].GetName();
     if (formal_name == "Y") {
 
-      std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-      if (node_connects_to_graph_outputs_) {
-        auto output_name = output_defs_[i]->Name();
-        out_ov_node = openvino_io_map[output_name];
-      } else {
-        out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t out_port = 0;
-      output_connections_.push_back( { out_ov_node, out_port });
+      auto out_tensor_name = onnx_node_->OutputDefs()[i]->Name();
+      output_connections_info_.insert({ out_tensor_name, out_port });
 
     } else {
       std::stringstream msg;
@@ -106,6 +97,7 @@ void OpenVINONode::CreateFCMatMulLayer(
   //
   fc_matmul_layer->setOutputNum(output_size);
 
-  layerID_ = builder->addLayer(*fc_matmul_layer);
+  layerID_ = openvino_graph_->GetBuilder()->addLayer(*fc_matmul_layer);
+  layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(fc_matmul_layer);
 }
 } // namespce openvino_ep

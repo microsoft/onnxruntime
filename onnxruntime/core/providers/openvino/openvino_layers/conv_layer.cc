@@ -13,18 +13,17 @@
 #include "core/graph/graph.h"
 
 #include "core/providers/openvino/openvino_node.h"
+#include "core/providers/openvino/openvino_graph.h"
 
 namespace openvino_ep {
 
-void OpenVINONode::CreateConvLayer(
-    std::shared_ptr<InferenceEngine::Builder::Network>& builder,
-    InferenceEngine::Precision precision,
-    std::map<const onnxruntime::Node*, std::shared_ptr<OpenVINONode>>& onnx_openvino_map,
-    std::map<std::string, std::shared_ptr<OpenVINONode>>& openvino_io_map) {
+void OpenVINONode::CreateConvLayer() {
 
   auto conv_layer =
       std::make_shared<InferenceEngine::Builder::ConvolutionLayer>(
           onnx_node_->Name());
+
+  auto precision = openvino_graph_->precision_;
 
   //
   // *** Set inputs ***
@@ -35,23 +34,15 @@ void OpenVINONode::CreateConvLayer(
     auto formal_name = formal_params[i].GetName();
 
     if (formal_name == "X") {
-
-      // Set Input info
-      std::shared_ptr<OpenVINONode> in_ov_node = nullptr;
-
-      if (node_connects_to_graph_inputs_) {
-        auto input_name = input_defs_[i]->Name();
-        in_ov_node = openvino_io_map[input_name];
-      } else {
-        in_ov_node = onnx_openvino_map[&(input_edges_[0].GetNode())];
-      }
+      // Set inputs info
       InferenceEngine::idx_t in_port = 0;
-      input_connections_.push_back( { in_ov_node, in_port });
+      auto in_tensor_name = onnx_node_->InputDefs()[i]->Name();
+      input_connections_info_.insert( { in_tensor_name, in_port });
 
     } else if (formal_name == "W") {
 
       // Set weights info
-      std::string W_name = input_defs_[i]->Name();
+      std::string W_name = onnx_node_->InputDefs()[i]->Name();
       InferenceEngine::SizeVector size;
       size.push_back(GetTensorElemCount(W_name));
 
@@ -67,31 +58,41 @@ void OpenVINONode::CreateConvLayer(
               InferenceEngine::Layout::C), (short*)GetTensorData(W_name, precision));
       conv_layer->setWeights(ptrWeights);
       }
+
       conv_layer->setOutDepth(GetDimsVector(W_name)[0]); // Number of kernels
 
     } else if (formal_name == "B") {
 
-      if(input_defs_.size() <= i) {
+      // ???
+      // Is this block necessary?
+      // Can there exist a formal arg 'B' without an actual arg?
+      if(onnx_node_->InputDefs().size() <= i) {
         std::cout <<  "Conv : Bias is not present" << std::endl;
         continue;
       }
+
+
       // Set biases info
-      std::string B_name = input_defs_[i]->Name();
+      std::string B_name = onnx_node_->InputDefs()[i]->Name();
       InferenceEngine::SizeVector size;
       size.push_back(GetTensorElemCount(B_name));
 
       if(precision == InferenceEngine::Precision::FP32) {
+
         auto ptrBiases = InferenceEngine::make_shared_blob(
             InferenceEngine::TensorDesc(precision, size,
                 InferenceEngine::Layout::C),
             (float*) GetTensorData(B_name, precision));
         conv_layer->setBiases(ptrBiases);
+
       } else if (precision == InferenceEngine::Precision::FP16) {
+
         auto ptrBiases = InferenceEngine::make_shared_blob(
             InferenceEngine::TensorDesc(precision, size,
                 InferenceEngine::Layout::C),
             (short*) GetTensorData(B_name, precision));
         conv_layer->setBiases(ptrBiases);
+
       }
 
 
@@ -112,15 +113,9 @@ void OpenVINONode::CreateConvLayer(
     auto formal_name = formal_params[i].GetName();
     if (formal_name == "Y") {
 
-      std::shared_ptr<OpenVINONode> out_ov_node = nullptr;
-      if (node_connects_to_graph_outputs_) {
-        auto output_name = output_defs_[i]->Name();
-        out_ov_node = openvino_io_map[output_name];
-      } else {
-        out_ov_node = onnx_openvino_map[&(output_edges_[0].GetNode())];
-      }
       InferenceEngine::idx_t out_port = 0;
-      output_connections_.push_back( { out_ov_node, out_port });
+      auto out_tensor_name = onnx_node_->OutputDefs()[i]->Name();
+      output_connections_info_.insert({ out_tensor_name, out_port });
 
     } else {
       std::stringstream msg;
@@ -136,7 +131,7 @@ void OpenVINONode::CreateConvLayer(
   auto attributes = onnx_node_->GetAttributes();
 
   // set dilations
-  if(attributes.find("dilations") != attributes.end()) {
+  if(AttributeExists("dilations")) {
     auto dilations_ints = attributes["dilations"].ints();
     std::vector<size_t> dilations;
     for (size_t i = 0; i < dilations_ints.size(); i++) {
@@ -146,7 +141,7 @@ void OpenVINONode::CreateConvLayer(
   }
 
   // set group
-  if (attributes.find("group") != attributes.end()) {
+  if (AttributeExists("group")) {
     auto group = attributes["group"].i();
     conv_layer->setGroup(size_t(group));
   }
@@ -160,7 +155,7 @@ void OpenVINONode::CreateConvLayer(
     conv_layer->setStrides(strides);
 
   // set padding
-  if (attributes.find("auto_pad") != attributes.end()) {
+  if (AttributeExists("auto_pad")) {
     auto auto_pad = attributes["auto_pad"].s();
     std::vector<size_t> pad_begins, pad_ends;
     int num_axes = strides_ints.size();
@@ -204,8 +199,7 @@ void OpenVINONode::CreateConvLayer(
     conv_layer->setKernel(kernel_shape);
   }
 
-  layerID_ = builder->addLayer(*conv_layer);
-
+  layerID_ = openvino_graph_->GetBuilder()->addLayer(*conv_layer);
   layer_ = std::static_pointer_cast<InferenceEngine::Builder::LayerFragment>(conv_layer);
 }
 } // namespce openvino_ep
