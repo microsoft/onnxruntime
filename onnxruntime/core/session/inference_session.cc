@@ -348,6 +348,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
+      // Pass threadpool to subgraph
+      subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
 
       // recurse
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
