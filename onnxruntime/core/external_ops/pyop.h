@@ -50,8 +50,8 @@ struct PythonWrapper {
         init = (INIT*)dlsym(handle, "Initialize");
         ORT_ENFORCE(nullptr != init, dlerror());
 
-        pyFunc = (PYFUNC*)dlsym(handle, "CallPythonFunction");
-        ORT_ENFORCE(nullptr != pyFunc, dlerror());
+//        pyFunc = (PYFUNC*)dlsym(handle, "CallPythonFunction");
+//        ORT_ENFORCE(nullptr != pyFunc, dlerror());
 
         newInst = (NEWINST*)dlsym(handle, "NewInstance");
         ORT_ENFORCE(nullptr != newInst, dlerror());
@@ -78,7 +78,7 @@ struct PythonWrapper {
 
     void*       handle  = nullptr;
     INIT*       init    = nullptr;
-    PYFUNC*     pyFunc  = nullptr;
+//    PYFUNC*     pyFunc  = nullptr;
     NEWINST*    newInst = nullptr;
     INVOKE*     invoke  = nullptr;
     RELEASE*    release = nullptr;
@@ -160,6 +160,7 @@ struct PyCustomKernel {
         int32_t numpy_type;
         ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input is not tensor");
         auto data_type = ((MLValue*)input)->Get<Tensor>().DataType();
+
         if (data_type == DataTypeImpl::GetType<bool>()) {
             numpy_type = 0;
         } else if (data_type == DataTypeImpl::GetType<int8_t>()) {
@@ -182,6 +183,11 @@ struct PyCustomKernel {
             numpy_type = 11;
         } else if (data_type == DataTypeImpl::GetType<double>()) {
             numpy_type = 12;
+        } else if (data_type == DataTypeImpl::GetType<std::string>()) {
+            numpy_type = 18;
+        } else if (data_type == DataTypeImpl::GetType<MLFloat16>() ||
+                   data_type == DataTypeImpl::GetType<BFloat16>()) {
+            numpy_type = 23;
         } else ORT_ENFORCE(false, "Input type not supported");
 
         return numpy_type;

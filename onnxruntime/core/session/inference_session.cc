@@ -230,15 +230,19 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 
 SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
 {
+  static std::set<std::string> registered_nodes;
   auto schema_registry_manager = std::make_shared<SchemaRegistryManager>();
   for (auto schema_collection : custom_schema_registries_) {
     schema_registry_manager->RegisterRegistry(schema_collection);
   }
   auto new_registry_func = [&] (void* info) {
+
     auto node = reinterpret_cast<Node*>(info);
+    LOGS(*session_logger_, WARNING) << node->Domain();
 
-    if (node->OpType() == "PyOp") {
-
+    // auto key  = reinterpret_cast<size_t>(info);
+    if (node->OpType() == "PyOp"){ //&& registered_nodes.find(node->Domain()) == registered_nodes.end()) {
+      registered_nodes.insert(node->Domain());
       ONNX_ATTRS attrs;
       ONNX_TYPES input_types, output_types;
       std::string module, class_name, compute = "compute", shape_infer = "shape_infer", domain = node->Domain();
@@ -254,11 +258,14 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
           } else if (iter.second.ints_size() > 0) {
               if (iter.first == "input_types") {
                   for (int ii = 0; ii < iter.second.ints_size(); ++ii) {
-                      input_types.push_back(utils::CApiElementTypeFromProtoType(iter.second.ints(ii)));
+                      //LOGS(*session_logger_, WARNING) << "Input type: " << iter.second.ints(ii);
+                      input_types.push_back(static_cast<ONNXTensorElementDataType>(iter.second.ints(ii)));
+                      //input_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
                   }
               } else if (iter.first == "output_types") {
                   for (int ii = 0; ii < iter.second.ints_size(); ++ii) {
-                      output_types.push_back(utils::CApiElementTypeFromProtoType(iter.second.ints(ii)));
+                      output_types.push_back(static_cast<ONNXTensorElementDataType>(iter.second.ints(ii)));
+                      //output_types.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
                   }
               }
           } else {
@@ -275,6 +282,7 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
                                  class_name.c_str(), compute.c_str(), shape_infer.c_str(),
                                  [this] (const char* msg) { LOGS(*session_logger_, INFO) << msg; });
       auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
+//      auto pyop_domain = OrtCreateCustomOpDomain(std::to_string(key).c_str());
       ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));
       AddCustomOpDomains({pyop_domain});
       return custom_schema_registries_.back();

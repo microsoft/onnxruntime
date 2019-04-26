@@ -360,11 +360,16 @@ void Node::Init(const std::string& name,
   description_ = description;
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
-  domain_ = op_type == "PyOp" ? std::to_string(reinterpret_cast<size_t>(this)) : domain;
-  if (kOnnxDomainAlias == domain_) {
-    domain_ = kOnnxDomain;
-  }
-
+/*
+  if (op_type == "PyOp") {
+    domain_ = std::to_string(reinterpret_cast<size_t>(this));
+  } else {
+*/
+    domain_ = domain;
+    if (kOnnxDomainAlias == domain_) {
+      domain_ = kOnnxDomain;
+    }
+//  }
   // Set each arg count as 1 by default.
   // It could be adjusted when resolving the node with its operator
   // information.

@@ -9,6 +9,7 @@
 #include <sstream>
 #include <numeric>
 #include <vector>
+#include <mutex>
 #include <functional>
 #include <unordered_map>
 #include <stdarg.h>
@@ -24,6 +25,16 @@ struct Finalizer
         Py_Finalize();
     }
 };
+
+class Locker
+{
+    static std::mutex mtx_;
+public:
+    Locker()  { mtx_.lock();   }
+    ~Locker() { mtx_.unlock(); }
+};
+
+std::mutex Locker::mtx_;
 
 extern "C" bool Initialize() 
 {
@@ -42,18 +53,15 @@ extern "C" void SetSysPath(const wchar_t* dir)
 
 extern "C" std::string GetLastErrorMessage()
 {
-/*
     stringstream ss;
     if (PyErr_Occurred()) {
         PyObject *type, *value, *trace;
         PyErr_Fetch(&type, &value, &trace);
         ss << "type: "  << PyBytes_AsString(type)  << endl;  
         ss << "value: " << PyBytes_AsString(value) << endl;  
-        // ss << "trace: " << PyBytes_AsString(trace) << endl;
+        ss << "trace: " << PyBytes_AsString(trace) << endl;
     }
     return ss.str();
-*/
-    return "TBD";
 }
 
 PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
@@ -135,6 +143,7 @@ extern "C" void* NewInstance (const char* module, const char* class_name, int ar
 
 extern "C" void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
 {
+    Locker locker;
     vector<PyObject*> allocated;
     Releaser releaser = [&allocated] () { for (auto obj: allocated) Py_XDECREF(obj); };
   
@@ -187,6 +196,7 @@ extern "C" void* NewInstance (const char* module, const char* class_name, const 
 
 extern "C" void ReleaseInstance (void* instance)
 {
+    Locker locker;
     if (nullptr != instance) {
         Py_XDECREF(static_cast<PyObject*>(instance));
     }
@@ -202,6 +212,7 @@ extern "C" bool InvokePythonFunc (void*                            raw_inst,
                                   vector<vector<int64_t>>&         output_dim,
                                   std::function<void(const char*)> logging_func = [](const char*){})
 {
+    Locker locker;
     auto instance = static_cast<PyObject*>(raw_inst);
     if (nullptr == instance || nullptr == function) {
         logging_func("InvokePythonFunc: found invalid instance or function");
@@ -242,7 +253,7 @@ extern "C" bool InvokePythonFunc (void*                            raw_inst,
     }
     return true;
 }
-
+/*
 extern "C"  bool CallPythonFunction (const char*                    module,
                                      const char*                    function,
                                      const vector<const void*>&     input,
@@ -252,18 +263,6 @@ extern "C"  bool CallPythonFunction (const char*                    module,
                                      vector<int32_t>&               output_size,
                                      vector<vector<int64_t>>&       output_dim)
 {
-/*
-    auto instance = NewInstance("testpyop", "A", 2, "abc", "def");
-    if (instance) {
-        InvokePythonFunc((PyObject*)instance, "echo", input, input_type, input_dim, output, output_size, output_dim);
-        output.clear();
-        output_size.clear();
-        output_dim.clear();
-    } else {
-        std::cout << "A created" << std::endl;
-    }
-    ReleaseInstance(instance);
-*/
     vector<PyObject*> allocated;
     Releaser releaser = [&allocated] () { for (auto obj: allocated) Py_XDECREF(obj); };
   
@@ -308,5 +307,5 @@ extern "C"  bool CallPythonFunction (const char*                    module,
     }
     return true;
 }
-
+*/
 } //namespace PythonFunctionWrapper
