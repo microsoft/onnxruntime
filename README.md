@@ -42,7 +42,7 @@ ONNX Runtime offers:
 
 See API documentation and package installation instructions [below](#Installation).
 
-As we continue to broaden the reach of the runtime, we have ongoing investments to make ONNX Runtime compatible with more platforms and architectures. If you have specific scenarios that are not currently supported, please share your suggestions via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
+We have ongoing investments to make ONNX Runtime compatible with more platforms and architectures. If you have specific scenarios that are not currently supported, please share your suggestions via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 
 # Getting Started
 ONNX models:
@@ -61,7 +61,7 @@ system.
   * For Windows, OpenMP support comes as part of VC runtime. It is also available as redist packages:
     [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
   * For Linux, the system must have the libgomp.so.1 which can be installed using ```apt-get install libgomp1```.
-* The GPU builds require the CUDA9.1 and cuDNN 7.1 runtime libraries being installed in the system.
+* The official GPU builds require the CUDA 9.1 and cuDNN 7.1 runtime libraries being installed in the system.
 * Python binaries are compatible with Python 3.5-3.7.
 
 ## APIs and Official Builds
