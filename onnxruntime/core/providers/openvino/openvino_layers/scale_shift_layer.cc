@@ -14,7 +14,7 @@
 #include "core/graph/graph.h"
 #include "core/framework/tensorprotoutils.h"
 
-#include "core/providers/openvino/openvino_graph.h"
+#include "core/providers/openvino/openvino_node.h"
 
 
 namespace openvino_ep {
