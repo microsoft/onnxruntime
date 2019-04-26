@@ -84,6 +84,14 @@ Status IExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", mlvalue_idx);
   }
 
+  // If fence is available, check whether async read has completed or not.
+  Fence_t fence = GetMLValue(mlvalue_idx).Fence();
+  if (fence && !fence->CanRelease())
+  {
+      // Async data reading is not done yet, defer mem release until Session.run() end.
+      return Status::OK();
+  }
+  
   all_values_[mlvalue_idx] = MLValue();
   return Status::OK();
 }
@@ -186,7 +194,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
-  if (session_state.GetExecutionPlan()) {
+  if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
@@ -198,7 +206,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
       input_shapes.push_back(tensor.Shape());
     }
 
-    // if there are some traditional ml value type in inputs disable the memory pattern optimization.
+    //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes);
       // if no existing patterns, generate one in this executionframe
@@ -435,9 +443,10 @@ const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int mlvalue_idx) {
 }
 
 void ExecutionFrame::TraceAllocate(int mlvalue_idx, size_t size) {
-  // don't trace the output tensors.
-  auto& allocation_plan = GetAllocationPlan(mlvalue_idx);
-  if (planner_ && allocation_plan.alloc_kind != AllocKind::kAllocateOutput) {
+  if (planner_) {
+    // don't trace the output tensors.
+    auto& allocation_plan = GetAllocationPlan(mlvalue_idx);
+    if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput) return;
     auto status = planner_->TraceAllocation(mlvalue_idx, size);
     if (!status.IsOK())
       LOGS(session_state_.Logger(), WARNING) << "TraceAllocation for mlvalue_idx=" << mlvalue_idx << " size=" << size

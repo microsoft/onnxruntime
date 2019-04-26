@@ -107,9 +107,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
     // ceil_mode and dilations attrs are not supported in nGraph
     const auto& attributes = node->GetAttributes();
-    if (attributes.find("ceil_mode") != attributes.end()) {
+    const auto ceil_attr = attributes.find("ceil_mode");
+    // default value of ceil_mode (0) is supported.
+    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
-    } else if (attributes.find("dilations") != attributes.end()) {
+    }
+
+    if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
   } else if (optype == "OneHot") {
@@ -169,7 +173,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in nGraph
     const auto& attributes = node->GetAttributes();
-    if (attributes.find("ceil_mode") != attributes.end()) {
+    const auto ceil_attr = attributes.find("ceil_mode");
+    // default value of ceil_mode (0) is supported.
+    if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
   }
@@ -282,7 +288,7 @@ static std::map<std::string, std::set<std::string>> GetNgSupportedOps(const int 
   std::map<std::string, std::set<std::string>> ng_supported_ops;
   ng_supported_ops.emplace(kOnnxDomain, ngraph::onnx_import::get_supported_operators(onnx_opset, kOnnxDomain));
 
-  const std::set<std::string> ng_disabled_ops = {"DequantizeLinear", "QLinearConv", "QuantizeLinear"};  //Place-holder for ops not supported.
+  const std::set<std::string> ng_disabled_ops = {};  //Place-holder for ops not supported.
 
   for (const auto& disabled_op : ng_disabled_ops) {
     ng_supported_ops.at(kOnnxDomain).erase(disabled_op);

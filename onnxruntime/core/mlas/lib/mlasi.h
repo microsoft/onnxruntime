@@ -82,6 +82,8 @@ Abstract:
 
 #if defined(_OPENMP)
 #include <omp.h>
+#elif defined(_WIN32)
+#define MLAS_USE_WIN32_THREADPOOL
 #endif
 
 //
@@ -396,6 +398,11 @@ struct MLAS_PLATFORM {
         return 8;
 #endif
     }
+
+#if defined(MLAS_USE_WIN32_THREADPOOL)
+    int32_t MaximumThreadCount;
+#endif
+
 };
 
 extern MLAS_PLATFORM MlasPlatform;
@@ -435,7 +442,9 @@ MlasGetMaximumThreadCount(
     }
 #endif
 
-#ifdef _OPENMP
+#if defined(MLAS_USE_WIN32_THREADPOOL)
+    return MlasPlatform.MaximumThreadCount;
+#elif _OPENMP
     return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
 #else
     return 1;

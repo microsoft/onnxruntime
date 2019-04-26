@@ -110,6 +110,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 
   session_state_.SetThreadPool(thread_pool_.get());
+  session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern && session_options.enable_sequential_execution);
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
@@ -347,6 +348,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
+      // Pass threadpool to subgraph
+      subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
 
       // recurse
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));

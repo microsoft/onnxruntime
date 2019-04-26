@@ -96,6 +96,13 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape
   return Status::OK();
 }
 
+void SessionState::SetEnableMemoryPattern(bool flag) {
+  enable_mem_pattern_ = flag;
+}
+
+bool SessionState::GetEnableMemoryPattern() const {
+  return enable_mem_pattern_;
+}
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // in the future we could support multiple nodes on difference devices using an input, however right now
@@ -160,15 +167,16 @@ const SessionState::NameNodeInfoMapType& SessionState::GetOutputNodeInfoMap() co
   return output_names_to_nodeinfo_mapping_;
 }
 
-void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
+void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index,
+                                           const std::string& attribute_name,
                                            std::unique_ptr<SessionState> session_state) {
   auto entry = subgraph_session_states_.find(index);
 
   // make sure this is new. internal logic error if it is not so using ORT_ENFORCE.
   if (entry != subgraph_session_states_.cend()) {
     const auto& existing_entries = entry->second;
-    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
-                " for attribute ", attribute_name);
+    ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(),
+                "Entry exists in node ", index, " for attribute ", attribute_name);
   }
 
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
