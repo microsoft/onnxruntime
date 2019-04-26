@@ -33,7 +33,7 @@ Status NchwcPool<float, MaxPool<1>>::Compute(OpKernelContext* context) const {
   }
 
   std::vector<int64_t> pads = pads_;
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, output_dims);
 
   MlasPoolNchwc(MlasMaximumPooling,
