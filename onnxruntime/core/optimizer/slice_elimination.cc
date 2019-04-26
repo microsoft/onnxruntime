@@ -49,11 +49,10 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
   // "steps" attribute is added since version 10. If it exists and is not 1s, slice is not redundant.
   if (graph_utils::MatchesOpSinceVersion(node, 10)) {
     std::vector<int64_t> steps;
-    if (graph_utils::GetRepeatedNodeAttributeValues(node, "steps", starts)) {
-      if (steps.size() != starts.size() ||
-          std::any_of(steps.cbegin(), steps.cend(), [](int64_t step) { return step > 1; })) {
-        return false;
-      }
+    if (graph_utils::GetRepeatedNodeAttributeValues(node, "steps", starts) &&
+        (steps.size() != starts.size() ||
+         std::any_of(steps.cbegin(), steps.cend(), [](int64_t step) { return step > 1; }))) {
+      return false;
     }
   }
 
