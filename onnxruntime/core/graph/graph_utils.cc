@@ -279,10 +279,10 @@ bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion 
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
   const auto& node_domain = node.Domain();
-  // Check if it uses the ONNX domain, which has two aliases; otherwise check if domains coincide
-  return ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
-          (domain == kOnnxDomain || domain == kOnnxDomainAlias)) ||
-         node_domain == domain;
+  // We do a special check for the ONNX domain, as it has two aliases.
+  return node_domain == domain ||
+         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
+          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
 }
 
 bool IsSupportedProvider(const Node& node,

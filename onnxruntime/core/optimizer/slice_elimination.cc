@@ -17,6 +17,12 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 }
 
 bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
+  // We currently support elimination for Slice operator v1.
+  // TODO Extend to support Slice operator v10, which includes "steps" and all attributes are now given as inputs.
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", 1)) {
+    return false;
+  }
+  
   if (!graph_utils::IsSingleInSingleOutNode(node) ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
@@ -42,17 +48,6 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
   // TODO: Take into account the input's shape to get a tighter bound for the ends.
   for (size_t i = 0; i < axes.size(); ++i) {
     if (starts[i] != 0 || ends[i] < INT64_MAX) {
-      return false;
-    }
-  }
-
-  // "steps" attribute is added since version 10. If it exists and is not 1s, parts of the input will be skipped,
-  // so slice cannot be eliminated.
-  if (graph_utils::MatchesOpSinceVersion(node, 10)) {
-    std::vector<int64_t> steps;
-    if (graph_utils::GetRepeatedNodeAttributeValues(node, "steps", starts) &&
-        (steps.size() != starts.size() ||
-         std::any_of(steps.cbegin(), steps.cend(), [](int64_t step) { return step > 1; }))) {
       return false;
     }
   }
