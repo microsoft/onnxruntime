@@ -53,9 +53,9 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 1. For Windows, just add --x86 argument when launching build.bat
 2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
-## Build Hosting Application on Linux
+## Build ONNX Runtime Server on Linux
 
-1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_hosting  --use_openmp --parallel`
+1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 
 ## Build/Test Flavors for CI
 

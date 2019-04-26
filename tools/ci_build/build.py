@@ -95,9 +95,9 @@ Use the individual flags to only run the specified stages.
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
 
-    # Build ONNX hosting
-    parser.add_argument("--build_hosting", action='store_true', help="Build hosting application for the ONNXRuntime.")
-    parser.add_argument("--enable_hosting_tests", action='store_true', help="Run hosting application tests.")
+    # Build ONNX Runtime server
+    parser.add_argument("--build_server", action='store_true', help="Build server application for the ONNXRuntime.")
+    parser.add_argument("--enable_server_tests", action='store_true', help="Run server application tests.")
 
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
@@ -328,10 +328,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
-                 "-Donnxruntime_BUILD_HOSTING=" + ("ON" if args.build_hosting else "OFF"),
+                 "-Donnxruntime_BUILD_SERVER=" + ("ON" if args.build_server else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_hosting else "OFF"),
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
@@ -571,14 +571,14 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 
-def run_hosting_tests(build_dir, configs):
+def run_server_tests(build_dir, configs):
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests'])
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
-        hosting_app_path = os.path.join(config_build_dir, 'onnxruntime_hosting')
-        hosting_test_folder = os.path.join(config_build_dir, 'hosting_test')
-        hosting_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'hosting')
-        run_subprocess([sys.executable, 'test_main.py', hosting_app_path, hosting_test_data_folder, hosting_test_data_folder], cwd=hosting_test_folder, dll_path=None)
+        server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
     for config in configs:
@@ -781,8 +781,8 @@ def main():
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
-    if args.build_hosting and args.enable_hosting_tests:
-        run_hosting_tests(build_dir, configs)
+    if args.build_server and args.enable_server_tests:
+        run_server_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:
