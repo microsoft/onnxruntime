@@ -169,10 +169,10 @@ C_UNDERSCORE(MlasErfKernelFma3):
         vfmadd213ps ymm10,ymm2,ymm2
         vfmadd213ps ymm11,ymm3,ymm3
 
-        vcmpleps ymm4,ymm12,ymm0                # vmask0
-        vcmpleps ymm5,ymm12,ymm1                # vmask1
-        vcmpleps ymm6,ymm12,ymm2                # vmask2
-        vcmpleps ymm7,ymm12,ymm3                # vmask3
+        vcmpgtps ymm4,ymm0,ymm12                # vmask0
+        vcmpgtps ymm5,ymm1,ymm12                # vmask1
+        vcmpgtps ymm6,ymm2,ymm12                # vmask2
+        vcmpgtps ymm7,ymm3,ymm12                # vmask3
 
         vandnps ymm8,ymm4,ymm8
         vandnps ymm9,ymm5,ymm9
@@ -412,7 +412,7 @@ C_UNDERSCORE(MlasErfKernelFma3):
         vbroadcastss ymm12,ErfSplitBoundary[rax]
         vfmadd213ps ymm8,ymm0,ymm0
 
-        vcmpleps ymm4,ymm12,ymm0                # vmask0
+        vcmpgtps ymm4,ymm0,ymm12                # vmask0
 
         vandnps ymm8,ymm4,ymm8
 

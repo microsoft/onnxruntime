@@ -24,7 +24,6 @@ Abstract:
 #include "mlasi.h"
 
 #include <cmath>
-#include <math.h>
 
 //
 // Bundles the constants for use by kernels written in assembly.
@@ -133,9 +132,8 @@ Return Value:
         MLAS_FLOAT32X4 NegZero = MlasBroadcastFloat32x4(MlasErfConstants.ErfNegZero);
         MLAS_FLOAT32X4 SignMask = MlasAndFloat32x4(Value, NegZero);
         MLAS_FLOAT32X4 AbsValue = MlasAndNotFloat32x4(NegZero, Value);
-        AbsValue = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasErfConstants.ErfUpperAbsRange), Value);
+        AbsValue = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasErfConstants.ErfUpperAbsRange), AbsValue);
         MLAS_FLOAT32X4 SquareValue = MlasMultiplyFloat32x4(AbsValue, AbsValue);
-        MLAS_FLOAT32X4 split_mask = MlasGreaterThanFloat32x4(AbsValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfSplitBoundary));
 
         MLAS_FLOAT32X4 r_small = MlasBroadcastFloat32x4(MlasErfConstants.ErfSMALL_P0);
         r_small = MlasMultiplyAddFloat32x4(r_small, SquareValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfSMALL_P1));
@@ -144,8 +142,10 @@ Return Value:
         r_small = MlasMultiplyAddFloat32x4(r_small, SquareValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfSMALL_P4));
         r_small = MlasMultiplyAddFloat32x4(r_small, SquareValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfSMALL_P5_Minus_One));
         r_small = MlasMultiplyAddFloat32x4(r_small, AbsValue, AbsValue);
+        MLAS_FLOAT32X4 split_mask = MlasGreaterThanFloat32x4(AbsValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfSplitBoundary));
         r_small = MlasAndNotFloat32x4(split_mask, r_small);
 
+        AbsValue = MlasAndFloat32x4(split_mask, AbsValue); // clear smaller value into zero for bigger number calculation
         MLAS_FLOAT32X4 r_big = MlasBroadcastFloat32x4(MlasErfConstants.ErfBIG_P0);
         r_big = MlasMultiplyAddFloat32x4(r_big, AbsValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfBIG_P1));
         r_big = MlasMultiplyAddFloat32x4(r_big, AbsValue, MlasBroadcastFloat32x4(MlasErfConstants.ErfBIG_P2));
@@ -187,6 +187,7 @@ Return Value:
         N -= 4;
     }
 
+#define FP_FAST_FMAF
     while (N > 0) {
         float Value = *Input++;
         float AbsValue = fabsf(Value);
@@ -194,42 +195,41 @@ Return Value:
         float r;
         if (AbsValue > MlasErfConstants.ErfSplitBoundary) {
             AbsValue = (std::min)(MlasErfConstants.ErfUpperAbsRange, AbsValue);
-            r = MlasErfConstants.ErfBIG_P0;
-            r = std::fmaf(r, AbsValue, MlasErfConstants.ErfBIG_P1);
-            r = std::fmaf(r, AbsValue, MlasErfConstants.ErfBIG_P2);
-            r = std::fmaf(r, AbsValue, MlasErfConstants.ErfBIG_P3);
-            r = std::fmaf(r, AbsValue, MlasErfConstants.ErfBIG_P4);
-            r = std::fmaf(r, AbsValue, MlasErfConstants.ErfBIG_P5);
-            r = std::fmaf(r, AbsValue, MlasErfConstants.ErfBIG_P6_Minus_One);
-            r = std::fmaf(r, AbsValue, AbsValue);
+            float r_big = MlasErfConstants.ErfBIG_P0;
+            r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P1;
+            r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P2;
+            r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P3;
+            r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P4;
+            r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P5;
+            r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P6_Minus_One;
+            r_big = r_big * AbsValue + AbsValue;
 
-            float a = -r;
-            r = std::fmaf(MlasErfConstants.Exp_Log2Reciprocal, a, MlasErfConstants.Exp_C);
+            r_big = (std::max)(-r_big, MlasErfConstants.Exp_LowerRange);
+            r = MlasErfConstants.Exp_Log2Reciprocal * r_big + MlasErfConstants.Exp_C;
             r -= MlasErfConstants.Exp_C;
-            float f = std::fmaf(r, MlasErfConstants.Exp_log2_hi, a);
-            f = std::fmaf(r, MlasErfConstants.Exp_log2_lo, f);
-            int i = (int)r;
+            float fx = r * MlasErfConstants.Exp_log2_hi + r_big;
+            fx = r * MlasErfConstants.Exp_log2_lo + fx;
 
-            r = MlasErfConstants.Exp_P0;
-            r = std::fmaf(r, f, MlasErfConstants.Exp_P1);
-            r = std::fmaf(r, f, MlasErfConstants.Exp_P2);
-            r = std::fmaf(r, f, MlasErfConstants.Exp_P3);
-            r = std::fmaf(r, f, MlasErfConstants.Exp_P4);
-            r = std::fmaf(r, f, MlasErfConstants.Exp_P5);
-            r = std::fmaf(r, f, MlasErfConstants.Exp_P6);
-            r = ldexpf(r, i);
+            float y = MlasErfConstants.Exp_P0;
+            y = y * fx + MlasErfConstants.Exp_P1;
+            y = y * fx + MlasErfConstants.Exp_P2;
+            y = y * fx + MlasErfConstants.Exp_P3;
+            y = y * fx + MlasErfConstants.Exp_P4;
+            y = y * fx + MlasErfConstants.Exp_P5;
+            y = y * fx + MlasErfConstants.Exp_P6;
 
+            r = 1.0f - ldexpf(y, (int)r);
             r = (Value <= -0.0f) ? -r : r;
         }
         else {
             float SquareValue = AbsValue * AbsValue;
             r = MlasErfConstants.ErfSMALL_P0;
-            r = std::fmaf(r, SquareValue, MlasErfConstants.ErfSMALL_P1);
-            r = std::fmaf(r, SquareValue, MlasErfConstants.ErfSMALL_P2);
-            r = std::fmaf(r, SquareValue, MlasErfConstants.ErfSMALL_P3);
-            r = std::fmaf(r, SquareValue, MlasErfConstants.ErfSMALL_P4);
-            r = std::fmaf(r, SquareValue, MlasErfConstants.ErfSMALL_P5_Minus_One);
-            r = std::fmaf(r, Value, Value);
+            r = r * SquareValue + MlasErfConstants.ErfSMALL_P1;
+            r = r * SquareValue + MlasErfConstants.ErfSMALL_P2;
+            r = r * SquareValue + MlasErfConstants.ErfSMALL_P3;
+            r = r * SquareValue + MlasErfConstants.ErfSMALL_P4;
+            r = r * SquareValue + MlasErfConstants.ErfSMALL_P5_Minus_One;
+            r = r * Value + Value;
         }
 
         *Output++ = r;
