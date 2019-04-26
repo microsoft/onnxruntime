@@ -31,12 +31,12 @@ steps:
       inputs:
         targetType: 'inline'
         script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
-        workingDirectory: '$(Build.BinariesDirectory)\python'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:
-        filename: '$(Build.BinariesDirectory)\python\installer.exe'
+        filename: '$(Build.BinariesDirectory)\installer.exe'
         arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
       timeoutInMinutes: 10
     - task: BatchScript@1
