@@ -162,9 +162,9 @@ set(onnxruntime_test_framework_libs
   onnxruntime_mlas
   )
 
-set(onnxruntime_test_hosting_libs
+set(onnxruntime_test_server_libs
   onnxruntime_test_utils
-  onnxruntime_test_utils_for_hosting
+  onnxruntime_test_utils_for_server
 )
 
 if(WIN32)
@@ -552,52 +552,55 @@ if (onnxruntime_BUILD_SHARED_LIB)
   endif()
 endif()
 
-if (onnxruntime_BUILD_HOSTING)
-  file(GLOB onnxruntime_test_hosting_src
-    "${TEST_SRC_DIR}/hosting/unit_tests/*.cc"
-    "${TEST_SRC_DIR}/hosting/unit_tests/*.h"
+if (onnxruntime_BUILD_SERVER)
+  file(GLOB onnxruntime_test_server_src
+    "${TEST_SRC_DIR}/server/unit_tests/*.cc"
+    "${TEST_SRC_DIR}/server/unit_tests/*.h"
   )
 
-  file(GLOB onnxruntime_integration_test_hosting_src
-    "${TEST_SRC_DIR}/hosting/integration_tests/*.py"
+  file(GLOB onnxruntime_integration_test_server_src
+    "${TEST_SRC_DIR}/server/integration_tests/*.py"
   )
   if(NOT WIN32)
     if(HAS_UNUSED_PARAMETER)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/hosting/unit_tests/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
 
-  add_library(onnxruntime_test_utils_for_hosting ${onnxruntime_test_hosting_src})
-  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_hosting onnxruntime_test_utils gtest gmock gsl onnx onnx_proto hosting_proto)
-  add_dependencies(onnxruntime_test_utils_for_hosting onnxruntime_hosting_lib onnxruntime_hosting_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_hosting PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/hosting/http ${ONNXRUNTIME_ROOT}/hosting/http/core PRIVATE ${ONNXRUNTIME_ROOT} )
-  target_link_libraries(onnxruntime_test_utils_for_hosting ${Boost_LIBRARIES} ${onnx_test_libs})
+  add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
+  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils gtest gmock gsl onnx onnx_proto server_proto)
+  add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core PRIVATE ${ONNXRUNTIME_ROOT} )
+  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} ${onnx_test_libs})
 
   AddTest(
-    TARGET onnxruntime_hosting_tests
-    SOURCES ${onnxruntime_test_hosting_src}
-    LIBS ${onnxruntime_test_hosting_libs} hosting_proto onnxruntime_hosting_lib ${onnxruntime_test_providers_libs}
+    TARGET onnxruntime_server_tests
+    SOURCES ${onnxruntime_test_server_src}
+    LIBS ${onnxruntime_test_server_libs} server_proto onnxruntime_server_lib ${onnxruntime_test_providers_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 
   onnxruntime_protobuf_generate(
-          APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/hosting/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf
-          PROTOS ${ONNXRUNTIME_ROOT}/hosting/protobuf/predict.proto ${ONNXRUNTIME_ROOT}/hosting/protobuf/onnx-ml.proto
+          APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/server/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf
+          PROTOS ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto ${ONNXRUNTIME_ROOT}/server/protobuf/onnx-ml.proto
           LANGUAGE python
-          TARGET onnxruntime_hosting_tests
-          OUT_VAR hosting_test_py)
+          TARGET onnxruntime_server_tests
+          OUT_VAR server_test_py)
 
   add_custom_command(
-    TARGET onnxruntime_hosting_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/hosting_test
+    TARGET onnxruntime_server_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/server_test
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_integration_test_hosting_src}
-      $<TARGET_FILE_DIR:${test_data_target}>/hosting_test/
+      ${onnxruntime_integration_test_server_src}
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
     COMMAND ${CMAKE_COMMAND} -E copy
-      $<TARGET_FILE_DIR:${test_data_target}>/*_pb2.py
-      $<TARGET_FILE_DIR:${test_data_target}>/hosting_test/
+      ${CMAKE_CURRENT_BINARY_DIR}/onnx_ml_pb2.py
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_CURRENT_BINARY_DIR}/predict_pb2.py
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
   )
 
 endif()

@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 set(BOOST_REQUESTED_VERSION 1.69.0 CACHE STRING "")
 set(BOOST_SHA1 8f32d4617390d1c2d16f26a27ab60d97807b35440d45891fa340fc2648b04406 CACHE STRING "")
 set(BOOST_USE_STATIC_LIBS true CACHE BOOL "")
