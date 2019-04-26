@@ -46,7 +46,8 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
     }
   }
 
-  // "steps" attribute is added since version 10. If it exists and is not 1s, slice is not redundant.
+  // "steps" attribute is added since version 10. If it exists and is not 1s, parts of the input will be skipped,
+  // so slice cannot be eliminated.
   if (graph_utils::MatchesOpSinceVersion(node, 10)) {
     std::vector<int64_t> steps;
     if (graph_utils::GetRepeatedNodeAttributeValues(node, "steps", starts) &&

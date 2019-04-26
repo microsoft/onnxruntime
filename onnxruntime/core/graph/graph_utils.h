@@ -19,6 +19,9 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version);
 
+/** Checks if the node has the same op set domain as the given one. */
+bool MatchesOpSetDomain(const Node& node, const std::string& domain);
+
 /** Returns true if the execution provider assigned to current node is present in the compatible providers list
     or if the compatible_providers list is empty. */
 bool IsSupportedProvider(const Node& node,

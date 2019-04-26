@@ -249,11 +249,6 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
   return true;
 }
 
-/** Returns true if the given op set domain is the onnx one. */
-static bool IsOnnxOpSetDomain(const std::string& domain) {
-  return domain == kOnnxDomain || domain == kOnnxDomainAlias;
-}
-
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
@@ -274,19 +269,20 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain) {
-  if (node.OpType() != op_type ||
-      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!(IsOnnxOpSetDomain(node.Domain()) && IsOnnxOpSetDomain(domain)) && node.Domain() != domain)) {
-    return false;
-  }
-
-
-
-  return true;
+  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
+          MatchesOpSinceVersion(node, version) && MatchesOpSetDomain(node, domain));
 }
 
 bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
   return node.Op()->SinceVersion() == version;
+}
+
+bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
+  auto node_domain = node.Domain();
+  // Check if it uses the ONNX domain, which has two aliases; otherwise check if domains coincide
+  return ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
+          (domain == kOnnxDomain || domain == kOnnxDomainAlias)) ||
+         node_domain == domain;
 }
 
 bool IsSupportedProvider(const Node& node,
