@@ -249,6 +249,11 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
   return true;
 }
 
+/** Returns true if the given op set domain is the onnx one. */
+static bool IsOnnxOpSetDomain(const std::string& domain) {
+  return domain == kOnnxDomain || domain == kOnnxDomainAlias;
+}
+
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
@@ -265,17 +270,23 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
   return outputs[index]->Name();
 }
 
-// fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain) {
   if (node.OpType() != op_type ||
       node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!node.Domain().empty() && node.Domain() != domain)) {
+      (!(IsOnnxOpSetDomain(node.Domain()) && IsOnnxOpSetDomain(domain)) && node.Domain() != domain)) {
     return false;
   }
+
+
+
   return true;
+}
+
+bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
+  return node.Op()->SinceVersion() == version;
 }
 
 bool IsSupportedProvider(const Node& node,

@@ -77,7 +77,7 @@ TEST(GraphTransformationTests, SliceElimination) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Slice"] == 3);
+  ASSERT_TRUE(op_to_count["Slice"] == 4);
 }
 
 TEST(GraphTransformationTests, ConstantFolding1) {
@@ -304,6 +304,18 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
 #endif
+
+TEST(GraphTransformationTests, TestShapeInferenceBug) {
+  string model_uri = MODEL_FOLDER + "faster_rcnn_resnet50_coco.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.LoadModelToTransform";
+  so.graph_optimization_level = TransformerLevel::Level1;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+}
 
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-add-mul-float16.onnx";

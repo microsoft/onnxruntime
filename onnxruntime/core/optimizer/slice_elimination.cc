@@ -34,16 +34,37 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
     for (int i = 0; (size_t)i < starts.size(); ++i) {
       axes.push_back(i);
     }
-  } else if (axes.size() != starts.size() || axes.size() != ends.size()) {
+  } else if (axes.size() != starts.size()) {
     return false;
   }
 
-  // For now eliminate slice operators if starts=0 and ends=MAX_INT or -1.
+  auto in_size = node.InputDefs()[0]->Shape()->dim_size();
+  auto out_size = node.OutputDefs()[0]->Shape()->dim_size();
+  if (in_size != out_size) {
+    return false;
+  }
+  auto dimin = node.InputDefs()[0]->Shape()->dim(0).dim_value();
+  auto dimout = node.OutputDefs()[0]->Shape()->dim(0).dim_value();
+  if (dimin != dimout) {
+    return false;
+  }
+
+  // For now eliminate slice operators if starts=0 and ends=MAX_INT.
   // TODO: Take into account the input's shape to get a tighter bound for the ends.
   for (size_t i = 0; i < axes.size(); ++i) {
-    if (starts[i] > 0 || starts[i] < 0 ||
-        (ends[i] > 0 && ends[i] < INT64_MAX)) {
+    if (starts[i] != 0 || ends[i] < INT64_MAX) {
       return false;
+    }
+  }
+
+  // "steps" attribute is added since version 10. If it exists and is not 1s, slice is not redundant.
+  if (graph_utils::MatchesOpSinceVersion(node, 10)) {
+    std::vector<int64_t> steps;
+    if (graph_utils::GetRepeatedNodeAttributeValues(node, "steps", starts)) {
+      if (steps.size() != starts.size() ||
+          std::any_of(steps.cbegin(), steps.cend(), [](int64_t step) { return step > 1; })) {
+        return false;
+      }
     }
   }
 
