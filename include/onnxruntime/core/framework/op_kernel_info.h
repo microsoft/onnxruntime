@@ -15,11 +15,10 @@ namespace onnxruntime {
 
 class MLValueNameIdxMap;
 class FuncManager;
-    /**
-   A very light-weight class, which works as an aggregated
-   view of all data needed for constructing a Kernel instance.
-   NOTE: it does not own/hold any objects.
-*/
+
+// A very light-weight class, which works as an aggregated
+// view of all data needed for constructing a Kernel instance.
+// NOTE: it does not own/hold any objects.
 class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
  public:
   explicit OpKernelInfo(const onnxruntime::Node& node,
@@ -43,7 +42,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  common::Status GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const;
+  common::Status GetFusedFuncs(ComputeFunc* compute,
+                               CreateFunctionStateFunc* create,
+                               DestroyFunctionStateFunc* release) const;
 
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);

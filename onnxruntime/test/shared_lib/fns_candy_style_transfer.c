@@ -147,7 +147,7 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
   }
   OrtAllocatorInfo* allocator_info;
   ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
-  const size_t input_shape[] = {1, 3, 720, 720};
+  const int64_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 

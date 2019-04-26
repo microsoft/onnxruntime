@@ -137,15 +137,15 @@ namespace Microsoft.ML.OnnxRuntime
             var inputTensors = new IntPtr[inputs.Count];
             var pinnedBufferHandles = new System.Buffers.MemoryHandle[inputs.Count];
 
-            int offset = 0;
+            int inputIndex = 0;
             foreach (var input in inputs)
             {
-                inputNames[offset] = input.Name;
+                inputNames[inputIndex] = input.Name;
 
                 // create Tensor from the input if feasible, else throw notsupported exception for now
-                input.ToNativeOnnxValue(out inputTensors[offset], out pinnedBufferHandles[offset]);
+                input.ToNativeOnnxValue(out inputTensors[inputIndex], out pinnedBufferHandles[inputIndex]);
 
-                offset++;
+                inputIndex++;
             }
 
             string[] outputNamesArray = outputNames.ToArray();

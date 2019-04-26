@@ -35,6 +35,22 @@ for /f "delims=" %%i in ('type "%templateFile%" ^& break ^> "packages.config" ')
 )
 echo on
 
+REM Update project file with package name (e.g. Microsoft.ML.OnnxRuntime.Gpu)
+IF "%PackageName%"==""  goto :skip
+@echo off
+SETLOCAL EnableExtensions DisableDelayedExpansion
+SET "search="Microsoft.ML.OnnxRuntime""
+SET "replace="%PackageName%""
+SET "projfile="packages.config""
+FOR /f "delims=" %%i in ('type "packages.config" ^& break ^> "packages.config" ') do (
+        set "line=%%i"
+        setlocal enabledelayedexpansion
+        >>"packages.config" echo(!line:%search%=%replace%!
+        endlocal
+  )
+:skip
+
+
 REM Restore NuGet Packages
 nuget restore -PackagesDirectory ..\packages -Source %LocalNuGetRepo% Microsoft.ML.OnnxRuntime.EndToEndTests.RunCapi.vcxproj
 if NOT %ERRORLEVEL% EQU 0 (

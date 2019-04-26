@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <Platform>AnyCPU</Platform>
     <TargetFramework>netcoreapp2.0</TargetFramework>
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
@@ -31,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCSharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
+    <PackageReference Include="CommandLineParser" Version="2.4.3" />
     <PackageReference Include="Microsoft.ML.Scoring" Version="1.1.0" />
   </ItemGroup>
 

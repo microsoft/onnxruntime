@@ -30,26 +30,11 @@ namespace onnxruntime {
 
 namespace {
 
-class StdThread : public Thread {
- public:
-  StdThread(std::function<void()> fn)
-      : thread_(fn) {}
-
-  ~StdThread() { thread_.join(); }
-
- private:
-  std::thread thread_;
-};
 static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class WindowsEnv : public Env {
  public:
   void SleepForMicroseconds(int64_t micros) const override { Sleep(static_cast<DWORD>(micros) / 1000); }
-
-  Thread* StartThread(const ThreadOptions&, const std::string&,
-                      std::function<void()> fn) const override {
-    return new StdThread(fn);
-  }
 
   int GetNumCpuCores() const override {
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
@@ -82,17 +67,6 @@ class WindowsEnv : public Env {
 
   PIDType GetSelfPid() const override {
     return GetCurrentProcessId();
-  }
-
-  EnvThread* CreateThread(std::function<void()> fn) const override {
-    return new StdThread(fn);
-  }
-
-  Task CreateTask(std::function<void()> f) const override {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) const override {
-    t.f();
   }
 
   static common::Status GetFileSizeIfUnknown(const wchar_t* fname, HANDLE hFile, size_t& length) {

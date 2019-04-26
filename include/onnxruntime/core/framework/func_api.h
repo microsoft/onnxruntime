@@ -6,7 +6,14 @@ enum DType {
   TFloat32 = 0,
   TInt32 = 1,
   TDouble = 2,
-  TInt64 = 3
+  TInt64 = 3,
+  TBool = 4,
+  TUint8 = 5,
+  TInt8 = 6,
+  TUint16 = 7,
+  TInt16 = 8,
+  TUint32 = 9,
+  TUint64 = 10
   //TODO: more types
 };
 

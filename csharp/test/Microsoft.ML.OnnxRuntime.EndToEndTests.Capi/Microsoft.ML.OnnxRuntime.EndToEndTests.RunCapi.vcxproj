@@ -3,8 +3,9 @@
   
   <PropertyGroup>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
+    <PackageName Condition="'$(PackageName)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
   </PropertyGroup>
-  <Import Project="..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.props" Condition="Exists('..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.props')" />
+  <Import Project="..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).props" Condition="Exists('..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).props')" />
 
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -21,7 +22,6 @@
     <ProjectGuid>{B8CA7F10-0171-4EA5-8662-5A9942DDF415}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>MicrosoftMLOnnxRuntimeEndToEndTestsRunCapi</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -99,13 +99,13 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.targets" Condition="Exists('..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.targets')" />
+    <Import Project="..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).targets" Condition="Exists('..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.props'))" />
-    <Error Condition="!Exists('..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.ML.OnnxRuntime.$(CurrentOnnxRuntimeVersion)\build\native\Microsoft.ML.OnnxRuntime.targets'))" />
+    <Error Condition="!Exists('..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).props'))" />
+    <Error Condition="!Exists('..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).targets'))" />
   </Target>
 </Project>

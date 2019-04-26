@@ -48,10 +48,6 @@ KernelDefBuilder& BuildFusedKernelDef(KernelDefBuilder& builder, const onnxrunti
       .SetDomain(schema->domain())
       .SinceVersion(schema->SinceVersion())
       .Provider(node.GetExecutionProviderType());
-  auto& inputs = node.InputDefs();
-  for (auto input : inputs) {
-    builder.TypeConstraint(input->Name(), DataTypeImpl::TypeFromProto(*input->TypeAsProto()));
-  }
   return builder;
 }
 
@@ -185,7 +181,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
           builder.SetDefaultOutputMemoryType(OrtMemTypeCPUOutput);
         }
         ORT_RETURN_IF_ERROR(fused_kernel_registry->Register(
-            builder, [](const OpKernelInfo& info) { return new FunctionKernel(info); }));
+            builder, static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new FunctionKernel(info); })));
       }
     }
   }

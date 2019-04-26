@@ -969,5 +969,95 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
                   nullptr, use_bias, use_peepholes);
 }
 
+TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
+  const int seq_len = 2;
+  int batch_size = 2;
+  std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
+
+  bool use_bias = true;
+  bool use_peepholes = false;
+
+  std::vector<float> X_data = {-0.455351f, -0.776391f,
+                               -0.355351f, -0.576391f,
+
+                               -0.185934f, -0.169585f,
+                               -0.285934f, -0.469585f};
+
+  std::vector<int> sequence_length = {0, 0};
+
+  std::vector<float> Y_data = {0.0f, 0.0f,
+                               0.0f, 0.0f,
+                               0.0f, 0.0f,
+                               0.0f, 0.0f,
+
+                               0.0f, 0.0f,
+                               0.0f, 0.0f,
+                               0.0f, 0.0f,
+                               0.0f, 0.0f};
+
+  std::vector<float> Y_h_data = {0.0f, 0.0f,
+                                 0.0f, 0.0f,
+
+                                 0.0f, 0.0f,
+                                 0.0f, 0.0f};
+
+  std::vector<float> Y_c_data = {0.0f, 0.0f,
+                                 0.0f, 0.0f,
+
+                                 0.0f, 0.0f,
+                                 0.0f, 0.0f};
+
+  std::string direction = "bidirectional";
+  LstmOpContext2x1x2x2 context(direction, activations);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
+                  &sequence_length, use_bias, use_peepholes);
+}
+
+TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
+  const int seq_len = 2;
+  int batch_size = 2;
+  std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
+
+  bool use_bias = true;
+  bool use_peepholes = false;
+
+  std::vector<float> X_data = {-0.455351f, -0.776391f,
+                               0.0f, 0.0f,
+
+                               -0.185934f, -0.169585f,
+                               0.0f, 0.0f};
+
+  std::vector<int> sequence_length = {2, 0};
+
+  std::vector<float> Y_data = {-0.1269719f, -0.01049645f,
+                               0.0f, 0.0f,
+
+                               -0.12206709f, -0.0051103f,
+                               0.0f, 0.0f,
+
+                               -0.02778835f, 0.00775075f,
+                               0.0f, 0.0f,
+
+                               -0.04350187f, 0.01127771f,
+                               0.0f, 0.0f};
+
+  std::vector<float> Y_h_data = {-0.02778835f, 0.00775075f,
+                                 0.0f, 0.0f,
+
+                                 -0.12206709f, -0.0051103f,
+                                 0.0f, 0.0f};
+
+  std::vector<float> Y_c_data = {0.14675268f, 0.01759163f,
+                                 0.0f, 0.0f,
+
+                                 0.26577898f, -0.01694398f,
+                                 0.0f, 0.0f};
+
+  std::string direction = "bidirectional";
+  LstmOpContext2x1x2x2 context(direction, activations);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
+                  &sequence_length, use_bias, use_peepholes);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

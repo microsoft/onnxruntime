@@ -2,11 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/space_depth_ops.h"
-
-// warning raised from Eigen Tensor code.
-#ifdef _MSC_VER
-#pragma warning(disable : 4554)
-#endif
 #include "core/util/eigen_common_wrapper.h"
 #include <array>
 

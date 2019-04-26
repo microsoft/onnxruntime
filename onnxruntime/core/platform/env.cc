@@ -20,6 +20,4 @@ namespace onnxruntime {
 
 Env::Env() = default;
 
-Thread::~Thread() = default;
-
 }  // namespace onnxruntime

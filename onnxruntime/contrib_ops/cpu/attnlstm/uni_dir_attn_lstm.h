@@ -51,11 +51,7 @@ class UniDirectionalAttnLstm {
                          const ActivationFuncs::Entry& activation_func_g,
                          const ActivationFuncs::Entry& activation_func_h,
                          const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                         Eigen::NonBlockingThreadPool& ttp);
-#else
-                         TaskThreadPool& ttp);
-#endif
+                         onnxruntime::concurrency::ThreadPool& ttp);
 
   void Compute(const gsl::span<const T>& inputs,
                const gsl::span<const int>& sequence_lengths,
@@ -155,11 +151,7 @@ class UniDirectionalAttnLstm {
 
   AttentionWrapper<T>& attention_wrapper_;
 
-#ifdef USE_EIGEN_THREADPOOL
-  Eigen::NonBlockingThreadPool& ttp_;
-#else
-  TaskThreadPool& ttp_;
-#endif
+  onnxruntime::concurrency::ThreadPool& ttp_;
 };
 
 }  // namespace detail

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <sstream>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
@@ -112,7 +113,18 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
       kernel_begin_time = session_state.Profiler().StartTime();
     }
-    ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
+
+    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
+    if (!compute_status.IsOK()) {
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running Node: " <<
+            p_op_kernel->Node().Name() <<
+            " Status Message: " <<
+            compute_status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(compute_status.Category(), compute_status.Code(), msg_string);
+    }
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,

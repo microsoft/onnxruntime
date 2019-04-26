@@ -267,7 +267,9 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(rank);
   const std::vector<int64_t>* p_perm;
   std::vector<int64_t> default_perm(rank);
-  ComputeOutputShape(X, output_dims, default_perm, p_perm);
+  const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
+  if (!status.IsOK())
+    return status;
 
   TensorShape output_shape{output_dims};
   Tensor& Y = *ctx->Output(0, output_shape);

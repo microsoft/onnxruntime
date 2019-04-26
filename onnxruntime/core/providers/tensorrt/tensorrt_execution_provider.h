@@ -7,11 +7,9 @@
 #include "core/framework/op_kernel.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
-
-static const int kMaxBatchSize = 1;
-static const int kMaxWorkSpaceSize = 1 << 30;
 
 class TensorrtLogger : public nvinfer1::ILogger {
     nvinfer1::ILogger::Severity verbosity_;
@@ -51,6 +49,7 @@ struct TensorrtFuncState {
   std::vector<std::vector<int>> input_info;
   std::vector<std::vector<int>> output_info;
   std::vector<std::vector<int64_t>> output_shapes;
+  OrtMutex* tensorrt_mu_ptr = nullptr;
 };
 
 // Logical device representation.
@@ -74,7 +73,18 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+  void SetMaxBatchSize(const int batch_size) {
+      max_batch_size_ = batch_size;
+  }
+
+  void SetMaxWorkspaceSize(const size_t workspace_size) {
+      max_workspace_size_ = workspace_size;
+  }
+    
  private:
+ int max_batch_size_ = 1;
+ size_t max_workspace_size_ = 1 << 30; // 1GB
+
   struct InferDeleter {
     template <typename T>
     void operator()(T* obj) const {
@@ -87,6 +97,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   template <typename T>
   using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
+  OrtMutex tensorrt_mu_;
   int device_id_;
   std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;

@@ -15,8 +15,8 @@ class UnsqueezeBase {
   }
 
   struct Prepare {
-    const Tensor* input_tensor;
-    Tensor* output_tensor;
+    const Tensor* input_tensor = nullptr;
+    Tensor* output_tensor = nullptr;
   };
 
   Status PrepareCompute(OpKernelContext* context, Prepare& p) const;

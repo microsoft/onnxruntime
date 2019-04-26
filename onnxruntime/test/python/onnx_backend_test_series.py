@@ -44,6 +44,7 @@ backend_test.exclude(r'('
 '|^test_convtranspose_1d_cpu.*'
 '|^test_convtranspose_3d_cpu.*'
 '|^test_constantofshape_*.*'
+'|^test_dequantizelinear_cpu.*'
 
 '|^test_AvgPool1d_cpu.*'
 '|^test_AvgPool1d_stride_cpu.*'
@@ -83,6 +84,13 @@ backend_test.exclude(r'('
 '|^test_vgg19_cpu.*'
 '|^test_zfnet512_cpu.*'
 '|^test_gru_seq_length_cpu.*'
+'|^test_mvn_cpu.*'
+'|^test_qlinearconv_cpu.*'
+'|^test_quantizelinear_cpu.*'
+'|^test_mod_float_mixed_sign_example.*'
+'|^test_reversesequence_batch_cpu.*'
+'|^test_reversesequence_time_cpu.*'
+'|^test_roialign_cpu.*'
 ')')
 
 # import all test cases at global scope to make

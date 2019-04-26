@@ -94,7 +94,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
-  /* Subgraph Adds outer_scope_0 to loop_var_0_in, 
+  /* Subgraph Adds outer_scope_0 to loop_var_0_in,
      Concats the iter_num to loop_var_1_in (test loop var that changes shape) so each iteration appends the iter_num
      to loop_var_1
      Loop output is the iter_num and sum for that iteration, so each iteration adds a pair to the overall output
@@ -103,8 +103,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     Inputs: iter_num, cond_in, loop_var_in
 
  iter_num_in  loop_var_0_in [outer_scope_0] loop_var_1_in                                    cond_in
-       |             |        /                  |                                           (unused)      
-     [Cast]        [Add]-----/                   |                                           
+       |             |        /                  |                                           (unused)
+     [Cast]        [Add]-----/                   |
        |             |                           |                          [Constant]
   iter_num_float  sum_0                          |          sum_0             /
        |           / | \                         |              \            /
@@ -319,9 +319,9 @@ void RunTest(int64_t max_iterations,
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because of unsupported data type INT64
   }
 }
 
@@ -395,7 +395,7 @@ TEST(Loop, InfiniteLoopTermination) {
     std::vector<NodeArg*> outputs;
 
     /* Never change cond_in so loop is infinite
-            Inputs: iter_num, cond_in, loop carried state variables.                    
+            Inputs: iter_num, cond_in, loop carried state variables.
 
          iter_num_in    cond_in     [outer_scope_0]
            (unused)        |                |
@@ -478,8 +478,8 @@ TEST(Loop, InfiniteLoopTermination) {
   std::future<void> terminator_result = task.get_future();
   std::thread terminator_thread{std::move(task)};
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {},
-           &session_run_options);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {kTensorrtExecutionProvider},
+           &session_run_options);// Disable TensorRT on unsupported data type BOOL
 
   // call get to propagate any exception
   terminator_result.get();

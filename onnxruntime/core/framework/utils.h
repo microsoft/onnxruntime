@@ -65,33 +65,37 @@ common::Status ExecuteGraphWithCachedInfo(const SessionState& session_state,
                                           const bool& terminate_flag,
                                           const logging::Logger& logger);
 
-#define DispatchOnTensorType(tensor_type, function, ...)      \
-  if (tensor_type == DataTypeImpl::GetType<float>())          \
-    function<float>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<double>())    \
-    function<double>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())    \
-    function<int8_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())   \
-    function<int16_t>(__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())   \
-    function<int32_t>(__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())   \
-    function<int64_t>(__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())   \
-    function<uint8_t>(__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())  \
-    function<uint16_t>(__VA_ARGS__);                          \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())  \
-    function<uint32_t>(__VA_ARGS__);                          \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())  \
-    function<uint64_t>(__VA_ARGS__);                          \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())      \
-    function<bool>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>()) \
-    function<MLFloat16>(__VA_ARGS__);                         \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())  \
-  function<BFloat16>(__VA_ARGS__)
+#define DispatchOnTensorType(tensor_type, function, ...)        \
+  if (tensor_type == DataTypeImpl::GetType<float>())            \
+    function<float>(__VA_ARGS__);                               \
+  else if (tensor_type == DataTypeImpl::GetType<double>())      \
+    function<double>(__VA_ARGS__);                              \
+  else if (tensor_type == DataTypeImpl::GetType<int8_t>())      \
+    function<int8_t>(__VA_ARGS__);                              \
+  else if (tensor_type == DataTypeImpl::GetType<int16_t>())     \
+    function<int16_t>(__VA_ARGS__);                             \
+  else if (tensor_type == DataTypeImpl::GetType<int32_t>())     \
+    function<int32_t>(__VA_ARGS__);                             \
+  else if (tensor_type == DataTypeImpl::GetType<int64_t>())     \
+    function<int64_t>(__VA_ARGS__);                             \
+  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())     \
+    function<uint8_t>(__VA_ARGS__);                             \
+  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())    \
+    function<uint16_t>(__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())    \
+    function<uint32_t>(__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())    \
+    function<uint64_t>(__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<bool>())        \
+    function<bool>(__VA_ARGS__);                                \
+  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())   \
+    function<MLFloat16>(__VA_ARGS__);                           \
+  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())    \
+    function<BFloat16>(__VA_ARGS__);                            \
+  else if (tensor_type == DataTypeImpl::GetType<std::string>()) \
+    function<std::string>(__VA_ARGS__);                         \
+  else                                                          \
+    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
 
 #define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
   if (tensor_type == DataTypeImpl::GetType<float>())                       \
@@ -119,7 +123,11 @@ common::Status ExecuteGraphWithCachedInfo(const SessionState& session_state,
   else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())              \
     retval = function<MLFloat16>(__VA_ARGS__);                             \
   else if (tensor_type == DataTypeImpl::GetType<BFloat16>())               \
-  retval = function<BFloat16>(__VA_ARGS__)
+    retval = function<BFloat16>(__VA_ARGS__);                              \
+  else if (tensor_type == DataTypeImpl::GetType<std::string>())            \
+    retval = function<std::string>(__VA_ARGS__);                           \
+  else                                                                     \
+    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
 
 }  // namespace utils
 }  // namespace onnxruntime

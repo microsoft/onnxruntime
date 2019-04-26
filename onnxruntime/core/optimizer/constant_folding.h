@@ -14,10 +14,16 @@ namespace onnxruntime {
 Rewrite rule that performs constant folding to the graph.
 The rule gets applied to nodes that have only initializers as inputs. It statically computes these 
 nodes and replaces their output with an initializer that corresponds to the result of the computation.
+
+It is attempted to be triggered on all nodes irrespective of their op type.
 */
 class ConstantFolding : public RewriteRule {
  public:
-  ConstantFolding() noexcept : RewriteRule("ConstantFolding", "Constant folding") {}
+  ConstantFolding() noexcept : RewriteRule("ConstantFolding") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return std::vector<std::string>();
+  }
 
  private:
   /** Constant folding will not be applied to nodes whose op_type is included in this set.

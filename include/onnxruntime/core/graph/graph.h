@@ -156,6 +156,11 @@ class Node {
     return definitions_.implicit_input_defs;
   }
 
+  /** Gets a modifiable collection of the Node's implicit input definitions. */
+  std::vector<NodeArg*>& MutableImplicitInputDefs() noexcept {
+    return definitions_.implicit_input_defs;
+  }
+
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
   const ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
@@ -744,6 +749,9 @@ class Graph {
     graph_output_order_ = outputs;
   }
 
+  /** Returns true if this is a subgraph or fase if it is a high-level graph. */
+  bool IsSubgraph() const { return parent_graph_ != nullptr; }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node which has a GraphProto attribute.
@@ -846,13 +854,6 @@ class Graph {
 
   common::Status PerformTypeAndShapeInferencing();
 
-  enum class Type {
-    // A main graph.
-    Main = 1,
-    // A sub graph (function).
-    Sub = 2,
-  };
-
   common::Status Resolve(bool no_proto_sync_required);
 
   // Recursively find all subgraphs including nested subgraphs
@@ -905,8 +906,6 @@ class Graph {
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
-  bool IsSubgraph() const { return parent_graph_ != nullptr; }
-
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
 
   // GraphProto to store name, version, initializer.
@@ -918,8 +917,6 @@ class Graph {
 
   InitializedTensorSet name_to_initial_tensor_;
   std::vector<int> removed_initializer_indexes_;
-
-  Type graph_type_ = Type::Main;
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 

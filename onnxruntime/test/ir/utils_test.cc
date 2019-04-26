@@ -207,7 +207,7 @@ static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
   auto& node_to_remove = *graph.GetNode(1);
   const auto& if_node = *graph.GetNode(2);
 
-  bool removed = graph_utils::RemoveSingleInSingleOutNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
   ASSERT_TRUE(removed);
 
   // check subgraph implicit input was updated
@@ -238,7 +238,7 @@ static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  bool removed = graph_utils::RemoveSingleInSingleOutNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
   ASSERT_FALSE(removed);
 }
 
@@ -248,6 +248,59 @@ TEST(GraphUtils, DontRemoveNodeIfItWillBreakSubgraph) {
 
 TEST(GraphUtils, DontRemoveNodeIfItWillBreakNestedSubgraph) {
   DontRemoveNodeIfItWillBreakSubgraph(true);
+}
+
+TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
+  // Create a graph with 5 Id nodes. The graph structure is as follows: Id0 ( Id1 Id2 ( Id3 Id4 ) ).
+  // First we remove Id2, which leads to: Id0 ( Id1 Id4 Id5 ).
+  // Then we remove Id1, which leads to: Id2 Id4 Id5, being fed the initializer.
+  Model model("MultiEdgeRemovalGraph");
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& id_0_in = graph.GetOrCreateNodeArg("id_0_in", &float_tensor);
+  auto& id_0_out = graph.GetOrCreateNodeArg("id_0_out", &float_tensor);
+  auto& id_1_out = graph.GetOrCreateNodeArg("id_1_out", &float_tensor);
+  auto& id_2_out = graph.GetOrCreateNodeArg("id_2_out", &float_tensor);
+  auto& id_3_out = graph.GetOrCreateNodeArg("id_3_out", &float_tensor);
+  auto& id_4_out = graph.GetOrCreateNodeArg("id_4_out", &float_tensor);
+
+  std::vector<Node*> nodes;
+  nodes.push_back(&graph.AddNode("id_0", "Identity", "Identity node 0", {&id_0_in}, {&id_0_out}));
+  nodes.push_back(&graph.AddNode("id_1", "Identity", "Identity node 1", {&id_0_out}, {&id_1_out}));
+  nodes.push_back(&graph.AddNode("id_2", "Identity", "Identity node 2", {&id_0_out}, {&id_2_out}));
+  nodes.push_back(&graph.AddNode("id_3", "Identity", "Identity node 3", {&id_2_out}, {&id_3_out}));
+  nodes.push_back(&graph.AddNode("id_4", "Identity", "Identity node 4", {&id_2_out}, {&id_4_out}));
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  ASSERT_EQ(graph.NumberOfNodes(), 5);
+
+  // Check inputs/outputs of id_0 and id_2
+  ASSERT_EQ(nodes[0]->GetInputEdgesCount(), 0);
+  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 2);
+  ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1);
+  ASSERT_EQ(nodes[2]->GetOutputEdgesCount(), 2);
+
+  // Remove id_2. This leaves id_0 with 3 output edges. id_0 is now incoming node to id_3 and id_4.
+  ASSERT_TRUE(graph_utils::RemoveSingleInputNode(graph, *nodes[2]));
+  ASSERT_EQ(graph.NumberOfNodes(), 4);
+  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 3);
+  ASSERT_EQ(nodes[3]->InputDefs().size(), 1);
+  ASSERT_TRUE(nodes[3]->InputDefs()[0]->Name() == "id_0_out");
+  ASSERT_EQ(nodes[4]->InputDefs().size(), 1);
+  ASSERT_TRUE(nodes[4]->InputDefs()[0]->Name() == "id_0_out");
+
+  // Remove id_0
+  ASSERT_TRUE(graph_utils::RemoveSingleInputNode(graph, *nodes[0]));
+  ASSERT_EQ(graph.NumberOfNodes(), 3);
+  ASSERT_TRUE(nodes[1]->InputDefs()[0]->Name() == "id_0_in");
+  ASSERT_TRUE(nodes[3]->InputDefs()[0]->Name() == "id_0_in");
+  ASSERT_TRUE(nodes[4]->InputDefs()[0]->Name() == "id_0_in");
 }
 
 }  // namespace test

@@ -122,8 +122,8 @@ inline bool operator!=(const BFloat16& left, const BFloat16& right) {
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
 using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
-using DeleteFunc = void (*)(void*);
-using CreateFunc = std::function<void*()>;
+using DeleteFunc = void(*)(void*);
+using CreateFunc = void*(*)();
 
 /**
  * \brief Base class for MLDataType
@@ -426,7 +426,7 @@ class NonTensorType : public NonTensorTypeBase {
   }
 
   CreateFunc GetCreateFunc() const override {
-    return []() { return new T(); };
+    return []() -> void* { return new T(); };
   }
 
  protected:

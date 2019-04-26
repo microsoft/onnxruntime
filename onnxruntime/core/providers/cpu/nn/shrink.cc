@@ -64,6 +64,14 @@ Status ShrinkImpl<bool>(const Tensor* /*input*/, Tensor* /*output*/, float /*bia
       "to all numeric types only. Got bool type here.");
 }
 
+template <>
+Status ShrinkImpl<std::string>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
+  return ORT_MAKE_STATUS(
+      ONNXRUNTIME, INVALID_ARGUMENT,
+      "Input types for the Shrink operator are constrained "
+      "to all numeric types only. Got std::string type here.");
+}
+
 }  // namespace shrink_internal
 
 Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {

@@ -79,8 +79,9 @@ common::Status SoftmaxCPU(const int64_t N,
     }
   } else {
     for (int i = 0; i < N; ++i) {
+      auto log_fmaxf_scale_i = log(fmaxf(scale[i], 1e-20f));
       for (int j = 0; j < D; ++j) {
-        Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log(fmaxf(scale[i], 1e-20f));
+        Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log_fmaxf_scale_i;
       }
     }
   }

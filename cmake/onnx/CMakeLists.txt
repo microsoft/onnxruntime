@@ -24,6 +24,11 @@ file(GLOB_RECURSE onnx_exclude_src
     "${ONNX_SOURCE_ROOT}/onnx/cpp2py_export.cc"
 )
 
+if (MSVC)
+  SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
+  SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
+endif()
+
 list(REMOVE_ITEM onnx_src ${onnx_exclude_src})
 add_library(onnx ${onnx_src})
 add_dependencies(onnx onnx_proto)
@@ -33,7 +38,7 @@ target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_CO
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx")
 else()
-  target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx" "ONNX_USE_LITE_PROTO")
+  target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx" "ONNX_USE_LITE_PROTO" "__ONNX_NO_DOC_STRINGS")
 endif()
 if (WIN32)
     target_compile_options(onnx PRIVATE

@@ -453,29 +453,35 @@ Status TfIdfVectorizer::ComputeImpl(OpKernelContext* ctx) const {
   } else if (input_dims.size() == 1) {
     b_dim = 1;
     C = input_dims[0];
-    if (C < 1) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
-    }
   } else if (input_dims.size() == 2) {
     B = input_dims[0];
     C = input_dims[1];
     b_dim = B;
-    if (B < 1 || C < 1) {
+    if (B < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+                    "Input shape must have either [C] or [B,C] dimensions with B > 0.");
     }
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape must have either [C] or [B,C] dimensions where C > 0 and B > 0");
+                  "Input shape must have either [C] or [B,C] dimensions with B > 0.");
   }
-
-  assert((b_dim * C) == total_items);
 
   // Frequency holder allocate [B..output_size_]
   // and init all to zero
   std::vector<uint32_t> frequencies;
   frequencies.resize(b_dim * impl.output_size_, 0);
+
+  if (input_shape.Size() == 0) {
+    // TfidfVectorizer may receive an empty input when it follows a Tokenizer
+    // (for example for a string containing only stopwords).
+    // TfidfVectorizer returns a zero tensor of shape
+    // {b_dim, output_size} when b_dim is the number of received observations
+    // and output_size the is the maximum value in ngram_indexes attribute plus 1.
+    OutputResult(ctx, B, frequencies);
+    return Status::OK();
+  }
+
+  assert((b_dim * C) == total_items);
 
   const auto max_gram_length = impl.max_gram_length_;
   const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance

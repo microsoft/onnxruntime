@@ -653,8 +653,7 @@ TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   auto& iii = graph.GetInputsIncludingInitializers();
-  EXPECT_TRUE(iii.size() == 1);
-  EXPECT_TRUE(iii.front()->Name() == "node_1_in_2");
+  EXPECT_TRUE(iii.size() == 0);
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {

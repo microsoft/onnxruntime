@@ -57,6 +57,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
+  const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
+
  private:
   const SessionState& session_state_;
   const std::vector<NodeArg*>& implicit_inputs_;
