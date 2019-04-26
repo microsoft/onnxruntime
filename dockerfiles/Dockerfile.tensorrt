@@ -45,11 +45,12 @@ RUN /bin/sh ./build.sh --cuda_home /usr/local/cuda \
 
 # Copy the ONNX Runtime wheel into the root directory
 RUN cp /code/onnxruntime/build/Linux/Release/dist/*.whl /code
+COPY LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
 
 WORKDIR /code
 
 # Remove unecessary files to reduce image size
-RUN rm -rf onnxruntime cmake-3.14.3.tar.gz cmake-3.14.3
+RUN rm -rf onnxruntime cmake-3.14.3-Linux-x86_64.tar.gz cmake-3.14.3-Linux-x86_64
 
 # Install the onnxruntime-gpu-tensorrt wheel
 RUN pip install *.whl
