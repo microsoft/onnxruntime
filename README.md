@@ -55,24 +55,24 @@ One easy way to deploy the model on the cloud is by using [Azure Machine Learnin
 
 
 # Installation
-## APIs and Official Builds
-| API Documentation | CPU package | GPU package* |
-|-----|-------------|-------------|
-| [Python](https://aka.ms/onnxruntime-python)** | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/><br/> |
-| [C#](docs/CSharp_API.md) | Available on Nuget : [MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/), [MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)</br><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
-| [C](docs/C_API.md) | Available on Nuget : [MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/), [MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)</br><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
-| [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
-
-&#42;Requires CUDA 9.1 and cuDNN 7.1<br/>
-&#42;&#42;Compatible with Python 3.5-3.7
-
 ## System Requirements
 * ONNX Runtime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the
 system.
   * For Windows, OpenMP support comes as part of VC runtime. It is also available as redist packages:
     [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
   * For Linux, the system must have the libgomp.so.1 which can be installed using ```apt-get install libgomp1```.
-* The GPU builds require the CUDA9.1 and cuDNN 7.3 runtime libraries being installed in the system.
+* The GPU builds require the CUDA9.1 and cuDNN 7.1 runtime libraries being installed in the system.
+* Python binaries are compatible with Python 3.5-3.7.
+
+## APIs and Official Builds
+| API Documentation | CPU package | GPU package |
+|-----|-------------|-------------|
+| [Python](https://aka.ms/onnxruntime-python) | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/><br/> |
+| [C#](docs/CSharp_API.md) | Available on Nuget : [MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/), [MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)</br><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
+| [C](docs/C_API.md) | Available on Nuget : [MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/), [MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)</br><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
+| [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
+
+For builds using other execution providers, see Build Details below.
 
 ## Build Details
 For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).
