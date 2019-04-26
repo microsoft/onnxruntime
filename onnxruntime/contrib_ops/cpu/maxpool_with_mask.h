@@ -7,7 +7,7 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/nn/pool_base.h"
 
@@ -25,10 +25,6 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     const TensorShape& x_shape = X->Shape();
     const TensorShape& m_shape = M->Shape();
     ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
-
-    // Get access to the internal threadpool
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-    auto thread_pool = ctx_internal->GetOperatorThreadPool();
 
     //TODO: fix this checker later
     //ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape mismatch: ", x_shape, " vs ", m_shape);
@@ -58,8 +54,10 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-
-        std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+        for (int64_t c = 0; c < total_channels; ++c) {
           const float* x_d = X_data + c * x_step;
           const int32_t* m_d = M_data + (c * x_step) % total_mask_channels;
           float* y_d = Y_data + c * y_step;
@@ -76,8 +74,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
             }
             y_d[ph] = Yh;
           }
-        };
-        const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+        }
 
         break;
       }
@@ -87,8 +84,10 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height * pooled_width;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-
-        std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+        for (int64_t c = 0; c < total_channels; ++c) {
           const float* x_d = X_data + c * x_step;
           const int32_t* m_d = M_data + (c * x_step) % total_mask_channels;
           float* y_d = Y_data + c * y_step;
@@ -115,9 +114,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
               y_d[pool_index] = Yh;
             }
           }
-        };
-        const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
-
+        }
         break;
       }
       case 3: {
@@ -125,8 +122,10 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
         int64_t y_step = pooled_height * pooled_width * pooled_depth;
         const int64_t total_channels = x_shape[0] * channels;
         const int64_t total_mask_channels = m_shape[0] * m_shape[1];
-
-        std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+        for (int64_t c = 0; c < total_channels; ++c) {
           const float* x_d = X_data + c * x_step;
           const int32_t* m_d = M_data + (c * x_step) % total_mask_channels;
           float* y_d = Y_data + c * y_step;
@@ -161,9 +160,7 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
               }
             }
           }
-        };
-        const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
-
+        }
         break;
       }
       default:
