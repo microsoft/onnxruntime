@@ -357,6 +357,12 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"test_mod_int64_mixed_sign_example", "not implemented"}
   };
 
+#ifdef USE_NGRAPH
+  broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+#endif
+
 #ifdef USE_CUDA
   broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
   broken_tests["maxpool_2d_pads"] = "cudnn pooling only support input dimension >= 3";
