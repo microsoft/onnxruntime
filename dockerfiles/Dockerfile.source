@@ -4,23 +4,20 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with source build for CPU
 
-# Ubuntu Base Image
+# Ubuntu 16.04 Base Image
 FROM ubuntu:16.04
-
-# Add conda to PATH
-ENV PATH /opt/miniconda/bin:$PATH
 WORKDIR /work/deps
 
 # Dependencies: Ubuntu-core
 RUN apt-get update && \
   apt-get install -y --no-install-recommends sudo \
-    libopenblas-base \
     wget \
     zip \
     ca-certificates \
     build-essential curl libcurl4-openssl-dev libssl-dev python3-dev git
 
 # Dependencies: conda
+ENV PATH /opt/miniconda/bin:${PATH}
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
     /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
     rm ~/miniconda.sh && \
@@ -36,7 +33,7 @@ WORKDIR /code
 RUN wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz
 RUN tar zxf cmake-3.14.3-Linux-x86_64.tar.gz
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
+ENV PATH /code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
 
 # Prepare onnxruntime repository
 RUN git clone --recursive http://github.com/Microsoft/onnxruntime -b master --single-branch

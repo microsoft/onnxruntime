@@ -6,19 +6,17 @@
 
 # nVidia TensorRT Base Image
 FROM nvcr.io/nvidia/tensorrt:19.03-py3
-
-# Add conda to PATH
 WORKDIR /work/deps
 
 # Dependencies: Ubuntu-core
 RUN apt-get update && \
   apt-get install -y --no-install-recommends sudo \
-    libopenblas-base \
     wget \
     zip \
     build-essential curl libcurl4-openssl-dev libssl-dev python3-dev git
 
 # Dependencies: conda
+ENV PATH /opt/miniconda/bin:${PATH}
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh && \
     /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
     rm ~/miniconda.sh && \
