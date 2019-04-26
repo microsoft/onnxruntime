@@ -1,10 +1,13 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # nVidia TensorRT Base Image
 FROM nvcr.io/nvidia/tensorrt:19.03-py3
 
 # Add conda to PATH
-ENV PATH /opt/miniconda/bin:$PATH
 WORKDIR /work/deps
 
 # Dependencies: Ubuntu-core
@@ -26,16 +29,12 @@ RUN conda install -y python=3.6 numpy && \
     rm -rf /opt/miniconda/pkgs && \
     find / -type d -name __pycache__ -prune -exec rm -rf {} \;
 
-# Install cmake
+# Build the latest cmake
 WORKDIR /code
-ADD https://cmake.org/files/v3.14/cmake-3.14.3-Linux-x86_64.sh /cmake-3.14.3-Linux-x86_64.sh
-RUN mkdir /opt/cmake
-RUN sh /cmake-3.14.3-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
-RUN rm /usr/local/bin/cmake
-RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
-RUN cmake --version
+RUN wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz
+RUN tar zxf cmake-3.14.3-Linux-x86_64.tar.gz
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 # Prepare onnxruntime repository
 RUN git clone --recursive https://github.com/Microsoft/onnxruntime -b master --single-branch
@@ -52,7 +51,7 @@ RUN cp /code/onnxruntime/build/Linux/Release/dist/*.whl /code
 WORKDIR /code
 
 # Remove unecessary files to reduce image size
-RUN rm -rf onnxruntime opt/cmake/*
+RUN rm -rf onnxruntime cmake-3.14.3.tar.gz cmake-3.14.3
 
 # Install the onnxruntime-gpu-tensorrt wheel
 RUN pip install *.whl

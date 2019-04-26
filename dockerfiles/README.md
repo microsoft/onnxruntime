@@ -1,7 +1,7 @@
 # Docker containers for ONNX Runtime
 
 - [Arm 32v7](Dockerfile.arm32v7)
-- [Base Image](Dockerfile.build-source)
+- [Build from source](Dockerfile.source)
 - [CUDA + CUDNN](Dockerfile.cuda)
 - [nGraph](Dockerfile.ngraph)
 - [TensorRT](Dockerfile.tensorrt)
