@@ -28,6 +28,7 @@ then
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
     ln -s  $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME  $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib
 elif [[ $LIB_NAME == *.so.* ]]
+then     
     ln -s $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.so
 fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
