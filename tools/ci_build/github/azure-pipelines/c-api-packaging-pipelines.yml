@@ -65,7 +65,7 @@ jobs:
       parameters:
           buildConfig: 'RelWithDebInfo'
           artifactName: 'onnxruntime-osx-x64-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.dylib.$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.$(OnnxRuntimeVersion).dylib'
           commitId: $(OnnxRuntimeGitCommitHash)
           
     - template: templates/clean-agent-build-directory-step.yml
