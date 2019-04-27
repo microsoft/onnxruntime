@@ -4,8 +4,10 @@
 set(SERVER_APP_NAME "onnxruntime_server")
 
 # Generate .h and .cc files from protobuf file
-add_library(server_proto
-  ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto)
+add_library(server_proto ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto)
+if(WIN32)
+  target_compile_options(server_proto PRIVATE "/wd4125" "/wd4456")
+endif()
 target_include_directories(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 target_compile_definitions(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/server/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf TARGET server_proto)
