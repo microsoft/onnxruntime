@@ -50,9 +50,6 @@ struct PythonWrapper {
         init = (INIT*)dlsym(handle, "Initialize");
         ORT_ENFORCE(nullptr != init, dlerror());
 
-//        pyFunc = (PYFUNC*)dlsym(handle, "CallPythonFunction");
-//        ORT_ENFORCE(nullptr != pyFunc, dlerror());
-
         newInst = (NEWINST*)dlsym(handle, "NewInstance");
         ORT_ENFORCE(nullptr != newInst, dlerror());
 
@@ -78,7 +75,6 @@ struct PythonWrapper {
 
     void*       handle  = nullptr;
     INIT*       init    = nullptr;
-//    PYFUNC*     pyFunc  = nullptr;
     NEWINST*    newInst = nullptr;
     INVOKE*     invoke  = nullptr;
     RELEASE*    release = nullptr;
@@ -122,7 +118,6 @@ struct PyCustomKernel {
             input_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
-//       ORT_ENFORCE (GetPyWrapper().pyFunc(module_.c_str(), shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim), GetPyWrapper().lastErr());
         ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr());
         ORT_ENFORCE (output.size() > index, "output count is less then ort output index");
         ort_.SetDimensions(info, (const int64_t*)output[index], output_dim[index][0]);
@@ -144,7 +139,6 @@ struct PyCustomKernel {
             input_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
-//      ORT_ENFORCE (GetPyWrapper().pyFunc(module_.c_str(), compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim), GetPyWrapper().lastErr());
         ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr());
         for (size_t i = 0; i < output.size(); ++i) {
             OrtValue* ort_output  = ort_.KernelContext_GetOutput(context, i, output_dim[i].data(), output_dim[i].size());

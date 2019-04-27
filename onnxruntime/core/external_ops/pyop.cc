@@ -104,43 +104,6 @@ bool ExtractOutput (PyObject*                pyObj,
     return true;
 }
 
-/*
-extern "C" void* NewInstance (const char* module, const char* class_name, int argc, ...)
-{
-    vector<PyObject*> allocated;
-    Releaser releaser = [&allocated] () { for (auto obj: allocated) Py_XDECREF(obj); };
-  
-    auto pyModule = PyImport_ImportModule(module);
-    if (nullptr == pyModule) {
-        return nullptr;
-    }
-
-    allocated.push_back(pyModule);
-    auto pyClass  = PyObject_GetAttrString(pyModule, class_name);
-    if (nullptr == pyClass) {
-        return nullptr;
-    }
-
-    allocated.push_back(pyClass);
-
-    va_list vl;
-    va_start(vl, argc);
-    auto pyArgs = PyTuple_New(argc);
-    for (int i = 0; i < argc; ++i) {
-        PyTuple_SetItem(pyArgs, i, PyUnicode_FromString(va_arg(vl, const char*)));
-    }
-    va_end(vl);
-
-    allocated.push_back(pyArgs);
-    auto instance = PyObject_Call(pyClass, pyArgs, nullptr);
-    if (nullptr == instance) {
-        return nullptr;
-    }
-
-    return instance;
-}
-*/
-
 extern "C" void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
 {
     Locker locker;
@@ -161,21 +124,6 @@ extern "C" void* NewInstance (const char* module, const char* class_name, const 
     }
 
     allocated.push_back(pyClass);
-
-/*
-    auto pyArgs = PyTuple_New(args.size());
-    auto pyNams = PyTuple_New(args.size());
-    int index = 0;
-    for (const auto& iter: args) {
-        PyTuple_SetItem(pyNams, index, PyUnicode_FromString(iter.first.c_str()));
-        PyTuple_SetItem(pyArgs, index, PyUnicode_FromString(iter.second.c_str()));
-        ++index;
-    }
-
-    allocated.push_back(pyArgs);
-    allocated.push_back(pyNams);
-    auto instance = PyObject_Call(pyClass, pyArgs, nullptr);
-*/
     auto empty_args = PyTuple_New(0);
     allocated.push_back(empty_args);
     auto named_args = PyDict_New();
@@ -187,7 +135,6 @@ extern "C" void* NewInstance (const char* module, const char* class_name, const 
     auto instance = PyObject_Call(pyClass, empty_args, named_args);
     if (nullptr == instance) {
         cout << "3" << endl;
-        // PyErr_Print();
         return nullptr;
     }
 
@@ -236,6 +183,11 @@ extern "C" bool InvokePythonFunc (void*                            raw_inst,
 
     allocated.push_back(pyArgs);
     auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+    if (nullptr == pyResult) {
+        logging_func("InvokePythonFunc: no result");
+        return false;
+    }
+
     allocated.push_back(pyResult);
 
     if (PyArray_Check(pyResult)) {
@@ -253,59 +205,4 @@ extern "C" bool InvokePythonFunc (void*                            raw_inst,
     }
     return true;
 }
-/*
-extern "C"  bool CallPythonFunction (const char*                    module,
-                                     const char*                    function,
-                                     const vector<const void*>&     input,
-                                     const vector<int32_t>&         input_type,
-                                     const vector<vector<int64_t>>& input_dim,
-                                     vector<const void*>&           output,
-                                     vector<int32_t>&               output_size,
-                                     vector<vector<int64_t>>&       output_dim)
-{
-    vector<PyObject*> allocated;
-    Releaser releaser = [&allocated] () { for (auto obj: allocated) Py_XDECREF(obj); };
-  
-    auto pyModule = PyImport_ImportModule(module);
-    if (nullptr == pyModule) {
-        return false;
-    }
-
-    allocated.push_back(pyModule);
-
-    auto pyFunc = PyObject_GetAttrString(pyModule, function);
-    if (nullptr == pyFunc) {
-        return false;
-    }
-
-    allocated.push_back(pyFunc);
-
-    if (!PyCallable_Check(pyFunc)) {
-        return false;
-    }
-
-    auto pyArgs = PyTuple_New(input.size());
-    for (int32_t i = 0; i < input.size(); ++i) {
-        PyTuple_SetItem(pyArgs, i, MakePyObj(input[i], input_type[i], input_dim[i]));
-    }
-
-    allocated.push_back(pyArgs);
-
-    auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
-    allocated.push_back(pyResult);
-
-    if (PyArray_Check(pyResult)) {
-        ExtractOutput(pyResult, output, output_size, output_dim);
-    } else if (PyTuple_Check(pyResult)) {
-        for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
-            if (!ExtractOutput(PyTuple_GetItem(pyResult, i), output, output_size, output_dim)) {
-                return false;
-            }
-        }
-    } else {
-        return false;
-    }
-    return true;
-}
-*/
 } //namespace PythonFunctionWrapper
