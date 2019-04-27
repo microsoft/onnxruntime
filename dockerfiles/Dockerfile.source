@@ -48,7 +48,7 @@ RUN cp /code/onnxruntime/build/Linux/Release/dist/*.whl /code
 WORKDIR /code
 
 # Remove unecessary files to reduce image size
-RUN rm -rf onnxruntime cmake-3.14.3.tar.gz cmake-3.14.3
+RUN rm -rf onnxruntime cmake-3.14.3-Linux-x86_64.tar.gz cmake-3.14.3-Linux-x86_64
 
 # Install the onnxruntime cpu wheel
 RUN pip install *.whl
