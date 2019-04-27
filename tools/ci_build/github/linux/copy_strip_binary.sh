@@ -22,10 +22,13 @@ mkdir $BINARY_DIR/$ARTIFACT_NAME/include
 echo "Directories created"
 cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib
 echo "Copy debug symbols in a separate file and strip the original binary."
-if [[ $LIB_NAME == *.dylib ]]
+if [[ $LIB_NAME == *.dylib.* ]]
 then
     dsymutil $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dSYM
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
+    ln -s  $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME  $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib
+elif [[ $LIB_NAME == *.so.* ]]
+    ln -s $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.so
 fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 # copy the README, licence and TPN
@@ -34,6 +37,8 @@ cp $SOURCE_DIR/docs/C_API.md $BINARY_DIR/$ARTIFACT_NAME/C_API.md
 cp $SOURCE_DIR/LICENSE $BINARY_DIR/$ARTIFACT_NAME/LICENSE
 cp $SOURCE_DIR/ThirdPartyNotices.txt $BINARY_DIR/$ARTIFACT_NAME/ThirdPartyNotices.txt
 cp $SOURCE_DIR/VERSION_NUMBER $BINARY_DIR/$ARTIFACT_NAME/VERSION_NUMBER
+
+
 echo $COMMIT_ID > $BINARY_DIR/$ARTIFACT_NAME/GIT_COMMIT_ID
 
 EXIT_CODE=$?
