@@ -26,7 +26,7 @@
         Release Def:
 	Branch: $(BUILD_SOURCEBRANCH)
 	Commit: $(BUILD_SOURCEVERSION)
-	Build: $(BUILD_BUILDURI)
+	Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
     </PackageReleaseNotes>
 
     <!-- sourcelink flags -->
