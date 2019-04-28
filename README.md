@@ -63,6 +63,12 @@ system.
   * For Linux, the system must have the libgomp.so.1 which can be installed using ```apt-get install libgomp1```.
 * The official GPU builds require the CUDA 9.1 and cuDNN 7.1 runtime libraries being installed in the system.
 * Python binaries are compatible with Python 3.5-3.7.
+* Certain operators makes use of system locales. At the very least you will need to install English language package and configure en_US.UTF-8 locale.
+  * For Ubuntu install language-pack-en package
+  * Run the following commands:
+    * locale-gen en_US.UTF-8
+    * update-locale LANG=en_US.UTF-8
+  * Follow similar procedure to configure other locales on other platforms.
 
 ## APIs and Official Builds
 | API Documentation | CPU package | GPU package |
