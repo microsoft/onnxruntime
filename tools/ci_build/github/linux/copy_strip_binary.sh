@@ -26,10 +26,10 @@ if [[ $LIB_NAME == *.dylib.* ]]
 then
     dsymutil $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dSYM
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
-    ln -s  $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME  $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib
+    ln -s $LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib
 elif [[ $LIB_NAME == *.so.* ]]
-then     
-    ln -s $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.so
+then
+    ln -s $LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.so
 fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 # copy the README, licence and TPN
