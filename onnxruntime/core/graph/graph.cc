@@ -940,8 +940,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
             // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
             if (!loaded_from_model_file) {
-                graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
-                                     graph_outputs_.end());
+              graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
+                                   graph_outputs_.end());
             }
           }
         }
@@ -2302,6 +2302,13 @@ Status Graph::SetGraphInputsOutputs() {
 
     // if something is coming from outer scope, consider it already added
     std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
+    if (!graph_inputs_manually_set) {
+      graph_inputs_including_initializers_.clear();
+    }
+
+    if (!graph_outputs_manually_set) {
+      graph_outputs_.clear();
+    }
 
     // Collect all nodes' outputs
     for (const auto& node : Nodes()) {
