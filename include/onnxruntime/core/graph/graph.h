@@ -727,30 +727,20 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
-  /** When programmatically constructing a Graph, explicitly set the order to use for graph inputs when the graph is
-  resolved.
-  This will determine the graph input order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
-  @param inputs NodeArgs that represent graph inputs which need to be explicitly ordered.
-  Any graph inputs not in this list will be appended to the ordered graph input list, in the order that they were first
-  used by Nodes (i.e. the order of Node creation implicitly determines the ordering).
+  /** When programmatically constructing a Graph, explicitly set graph inputs.
+  @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
   void SetInputs(const std::vector<const NodeArg*> inputs) {
     graph_inputs_including_initializers_ = inputs;
     graph_inputs_manually_set = true;
-    //graph_input_order_ = inputs;
   }
 
-  /** When programmatically constructing a Graph, explicitly set the order to use for graph outputs when the graph is
-  resolved.
-  This will determine the graph output order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
-  @param outputs NodeArgs that represent graph outputs which need to be explicitly ordered.
-  Any graph outputs not in this list will be appended to the ordered graph output list, in the order that they were first
-  produced by Nodes (i.e. the order of Node creation implicitly determines the ordering).
+  /** When programmatically constructing a Graph, explicitly set graph outputs.
+  @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
   void SetOutputs(const std::vector<const NodeArg*> outputs) {
     graph_outputs_ = outputs;
     graph_outputs_manually_set = true;
-    //graph_output_order_ = outputs;
   }
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
