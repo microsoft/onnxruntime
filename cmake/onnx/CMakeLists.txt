@@ -11,12 +11,12 @@ endif()
 # Cpp Tests were added and they require googletest
 # since we have our own copy, try using that
 set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
-file(GLOB_RECURSE onnx_src
+file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
     "${ONNX_SOURCE_ROOT}/onnx/*.h"
     "${ONNX_SOURCE_ROOT}/onnx/*.cc"
 )
 
-file(GLOB_RECURSE onnx_exclude_src
+file(GLOB_RECURSE onnx_exclude_src CONFIGURE_DEPENDS
     "${ONNX_SOURCE_ROOT}/onnx/py_utils.h"
     "${ONNX_SOURCE_ROOT}/onnx/proto_utils.h"
     "${ONNX_SOURCE_ROOT}/onnx/backend/test/cpp/*"

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB_RECURSE onnxruntime_util_srcs
+file(GLOB_RECURSE onnxruntime_util_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/util/*.h"
     "${ONNXRUNTIME_ROOT}/core/util/*.cc"
 )
