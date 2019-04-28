@@ -43,10 +43,10 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
             var cmdOptions = Parser.Default.ParseArguments<CommandOptions>(args);
             cmdOptions.WithParsed(
                 options => {
-                    Main(options);
+                    Run(options);
                 });
         }
-        public static void Main(CommandOptions options)
+        public static void Run(CommandOptions options)
         {
             string modelPath = options.ModelFile;
             string inputPath = options.InputFile;
