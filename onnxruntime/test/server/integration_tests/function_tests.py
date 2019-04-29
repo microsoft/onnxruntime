@@ -8,7 +8,6 @@ import os
 import requests
 import json
 import numpy
-import urllib.request
 
 import test_util
 import onnx_ml_pb2
@@ -28,10 +27,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
-        if not os.path.isfile(onnx_model):
-            test_util.test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx ...')
-            urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', onnx_model)
-
+        test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
         cls.server_app_proc = subprocess.Popen(cmd)
@@ -209,10 +205,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
-        if not os.path.isfile(onnx_model):
-            test_util.test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx ...')
-            urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', onnx_model)
-
+        test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
         cls.server_app_proc = subprocess.Popen(cmd)
@@ -342,10 +335,7 @@ class HttpEndpointTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
-        if not os.path.isfile(onnx_model):
-            test_util.test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx ...')
-            urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', onnx_model)
-
+        test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
         cls.server_app_proc = subprocess.Popen(cmd)

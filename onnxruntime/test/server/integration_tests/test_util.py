@@ -13,6 +13,7 @@ import datetime
 import socket
 import errno
 import sys
+import urllib.request
 
 import predict_pb2
 import onnx_ml_pb2
@@ -37,6 +38,14 @@ def is_process_killed(pid):
             return False
         else:
             return True
+
+def prepare_mnist_model(target_path):
+    # TODO: This need to be replaced by test data on build machine after merged to upstream master. 
+    if not os.path.isfile(target_path):
+        test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx to {0}'.format(target_path))
+        urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', target_path)
+    else:
+        test_log('Found mnist model at {0}'.format(target_path))
 
 
 def decode_base64_string(s, count_and_type):
