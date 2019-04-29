@@ -341,10 +341,10 @@ std::pair<COMPARE_RESULT, std::string> CompareMLValue(const MLValue& o, const ML
                            per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
 
-std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* o) {
+std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const Ort::Value& o) {
   if (!v.has_type()) return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   if (v.type().has_tensor_type()) {
-    if (!OrtIsTensor(o)) {
+    if (!o.IsTensor()) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
 
@@ -353,13 +353,8 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
     //	return COMPARE_RESULT::TYPE_MISMATCH;
     //}
-    std::unique_ptr<OrtTensorTypeAndShapeInfo> info;
-    {
-      OrtTensorTypeAndShapeInfo* t1 = nullptr;
-      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(o, &t1));
-      info.reset(t1);
-    }
-    ONNXTensorElementDataType real_type = OrtGetTensorElementType(info.get());
+    auto info = o.GetTensorTypeAndShapeInfo();
+    ONNXTensorElementDataType real_type = info.GetElementType();
     ONNXTensorElementDataType expected_type = onnxruntime::utils::CApiElementTypeFromProtoType(t.elem_type());
     if (real_type != expected_type) {
       std::ostringstream oss;
@@ -368,7 +363,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
 
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, oss.str());
     }
-    std::vector<int64_t> shape = GetTensorShape(info.get());
+    std::vector<int64_t> shape = info.GetShape();
     const auto& tensor_shape_proto = t.shape();
     if (!AreShapesEqual(shape, tensor_shape_proto)) {
       std::ostringstream oss;
@@ -386,7 +381,7 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     //Cannot do this check for tensor type.
     //For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
     auto p = DataTypeImpl::TypeFromProto(v.type());
-    if (((MLValue*)o)->Type() != p) {
+    if (((MLValue*)(const OrtValue*)o)->Type() != p) {
       return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
     }
   }

@@ -67,9 +67,9 @@ int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
 }  // namespace
 
 #ifdef _WIN32
-int real_main(int argc, wchar_t* argv[], OrtEnv** p_env) {
+int real_main(int argc, wchar_t* argv[], Ort::Env& env) {
 #else
-int real_main(int argc, char* argv[], OrtEnv** p_env) {
+int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
   // if this var is not empty, only run the tests with name in this list
   std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
@@ -164,16 +164,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     usage();
     return -1;
   }
-  OrtEnv* env;
-  {
-    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &env);
-    if (ost != nullptr) {
-      fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      OrtReleaseStatus(ost);
-      return -1;
-    }
-    *p_env = env;
+
+  try {
+    env = Ort::Env{logging_level, "Default"};
+  } catch (std::exception& ex) {
+    fprintf(stderr, "Error creating environment: %s \n", ex.what());
+    return -1;
   }
+
   std::vector<std::basic_string<PATH_CHAR_TYPE> > data_dirs;
   TestResultStat stat;
 
@@ -184,7 +182,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
-    SessionOptionsWrapper sf(env);
+    Ort::SessionOptions sf;
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -236,11 +234,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
-      "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
 
-#if (defined (_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests] (ITestCase* l) {
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests](ITestCase* l) {
       std::unique_ptr<ITestCase> test_case_ptr(l);
       if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
         return;
@@ -253,20 +251,20 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests] (ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests](ITestCase* l) { tests.push_back(l); });
     if (enable_cuda) {
       for (auto it = tests.begin(); it != tests.end();) {
         auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
         if (iter != cuda_flaky_tests.end()) {
           delete *it;
           it = tests.erase(it);
-        }
-        else {
+        } else {
           ++it;
         }
       }
     }
-    TestEnv args(tests, stat, sf);
+
+    TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
                          GetDefaultThreadPool(Env::Default()));
     if (!st.IsOK()) {
@@ -371,7 +369,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
 #endif
   // clang-format on
 
-#if defined (_WIN32) && !defined(_WIN64)
+#if defined(_WIN32) && !defined(_WIN64)
   broken_tests["vgg19"] = "failed: bad allocation";
 #endif
 
@@ -431,17 +429,16 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  OrtEnv* env = nullptr;
+  Ort::Env env;
   int retval = -1;
   try {
-    retval = real_main(argc, argv, &env);
+    retval = real_main(argc, argv, env);
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
-  if (env) {
-    OrtReleaseEnv(env);
-  } else {
+  // Release the protobuf library if we failed to create an env (the env will release it automatically on destruction)
+  if (!env) {
     ::google::protobuf::ShutdownProtobufLibrary();
   }
   return retval;
