@@ -42,8 +42,8 @@ public:
   explicit GatherND(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 private:
-  Status GatherNumber(const Prepare& p, const onnxruntime::concurrency::ThreadPool* ttp) const;
-  Status GatherString(const Prepare& p, const onnxruntime::concurrency::ThreadPool* ttp) const;
+  Status GatherNumber(const Prepare& p) const;
+  Status GatherString(const Prepare& p) const;
 };
 
 } // namespace contrib
