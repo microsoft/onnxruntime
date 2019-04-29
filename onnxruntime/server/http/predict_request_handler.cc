@@ -35,7 +35,7 @@ void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
              /* in, out */ HttpContext& context,
-             std::shared_ptr<ServerEnvironment> env) {
+             const std::shared_ptr<ServerEnvironment>& env) {
   auto logger = env->GetLogger(context.request_id);
   LOGS(*logger, INFO) << "Model Name: " << name << ", Version: " << version << ", Action: " << action;
 
@@ -112,7 +112,7 @@ static bool ParseRequestPayload(const HttpContext& context, SupportedContentType
       break;
     }
     case SupportedContentType::PbByteArray: {
-      bool parse_succeeded = predictRequest.ParseFromArray(body.data(), body.size());
+      bool parse_succeeded = predictRequest.ParseFromArray(body.data(), static_cast<int>(body.size()));
       if (!parse_succeeded) {
         error_code = http::status::bad_request;
         error_message = "Invalid payload.";

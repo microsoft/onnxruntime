@@ -12,6 +12,7 @@ import json
 import datetime
 import socket
 import errno
+import sys
 
 import predict_pb2
 import onnx_ml_pb2
@@ -22,12 +23,20 @@ def test_log(str):
 
 
 def is_process_killed(pid):
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
+    if sys.platform.startswith("win"):
+        process_name = 'onnxruntime_host.exe'
+        call = 'TASKLIST', '/FI', 'imagename eq {0}'.format(process_name)
+        output = subprocess.check_output(call).decode('utf-8')
+        print(output)
+        last_line = output.strip().split('\r\n')[-1]
+        return not last_line.lower().startswith(process_name)
     else:
-        return True
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        else:
+            return True
 
 
 def decode_base64_string(s, count_and_type):

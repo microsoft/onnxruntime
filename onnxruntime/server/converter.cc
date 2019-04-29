@@ -85,7 +85,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
-        for (int i = 0, count = tensor.Shape().Size(); i < count; ++i) {
+        for (size_t i = 0, count = tensor.Shape().Size(); i < count; ++i) {
           tensor_proto.add_float_data(data[i]);
         }
       }
@@ -96,7 +96,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
-        for (int i = 0, count = tensor.Shape().Size(); i < count; ++i) {
+        for (size_t i = 0, count = tensor.Shape().Size(); i < count; ++i) {
           tensor_proto.add_int32_data(data[i]);
         }
       }
@@ -108,7 +108,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -120,7 +120,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -132,7 +132,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -144,7 +144,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -156,7 +156,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -168,7 +168,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -188,7 +188,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(raw_data.data(), raw_data.size() * sizeof(uint16_t));
       } else {
         auto i32data = reinterpret_cast<const int32_t*>(raw_data.data());
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(int32_t)); i < count; ++i) {
           tensor_proto.add_int32_data(i32data[i]);
         }
       }
@@ -197,7 +197,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
     case onnx::TensorProto_DataType_STRING: {  // Target: string_data
       // string could not be written into "raw_data"
       const auto* data = tensor.Data<std::string>();
-      for (int i = 0, count = tensor.Shape().Size(); i < count; ++i) {
+      for (size_t i = 0, count = tensor.Shape().Size(); i < count; ++i) {
         tensor_proto.add_string_data(data[i]);
       }
       break;
@@ -207,7 +207,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
-        for (int x = 0, loop_length = tensor.Shape().Size(); x < loop_length; ++x) {
+        for (size_t x = 0, loop_length = tensor.Shape().Size(); x < loop_length; ++x) {
           tensor_proto.add_int64_data(data[x]);
         }
       }
@@ -219,7 +219,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
         auto u64data = reinterpret_cast<const uint64_t*>(data);
-        for (int i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(uint64_t)); i < count; ++i) {
+        for (size_t i = 0, count = 1 + ((tensor.Size() - 1) / sizeof(uint64_t)); i < count; ++i) {
           tensor_proto.add_uint64_data(u64data[i]);
         }
       }
@@ -230,7 +230,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
-        for (int x = 0, loop_length = tensor.Shape().Size(); x < loop_length; ++x) {
+        for (size_t x = 0, loop_length = tensor.Shape().Size(); x < loop_length; ++x) {
           tensor_proto.add_uint64_data(data[x]);
         }
       }
@@ -241,7 +241,7 @@ common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool u
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, tensor.Size());
       } else {
-        for (int x = 0, loop_length = tensor.Shape().Size(); x < loop_length; ++x) {
+        for (size_t x = 0, loop_length = tensor.Shape().Size(); x < loop_length; ++x) {
           tensor_proto.add_double_data(data[x]);
         }
       }
