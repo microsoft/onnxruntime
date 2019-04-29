@@ -30,10 +30,6 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const float* X_data = X->template Data<float>();
   float* Y_data = Y->template MutableData<float>();
 
-  // Get access to the internal threadpool
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
   // The main loop
   int64_t channels = x_shape[1];
   int64_t height = x_shape[2];
@@ -49,7 +45,10 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
 
-      std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
 
@@ -68,8 +67,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
           }
           y_d[ph] = Yh;
         }
-      };
-      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      }
 
       break;
     }
@@ -79,7 +77,10 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
 
-      std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
 
@@ -107,8 +108,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
             y_d[pool_index] = Yh;
           }
         }
-      };
-      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      }
 
       break;
     }
@@ -117,7 +117,10 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
 
-      std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
 
@@ -154,8 +157,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
             }
           }
         }
-      };
-      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      }
 
       break;
     }
@@ -224,7 +226,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
     need_dilation |= n > 1;
 
   if (OpKernel::Node().OutputDefs().size() == 1 && !need_dilation) {
-		return PoolBase::Compute(context, MlasMaximumPooling);
+    return PoolBase::Compute(context, MlasMaximumPooling);
   }
 
   const Tensor* X = context->Input<Tensor>(0);
@@ -243,10 +245,6 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   float* Y_data = Y->template MutableData<float>();
   int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
 
-  // Get access to the internal threadpool
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-  auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
   // The main loop
   int64_t channels = x_shape[1];
   int64_t height = x_shape[2];
@@ -263,7 +261,10 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       const int64_t total_channels = x_shape[0] * channels;
       const int64_t dilation_h = dilations_[0];
 
-      std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
@@ -282,8 +283,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
           y_d[ph] = Yh;
           if (i_d != nullptr) i_d[ph] = c * x_step + h_index;
         }
-      };
-      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      }
 
       break;
     }
@@ -295,7 +295,10 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       const int64_t dilation_h = dilations_[0];
       const int64_t dilation_w = dilations_[1];
 
-      std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
@@ -328,8 +331,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
                                                     : c * x_step + h_index + w_index * height;
           }
         }
-      };
-      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      }
 
       break;
     }
@@ -341,7 +343,10 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       const int64_t dilation_w = dilations_[1];
       const int64_t dilation_d = dilations_[2];
 
-      std::function<void(int32_t)> work_object = [&](int32_t c) {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t c = 0; c < total_channels; ++c) {
         const float* x_d = X_data + c * x_step;
         float* y_d = Y_data + c * y_step;
         int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
@@ -384,8 +389,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
             }
           }
         }
-      };
-      const_cast<concurrency::ThreadPool*>(thread_pool)->ParallelFor((int32_t)total_channels, work_object);
+      }
 
       break;
     }
