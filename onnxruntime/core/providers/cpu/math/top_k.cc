@@ -57,6 +57,7 @@ struct ValueCmp {
 
 // Core TopK implementation
 Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, const unsigned k) {
+
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
   auto axis_parsed = HandleNegativeAxis(axis, in_dims.size());
@@ -65,6 +66,14 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
     ostringstream err_msg;
     err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
     return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
+  }
+
+  if (k == 0) {
+    vector<int64_t> out_dims = in_dims;
+    out_dims[axis_parsed] = 0;
+    p_op_kernel_context->Output(0, out_dims);
+    p_op_kernel_context->Output(1, out_dims);
+    return Status::OK();
   }
 
   const int64_t rows = SizeToDim(axis_parsed, in_dims);
@@ -166,9 +175,9 @@ Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
                                                   "the tensor to be processed and a tensor containing k value");
   const vector<int64_t>& y_shape = Y->Shape().GetDims();
   if (y_shape.size() != 1 || y_shape[0] != 1) return Status(common::ONNXRUNTIME, common::FAIL, "k tensor should be a 1D tensor of size 1");
-  unsigned parsed_input_k = gsl::narrow_cast<unsigned>(Y->template Data<int64_t>()[0]);
-  if (parsed_input_k <= 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k should be greater than 0");
-  return TopKImpl(p_op_kernel_context, X, axis_, parsed_input_k);
+  auto parsed_input_k = Y->template Data<int64_t>()[0];
+  if (parsed_input_k < 0) return Status(common::ONNXRUNTIME, common::FAIL, "value of k must not be negative");
+  return TopKImpl(p_op_kernel_context, X, axis_, gsl::narrow_cast<unsigned>(parsed_input_k));
 }
 
 // Register necessary kernels

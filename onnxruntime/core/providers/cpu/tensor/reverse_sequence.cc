@@ -23,20 +23,17 @@
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
-                        kMSDomain,
-                        1,
+                        kOnnxDomain,
+                        10,
                         kCpuExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                            .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
                         ReverseSequenceOp);
 
 template <typename T>
 static void ReverseSequenceImpl(const Tensor& X, Tensor& Y,
-                                gsl::span<const int> sequence_lengths,
+                                gsl::span<const int64_t> sequence_lengths,
                                 const int64_t max_seq_len,
                                 const int64_t batch_size,
                                 const int64_t input_size,
@@ -63,7 +60,7 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
 
   auto& Y = *context->Output(0, dims);
 
-  DispatchOnTensorType(data_type, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int>(),
+  DispatchOnTensorType(data_type, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(),
                        max_seq_len, batch_size, input_size, time_major_);
 
   return status;
@@ -110,7 +107,7 @@ static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
 template <typename T>
 static void ReverseSequenceImpl(const Tensor& X,
                                 Tensor& Y,
-                                gsl::span<const int> sequence_lengths,
+                                gsl::span<const int64_t> sequence_lengths,
                                 const int64_t max_seq_len,
                                 const int64_t batch_size,
                                 const int64_t input_size,
@@ -123,7 +120,7 @@ static void ReverseSequenceImpl(const Tensor& X,
   auto reversed_output_offset = time_major ? TimeMajorOutputOffset : BatchMajorOutputOffset;
 
   for (int i = 0; i < batch_size; i++) {
-    int seq_len = sequence_lengths[i];
+    int64_t seq_len = sequence_lengths[i];
 
     if (seq_len == 0)
       continue;
@@ -132,7 +129,7 @@ static void ReverseSequenceImpl(const Tensor& X,
 // Parallel execute the loop.
 #pragma omp parallel for
 #endif
-    for (int j = 0; j < seq_len; j++) {
+    for (int64_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
       gsl::span<T> dest = inputs_reverse.subspan(
           reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
@@ -145,7 +142,7 @@ static void ReverseSequenceImpl(const Tensor& X,
 // Parallel execute the loop.
 #pragma omp parallel for
 #endif
-    for (int j = seq_len; j < max_seq_len; j++) {
+    for (int64_t j = seq_len; j < max_seq_len; j++) {
       const auto offset = input_offset(max_seq_len, batch_size, input_size, i, j);
       gsl::span<const T> src = inputs.subspan(offset, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(offset, input_size);
@@ -156,5 +153,4 @@ static void ReverseSequenceImpl(const Tensor& X,
   }
 }
 
-}  // namespace contrib
 }  // namespace onnxruntime
