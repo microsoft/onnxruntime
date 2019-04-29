@@ -22,7 +22,7 @@ mkdir $BINARY_DIR/$ARTIFACT_NAME/include
 echo "Directories created"
 cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib
 echo "Copy debug symbols in a separate file and strip the original binary."
-if [[ $LIB_NAME == *.dylib.* ]]
+if [[ $LIB_NAME == *.dylib ]]
 then
     dsymutil $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dSYM
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
