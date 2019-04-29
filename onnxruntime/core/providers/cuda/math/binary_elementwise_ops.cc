@@ -245,7 +245,41 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+//Greater op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  const onnxruntime::Node& node = OpKernel::Node();
+  const std::string& name = node.Name();
+
+  const Tensor* input0 = context->Input<Tensor>(0);
+  const Tensor* input1 = context->Input<Tensor>(1);
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(name, input0->Shape(), input1->Shape(), output_shape));
+  Tensor* output_tensor = context->Output(0, output_shape);
+
+  BinaryElementwisePreparation prepare(this);
+  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
+  Impl_Compare<CudaT>(
+      prepare.output_rank_or_simple_broadcast,
+      prepare.lhs_padded_strides.GpuPtr(),
+      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+      prepare.rhs_padded_strides.GpuPtr(),
+      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+      prepare.fdm_output_strides.GpuPtr(),
+      prepare.fdm_H,
+      prepare.fdm_C,
+      reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<bool>()),
+      prepare.output_tensor->Shape().Size());
+
+  return Status::OK();
+}
+
 BINARY_OP_REGISTER_UZILHFD(Sum, 8)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
+BINARY_OP_REGISTER_UZILHFD(Greater, 9)
+BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
+
 }  // namespace cuda
 }  // namespace onnxruntime
