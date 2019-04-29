@@ -39,7 +39,7 @@ ENV PATH /code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
 RUN git clone --recursive http://github.com/Microsoft/onnxruntime -b master --single-branch
 WORKDIR /code/onnxruntime
 
-# Start the TensorRT build
+# Start the source onnxruntime build
 RUN /bin/sh ./build.sh --config Release --build_wheel --update --build
 
 # Copy the ONNX Runtime wheel into the root directory
