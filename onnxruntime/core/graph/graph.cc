@@ -2298,7 +2298,8 @@ Status Graph::SetGraphInputsOutputs() {
     }
 
   } else {
-    std::unordered_map<std::string, const NodeArg*> output_name_to_node_arg;
+    std::unordered_map<std::string, size_t> output_name_to_node_arg_index;
+    std::vector<const NodeArg*> output_node_args_in_order;
 
     // if something is coming from outer scope, consider it already added
     std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
@@ -2314,13 +2315,14 @@ Status Graph::SetGraphInputsOutputs() {
     for (const auto& node : Nodes()) {
       for (const auto* output_def : node.OutputDefs()) {
         if (output_def->Exists()) {
-          output_name_to_node_arg.insert({output_def->Name(), output_def});
+          output_node_args_in_order.push_back(output_def);
+          output_name_to_node_arg_index.insert({output_def->Name(), output_node_args_in_order.size() - 1});
         }
       }
     }
 
     // Init graph output args with copy of all node output args.
-    auto graph_output_args = output_name_to_node_arg;
+    auto graph_output_args = output_name_to_node_arg_index;
     for (const auto& node : Nodes()) {
       // Go thru all node's inputs.
       for (const auto* input_arg : node.InputDefs()) {
@@ -2329,8 +2331,8 @@ Status Graph::SetGraphInputsOutputs() {
           continue;
         }
 
-        auto output_arg_iter = output_name_to_node_arg.find(input_arg->Name());
-        if (output_name_to_node_arg.end() == output_arg_iter) {
+        auto output_arg_iter = output_name_to_node_arg_index.find(input_arg->Name());
+        if (output_name_to_node_arg_index.end() == output_arg_iter) {
           // This input arg should be fed when running evaluation.
           // it should be a graph input.
           const std::string& name = input_arg->Name();
@@ -2338,6 +2340,18 @@ Status Graph::SetGraphInputsOutputs() {
             // This graph input has not been added into <graph_inputs_>.
             if (!graph_inputs_manually_set) {
               graph_inputs_including_initializers_.push_back(input_arg);
+            } else {
+              // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
+              auto& inputs = GetInputsIncludingInitializers();
+              auto iter = std::find(inputs.begin(), inputs.end(), input_arg);
+              if (inputs.end() == iter) {
+                // it's not in graph inputs.
+                auto initializers = GetAllInitializedTensors();
+                if (initializers.end() == initializers.find(input_arg->Name())) {
+                  // It's not in graph initializers.
+                  return Status(ONNXRUNTIME, FAIL, input_arg->Name() + " must be either specified in graph inputs or graph initailizers.");
+                }
+              }
             }
             if (name_to_initial_tensor_.find(name) == name_to_initial_tensor_.end()) {
               graph_inputs_excluding_initializers_.push_back(input_arg);
@@ -2355,9 +2369,35 @@ Status Graph::SetGraphInputsOutputs() {
     }
 
     if (!graph_outputs_manually_set) {
-      // Set graph outputs
-      for (auto& graph_output : graph_output_args) {
-        graph_outputs_.push_back(graph_output.second);
+      // Set graph outputs in order.
+      std::vector<size_t> graph_output_args_index;
+      for (auto output_arg : graph_output_args) {
+        graph_output_args_index.push_back(output_arg.second);
+      }
+      std::sort(graph_output_args_index.begin(), graph_output_args_index.end());
+      for (auto& output_arg_index : graph_output_args_index) {
+        graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
+      }
+    } else {
+      // Validation: a graph output must be specified in graph inputs, initializers or nodes' outputs.
+      auto& outputs = GetOutputs();
+      auto& graph_initializers = GetAllInitializedTensors();
+      auto& graph_inputs = GetInputsIncludingInitializers();
+      for (auto& output : outputs) {
+        auto graph_output_name = output->Name();
+        auto iter = output_name_to_node_arg_index.find(graph_output_name);
+        if (output_name_to_node_arg_index.end() == iter) {
+          // Graph output is not found as any node's output.
+          auto iter2 = graph_initializers.find(graph_output_name);
+          if (graph_initializers.end() == iter2) {
+            // Graph output is not found as any initializer.
+            auto iter3 = std::find(graph_inputs.begin(), graph_inputs.end(), output);
+            if (graph_inputs.end() == iter3) {
+              // Graph output is not found as any graph input.
+              return Status(ONNXRUNTIME, FAIL, "Graph output (" + graph_output_name + ") does not exist in the graph.");
+            }
+          }
+        }
       }
     }
   }

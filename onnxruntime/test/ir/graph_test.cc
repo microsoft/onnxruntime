@@ -472,7 +472,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
     split_outputs.push_back(arg);
     graph_outputs.push_back(arg);
   }
-
+  std::reverse(graph_outputs.begin(), graph_outputs.end());
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -495,7 +495,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   inputs[0] = &output_arg_c;
   graph.AddNode("d", "Split_Fake", "d", inputs, split_outputs);
 
-  auto validate_inputs_outputs = [&split_outputs](const Graph& graph) {
+  auto validate_inputs_outputs = [&graph_outputs](const Graph& graph) {
     auto inputs = graph.GetInputs();
     auto outputs = graph.GetOutputs();
 
@@ -506,7 +506,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 
     ASSERT_TRUE(outputs.size() == 10);
     for (int i = 0; i < 10; ++i) {
-      EXPECT_TRUE(split_outputs[i]->Name() == outputs[i]->Name());
+      EXPECT_TRUE(graph_outputs[i]->Name() == outputs[i]->Name());
     }
   };
   graph.SetInputs({&input_arg_a, &input_arg_b});
