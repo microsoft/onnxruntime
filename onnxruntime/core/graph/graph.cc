@@ -2378,27 +2378,6 @@ Status Graph::SetGraphInputsOutputs() {
       for (auto& output_arg_index : graph_output_args_index) {
         graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
       }
-    } else {
-      // Validation: a graph output must be specified in graph inputs, initializers or nodes' outputs.
-      auto& outputs = GetOutputs();
-      auto& graph_initializers = GetAllInitializedTensors();
-      auto& graph_inputs = GetInputsIncludingInitializers();
-      for (auto& output : outputs) {
-        auto graph_output_name = output->Name();
-        auto iter = output_name_to_node_arg_index.find(graph_output_name);
-        if (output_name_to_node_arg_index.end() == iter) {
-          // Graph output is not found as any node's output.
-          auto iter2 = graph_initializers.find(graph_output_name);
-          if (graph_initializers.end() == iter2) {
-            // Graph output is not found as any initializer.
-            auto iter3 = std::find(graph_inputs.begin(), graph_inputs.end(), output);
-            if (graph_inputs.end() == iter3) {
-              // Graph output is not found as any graph input.
-              return Status(ONNXRUNTIME, FAIL, "Graph output (" + graph_output_name + ") does not exist in the graph.");
-            }
-          }
-        }
-      }
     }
   }
 
@@ -2496,6 +2475,25 @@ Status Graph::InlineFunction(Node& node) {
   }
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
+}
+
+void Graph::SetInputs(const std::vector<const NodeArg*> inputs) {
+  if (GraphLoadedFromModelFile(graph_proto_)) {
+    // TODO: add this support.
+    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
+  }
+
+  graph_inputs_including_initializers_ = inputs;
+  graph_inputs_manually_set_ = true;
+}
+
+void Graph::SetOutputs(const std::vector<const NodeArg*> outputs) {
+  if (GraphLoadedFromModelFile(graph_proto_)) {
+    // TODO: add this support.
+    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
+  }
+  graph_outputs_ = outputs;
+  graph_outputs_manually_set_ = true;
 }
 
 void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {

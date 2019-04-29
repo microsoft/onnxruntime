@@ -730,18 +730,12 @@ class Graph {
   /** When programmatically constructing a Graph, explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetInputs(const std::vector<const NodeArg*> inputs) {
-    graph_inputs_including_initializers_ = inputs;
-    graph_inputs_manually_set_ = true;
-  }
+  void SetInputs(const std::vector<const NodeArg*> inputs);
 
   /** When programmatically constructing a Graph, explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetOutputs(const std::vector<const NodeArg*> outputs) {
-    graph_outputs_ = outputs;
-    graph_outputs_manually_set_ = true;
-  }
+  void SetOutputs(const std::vector<const NodeArg*> outputs);
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
