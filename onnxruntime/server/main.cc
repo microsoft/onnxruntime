@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  auto env = std::make_shared<server::ServerEnvironment>(config.logging_level);
+  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level);
   auto logger = env->GetAppLogger();
   LOGS(logger, VERBOSE) << "Logging manager initialized.";
   LOGS(logger, INFO) << "Model path: " << config.model_path;
@@ -45,14 +45,14 @@ int main(int argc, char* argv[]) {
   server::App app{};
 
   app.RegisterStartup(
-      [env](const auto& details) -> void {
+      [&env](const auto& details) -> void {
         auto logger = env->GetAppLogger();
         LOGS(logger, INFO) << "Listening at: "
                            << "http://" << details.address << ":" << details.port;
       });
 
   app.RegisterError(
-      [env](auto& context) -> void {
+      [&env](auto& context) -> void {
         auto logger = env->GetLogger(context.request_id);
         LOGS(*logger, VERBOSE) << "Error code: " << context.error_code;
         LOGS(*logger, VERBOSE) << "Error message: " << context.error_message;
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
 
   app.RegisterPost(
       R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))",
-      [env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
+      [&env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
         server::Predict(name, version, action, context, env);
       });
 

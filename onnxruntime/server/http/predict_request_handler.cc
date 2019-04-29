@@ -35,7 +35,7 @@ void Predict(const std::string& name,
              const std::string& version,
              const std::string& action,
              /* in, out */ HttpContext& context,
-             std::shared_ptr<ServerEnvironment> env) {
+             const std::shared_ptr<ServerEnvironment>& env) {
   auto logger = env->GetLogger(context.request_id);
   LOGS(*logger, INFO) << "Model Name: " << name << ", Version: " << version << ", Action: " << action;
 
