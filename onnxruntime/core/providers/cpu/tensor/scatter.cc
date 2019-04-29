@@ -106,7 +106,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
     for (int64_t i = int64_t(num_dims - 2); i >= 0; --i) {
-      dim_block_size[i] = input_data_shape[i] * dim_block_size[i + 1];
+      dim_block_size[i] = input_data_shape[i + 1] * dim_block_size[i + 1];
     }
   }
 
