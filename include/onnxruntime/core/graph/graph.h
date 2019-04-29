@@ -732,7 +732,7 @@ class Graph {
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
   void SetInputs(const std::vector<const NodeArg*> inputs) {
     graph_inputs_including_initializers_ = inputs;
-    graph_inputs_manually_set = true;
+    graph_inputs_manually_set_ = true;
   }
 
   /** When programmatically constructing a Graph, explicitly set graph outputs.
@@ -740,7 +740,7 @@ class Graph {
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
   void SetOutputs(const std::vector<const NodeArg*> outputs) {
     graph_outputs_ = outputs;
-    graph_outputs_manually_set = true;
+    graph_outputs_manually_set_ = true;
   }
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
@@ -939,14 +939,14 @@ class Graph {
 
   // Full list of graph inputs. Matches number and order of inputs in the GraphProto.
   std::vector<const NodeArg*> graph_inputs_including_initializers_;
-  bool graph_inputs_manually_set = false;
+  bool graph_inputs_manually_set_ = false;
 
   // Graph inputs excluding initializers.
   std::vector<const NodeArg*> graph_inputs_excluding_initializers_;
 
   // Graph outputs.
   std::vector<const NodeArg*> graph_outputs_;
-  bool graph_outputs_manually_set = false;
+  bool graph_outputs_manually_set_ = false;
 
   // Graph value_info.
   std::vector<const NodeArg*> value_info_;

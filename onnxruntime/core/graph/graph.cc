@@ -2303,11 +2303,11 @@ Status Graph::SetGraphInputsOutputs() {
 
     // if something is coming from outer scope, consider it already added
     std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
-    if (!graph_inputs_manually_set) {
+    if (!graph_inputs_manually_set_) {
       graph_inputs_including_initializers_.clear();
     }
 
-    if (!graph_outputs_manually_set) {
+    if (!graph_outputs_manually_set_) {
       graph_outputs_.clear();
     }
 
@@ -2338,7 +2338,7 @@ Status Graph::SetGraphInputsOutputs() {
           const std::string& name = input_arg->Name();
           if (added_input_names.end() == added_input_names.find(name)) {
             // This graph input has not been added into <graph_inputs_>.
-            if (!graph_inputs_manually_set) {
+            if (!graph_inputs_manually_set_) {
               graph_inputs_including_initializers_.push_back(input_arg);
             } else {
               // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
@@ -2368,7 +2368,7 @@ Status Graph::SetGraphInputsOutputs() {
       }
     }
 
-    if (!graph_outputs_manually_set) {
+    if (!graph_outputs_manually_set_) {
       // Set graph outputs in order.
       std::vector<size_t> graph_output_args_index;
       for (auto output_arg : graph_output_args) {
