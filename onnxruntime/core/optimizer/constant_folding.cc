@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/ml_value.h"
 
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
@@ -26,8 +26,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     // Check if constant folding can be applied on this node.
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
-        // constant folding is not currently supported for control flow operators.
-        graph_utils::ContainsSubgraph(*node) ||
+        // constant folding is not currently supported for nodes that include subgraphs (control flow operators,
+        // such as If/Loop/Scan, fall into this category).
+        node->ContainsSubgraph() ||
         // if the node output is in the graph output, we will get a graph with no nodes.
         // TODO check if this is allowed in ONNX and ORT.
         graph.IsNodeOutputsInGraphOutputs(*node) ||
