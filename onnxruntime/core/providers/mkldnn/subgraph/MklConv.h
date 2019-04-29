@@ -153,12 +153,9 @@ class MklConv : public MklKernel {
       x_shape = parents_[0].get()->primitive_dst_shape_;
       ort_source_format_ = source_format;
       src_format_ = parents_[0].get()->primitive_dst_format_;
-      mkldnn::memory::format fmt = mkldnn::memory::format::any;
-      if (parents_[0].get()->primitive_dst_format_ != ort_source_format_)
-        fmt = parents_[0].get()->primitive_dst_format_;
       mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
       src_md_.reset(new mkldnn::memory::desc(
-          {src_dims_mkl}, MklDnnType<T>(), fmt));
+          {src_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format::any));
     }
 
     primitive_created_ = ValidateInputShape(x_shape, w_shape);
