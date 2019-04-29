@@ -138,10 +138,11 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
         return s
 
     # attributes
-    if schema.attributes:
+    attribs = schema.attributes
+    if attribs:
         s += '\n#### Attributes\n\n'
         s += '<dl>\n'
-        for _, attr in sorted(schema.attributes.items()):
+        for _, attr in sorted(attribs.items()):
             # option holds either required or default value
             opt = ''
             if attr.required:
@@ -176,19 +177,20 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                                  display_number(schema.max_input))
     s += '\n\n'
 
-#    if schema.inputs:
-    s += '<dl>\n'
-    for inp in schema.inputs:
-        option_str = ""
-        if OpSchema.FormalParameterOption.Optional == inp.option:
-            option_str = " (optional)"
-        elif OpSchema.FormalParameterOption.Variadic == inp.option:
-            if inp.isHomogeneous:
-                option_str = " (variadic)"
-            else:
-                option_str = " (variadic, heterogeneous)"
-        s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(inp.name, option_str, inp.typeStr)
-        s += '<dd>{}</dd>\n'.format(inp.description)
+    inputs = schema.inputs
+    if inputs:
+        s += '<dl>\n'
+        for inp in inputs:
+            option_str = ""
+            if OpSchema.FormalParameterOption.Optional == inp.option:
+                option_str = " (optional)"
+            elif OpSchema.FormalParameterOption.Variadic == inp.option:
+                if inp.isHomogeneous:
+                    option_str = " (variadic)"
+                else:
+                    option_str = " (variadic, heterogeneous)"
+            s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(inp.name, option_str, inp.typeStr)
+            s += '<dd>{}</dd>\n'.format(inp.description)
 
     s += '</dl>\n'
 
@@ -198,28 +200,30 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
         s += ' ({} - {})'.format(display_number(schema.min_output),
                                  display_number(schema.max_output))
     s += '\n\n'
+    outputs = schema.outputs
+    if outputs:
+        s += '<dl>\n'
+        for output in outputs:
+            option_str = ""
+            if OpSchema.FormalParameterOption.Optional == output.option:
+                option_str = " (optional)"
+            elif OpSchema.FormalParameterOption.Variadic == output.option:
+                if output.isHomogeneous:
+                    option_str = " (variadic)"
+                else:
+                    option_str = " (variadic, heterogeneous)"
+            s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(output.name, option_str, output.typeStr)
+            s += '<dd>{}</dd>\n'.format(output.description)
 
-#    if schema.outputs:
-    s += '<dl>\n'
-    for output in schema.outputs:
-        option_str = ""
-        if OpSchema.FormalParameterOption.Optional == output.option:
-            option_str = " (optional)"
-        elif OpSchema.FormalParameterOption.Variadic == output.option:
-            if output.isHomogeneous:
-                option_str = " (variadic)"
-            else:
-                option_str = " (variadic, heterogeneous)"
-        s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(output.name, option_str, output.typeStr)
-        s += '<dd>{}</dd>\n'.format(output.description)
     s += '</dl>\n'
 
     # type constraints
     s += '\n#### Type Constraints'
     s += '\n\n'
-    if schema.type_constraints:
+    typecons = schema.type_constraints
+    if typecons:
         s += '<dl>\n'
-        for type_constraint in schema.type_constraints:
+        for type_constraint in typecons:
             allowedTypes = type_constraint.allowed_type_strs
             allowedTypeStr = ''
             if (len(allowedTypes) > 0):
@@ -297,7 +301,6 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
 
 
 def main(args):  # type: (Type[Args]) -> None
-
     with io.open(args.output, 'w', newline='', encoding="utf-8") as fout:
         fout.write('## Contrib Operator Schemas\n')
         fout.write(

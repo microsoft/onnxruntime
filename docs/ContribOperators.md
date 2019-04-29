@@ -90,10 +90,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T1</tt> : tensor(int32)</dt>
+<dd>Constrain seq_lens to integral tensors.</dd>
 </dl>
 
 
@@ -122,8 +122,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
+<dd>Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.</dd>
 </dl>
 
 
@@ -175,8 +175,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors</dd>
 </dl>
 
 
@@ -224,8 +224,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(uint32), tensor(uint64), tensor(int32), tensor(int64)</dt>
+<dd>Constrain input and output types to float/int tensors.</dd>
 </dl>
 
 
@@ -254,10 +254,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
+<dd>Constrain input and output types to any tensor type.</dd>
+<dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain indice type to int32 or int64</dd>
 </dl>
 
 
@@ -301,8 +301,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain input0 and output types to float tensors</dd>
 </dl>
 
 
@@ -338,10 +338,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T1</tt> : tensor(uint32), tensor(int32), tensor(string)</dt>
+<dd>Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.</dd>
+<dt><tt>T2</tt> : tensor(uint32), tensor(int32)</dt>
+<dd>Constrain output type to unsigned and signed 32-bit integer tensor.</dd>
 </dl>
 
 
@@ -372,8 +372,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(int16), tensor(int32), tensor(int64)</dt>
+<dd>Constrain input and output types.</dd>
 </dl>
 
 
@@ -409,10 +409,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T1</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input type to 8-bit integer tensor.</dd>
+<dt><tt>T2</tt> : tensor(int32), tensor(uint32)</dt>
+<dd>Constrain output data type to 32-bit integer tensor.T2 must be tensor(uint32) when T1 is tensor(uint8),or must be tensor(int32) when T1 is tensor(int8).</dd>
 </dl>
 
 
@@ -439,8 +439,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(uint32), tensor(uint64), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.</dd>
 </dl>
 
 
@@ -482,8 +482,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(string)</dt>
+<dd>Input/Output is a string tensor</dd>
 </dl>
 
 
@@ -527,10 +527,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt></tt> : </dt>
-<dd></dd>
-<dt><tt></tt> : </dt>
-<dd></dd>
+<dt><tt>T</tt> : tensor(int32)</dt>
+<dd>Constrain to tensor(int32).</dd>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain to tensor(float).</dd>
 </dl>
 
 
