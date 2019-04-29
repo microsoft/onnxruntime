@@ -265,17 +265,24 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
   return outputs[index]->Name();
 }
 
-// fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain) {
-  if (node.OpType() != op_type ||
-      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!node.Domain().empty() && node.Domain() != domain)) {
-    return false;
-  }
-  return true;
+  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
+          MatchesOpSinceVersion(node, version) && MatchesOpSetDomain(node, domain));
+}
+
+bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
+  return node.Op()->SinceVersion() == version;
+}
+
+bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
+  const auto& node_domain = node.Domain();
+  // We do a special check for the ONNX domain, as it has two aliases.
+  return node_domain == domain ||
+         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
+          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
 }
 
 bool IsSupportedProvider(const Node& node,

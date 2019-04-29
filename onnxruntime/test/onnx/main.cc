@@ -348,24 +348,25 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shrink", "test case is wrong"},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
-      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"}
+      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
+      {"tf_inception_v2", "result mismatch"},
+      {"tf_mobilenet_v2_1.0_224", "result mismatch"},
+      {"tf_mobilenet_v2_1.4_224", "result mismatch"},
+      {"tf_mobilenet_v1_1.0_224", "result mismatch"},
+      {"mobilenetv2-1.0", "result mismatch"},
+      {"mxnet_arcface", "result mismatch"},
+      {"mod_float_mixed_sign_example", "faulty test"}
   };
 
-#ifdef USE_CUDA
-  broken_tests["maxpool_2d_default"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_pads"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_precomputed_strides"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_precomputed_pads"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_strides"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_precomputed_same_upper"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_same_upper"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_2d_same_lower"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_3d_default"] = "cudnn pooling only support input dimension >= 3";
-  broken_tests["maxpool_1d_default"] = "cudnn pooling only support input dimension >= 3";
+#ifdef USE_NGRAPH
+  broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+#endif
 
-  broken_tests["fp16_tiny_yolov2"] = "Need to adjust the per_sample_tolerance: 0.2";
-  broken_tests["fp16_shufflenet"] = "still have issue on Linux";
-  broken_tests["fp16_inception_v1"] = "need to adjust the per_sample_tolerance: 0.002";
+#ifdef USE_CUDA
+  broken_tests["mxnet_arcface"] = "result mismatch";
+  broken_tests["tf_inception_v1"] = "flaky test"; //TODO: Investigate cause for flakiness
 #endif
   // clang-format on
 

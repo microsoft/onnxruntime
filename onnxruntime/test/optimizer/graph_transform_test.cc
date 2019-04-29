@@ -77,7 +77,7 @@ TEST(GraphTransformationTests, SliceElimination) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Slice"] == 3);
+  ASSERT_TRUE(op_to_count["Slice"] == 4);
 }
 
 TEST(GraphTransformationTests, ConstantFolding1) {

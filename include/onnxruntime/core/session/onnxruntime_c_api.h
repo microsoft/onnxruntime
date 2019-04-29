@@ -208,9 +208,12 @@ ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
 
-// deprecated
+// Enable the memory pattern optimization.
+// The idea is if the input shapes are the same, we could trace the internal memory allocation
+// and generate a memory pattern for future request. So next time we could just do one allocation
+// with a big chunk for all the internal memory allocation.
+// Note: memory pattern optimization is only available when SequentialExecution enabled.
 ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
-// deprecated
 ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 
 // Enable the memory arena on CPU
