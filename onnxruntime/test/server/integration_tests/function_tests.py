@@ -8,6 +8,7 @@ import os
 import requests
 import json
 import numpy
+import urllib.request
 
 import test_util
 import onnx_ml_pb2
@@ -26,19 +27,24 @@ class HttpJsonPayloadTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--log_level', cls.log_level]
-        print('Launching server app: [{0}]'.format(' '.join(cmd)))
+        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        if not os.path.isfile(onnx_model):
+            test_util.test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx ...')
+            urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', onnx_model)
+
+        cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
+        test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
         cls.server_app_proc = subprocess.Popen(cmd)
-        print('Server app PID: {0}'.format(cls.server_app_proc.pid))
-        print('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
+        test_util.test_log('Server app PID: {0}'.format(cls.server_app_proc.pid))
+        test_util.test_log('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
         time.sleep(cls.wait_server_ready_in_seconds)
 
 
     @classmethod
     def tearDownClass(cls):
-        print('Shutdown server app')
+        test_util.test_log('Shutdown server app')
         cls.server_app_proc.kill()
-        print('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
+        test_util.test_log('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
 
 
     def test_mnist_happy_path(self):
@@ -59,7 +65,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
         }
 
         url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-        print(url)
+        test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get('Content-Type'), 'application/json')
@@ -89,7 +95,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
 
     def test_mnist_invalid_url(self):
         url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', -1)
-        print(url)
+        test_util.test_log(url)
 
         request_headers = {
             'Content-Type': 'application/json',
@@ -105,7 +111,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
     def test_mnist_invalid_content_type(self):
         input_data_file = os.path.join(self.test_data_path, 'mnist_test_data_set_0_input.json')
         url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-        print(url)
+        test_util.test_log(url)
 
         request_headers = {
             'Content-Type': 'application/abc',
@@ -127,7 +133,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
     def test_mnist_missing_content_type(self):
         input_data_file = os.path.join(self.test_data_path, 'mnist_test_data_set_0_input.json')
         url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-        print(url)
+        test_util.test_log(url)
 
         request_headers = {
             'Accept': 'application/json'
@@ -161,7 +167,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
         }
 
         url = "http://{0}:{1}/score".format(self.server_ip, self.server_port)
-        print(url)
+        test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get('Content-Type'), 'application/json')
@@ -202,19 +208,24 @@ class HttpProtobufPayloadTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--log_level', cls.log_level]
-        print('Launching server app: [{0}]'.format(' '.join(cmd)))
+        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        if not os.path.isfile(onnx_model):
+            test_util.test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx ...')
+            urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', onnx_model)
+
+        cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
+        test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
         cls.server_app_proc = subprocess.Popen(cmd)
-        print('Server app PID: {0}'.format(cls.server_app_proc.pid))
-        print('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
+        test_util.test_log('Server app PID: {0}'.format(cls.server_app_proc.pid))
+        test_util.test_log('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
         time.sleep(cls.wait_server_ready_in_seconds)
 
 
     @classmethod
     def tearDownClass(cls):
-        print('Shutdown server app')
+        test_util.test_log('Shutdown server app')
         cls.server_app_proc.kill()
-        print('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
+        test_util.test_log('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
 
 
     def test_mnist_happy_path(self):
@@ -233,7 +244,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
             }
 
             url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-            print(url)
+            test_util.test_log(url)
             r = requests.post(url, headers=request_headers, data=request_payload)
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.headers.get('Content-Type'), 'application/x-protobuf')
@@ -277,7 +288,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
             }
 
             url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-            print(url)
+            test_util.test_log(url)
             r = requests.post(url, headers=request_headers, data=request_payload)
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.headers.get('Content-Type'), h)
@@ -294,7 +305,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
         }
 
         url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-        print(url)
+        test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get('Content-Type'), 'application/octet-stream')
@@ -312,7 +323,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
         }
 
         url = self.url_pattern.format(self.server_ip, self.server_port, 'default_model', 12345)
-        print(url)
+        test_util.test_log(url)
         r = requests.post(url, headers=request_headers, data=request_payload)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get('Content-Type'), 'application/octet-stream')
@@ -330,24 +341,29 @@ class HttpEndpointTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', os.path.join(cls.model_path, 'mnist.onnx'), '--log_level', cls.log_level]
-        print('Launching server app: [{0}]'.format(' '.join(cmd)))
+        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        if not os.path.isfile(onnx_model):
+            test_util.test_log('Downloading model from blob storage: https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx ...')
+            urllib.request.urlretrieve('https://ortsrvdev.blob.core.windows.net/test-data/mnist.onnx', onnx_model)
+
+        cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
+        test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
         cls.server_app_proc = subprocess.Popen(cmd)
-        print('Server app PID: {0}'.format(cls.server_app_proc.pid))
-        print('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
+        test_util.test_log('Server app PID: {0}'.format(cls.server_app_proc.pid))
+        test_util.test_log('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
         time.sleep(cls.wait_server_ready_in_seconds)
 
 
     @classmethod
     def tearDownClass(cls):
-        print('Shutdown server app')
+        test_util.test_log('Shutdown server app')
         cls.server_app_proc.kill()
-        print('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
+        test_util.test_log('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
 
 
     def test_health_endpoint(self):
         url = url = "http://{0}:{1}/".format(self.server_ip, self.server_port)
-        print(url)
+        test_util.test_log(url)
         r = requests.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode('utf-8'), 'Healthy')
