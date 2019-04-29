@@ -9,7 +9,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvMulFusion::Apply(Graph& graph, Node& node, bool& modified, bool& /*removed*/) {
+Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
   auto& conv_node = node;
   const auto& mul_node = *conv_node.OutputNodesBegin();
   const auto& conv_inputs = conv_node.InputDefs();
@@ -89,7 +89,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, bool& modified, bool& /*re
   // Remove Mul node.
   auto* mul_node_to_remove = graph.GetNode(mul_node.Index());
   if (graph_utils::RemoveNode(graph, *mul_node_to_remove)) {
-    modified = true;
+    rule_effect = RewriteRuleEffect::kModifiedGraph;
   }
 
   return Status::OK();

@@ -33,7 +33,7 @@ class ConstantFolding : public RewriteRule {
 
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
-  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) override;
 
   /** Create a TensorProto that has the same value as the given MLValue 
   and the same type and dimensions as the given NodeArg. */

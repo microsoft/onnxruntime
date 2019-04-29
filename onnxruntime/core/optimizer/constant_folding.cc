@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
+Status ConstantFolding::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
   // Create execution frame for executing constant nodes.
   OptimizerExecutionFrame::Info info({&node}, graph.GetAllInitializedTensors());
 
@@ -49,7 +49,7 @@ Status ConstantFolding::Apply(Graph& graph, Node& node, bool& modified, bool& de
   // The output nodes already have the right input arg, since we used the same name in the initializer.
   // We could remove unused graph initializers here, but Graph::Resolve() will take care of it.
 
-  modified = deleted = true;
+  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   return Status::OK();
 }  // namespace onnxruntime

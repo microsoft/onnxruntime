@@ -58,12 +58,11 @@ class RuleBasedGraphTransformer : public GraphTransformer {
       @param[in] graph The Graph.
       @param[in] node The Node to apply the rules to.
       @param[in] rules The vector of RewriteRules that will be applied to the Node.
-      @param[out] modified Set to indicate whether the node was modified or not.
-      @param[out] deleted Set to indicate if the node was deleted.
+      @param[out] rule_effect Enum that indicates whether and how the graph was modified as a result of rule application.
       @returns Status indicating success or providing error information. */
   common::Status ApplyRulesOnNode(Graph& graph, Node& node,
                                   const std::vector<std::unique_ptr<RewriteRule>>& rules,
-                                  bool& modified, bool& deleted) const;
+                                  RewriteRule::RewriteRuleEffect& rule_effect) const;
 
  private:
   // Map that associates a node's op type with the vector of rules that are registered to be triggered for that node.

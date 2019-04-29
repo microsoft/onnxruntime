@@ -9,18 +9,9 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvBNFusion::Apply(Graph& graph, Node& node, bool& modified, bool& /*removed*/) {
+Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
   auto& conv_node = node;
   const Node& bn_node = *conv_node.OutputNodesBegin();
-
-  // Get value of attribute group
-  const onnxruntime::NodeAttributes& conv_attributes = conv_node.GetAttributes();
-  const ONNX_NAMESPACE::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
-  if (group_attr != nullptr &&
-      group_attr->type() == AttributeProto_AttributeType_INT &&
-      group_attr->has_i() && group_attr->i() != 1) {
-    return Status::OK();
-  }
 
   // Get value of attribute epsilon
   const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
@@ -145,7 +136,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, bool& modified, bool& /*rem
   // Remove BN node.
   auto* bn_node_to_remove = graph.GetNode(bn_node.Index());
   if (graph_utils::RemoveNode(graph, *bn_node_to_remove)) {
-    modified = true;
+    rule_effect = RewriteRuleEffect::kModifiedGraph;
   }
 
   return Status::OK();

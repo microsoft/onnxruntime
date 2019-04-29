@@ -24,7 +24,7 @@ class ConvMulFusion : public RewriteRule {
  private:
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
-  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) override;
 };
 
 }  // namespace onnxruntime
