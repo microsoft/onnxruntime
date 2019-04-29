@@ -575,11 +575,10 @@ def run_server_tests(build_dir, configs):
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
-        server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
         if is_windows():
-            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_hosting.exe')
+            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
         else:
-            server_app_path = os.path.join(config_build_dir, 'onnxruntime_hosting')
+            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
         server_test_folder = os.path.join(config_build_dir, 'server_test')
         server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
         run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
