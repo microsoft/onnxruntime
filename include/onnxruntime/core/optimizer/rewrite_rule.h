@@ -63,8 +63,7 @@ class RewriteRule {
   /** Checks if the condition of the rule is satisfied, and if so applies the body of the rule.
       @param[in] graph The Graph.
       @param[in] node The Node to apply the rewrite to.
-      @param[out] rule_effect Set to indicate whether the node was modified or not.
-      @param[out] deleted Set to indicate if the node was deleted.
+      @param[out] rule_effect Enum to indicate if and how the graph was modified as a result of the rule application.
       @returns Status indicating success or providing error information */
   common::Status CheckConditionAndApply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
     return SatisfyCondition(graph, node) ? Apply(graph, node, rule_effect) : Status::OK();
