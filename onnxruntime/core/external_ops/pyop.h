@@ -62,11 +62,7 @@ struct PythonWrapper {
         lastErr = (LASTERR*)dlsym(handle, "GetLastErrorMessage"); 
         ORT_ENFORCE(nullptr != lastErr, dlerror());
 
-        setPath = (SETPATH*)dlsym(handle, "SetSysPath");
-        ORT_ENFORCE(nullptr != setPath, dlerror());
-
         ORT_ENFORCE(init(), lastErr());
-        setPath(L".");      
     }
 
     ~PythonWrapper() {
@@ -79,7 +75,6 @@ struct PythonWrapper {
     INVOKE*     invoke  = nullptr;
     RELEASE*    release = nullptr;
     LASTERR*    lastErr = nullptr;
-    SETPATH*    setPath = nullptr;
 };
 
 struct PyCustomKernel {

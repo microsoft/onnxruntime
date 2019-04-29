@@ -259,9 +259,11 @@ TEST_F(CApiTest, custom_op_handler) {
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
+  module << "import sys" << std::endl;
   module << "class MyKernel:" << std::endl;
   module << "\t"   << "def __init__(self,A,B,C):"    << std::endl;
   module << "\t\t" << "self.a,self.b,self.c = A,B,C" << std::endl;
+  module << "\t\t" << "print (sys.path)"             << std::endl;
   module << "\t"   << "def compute(self,x):"         << std::endl;
   module << "\t\t" << "return x*2"                   << std::endl;
   std::vector<Input> inputs(1);

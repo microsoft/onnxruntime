@@ -42,13 +42,16 @@ extern "C" bool Initialize()
     if (_import_array() < 0) {
         return false;
     }
+    auto path_list = PySys_GetObject("path");
+    if (nullptr == path_list || !PyList_Check(path_list)) {
+        return false;
+    } else {
+       if (PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
+           return false;
+       } 
+    }
     static Finalizer finalizer;
     return true;
-}
-
-extern "C" void SetSysPath(const wchar_t* dir)
-{
-    PySys_SetPath(dir);
 }
 
 extern "C" std::string GetLastErrorMessage()
