@@ -1,7 +1,17 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
+#define LIB_NAME        "onnxruntime_pyop.dll"
+#define LOAD_LIB(n)     LoadLibraryA(n)
+#define LOAD_SYM(h,n)   GetProcAddress(h,n);
+#define UNLOAD_LIB(h)   FreeLibrary(h);
+#define PYHANDLE        HMODULE
 #else
+#define LIB_NAME        "./libonnxruntime_pyop.so",
+#define LOAD_LIB(n)     dlopen(n, RTLD_NOW|RTLD_GLOBAL);
+#define LOAD_SYM(h,n)   dlsym(h,n);
+#define UNLOAD_LIB(h)   dlclose(h);
+#define PYHANDLE        void*
 #include "dlfcn.h"
 #endif
 #include "core/framework/ml_value.h"
@@ -18,6 +28,7 @@ using ONNX_TYPES = std::vector<ONNXTensorElementDataType>;
 using ONNX_ATTRS = std::unordered_map<std::string, std::string>;
 using ORT_SHAPE  = OrtTensorTypeAndShapeInfo;
 using LOG_FUNC   = std::function<void(const char*)>;
+using ORT_API    = onnxruntime::CustomOpApi;
 
 typedef bool INIT();
 typedef bool PYFUNC(const char*,
@@ -44,6 +55,44 @@ typedef void SETPATH(const wchar_t*);
 
 namespace onnxruntime {
 
+struct PythonWrapper {
+
+    PythonWrapper() {
+
+        handle = LOAD_LIB(LIB_NAME);
+        ORT_ENFORCE(nullptr != handle, "Failed to load pyop library");
+
+        init = (INIT*)LOAD_SYM(handle, "Initialize");
+        ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
+
+        newInst = (NEWINST*)LOAD_SYM(handle, "NewInstance");
+        ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
+
+        invoke = (INVOKE*)LOAD_SYM(handle, "InvokePythonFunc");
+        ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
+
+        release = (RELEASE*)LOAD_SYM(handle, "ReleaseInstance");
+        ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
+
+        lastErr = (LASTERR*)LOAD_SYM(handle, "GetLastErrorMessage"); 
+        ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
+
+        std::string err;
+        ORT_ENFORCE(init(), lastErr(err));
+    }
+
+    ~PythonWrapper() {
+        UNLOAD_LIB(handle);
+    }
+
+    PYHANDLE    handle  = nullptr;
+    INIT*       init    = nullptr;
+    NEWINST*    newInst = nullptr;
+    INVOKE*     invoke  = nullptr;
+    RELEASE*    release = nullptr;
+    LASTERR*    lastErr = nullptr;
+};
+/*
 #ifdef _WIN32
 struct PythonWrapper {
 
@@ -121,16 +170,16 @@ struct PythonWrapper {
     LASTERR*    lastErr = nullptr;
 };
 #endif
-
+*/
 struct PyCustomKernel {
 
-    PyCustomKernel (onnxruntime::CustomOpApi ort,
-                    const ONNX_ATTRS&        attrs,
-                    const std::string&       module,
-                    const std::string&       class_name,
-                    const std::string&       compute,
-                    const std::string&       shape_infer,
-                    LOG_FUNC                 logging_func): 
+    PyCustomKernel (ORT_API               ort,
+                    const ONNX_ATTRS&     attrs,
+                    const std::string&    module,
+                    const std::string&    class_name,
+                    const std::string&    compute,
+                    const std::string&    shape_infer,
+                    LOG_FUNC              logging_func):
                     ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                     compute_(compute), shape_infer_(shape_infer), logging_func_(logging_func) {
         instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
@@ -197,7 +246,6 @@ struct PyCustomKernel {
         int32_t numpy_type;
         ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input is not tensor");
         auto data_type = ((MLValue*)input)->Get<Tensor>().DataType();
-
         if (data_type == DataTypeImpl::GetType<bool>()) {
             numpy_type = 0;
         } else if (data_type == DataTypeImpl::GetType<int8_t>()) {
@@ -226,7 +274,6 @@ struct PyCustomKernel {
                    data_type == DataTypeImpl::GetType<BFloat16>()) {
             numpy_type = 23;
         } else ORT_ENFORCE(false, "Input type not supported");
-
         return numpy_type;
     }
 
@@ -238,14 +285,14 @@ private:
         return pyWrapper;
     }
 
-    onnxruntime::CustomOpApi ort_;
-    ONNX_ATTRS  attrs_;
-    std::string module_;
-    std::string class_name_;
-    std::string compute_;
-    std::string shape_infer_;
-    void* instance_ = nullptr;
-    LOG_FUNC    logging_func_;
+    ORT_API        ort_;
+    ONNX_ATTRS     attrs_;
+    std::string    module_;
+    std::string    class_name_;
+    std::string    compute_;
+    std::string    shape_infer_;
+    void*          instance_ = nullptr;
+    LOG_FUNC       logging_func_;
 };
 
 struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
@@ -255,21 +302,20 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
                const ONNX_TYPES&    output_types,
                const std::string&   module,
                const std::string&   class_name,
-               const std::string&   compute     = "compute",
-               const std::string&   shape_infer = "shape_infer",
+               const std::string&   compute      = "compute",
+               const std::string&   shape_infer  = "shape_infer",
                LOG_FUNC             logging_func = [](const char*){}):
-               attrs_(attrs),
-               input_types_(input_types),
-               output_types_(output_types),
-               module_(module), class_name_(class_name), compute_(compute),
+               attrs_(attrs), input_types_(input_types),
+               output_types_(output_types), module_(module),
+               class_name_(class_name), compute_(compute),
                shape_infer_(shape_infer), logging_func_(logging_func) {
-               OrtCustomOp::version = ORT_API_VERSION; } 
+               OrtCustomOp::version = ORT_API_VERSION; }
  
     void* CreateKernel (onnxruntime::CustomOpApi api, const OrtKernelInfo*) {
         return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, shape_infer_, logging_func_);
     }
 
-    const char* GetName() const { return "PyOp"/*class_name_.c_str()*/; }
+    const char* GetName() const { return "PyOp"; }
 
     size_t GetInputTypeCount() const { return input_types_.size(); }
     ONNXTensorElementDataType GetInputType(size_t index) const { return input_types_[index]; }
@@ -278,14 +324,14 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
     ONNXTensorElementDataType GetOutputType(size_t index) const { return output_types_[index]; }
 
 private:
-    ONNX_ATTRS  attrs_;
-    ONNX_TYPES  input_types_;
-    ONNX_TYPES  output_types_;
-    std::string module_;
-    std::string class_name_;
-    std::string compute_;
-    std::string shape_infer_;
-    LOG_FUNC    logging_func_;
+    ONNX_ATTRS     attrs_;
+    ONNX_TYPES     input_types_;
+    ONNX_TYPES     output_types_;
+    std::string    module_;
+    std::string    class_name_;
+    std::string    compute_;
+    std::string    shape_infer_;
+    LOG_FUNC       logging_func_;
 };//PyCusomOp
 
 }
