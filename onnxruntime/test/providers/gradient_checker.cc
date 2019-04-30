@@ -293,6 +293,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const std::vector<AttributeProto>& attributes) {
   // Initialize 'x_datas' to random values.
   std::vector<std::vector<X_T>> x_datas(x_infos.size());
+
   for (int i = 0; i < x_infos.size(); i++) {
     // TODO: Consider varying mean and variance
     float scale = 5.f;
@@ -302,10 +303,30 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
     std::normal_distribution<X_T> distribution{mean, scale};
 
-    x_datas[i].resize(x_infos[i].shape.Size());
+    auto x_data_length = x_infos[i].shape.Size();
+    x_datas[i].resize(x_data_length);
+
     std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
   }
 
+  // Generate dummy placeholders with zero for y_datas
+  std::vector<std::vector<Y_T>> y_datas(y_infos.size());
+  for (int i = 0; i < y_infos.size(); i++) {
+    y_datas[i].resize(y_infos[i].shape.Size(), 0);
+  }
+
+  // Compute gradient error.
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes);
+}
+
+template <typename X_T, typename Y_T, typename JAC_T>
+inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
+    const OpDef& op_def,
+    const std::vector<TensorInfo>& x_infos,
+    const std::vector<TensorInfo>& y_infos,
+    JAC_T* max_error,
+    std::vector<std::vector<X_T>> x_datas,
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes) {
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
   for (int i = 0; i < y_infos.size(); i++) {

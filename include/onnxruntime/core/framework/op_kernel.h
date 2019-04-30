@@ -83,6 +83,12 @@ class OpKernelContext {
     return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
   }
 
+  template <typename T>
+  T* MutableInput(int index) {
+    MLValue* p_ml_value = GetMutableInputMLValue(index);
+    return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
+  }
+
   // Fetch output (non-tensor) with specified index.
   template <typename T>
   T* Output(int index) {
@@ -148,6 +154,7 @@ class OpKernelContext {
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
+  MLValue* GetMutableInputMLValue(int index);
   const MLValue* GetInputMLValue(int index) const;
   const MLValue* GetImplicitInputMLValue(int index) const;
   MLValue* GetOutputMLValue(int index);

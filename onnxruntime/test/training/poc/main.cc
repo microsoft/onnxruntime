@@ -65,7 +65,13 @@ int main(int argc, char* args[]) {
   params.weights_not_to_train_ = {""};
   params.batch_size_ = BATCH_SIZE;
   params.num_of_epoch_ = NUM_OF_EPOCH;
+#ifdef USE_CUDA
+  // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
+  // Adding another cuda kernel call for this division seems wasteful currently.
+  params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+#else
   params.learning_rate_ = LEARNING_RATE;
+#endif
   params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
   // Uncomment following line to enable in-graph optimizer, which currently only when in GPU
   //params.in_graph_optimizer_name_ = "SGDOptimizer";

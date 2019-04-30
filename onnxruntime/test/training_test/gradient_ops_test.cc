@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/gradient_checker.h"
+#include <random>
 
 // TODO: replace this with ONNX version of attr_proto_util.h when ONNX dependency version is updated
 // TODO: update attributes type to AttributeProtoWrapper when ONNX version is ready
@@ -15,6 +16,35 @@ namespace test {
 using onnxruntime::training::MakeAttribute;
 using training::OpDef;
 
+template <typename T>
+void GenerateRandomData(
+    std::vector<std::vector<float>>& x_datas,
+    std::vector<TensorShape> input_shapes,
+    const std::unordered_set<int>& one_hot_input_indices) {
+  for (int i = 0; i < 2; i++) {
+    // TODO: Consider varying mean and variance
+    float scale = 5.f;
+    float mean = 0.f;
+    auto seed = std::chrono::system_clock::now().time_since_epoch().count();
+
+    std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+    std::normal_distribution<T> distribution{mean, scale};
+
+    auto x_data_length = input_shapes[i].Size();
+    x_datas[i].resize(x_data_length);
+
+    if (one_hot_input_indices.count(i) > 0 && input_shapes[i].NumDimensions() == 2) {  //only 2 dims supported for now
+      std::fill(x_datas[i].begin(), x_datas[i].end(), (T)0);
+      auto data_count_per_batch = input_shapes[i].GetDims()[1];
+      for (int64_t k = 0; k < input_shapes[i].GetDims()[0]; k++)
+        x_datas[i][k * data_count_per_batch + (seed % data_count_per_batch)] = (T)1;
+    } else {
+      std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
+    }
+  }
+}
+
+#ifndef USE_CUDA
 TEST(GradientCheckerTest, SigmoidGrad) {
   TensorShape shape({2, 3, 4});
   float max_error;
@@ -128,7 +158,6 @@ TEST(GradientCheckerTest, MatMulGrad) {
   EXPECT_TRUE(max_error <= 1e-1);
 }
 
-#ifndef USE_CUDA
 TEST(GradientCheckerTest, GemmGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -196,8 +225,6 @@ TEST(GradientCheckerTest, GemmGrad) {
     EXPECT_TRUE(max_error <= 1e-2) << "max_error: " << max_error;
   }
 }
-
-#endif
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   float max_error;
@@ -381,20 +408,6 @@ TEST(GradientCheckerTest, ConcatGrad) {
   }
 }
 
-// TODO: label should adds up to one, enable this when test framework accepts assigned test data
-TEST(GradientCheckerTest, DISABLED_SoftmaxCrossEntropyGrad) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
-  const float error_tolerance = 1e-3f;
-
-  {
-    TensorShape input_shape({1, 100});
-    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error);
-    EXPECT_TRUE(max_error <= error_tolerance) << "max_error: " << max_error;
-  }
-}
-
 TEST(GradientCheckerTest, AveragePoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -474,6 +487,36 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
 }
 
 // TODO: Reshape missing
+#endif
+
+TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
+  const float error_tolerance = 1e-2f;
+
+  {
+    TensorShape input_shape({1, 100});
+
+    std::vector<std::vector<float>> x_datas(2);
+    GenerateRandomData<float>(x_datas, {input_shape, input_shape}, {1});
+
+    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error, x_datas);
+    EXPECT_TRUE(max_error <= error_tolerance) << "max_error: " << max_error;
+  }
+}
+
+#ifdef USE_CUDA
+TEST(OptimizerTest, SGDTest) {
+  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain, false);
+  test.AddInput<float>("ETA", {}, {0.5f});
+  test.AddInput<float>("W", {3}, {1, 2, 3});
+  test.AddInput<float>("G", {3}, {4, 5, 6});
+  test.AddOutput<float>("W_New", {3}, {-1.f, -0.5f, 0.f});
+  test.Run();
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

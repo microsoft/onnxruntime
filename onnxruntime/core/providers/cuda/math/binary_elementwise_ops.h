@@ -101,6 +101,13 @@ struct BinaryElementwisePreparation {
   }
 };
 
+Status BinaryElementwiseBroadcastPrepare(
+    int device_id, const Tensor* lhs_tensor,
+    const Tensor* rhs_tensor,
+    Tensor* output_tensor,
+    BinaryElementwisePreparation* p,
+    const TensorShape* override_lhs_shape = nullptr,
+    const TensorShape* override_rhs_shape = nullptr);
 
 // trait classes to indicate if the kernel supports broadcast
 class ShouldBroadcast {

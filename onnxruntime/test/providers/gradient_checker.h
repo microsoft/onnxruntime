@@ -56,6 +56,14 @@ class GradientChecker {
       JAC_T* max_error,
       const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {});
 
+  Status ComputeGradientError(
+      const training::OpDef& op_def,
+      const std::vector<TensorInfo>& x_infos,
+      const std::vector<TensorInfo>& y_infos,
+      JAC_T* max_error,
+      std::vector<std::vector<X_T>> x_datas,
+      const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {});
+
  private:
   Status InitJacobians(const std::vector<TensorInfo>& x_infos,
                        const std::vector<TensorInfo>& y_infos,

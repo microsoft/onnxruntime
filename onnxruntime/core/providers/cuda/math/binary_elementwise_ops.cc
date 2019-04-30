@@ -34,33 +34,13 @@ static Status ComputeOutputShape(const std::string& node_name, const TensorShape
     int64_t out_dim = std::max(lhs_dim, rhs_dim);
     if (lhs_dim != out_dim && lhs_dim != 1)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
-                                     " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
     if (rhs_dim != out_dim && rhs_dim != 1)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i,
-                                     " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
+                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
     output_dims[out_rank - 1 - i] = out_dim;
   }
   out_shape = TensorShape(output_dims);
-  return Status::OK();
-}
-
-Status BinaryElementwiseBroadcastPrepare(
-    int device_id, const Tensor* lhs_tensor,
-    const Tensor* rhs_tensor,
-    Tensor* output_tensor,
-    BinaryElementwisePreparation* p,
-    const TensorShape* override_lhs_shape = nullptr,
-    const TensorShape* override_rhs_shape = nullptr) {
-  p->lhs_tensor = lhs_tensor;
-  p->rhs_tensor = rhs_tensor;
-  const auto& lhs_shape = override_lhs_shape ? *override_lhs_shape : lhs_tensor->Shape();
-  const auto& rhs_shape = override_rhs_shape ? *override_rhs_shape : rhs_tensor->Shape();
-
-  p->output_tensor = output_tensor;
-  const auto& output_shape = output_tensor->Shape();
-
-  ORT_RETURN_IF_ERROR(p->BinaryElementwiseBroadcastPrepareHelper(device_id, lhs_shape, rhs_shape, output_shape));
-
   return Status::OK();
 }
 
@@ -76,6 +56,26 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   auto output_tensor = context->Output(0, output_shape);
 
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(device_id, lhs_tensor, rhs_tensor, output_tensor, p));
+
+  return Status::OK();
+}
+
+Status BinaryElementwiseBroadcastPrepare(
+    int device_id, const Tensor* lhs_tensor,
+    const Tensor* rhs_tensor,
+    Tensor* output_tensor,
+    BinaryElementwisePreparation* p,
+    const TensorShape* override_lhs_shape,
+    const TensorShape* override_rhs_shape) {
+  p->lhs_tensor = lhs_tensor;
+  p->rhs_tensor = rhs_tensor;
+  const auto& lhs_shape = override_lhs_shape ? *override_lhs_shape : lhs_tensor->Shape();
+  const auto& rhs_shape = override_rhs_shape ? *override_rhs_shape : rhs_tensor->Shape();
+
+  p->output_tensor = output_tensor;
+  const auto& output_shape = output_tensor->Shape();
+
+  ORT_RETURN_IF_ERROR(p->BinaryElementwiseBroadcastPrepareHelper(device_id, lhs_shape, rhs_shape, output_shape));
 
   return Status::OK();
 }
@@ -106,7 +106,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
     Prepare(context, 0, &prepare);                                                                               \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                            \
+    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         prepare.lhs_padded_strides.GpuPtr(),                                                                     \
@@ -125,20 +125,20 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
 
-  // since different ops has different types, we cannot use BINARY_OPS() directly
-  // the postfix of means the types supported by the op:
-  // B: uint8_t
-  // W: uint16_t
-  // U: uint32_t
-  // Z: uint64_t
-  // C: int8_t
-  // S: int16_t
-  // I: int32_t
-  // L: int64_t
-  // H: float16
-  // F: float
-  // D: double
-  // O: bool
+// since different ops has different types, we cannot use BINARY_OPS() directly
+// the postfix of means the types supported by the op:
+// B: uint8_t
+// W: uint16_t
+// U: uint32_t
+// Z: uint64_t
+// C: int8_t
+// S: int16_t
+// I: int32_t
+// L: int64_t
+// H: float16
+// F: float
+// D: double
+// O: bool
 
 #define BINARY_OP_HFD(name, ver)        \
   BINARY_OP_TYPED(name, ver, MLFloat16) \

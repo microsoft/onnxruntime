@@ -10,6 +10,15 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
+Status SoftMaxComputeHelper(
+    OpKernelContext* ctx,
+    const T* input,
+    const TensorShape& shape,
+    T* Y,
+    cudnnHandle_t handle,
+    int64_t axis);
+
+template <typename T>
 class Softmax final : public CudaKernel {
  public:
   Softmax(const OpKernelInfo& info) : CudaKernel{info} {

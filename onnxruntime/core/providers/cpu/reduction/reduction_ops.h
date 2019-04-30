@@ -12,7 +12,7 @@ namespace onnxruntime {
 template <bool allow_multi_axes>
 class ReduceKernelBase {
  protected:
-  ReduceKernelBase(const OpKernelInfo& info) {
+  ReduceKernelBase(const OpKernelInfo& info, std::unique_ptr<int64_t> keepdims_override = std::unique_ptr<int64_t>{}) {
     if (allow_multi_axes) {
       axes_ = info.GetAttrsOrDefault<int64_t>("axes");
     } else {
@@ -20,7 +20,11 @@ class ReduceKernelBase {
       axes_.push_back(v);
     }
     int64_t keepdims = 1;
-    ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
+    if (keepdims_override) {
+      keepdims = *keepdims_override.get();
+    } else {
+      ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
+    }
     keepdims_ = (keepdims == 1);
   }
 

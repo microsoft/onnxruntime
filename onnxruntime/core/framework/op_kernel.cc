@@ -118,6 +118,14 @@ onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
   return kernel_->Node().Index();
 }
 
+MLValue* OpKernelContext::GetMutableInputMLValue(int index) {
+  if (index < 0 || index >= InputCount())
+    return nullptr;
+
+  int input_arg_index = GetInputArgIndex(index);
+  return execution_frame_->GetMutableNodeInputOrOutputMLValue(input_arg_index);
+}
+
 const MLValue* OpKernelContext::GetInputMLValue(int index) const {
   if (index < 0 || index >= InputCount())
     return nullptr;

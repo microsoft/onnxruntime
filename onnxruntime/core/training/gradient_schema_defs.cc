@@ -101,6 +101,22 @@ void RegisterGradientSchemas() {
       .NumInputs(1, 2)
       .NumOutputs(1)
       .Reference("Dropout");
+
+  //TODO: Move this to the right location. Its only here for quick experimentation.
+  //TODO: Use the mutli weight / grad version.
+  ONNX_GRADIENT_OPERATOR_SCHEMA(SGDOptimizer)
+      .Input(0, "ETA", "Learning Rate", "L")
+      .Input(1, "W", "Original weight(s)", "T")
+      .Input(2, "G", "Gradient of Weight(s)", "T")
+      .Output(0, "NW", "Updated weight(s)", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "L",
+          {"float"},
+          "Constrain learning rate to float");
 }
 }  // namespace training
 }  // namespace onnxruntime

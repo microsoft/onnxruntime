@@ -11,16 +11,28 @@ namespace cuda {
 template <bool allow_multi_axes>
 class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
-  ReduceKernel(const OpKernelInfo& info) : CudaKernel(info),
-                                           ReduceKernelBase<allow_multi_axes>(info),
-                                           calculate_log_(false),
-                                           calculate_sqt_(false),
-                                           log_sum_exp_(false) {}
+  ReduceKernel(
+      const OpKernelInfo& info,
+      std::unique_ptr<int64_t> keep_dims_override = std::unique_ptr<int64_t>{})
+      : CudaKernel(info),
+        ReduceKernelBase<allow_multi_axes>(info, std::move(keep_dims_override)),
+        calculate_log_(false),
+        calculate_sqt_(false),
+        log_sum_exp_(false) {}
 
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
   // Only Max Min will have indices output, need to set the indices to nullptr for other ops
   template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const;
+
+  template <typename T, typename OutT, cudnnReduceTensorIndices_t ReduceTensorIndices>
+  Status ReduceKernelShared(
+      const T* X,
+      const TensorShape& input_shape,
+      OutT* Y,
+      const TensorShape& output_shape,
+      cudnnReduceTensorOp_t cudnnReduceOp,
+      std::vector<int64_t> output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;

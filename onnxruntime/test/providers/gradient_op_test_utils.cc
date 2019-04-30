@@ -98,16 +98,70 @@ void GradientOpTester::Run(
     so.session_logid = op_;
     so.session_log_verbosity_level = 1;
 
-    onnxruntime::training::TrainingSession session_object{so};
-    fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                                                                    feeds, output_names, onnxruntime::kCpuExecutionProvider);
+    static const std::string all_provider_types[] = {
+        kCpuExecutionProvider,
+        kCudaExecutionProvider,
+        kMklDnnExecutionProvider,
+        kNupharExecutionProvider,
+        kBrainSliceExecutionProvider,
+        kTensorrtExecutionProvider,
+    };
+    bool has_run = false;
+
+    for (const std::string& provider_type : all_provider_types) {
+      std::unique_ptr<IExecutionProvider> execution_provider;
+      if (provider_type == onnxruntime::kCpuExecutionProvider)
+        execution_provider = DefaultCpuExecutionProvider();
+      else if (provider_type == onnxruntime::kCudaExecutionProvider)
+        execution_provider = DefaultCudaExecutionProvider();
+      else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
+        execution_provider = DefaultMkldnnExecutionProvider();
+      else if (provider_type == onnxruntime::kNupharExecutionProvider)
+        execution_provider = DefaultNupharExecutionProvider();
+      else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
+        execution_provider = DefaultBrainSliceExecutionProvider();
+      else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+        execution_provider = DefaultTensorrtExecutionProvider();
+      // skip if execution provider is disabled
+      if (execution_provider == nullptr)
+        continue;
+
+      bool valid = true;
+
+      // set execution provider for all nodes in the graph
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == kConstant)
+          continue;
+
+        //if node is not registered for the provider, skip
+        node.SetExecutionProviderType(provider_type);
+        auto reg = execution_provider->GetKernelRegistry();
+        const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
+        if (!kci) {
+          valid = false;
+          break;
+        }
+      }
+
+      if (!valid)
+        continue;
+
+      has_run = true;
+      onnxruntime::training::TrainingSession session_object{so};
+
+      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+      fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                                                                      feeds, output_names, provider_type);
+    }
+    EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
 
   } catch (const std::exception& ex) {
     std::cerr << ex.what();
     // rethrow as some tests for error handling expect this
     throw;
   }
-}
+}  // namespace test
 
 void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
                                                std::vector<std::string>& output_names,
