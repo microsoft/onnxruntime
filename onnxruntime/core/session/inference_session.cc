@@ -224,7 +224,6 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 
 SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
 {
-  static std::set<std::string> registered_nodes;
   auto schema_registry_manager = std::make_shared<SchemaRegistryManager>();
   for (auto schema_collection : custom_schema_registries_) {
     schema_registry_manager->RegisterRegistry(schema_collection);
@@ -234,9 +233,7 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
     auto node = reinterpret_cast<Node*>(info);
     LOGS(*session_logger_, WARNING) << node->Domain();
 
-    // auto key  = reinterpret_cast<size_t>(info);
-    if (node->OpType() == "PyOp"){ //&& registered_nodes.find(node->Domain()) == registered_nodes.end()) {
-      registered_nodes.insert(node->Domain());
+    if (node->OpType() == "PyOp") {
       ONNX_ATTRS attrs;
       ONNX_TYPES input_types, output_types;
       std::string module, class_name, compute = "compute", shape_infer = "shape_infer", domain = node->Domain();

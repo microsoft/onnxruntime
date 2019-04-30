@@ -707,7 +707,6 @@ class Graph {
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
-  // IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
   SchemaRegistryManagerPtr GetSchemaRegistryManager() const;
 
   /**
@@ -771,7 +770,6 @@ class Graph {
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        // IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         SchemaRegistryManagerPtr schema_registry_manager,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
@@ -779,7 +777,6 @@ class Graph {
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        // IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         SchemaRegistryManagerPtr schema_registry_manager,
         Graph* parent_graph,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
