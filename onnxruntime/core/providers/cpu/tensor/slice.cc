@@ -221,13 +221,11 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
                                      std::vector<int64_t>& input_steps) const {
-  auto start_tensor = context->Input<Tensor>(1);
-  auto ends_tensor = context->Input<Tensor>(2);
-  const Tensor* axes_tensor = nullptr;
-  if (context->InputCount() >= 4)
-    axes_tensor = context->Input<Tensor>(3);
-  // Slice V10 (optional input)
+  const Tensor* start_tensor = context->Input<Tensor>(1);
+  const Tensor* ends_tensor = context->Input<Tensor>(2);
+  const Tensor* axes_tensor = context->Input<Tensor>(3);
   const Tensor* steps_tensor = nullptr;
+  // check if this is Slice V10 - only Slice V10 has this optional input
   if (context->InputCount() == 5)
     steps_tensor = context->Input<Tensor>(4);
 
