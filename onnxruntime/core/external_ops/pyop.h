@@ -105,7 +105,8 @@ struct PythonWrapper {
         lastErr = (LASTERR*)dlsym(handle, "GetLastErrorMessage"); 
         ORT_ENFORCE(nullptr != lastErr, dlerror());
 
-        ORT_ENFORCE(init(), lastErr());
+        std::string err;
+        ORT_ENFORCE(init(), lastErr(err));
     }
 
     ~PythonWrapper() {
