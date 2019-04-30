@@ -88,10 +88,9 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
-  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  rule_transformer->Register(std::make_unique<ConstantFolding>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
