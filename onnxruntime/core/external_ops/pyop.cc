@@ -32,23 +32,19 @@ struct Finalizer
 class Scoper
 {
 public:
-
     Scoper() {
         mtx_.lock();
     }
-
     ~Scoper() {
         for (auto obj: objs_) {
             Py_XDECREF(obj);
         }
-        objs_.clear();
         mtx_.unlock();
     }
-
-    void Add(PyObject* obj) { objs_.push_back(obj); }
-
+    void Add(PyObject* obj) {
+        objs_.push_back(obj);
+    }
 private:
-
     static std::mutex mtx_;
     vector<PyObject*> objs_;
 };
