@@ -270,6 +270,13 @@ class Node {
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 
+  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop). 
+  @returns true if the Node contains a subgraph.
+  */
+  bool ContainsSubgraph() const {
+    return !attr_to_subgraph_map_.empty();
+  }
+
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
            nullptr if the Node has no subgraphs.
