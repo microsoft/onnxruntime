@@ -235,7 +235,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   ORT_ENFORCE(nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1, "Ends must be a 1-D array");
   ORT_ENFORCE(start_tensor->Shape() == ends_tensor->Shape(), "Starts and ends shape mismatch");
   ORT_ENFORCE(nullptr == axes_tensor || start_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
-  ORT_ENFORCE(nullptr == steps_tensor || steps_tensor->Shape() == axes_tensor->Shape(), "Steps and axes shape mismatch");
+  ORT_ENFORCE(nullptr == steps_tensor || start_tensor->Shape() == steps_tensor->Shape(), "Starts and steps shape mismatch");
 
   const auto& dtype = start_tensor->DataType();
   const auto& size = start_tensor->Shape().Size();
