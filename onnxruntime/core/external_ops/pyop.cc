@@ -14,8 +14,6 @@
 #include <unordered_map>
 #include <stdarg.h>
 
-using Releaser = std::function<void()>;
-
 using namespace std;
 namespace PythonFuncionWrapper {
 
@@ -32,23 +30,40 @@ struct Finalizer
     }
 };
 
-class Locker
+class Scoper
 {
-    static std::mutex mtx_;
 public:
-    Locker()  { mtx_.lock();   }
-    ~Locker() { mtx_.unlock(); }
+
+    Scoper() {
+        mtx_.lock();
+    }
+
+    ~Scoper() {
+        for (auto obj: objs_) {
+            Py_XDECREF(obj);
+        }
+        objs_.clear();
+        mtx_.unlock();
+    }
+
+    void Add(PyObject* obj) { objs_.push_back(obj); }
+
+private:
+
+    static std::mutex mtx_;
+    vector<PyObject*> objs_;
 };
 
-std::mutex Locker::mtx_;
+std::mutex Scoper::mtx_;
 
 PYOP_EXPORT bool Initialize() 
 {
+    Scoper scoper;
     Py_Initialize();
     if (_import_array() < 0) {
         return false;
     }
-    auto path_list = PySys_GetObject("path");
+    auto path_list = PySys_GetObject("path");// do not release it
     if (nullptr == path_list || !PyList_Check(path_list)) {
         return false;
     } else {
@@ -62,23 +77,19 @@ PYOP_EXPORT bool Initialize()
 
 PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
 {
+    Scoper scoper;
     if (PyErr_Occurred()) {
         stringstream ss;
-        PyObject *type, *value, *trace;
-        type = value = trace = nullptr;
+        PyObject* type  = nullptr;
+        PyObject* value = nullptr;
+        PyObject* trace = nullptr;
         PyErr_Fetch(&type, &value, &trace);
-        if (nullptr != type)  {
-            ss << "type: " << PyBytes_AsString(type)  << endl;
-            Py_XDECREF(type);
-        }
-        if (nullptr != value) {
-            ss << "value: " << PyBytes_AsString(value) << endl;
-            Py_XDECREF(value);
-        }
-        if (nullptr != trace) {
-            ss << "trace: " << PyBytes_AsString(trace) << endl;
-            Py_XDECREF(trace);
-        }
+        scoper.Add(type);
+        scoper.Add(value);
+        scoper.Add(trace);
+        if (nullptr != type)  ss << "python error type: "  << PyBytes_AsString(type) << endl;
+        if (nullptr != value) ss << "python error value: " << PyBytes_AsString(value) << endl;
+        if (nullptr != trace) ss << "python error trace: " << PyBytes_AsString(trace) << endl;
         err = ss.str();
     }
     return err.c_str();
@@ -97,70 +108,61 @@ PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
 }
 
 bool ExtractOutput (PyObject*                pyObj,
-                    vector<const void*>&     output,
-                    vector<int32_t>&         output_size,
-                    vector<vector<int64_t>>& output_dim)
+                    vector<const void*>&     outputs,
+                    vector<int32_t>&         outputs_size,
+                    vector<vector<int64_t>>& outputs_dim)
 {
     if (!PyArray_Check(pyObj)) {
         return false;
     }
 
-    output_dim.push_back({});
+    outputs_dim.push_back({});
     auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
-    output_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
+    outputs_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
 
     for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
-        output_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
+        outputs_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
     }
 
-    auto data_len = std::accumulate(begin(output_dim.back()),
-                                    end(output_dim.back()),
-                                    static_cast<int64_t>(output_size.back()),
+    auto data_len = std::accumulate(begin(outputs_dim.back()),
+                                    end(outputs_dim.back()),
+                                    static_cast<int64_t>(outputs_size.back()),
                                     std::multiplies<int64_t>());
 
-    auto data = new char[data_len];
-    memcpy(data, PyArray_DATA(np_array), data_len);
-    output.push_back(data);
+    outputs.push_back(new char[data_len]);
+    memcpy(const_cast<void*>(outputs.back()), PyArray_DATA(np_array), data_len);
     return true;
 }
 
 PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
 {
-    Locker locker;
-    vector<PyObject*> allocated;
-    Releaser releaser = [&allocated] () { for (auto obj: allocated) Py_XDECREF(obj); };
-  
+    Scoper scoper; 
     auto pyModule = PyImport_ImportModule(module);
     if (nullptr == pyModule) {
         return nullptr;
     }
 
-    allocated.push_back(pyModule);
+    scoper.Add(pyModule);
     auto pyClass  = PyObject_GetAttrString(pyModule, class_name);
     if (nullptr == pyClass) {
         return nullptr;
     }
 
-    allocated.push_back(pyClass);
+    scoper.Add(pyClass);
     auto empty_args = PyTuple_New(0);
-    allocated.push_back(empty_args);
+    scoper.Add(empty_args);
     auto named_args = PyDict_New();
-    allocated.push_back(named_args);
+    scoper.Add(named_args);
     for (const auto& iter: args) {
         PyDict_SetItemString(named_args, iter.first.c_str(), PyUnicode_FromString(iter.second.c_str()));
     }
 
-    auto instance = PyObject_Call(pyClass, empty_args, named_args);
-    if (nullptr == instance) {
-        return nullptr;
-    }
-
-    return instance;
+    return PyObject_Call(pyClass, empty_args, named_args);
 }
 
 PYOP_EXPORT void ReleaseInstance (void* instance)
 {
-    Locker locker;
+    Scoper scoper;
     if (nullptr != instance) {
         Py_XDECREF(static_cast<PyObject*>(instance));
         instance = nullptr;
@@ -177,15 +179,12 @@ PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
                                    vector<vector<int64_t>>&         output_dim,
                                    std::function<void(const char*)> logging_func = [](const char*){})
 {
-    Locker locker;
+    Scoper scoper;
     auto instance = static_cast<PyObject*>(raw_inst);
     if (nullptr == instance || nullptr == function) {
         logging_func("InvokePythonFunc: found invalid instance or function");
         return false;
     }
-
-    vector<PyObject*> allocated;
-    Releaser releaser = [&allocated] () { for (auto obj: allocated) Py_XDECREF(obj); };
 
     auto pyFunc = PyObject_GetAttrString(instance, function);
     if (nullptr == pyFunc) {
@@ -193,21 +192,20 @@ PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
         return false;
     }
 
-    allocated.push_back(pyFunc);
+    scoper.Add(pyFunc);
     auto pyArgs = PyTuple_New(input.size());
     for (size_t i = 0; i < input.size(); ++i) {
         PyTuple_SetItem(pyArgs, i, MakePyObj(input[i], input_type[i], input_dim[i]));
     }
 
-    allocated.push_back(pyArgs);
+    scoper.Add(pyArgs);
     auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
     if (nullptr == pyResult) {
         logging_func("InvokePythonFunc: no result");
         return false;
     }
 
-    allocated.push_back(pyResult);
-
+    scoper.Add(pyResult);
     if (PyArray_Check(pyResult)) {
         ExtractOutput(pyResult, output, output_size, output_dim);
     } else if (PyTuple_Check(pyResult)) {

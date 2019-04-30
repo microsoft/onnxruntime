@@ -1,17 +1,17 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
-#define LIB_NAME        "onnxruntime_pyop.dll"
-#define LOAD_LIB(n)     LoadLibraryA(n)
-#define LOAD_SYM(h,n)   GetProcAddress(h,n);
-#define UNLOAD_LIB(h)   FreeLibrary(h);
-#define PYHANDLE        HMODULE
+#define PY_LIB_NAME        "onnxruntime_pyop.dll"
+#define PY_LOAD_LIB(n)     LoadLibraryA(n)
+#define PY_LOAD_SYM(h,n)   GetProcAddress(h,n)
+#define PY_UNLOAD_LIB(h)   FreeLibrary(h)
+#define PYDLE              HMODULE
 #else
-#define LIB_NAME        "./libonnxruntime_pyop.so",
-#define LOAD_LIB(n)     dlopen(n, RTLD_NOW|RTLD_GLOBAL);
-#define LOAD_SYM(h,n)   dlsym(h,n);
-#define UNLOAD_LIB(h)   dlclose(h);
-#define PYHANDLE        void*
+#define PY_LIB_NAME        "./libonnxruntime_pyop.so"
+#define PY_LOAD_LIB(n)     dlopen(n,RTLD_NOW|RTLD_GLOBAL)
+#define PY_LOAD_SYM(h,n)   dlsym(h,n)
+#define PY_UNLOAD_LIB(h)   dlclose(h)
+#define PYDLE              void*
 #include "dlfcn.h"
 #endif
 #include "core/framework/ml_value.h"
@@ -55,26 +55,30 @@ typedef void SETPATH(const wchar_t*);
 
 namespace onnxruntime {
 
-struct PythonWrapper {
+struct PyCustomKernel;
+
+class PythonWrapper {
+
+    friend struct PyCustomKernel;
 
     PythonWrapper() {
 
-        handle = LOAD_LIB(LIB_NAME);
+        handle = PY_LOAD_LIB(PY_LIB_NAME);
         ORT_ENFORCE(nullptr != handle, "Failed to load pyop library");
 
-        init = (INIT*)LOAD_SYM(handle, "Initialize");
+        init = (INIT*)PY_LOAD_SYM(handle, "Initialize");
         ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
 
-        newInst = (NEWINST*)LOAD_SYM(handle, "NewInstance");
+        newInst = (NEWINST*)PY_LOAD_SYM(handle, "NewInstance");
         ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
 
-        invoke = (INVOKE*)LOAD_SYM(handle, "InvokePythonFunc");
+        invoke = (INVOKE*)PY_LOAD_SYM(handle, "InvokePythonFunc");
         ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
 
-        release = (RELEASE*)LOAD_SYM(handle, "ReleaseInstance");
+        release = (RELEASE*)PY_LOAD_SYM(handle, "ReleaseInstance");
         ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
 
-        lastErr = (LASTERR*)LOAD_SYM(handle, "GetLastErrorMessage"); 
+        lastErr = (LASTERR*)PY_LOAD_SYM(handle, "GetLastErrorMessage"); 
         ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
 
         std::string err;
@@ -82,95 +86,17 @@ struct PythonWrapper {
     }
 
     ~PythonWrapper() {
-        UNLOAD_LIB(handle);
+        PY_UNLOAD_LIB(handle);
     }
 
-    PYHANDLE    handle  = nullptr;
+    PYDLE       handle  = nullptr;
     INIT*       init    = nullptr;
     NEWINST*    newInst = nullptr;
     INVOKE*     invoke  = nullptr;
     RELEASE*    release = nullptr;
     LASTERR*    lastErr = nullptr;
 };
-/*
-#ifdef _WIN32
-struct PythonWrapper {
 
-    PythonWrapper() {
-
-        handle = ::LoadLibraryA("onnxruntime_pyop.dll");
-        ORT_ENFORCE(nullptr != handle, "Failed to load onnxruntime_pyop.dll");
-
-        init = (INIT*)::GetProcAddress(handle, "Initialize");
-        ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
-
-        newInst = (NEWINST*)::GetProcAddress(handle, "NewInstance");
-        ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
-
-        invoke = (INVOKE*)::GetProcAddress(handle, "InvokePythonFunc");
-        ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
-
-        release = (RELEASE*)::GetProcAddress(handle, "ReleaseInstance");
-        ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
-
-        lastErr = (LASTERR*)::GetProcAddress(handle, "GetLastErrorMessage"); 
-        ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
-
-        std::string err;
-        ORT_ENFORCE(init(), lastErr(err));
-    }
-
-    ~PythonWrapper() {
-        ::FreeLibrary(handle);
-    }
-
-    HMODULE     handle  = nullptr;
-    INIT*       init    = nullptr;
-    NEWINST*    newInst = nullptr;
-    INVOKE*     invoke  = nullptr;
-    RELEASE*    release = nullptr;
-    LASTERR*    lastErr = nullptr;
-};
-#else
-struct PythonWrapper {
-
-    PythonWrapper() {
-
-        handle = dlopen("./libonnxruntime_pyop.so", RTLD_NOW | RTLD_GLOBAL);
-        ORT_ENFORCE(nullptr != handle, dlerror());
-
-        init = (INIT*)dlsym(handle, "Initialize");
-        ORT_ENFORCE(nullptr != init, dlerror());
-
-        newInst = (NEWINST*)dlsym(handle, "NewInstance");
-        ORT_ENFORCE(nullptr != newInst, dlerror());
-
-        invoke = (INVOKE*)dlsym(handle, "InvokePythonFunc");
-        ORT_ENFORCE(nullptr != invoke, dlerror());
-
-        release = (RELEASE*)dlsym(handle, "ReleaseInstance");
-        ORT_ENFORCE(nullptr != release, dlerror());
-
-        lastErr = (LASTERR*)dlsym(handle, "GetLastErrorMessage"); 
-        ORT_ENFORCE(nullptr != lastErr, dlerror());
-
-        std::string err;
-        ORT_ENFORCE(init(), lastErr(err));
-    }
-
-    ~PythonWrapper() {
-        dlclose(handle);
-    }
-
-    void*       handle  = nullptr;
-    INIT*       init    = nullptr;
-    NEWINST*    newInst = nullptr;
-    INVOKE*     invoke  = nullptr;
-    RELEASE*    release = nullptr;
-    LASTERR*    lastErr = nullptr;
-};
-#endif
-*/
 struct PyCustomKernel {
 
     PyCustomKernel (ORT_API               ort,
@@ -182,8 +108,9 @@ struct PyCustomKernel {
                     LOG_FUNC              logging_func):
                     ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                     compute_(compute), shape_infer_(shape_infer), logging_func_(logging_func) {
-        instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
+
         std::string err;
+        instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
         ORT_ENFORCE(nullptr != instance_, GetPyWrapper().lastErr(err));
     }
 
@@ -195,56 +122,64 @@ struct PyCustomKernel {
     }
 
     void GetOutputShape (OrtKernelContext* context, size_t index, OrtTensorTypeAndShapeInfo* info) {
-        auto input_count = (size_t)reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
-        ORT_ENFORCE(input_count > 0);
-        std::vector<const void*>            input,      output;
-        std::vector<int32_t>                input_type, output_size;
-        std::vector<std::vector<int64_t>>   input_dim,  output_dim;
 
-        for (size_t i = 0; i < input_count; ++i) {
+        ORT_ENFORCE (nullptr != context);
+        ORT_ENFORCE (nullptr != info);
+
+        auto inputs_count = (size_t)reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+        ORT_ENFORCE(inputs_count > 0);
+ 
+        std::vector<const void*>            inputs,      outputs;
+        std::vector<int32_t>                inputs_type, outputs_elem_size;
+        std::vector<std::vector<int64_t>>   inputs_dim,  outputs_dim;
+
+        for (size_t i = 0; i < inputs_count; ++i) {
             auto ort_value = ort_.KernelContext_GetInput(context, i);
-            input.push_back(((MLValue*)ort_value)->Get<Tensor>().DataRaw());
-            input_type.push_back(GetType(ort_value));
-            input_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
+            inputs.push_back(((MLValue*)ort_value)->Get<Tensor>().DataRaw());
+            inputs_type.push_back(GetType(ort_value));
+            inputs_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
         std::string err;
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr(err));
-        ORT_ENFORCE (output.size() > index, "output count is less then ort output index");
-        ort_.SetDimensions(info, (const int64_t*)output[index], output_dim[index][0]);
-        for (auto mem: output) {
+        ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), GetPyWrapper().lastErr(err));
+        ORT_ENFORCE (outputs.size() > index, "output count is less then ort output index");
+        ort_.SetDimensions(info, (const int64_t*)outputs[index], outputs_dim[index][0]);
+        for (auto mem: outputs) {
             free(const_cast<void*>(mem));
         }
     }
 
     void Compute (OrtKernelContext* context) {
-        auto input_count = (size_t)reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
-        std::vector<const void*>            input,      output;
-        std::vector<int32_t>                input_type, output_size;
-        std::vector<std::vector<int64_t>>   input_dim,  output_dim;
 
-        for (size_t i = 0; i < input_count; ++i) {
+        ORT_ENFORCE (nullptr != context);
+        auto inputs_count = (size_t)reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+        std::vector<const void*>            inputs,      outputs;
+        std::vector<int32_t>                inputs_type, outputs_elem_size;
+        std::vector<std::vector<int64_t>>   inputs_dim,  outputs_dim;
+
+        for (size_t i = 0; i < inputs_count; ++i) {
             auto ort_value = ort_.KernelContext_GetInput(context, i);
-            input.push_back(((MLValue*)ort_value)->Get<Tensor>().DataRaw());
-            input_type.push_back(GetType(ort_value));
-            input_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
+            inputs.push_back(((MLValue*)ort_value)->Get<Tensor>().DataRaw());
+            inputs_type.push_back(GetType(ort_value));
+            inputs_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
         std::string err;
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr(err));
-        for (size_t i = 0; i < output.size(); ++i) {
-            OrtValue* ort_output  = ort_.KernelContext_GetOutput(context, i, output_dim[i].data(), output_dim[i].size());
-            char* output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
-            auto output_len = std::accumulate(begin(output_dim[i]), end(output_dim[i]), static_cast<int64_t>(output_size[i]), std::multiplies<int64_t>());
-            memcpy(output_mem_addr, output[i], output_len);
-            free(const_cast<void*>(output[i]));
+        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), GetPyWrapper().lastErr(err));
+        for (size_t i = 0; i < outputs.size(); ++i) {
+            auto ort_output  = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
+            auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
+            auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
+            memcpy(output_mem_addr, outputs[i], output_len);
+            free(const_cast<void*>(outputs[i]));
         }
     }
 
     int32_t GetType(OrtValue* input) const
     {
         int32_t numpy_type;
-        ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input is not tensor");
+        ORT_ENFORCE (nullptr != input);
+        ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input must be a tensor");
         auto data_type = ((MLValue*)input)->Get<Tensor>().DataType();
         if (data_type == DataTypeImpl::GetType<bool>()) {
             numpy_type = 0;
@@ -324,6 +259,7 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
     ONNXTensorElementDataType GetOutputType(size_t index) const { return output_types_[index]; }
 
 private:
+
     ONNX_ATTRS     attrs_;
     ONNX_TYPES     input_types_;
     ONNX_TYPES     output_types_;
