@@ -20,6 +20,136 @@
 ## com.microsoft
 ### <a name="com.microsoft.AttnLSTM"></a><a name="com.microsoft.attnlstm">**com.microsoft.AttnLSTM**</a>
 
+  Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
+  contains following basic component: LSTM Cell, Bahdanau Attention Mechanism, AttentionWrapp.
+  
+  Activation functions:
+  
+    Relu(x)                - max(0, x)
+  
+    Tanh(x)                - (1 - e^{-2x})/(1 + e^{-2x})
+  
+    Sigmoid(x)             - 1/(1 + e^{-x})
+  
+    (NOTE: Below are optional)
+  
+    Affine(x)              - alpha*x + beta
+  
+    LeakyRelu(x)           - x if x >= 0 else alpha * x
+  
+    ThresholdedRelu(x)     - x if x >= alpha else 0
+  
+    ScaledTanh(x)          - alpha*Tanh(beta*x)
+  
+    HardSigmoid(x)         - min(max(alpha*x + beta, 0), 1)
+  
+    Elu(x)                 - x if x >= 0 else alpha*(e^x - 1)
+  
+    Softsign(x)            - x/(1 + |x|)
+  
+    Softplus(x)            - log(1 + e^x)
+  
+    Softmax(x)             - exp(x) / sum(exp(x))
+  
+  Bahdanau Attention Mechanism:
+      `M` -  Memory tensor.
+  
+      `VALUES` - masked Memory by its real sequence length.
+  
+      `MW` - Memory layer weight.
+  
+      `KEYS` - Processed memory tensor by the memory layer.
+               KEYS = M * MW
+  
+      `Query` - Query tensor, normally at specific time step in sequence.
+  
+      `QW` - Query layer weight in the attention mechanism
+  
+      `PQ` - processed query,  = `Query` * `QW`
+  
+      `V' - attention vector
+  
+      `ALIGN` - calculated alignment based on Query and KEYS
+          ALIGN = softmax(reduce_sum(`V` * Tanh(`KEYS` + `PQ`)))
+  
+      `CONTEXT` - context based on `ALIGN` and `VALUES`
+          CONTEXT = `ALIGN` * `VALUES`
+  
+  
+  LSTM Cell:
+    `X` - input tensor concat with attention state in the attention wrapper
+  
+    `i` - input gate
+  
+    `o` - output gate
+  
+    `f` - forget gate
+  
+    `c` - cell gate
+  
+    `t` - time step (t-1 means previous time step)
+  
+    `W[iofc]` - W parameter weight matrix for input, output, forget, and cell gates
+  
+    `R[iofc]` - R recurrence weight matrix for input, output, forget, and cell gates
+  
+    `Wb[iofc]` - W bias vectors for input, output, forget, and cell gates
+  
+    `Rb[iofc]` - R bias vectors for input, output, forget, and cell gates
+  
+    `P[iof]`  - P peephole weight vector for input, output, and forget gates
+  
+    `WB[iofc]` - W parameter weight matrix for backward input, output, forget, and cell gates
+  
+    `RB[iofc]` - R recurrence weight matrix for backward input, output, forget, and cell gates
+  
+    `WBb[iofc]` - W bias vectors for backward input, output, forget, and cell gates
+  
+    `RBb[iofc]` - R bias vectors for backward input, output, forget, and cell gates
+  
+    `PB[iof]`  - P peephole weight vector for backward input, output, and forget gates
+  
+    `H` - Hidden state
+  
+    `num_directions` - 2 if direction == bidirectional else 1
+  
+    Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
+  
+      - it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
+  
+      - ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
+  
+      - ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
+  
+      - Ct = ft (.) Ct-1 + it (.) ct
+  
+      - ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
+  
+      - Ht = ot (.) h(Ct)
+  
+  
+  AttentionWrapp Notations:
+    `lstm()' - wrapped inner cell.
+             Ht, Ct = lstm(concat(Xt, ATTNt-1), Ct-1)
+  
+    `am()` - attention mechanism the wrapper used.
+             CONTEXTt, ALIGNt = am(Ht, ALIGNt-1)
+  
+    `AW` - attention layer weights, optional.
+  
+    `ATTN` - attention state, initial is zero. If `AW` provided, it is the output of the attention layer,
+                  ATTNt = concat(Ht, CONTEXTt) * AW
+             otherwise,
+                  ATTNt = CONTEXTt
+  
+  RNN layer output:
+    `Y` - if needed is the sequence of Ht from lstm cell.
+  
+    `Y_h` - is the last valid H from lstm cell.
+  
+    `Y_c` - is the last valid C from lstm cell.
+  
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -99,6 +229,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.ExpandDims"></a><a name="com.microsoft.expanddims">**com.microsoft.ExpandDims**</a>
 
+  ExpandDims echo operator.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -128,6 +260,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 
 ### <a name="com.microsoft.FusedConv"></a><a name="com.microsoft.fusedconv">**com.microsoft.FusedConv**</a>
+
+  The fused convolution operator schema is the same as Conv besides it includes an attribute
+  activation.
 
 #### Version
 
@@ -182,6 +317,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FusedGemm"></a><a name="com.microsoft.fusedgemm">**com.microsoft.FusedGemm**</a>
 
+  The FusedGemm operator schema is the same as Gemm besides it includes attributes
+  activation and leaky_relu_alpha.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -231,6 +369,25 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GatherND"></a><a name="com.microsoft.gathernd">**com.microsoft.GatherND**</a>
 
+  Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
+  slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
+  Example 1:
+    data    = [[0,1],[2,3]]
+    indices = [[0,0],[1,1]]
+    output  = [0,3]
+  Example 2:
+    data    = [[0,1],[2,3]]
+    indices = [[1],[0]]
+    output  = [[2,3],[0,1]]
+  Example 3:
+    data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+    indices = [[0,1],[1,0]]
+    output  = [[2,3],[4,5]]
+  Example 4:
+    data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+    indices = [[[0,1]],[[1,0]]]
+    output  = [[[2,3]],[[4,5]]]
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -262,6 +419,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 
 ### <a name="com.microsoft.MaxpoolWithMask"></a><a name="com.microsoft.maxpoolwithmask">**com.microsoft.MaxpoolWithMask**</a>
+
+  For internal use.
 
 #### Version
 
@@ -308,6 +467,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MurmurHash3"></a><a name="com.microsoft.murmurhash3">**com.microsoft.MurmurHash3**</a>
 
+  The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -347,6 +508,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.Range"></a><a name="com.microsoft.range">**com.microsoft.Range**</a>
 
+  Creates a sequence of numbers that begins at `start` and extends by increments of `delta`
+  up to but not including `limit`.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -378,6 +542,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 
 ### <a name="com.microsoft.ReduceSumInteger"></a><a name="com.microsoft.reducesuminteger">**com.microsoft.ReduceSumInteger**</a>
+
+  Computes the sum of the low-precision input tensor's element along the provided axes.
+  The resulting tensor has the same rank as the input if keepdims equal 1. If keepdims equal 0,
+  then the resulting tensor have the reduced dimension pruned. The above behavior is similar to numpy,
+  with the exception that numpy default keepdims to False instead of True.
 
 #### Version
 
@@ -418,6 +587,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.SampleOp"></a><a name="com.microsoft.sampleop">**com.microsoft.SampleOp**</a>
 
+  Sample echo operator.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -445,6 +616,48 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 
 ### <a name="com.microsoft.Tokenizer"></a><a name="com.microsoft.tokenizer">**com.microsoft.Tokenizer**</a>
+
+  Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
+    If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
+    Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
+    The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
+    the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
+    "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
+  
+    Let's assume "separators" is [" "] and consider an example.
+    If input is
+  
+    ["Hello World", "I love computer science !"] whose shape is [2],
+  
+    then the output would be
+  
+   [["Hello", "World", padvalue, padvalue, padvalue],
+   ["I", "love", "computer", "science", "!"]]
+  
+   whose shape is [2, 5] because you can find at most 5 tokens per input string.
+   Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
+  
+   If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
+   will be broken part into individual characters.
+  
+   For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
+   The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
+   This operator searches for the first match starting from the beginning of the considered string,
+   and then launches another search starting from the first remained character after the first matched token.
+   If no match found, this operator will remove the first character from the remained string and do another search.
+   This procedure will be repeated until reaching the end of the considered string.
+  
+    Let's consider another example to illustrate the effect of setting "mark" to true.
+    If input is ["Hello", "World"],
+    then the corresponding output would be [0x02, "Hello", "World", 0x03].
+    This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2].
+  
+  If tokenizer removes the entire content of [C]-input, it will produce [[]].
+  I.e. the output shape should be [C][0] or [N][C][0] if input shape was [N][C].
+  
+  If the tokenizer receives empty input of [0] then the output is [0] if empty input
+  of [N, 0] then [N, 0].
+  
 
 #### Version
 
@@ -488,6 +701,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 
 ### <a name="com.microsoft.WordConvEmbedding"></a><a name="com.microsoft.wordconvembedding">**com.microsoft.WordConvEmbedding**</a>
+
+  The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.
 
 #### Version
 

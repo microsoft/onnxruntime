@@ -114,10 +114,11 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
     s = ''
 
     # doc
-    if schema.doc:
+    schemadoc = schema.doc
+    if schemadoc:
         s += '\n'
         s += '\n'.join('  ' + line
-                       for line in schema.doc.lstrip().splitlines())
+                       for line in schemadoc.lstrip().splitlines())
         s += '\n'
 
     # since version
@@ -301,6 +302,7 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
 
 
 def main(args):  # type: (Type[Args]) -> None
+    
     with io.open(args.output, 'w', newline='', encoding="utf-8") as fout:
         fout.write('## Contrib Operator Schemas\n')
         fout.write(
