@@ -5,7 +5,7 @@
 
 #include <fstream>
 #include <cmath>
-#include <core/external_ops/pyop.h>
+//#include <core/external_ops/pyop.h>
 #include <core/common/logging/logging.h>
 #include <core/graph/constants.h>
 #include <core/platform/env.h>

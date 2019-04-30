@@ -266,6 +266,7 @@ TEST_F(CApiTest, test_pyop) {
   module << "\t\t" << "print (sys.path)"             << std::endl;
   module << "\t"   << "def compute(self,x):"         << std::endl;
   module << "\t\t" << "return x*2"                   << std::endl;
+  module.close();
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";

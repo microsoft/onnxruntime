@@ -1,5 +1,9 @@
 #pragma once
+#ifdef _WIN32
+#include <Windows.h>
+#else
 #include "dlfcn.h"
+#endif
 #include "core/framework/ml_value.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -35,11 +39,50 @@ typedef bool INVOKE(void*,
                     std::vector<std::vector<int64_t>>&,
                     std::function<void(const char*)>);
 typedef void RELEASE(void*);
-typedef const char* LASTERR();
+typedef const char* LASTERR(std::string&);
 typedef void SETPATH(const wchar_t*);
 
 namespace onnxruntime {
 
+#ifdef _WIN32
+struct PythonWrapper {
+
+    PythonWrapper() {
+
+        handle = ::LoadLibraryA("onnxruntime_pyop.dll");
+        ORT_ENFORCE(nullptr != handle, "Failed to load onnxruntime_pyop.dll");
+
+        init = (INIT*)::GetProcAddress(handle, "Initialize");
+        ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
+
+        newInst = (NEWINST*)::GetProcAddress(handle, "NewInstance");
+        ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
+
+        invoke = (INVOKE*)::GetProcAddress(handle, "InvokePythonFunc");
+        ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
+
+        release = (RELEASE*)::GetProcAddress(handle, "ReleaseInstance");
+        ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
+
+        lastErr = (LASTERR*)::GetProcAddress(handle, "GetLastErrorMessage"); 
+        ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
+
+        std::string err;
+        ORT_ENFORCE(init(), lastErr(err));
+    }
+
+    ~PythonWrapper() {
+        ::FreeLibrary(handle);
+    }
+
+    HMODULE     handle  = nullptr;
+    INIT*       init    = nullptr;
+    NEWINST*    newInst = nullptr;
+    INVOKE*     invoke  = nullptr;
+    RELEASE*    release = nullptr;
+    LASTERR*    lastErr = nullptr;
+};
+#else
 struct PythonWrapper {
 
     PythonWrapper() {
@@ -76,6 +119,7 @@ struct PythonWrapper {
     RELEASE*    release = nullptr;
     LASTERR*    lastErr = nullptr;
 };
+#endif
 
 struct PyCustomKernel {
 
@@ -89,7 +133,8 @@ struct PyCustomKernel {
                     ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                     compute_(compute), shape_infer_(shape_infer), logging_func_(logging_func) {
         instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
-        ORT_ENFORCE(nullptr != instance_, GetPyWrapper().lastErr());
+        std::string err;
+        ORT_ENFORCE(nullptr != instance_, GetPyWrapper().lastErr(err));
     }
 
     ~PyCustomKernel() {
@@ -113,7 +158,8 @@ struct PyCustomKernel {
             input_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr());
+        std::string err;
+        ORT_ENFORCE (GetPyWrapper().invoke(instance_, shape_infer_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr(err));
         ORT_ENFORCE (output.size() > index, "output count is less then ort output index");
         ort_.SetDimensions(info, (const int64_t*)output[index], output_dim[index][0]);
         for (auto mem: output) {
@@ -134,11 +180,12 @@ struct PyCustomKernel {
             input_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr());
+        std::string err;
+        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), input, input_type, input_dim, output, output_size, output_dim, logging_func_), GetPyWrapper().lastErr(err));
         for (size_t i = 0; i < output.size(); ++i) {
             OrtValue* ort_output  = ort_.KernelContext_GetOutput(context, i, output_dim[i].data(), output_dim[i].size());
             char* output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
-            auto output_len = std::accumulate(begin(output_dim[i]), end(output_dim[i]), output_size[i], std::multiplies<int64_t>());
+            auto output_len = std::accumulate(begin(output_dim[i]), end(output_dim[i]), static_cast<int64_t>(output_size[i]), std::multiplies<int64_t>());
             memcpy(output_mem_addr, output[i], output_len);
             free(const_cast<void*>(output[i]));
         }

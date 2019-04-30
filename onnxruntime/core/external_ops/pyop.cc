@@ -19,6 +19,12 @@ using Releaser = std::function<void()>;
 using namespace std;
 namespace PythonFuncionWrapper {
 
+#ifdef _WIN32
+#define PYOP_EXPORT extern "C" __declspec(dllexport)
+#else
+#define PYOP_EXPORT extern "C"
+#endif
+
 struct Finalizer
 {
     ~Finalizer() {
@@ -36,7 +42,7 @@ public:
 
 std::mutex Locker::mtx_;
 
-extern "C" bool Initialize() 
+PYOP_EXPORT bool Initialize() 
 {
     Py_Initialize();
     if (_import_array() < 0) {
@@ -54,25 +60,29 @@ extern "C" bool Initialize()
     return true;
 }
 
-extern "C" std::string GetLastErrorMessage()
+PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
 {
     stringstream ss;
     if (PyErr_Occurred()) {
         PyObject *type, *value, *trace;
         PyErr_Fetch(&type, &value, &trace);
-        ss << "type: "  << PyBytes_AsString(type)  << endl;  
-        ss << "value: " << PyBytes_AsString(value) << endl;  
+        ss << "type: "  << PyBytes_AsString(type)  << endl;
+        ss << "value: " << PyBytes_AsString(value) << endl;
         ss << "trace: " << PyBytes_AsString(trace) << endl;
+        Py_XDECREF(type);
+        Py_XDECREF(value);
+        Py_XDECREF(trace);
+        err = ss.str();
     }
-    return ss.str();
+    return err.c_str();
 }
 
 PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
 {
     std::vector<npy_intp> np_dim(dim);
-    PyObject* pyObj = PyArray_EMPTY(np_dim.size(), np_dim.data(), type, 0);
+    auto pyObj = static_cast<PyObject*>(PyArray_EMPTY(static_cast<int>(np_dim.size()), np_dim.data(), type, 0));
     auto data_len = std::accumulate(begin(np_dim), end(np_dim),
-                                    PyArray_DescrFromType(type)->elsize,
+                                    static_cast<int64_t>(PyArray_DescrFromType(type)->elsize),
                                     std::multiplies<int64_t>());
     auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
     memcpy(PyArray_DATA(np_array), data, data_len);
@@ -90,15 +100,15 @@ bool ExtractOutput (PyObject*                pyObj,
 
     output_dim.push_back({});
     auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
-    output_size.push_back(PyArray_ITEMSIZE(np_array));
+    output_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
 
     for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
         output_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
     }
 
-    auto data_len = output_size.back() *
-                    std::accumulate(begin(output_dim.back()),
-                                    end(output_dim.back()), 1,
+    auto data_len = std::accumulate(begin(output_dim.back()),
+                                    end(output_dim.back()),
+                                    static_cast<int64_t>(output_size.back()),
                                     std::multiplies<int64_t>());
 
     auto data = new char[data_len];
@@ -107,7 +117,7 @@ bool ExtractOutput (PyObject*                pyObj,
     return true;
 }
 
-extern "C" void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
+PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
 {
     Locker locker;
     vector<PyObject*> allocated;
@@ -115,14 +125,12 @@ extern "C" void* NewInstance (const char* module, const char* class_name, const 
   
     auto pyModule = PyImport_ImportModule(module);
     if (nullptr == pyModule) {
-        cout << "1" << endl;
         return nullptr;
     }
 
     allocated.push_back(pyModule);
     auto pyClass  = PyObject_GetAttrString(pyModule, class_name);
     if (nullptr == pyClass) {
-        cout << "2" << endl;
         return nullptr;
     }
 
@@ -137,30 +145,30 @@ extern "C" void* NewInstance (const char* module, const char* class_name, const 
 
     auto instance = PyObject_Call(pyClass, empty_args, named_args);
     if (nullptr == instance) {
-        cout << "3" << endl;
         return nullptr;
     }
 
     return instance;
 }
 
-extern "C" void ReleaseInstance (void* instance)
+PYOP_EXPORT void ReleaseInstance (void* instance)
 {
     Locker locker;
     if (nullptr != instance) {
         Py_XDECREF(static_cast<PyObject*>(instance));
+        instance = nullptr;
     }
 }
 
-extern "C" bool InvokePythonFunc (void*                            raw_inst,
-                                  const char*                      function,
-                                  const vector<const void*>&       input,
-                                  const vector<int32_t>&           input_type,
-                                  const vector<vector<int64_t>>&   input_dim,
-                                  vector<const void*>&             output,
-                                  vector<int32_t>&                 output_size,
-                                  vector<vector<int64_t>>&         output_dim,
-                                  std::function<void(const char*)> logging_func = [](const char*){})
+PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
+                                   const char*                      function,
+                                   const vector<const void*>&       input,
+                                   const vector<int32_t>&           input_type,
+                                   const vector<vector<int64_t>>&   input_dim,
+                                   vector<const void*>&             output,
+                                   vector<int32_t>&                 output_size,
+                                   vector<vector<int64_t>>&         output_dim,
+                                   std::function<void(const char*)> logging_func = [](const char*){})
 {
     Locker locker;
     auto instance = static_cast<PyObject*>(raw_inst);
