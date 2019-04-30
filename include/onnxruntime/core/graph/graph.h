@@ -707,7 +707,8 @@ class Graph {
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
-  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
+  // IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
+  SchemaRegistryManagerPtr GetSchemaRegistryManager() const;
 
   /**
   Create a single Node that is the result of the a fusion of multiple nodes in this Graph.
@@ -770,14 +771,16 @@ class Graph {
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        // IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        SchemaRegistryManagerPtr schema_registry_manager,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // internal use by the Graph class only
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        // IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        SchemaRegistryManagerPtr schema_registry_manager,
         Graph* parent_graph,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
@@ -913,7 +916,7 @@ class Graph {
   InitializedTensorSet name_to_initial_tensor_;
   std::vector<int> removed_initializer_indexes_;
 
-  IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
+  SchemaRegistryManagerPtr schema_registry_manager_;
 
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
 
@@ -955,7 +958,7 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
-  const std::unordered_map<std::string, int> domain_to_version_;
+  std::unordered_map<std::string, int> domain_to_version_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
 

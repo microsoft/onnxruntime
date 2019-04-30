@@ -29,6 +29,8 @@ using ProviderType = const std::string&;
 using NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>;
 class IOnnxRuntimeOpSchemaCollection;
 using IOnnxRuntimeOpSchemaCollectionPtr = std::shared_ptr<IOnnxRuntimeOpSchemaCollection>;
+class SchemaRegistryManager;
+using SchemaRegistryManagerPtr = std::shared_ptr<SchemaRegistryManager>;
 }  // namespace onnxruntime
 
 namespace onnxruntime {

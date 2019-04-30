@@ -256,7 +256,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[domain_] = opset_version_;
   auto p_model = std::make_unique<onnxruntime::Model>("test", false, ModelMetaData(),
-                                                      custom_schema_registries_, domain_to_version);
+                                                      std::make_shared<SchemaRegistryManager>(custom_schema_registries_), domain_to_version);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 

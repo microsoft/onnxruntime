@@ -136,7 +136,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
-  p_model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+  p_model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), std::make_shared<SchemaRegistryManager>(),
                                                  domain_to_version);
   onnxruntime::Graph& graph = p_model->MainGraph();
 

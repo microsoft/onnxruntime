@@ -106,7 +106,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->Finalize();
   //construct body
   body_ = std::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-                                               IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+                                               graph.GetSchemaRegistryManager(),
                                                graph.DomainToVersionMap());
 
   auto& sub_graph = body_->MainGraph();
@@ -204,7 +204,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   //TODO: set correct domain and version
   domain_to_version[onnxruntime::kOnnxDomain] = (int)onnx_func_proto_->since_version();
   body_ = std::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
-                                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+                                               std::make_shared<SchemaRegistryManager>(), domain_to_version);
   auto& sub_graph = body_->MainGraph();
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
