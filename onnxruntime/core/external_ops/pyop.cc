@@ -86,7 +86,7 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
         scoper.Add(type);
         scoper.Add(value);
         scoper.Add(trace);
-        if (nullptr != type)  ss << "python error type: "  << PyBytes_AsString(type) << endl;
+        if (nullptr != type)  ss << "python error type: "  << PyBytes_AsString(type)  << endl;
         if (nullptr != value) ss << "python error value: " << PyBytes_AsString(value) << endl;
         if (nullptr != trace) ss << "python error trace: " << PyBytes_AsString(trace) << endl;
         err = ss.str();
@@ -164,7 +164,6 @@ PYOP_EXPORT void ReleaseInstance (void* instance)
     Scoper scoper;
     if (nullptr != instance) {
         Py_XDECREF(static_cast<PyObject*>(instance));
-        instance = nullptr;
     }
 }
 

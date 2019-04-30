@@ -2062,7 +2062,7 @@ Node& Graph::AddNode(const std::string& name,
 
   if (schema_registry_manager_->NewRegistry(node)) { // new registry for external operators
     auto domain_map = schema_registry_manager_->GetLatestOpsetVersions(false);
-    for (auto iter : domain_map) {
+    for (auto iter: domain_map) {
       if (domain_to_version_.find(iter.first) == domain_to_version_.end()) {
         domain_to_version_[iter.first] = iter.second;
       }
