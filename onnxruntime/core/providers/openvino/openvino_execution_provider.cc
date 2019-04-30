@@ -111,6 +111,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         if (layer.getName() == "NotSupported" && layer.getOpsetVersion() < opset_version) {
 
             isGraphSupported = false;
+            return result;
         }
     }
     std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
@@ -126,30 +127,26 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         for(auto output : graph_viewer.GetOutputs()){
             fused_outputs.insert(output);
         }
+        auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+        meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
+        meta_def->domain = "OpenVINO";
+        meta_def->since_version = 1;
+        // meta_def->attributes["initializers"] = izers_attr;
+
+        for(auto input : fused_inputs){
+            meta_def->inputs.push_back(input->Name());
+        }
+
+        for (auto output : fused_outputs) {
+            meta_def->outputs.push_back(output->Name());
+        }
+
+        sub_graph->SetMetaDef(meta_def);
+        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+
+        auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+        SaveModel(model_proto,"ov_model.onnx");
     }
-
-
-
-
-    auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
-    meta_def->domain = "OpenVINO";
-    meta_def->since_version = 1;
-    // meta_def->attributes["initializers"] = izers_attr;
-
-    for(auto input : fused_inputs){
-        meta_def->inputs.push_back(input->Name());
-    }
-
-    for (auto output : fused_outputs) {
-        meta_def->outputs.push_back(output->Name());
-    }
-
-    sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-
-    auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
-    SaveModel(model_proto,"ov_model.onnx");
 
     return result;
 }

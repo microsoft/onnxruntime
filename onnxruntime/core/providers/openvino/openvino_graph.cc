@@ -132,7 +132,10 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
           std::cout << "Python module call failed" << std::endl;
         }
 
+    }else {
+        std::cout << "Python module not found " << std::endl;
     }
+
 
 
 
