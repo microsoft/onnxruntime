@@ -261,10 +261,14 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
           }
       }//for
 
-      ORT_ENFORCE (        module  != "", "PyOp module not specified");
-      ORT_ENFORCE (    class_name  != "", "PyOp class name not specified");
+      ORT_ENFORCE (    module != "", "PyOp module not specified");
+      ORT_ENFORCE (class_name != "", "PyOp class name not specified");
+
       ORT_ENFORCE (!input_types.empty() , "PyOp node inputs not specified");
       ORT_ENFORCE (!output_types.empty(), "PyOp node outputs not specified");
+
+      ORT_ENFORCE ( input_types.size() == node->InputDefs().size() , "PyOp node input types mismatch with inputs");
+      ORT_ENFORCE (output_types.size() == node->OutputDefs().size(), "PyOp node output types mismatch with outputs");
 
       auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(),
                                  class_name.c_str(), compute.c_str(), shape_infer.c_str(),
