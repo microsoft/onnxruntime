@@ -16,8 +16,7 @@ namespace onnxruntime {
 
 namespace transformer_utils {
 
-/** Given a TransformerLevel, this method generates a name for the rule-based graph transformer of that level. */
-static std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
+std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
   return "Level" + std::to_string(static_cast<uint32_t>(level)) + "_RuleBasedTransformer";
 }
 
@@ -28,7 +27,6 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
-      rules.push_back(std::make_unique<ConstantFolding>());
       break;
 
     case TransformerLevel::Level2:
@@ -77,8 +75,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
   switch (level) {
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
+
+      transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
-      // At the moment, we have only a rule-based transformer for Level1.
     } break;
 
     case TransformerLevel::Level2: {
