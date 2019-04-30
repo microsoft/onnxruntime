@@ -140,7 +140,7 @@ void TestInference(OrtEnv* env, T model_uri,
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.pb");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.pb");
-static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop.pb");
+static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.pb");
 
 class CApiTestWithProvider : public CApiTest,
                              public ::testing::WithParamInterface<int> {

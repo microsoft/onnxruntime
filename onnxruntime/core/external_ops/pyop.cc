@@ -62,16 +62,23 @@ PYOP_EXPORT bool Initialize()
 
 PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
 {
-    stringstream ss;
     if (PyErr_Occurred()) {
+        stringstream ss;
         PyObject *type, *value, *trace;
+        type = value = trace = nullptr;
         PyErr_Fetch(&type, &value, &trace);
-        ss << "type: "  << PyBytes_AsString(type)  << endl;
-        ss << "value: " << PyBytes_AsString(value) << endl;
-        ss << "trace: " << PyBytes_AsString(trace) << endl;
-        Py_XDECREF(type);
-        Py_XDECREF(value);
-        Py_XDECREF(trace);
+        if (nullptr != type)  {
+            ss << "type: " << PyBytes_AsString(type)  << endl;
+            Py_XDECREF(type);
+        }
+        if (nullptr != value) {
+            ss << "value: " << PyBytes_AsString(value) << endl;
+            Py_XDECREF(value);
+        }
+        if (nullptr != trace) {
+            ss << "trace: " << PyBytes_AsString(trace) << endl;
+            Py_XDECREF(trace);
+        }
         err = ss.str();
     }
     return err.c_str();
@@ -188,7 +195,7 @@ PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
 
     allocated.push_back(pyFunc);
     auto pyArgs = PyTuple_New(input.size());
-    for (int32_t i = 0; i < input.size(); ++i) {
+    for (size_t i = 0; i < input.size(); ++i) {
         PyTuple_SetItem(pyArgs, i, MakePyObj(input[i], input_type[i], input_dim[i]));
     }
 
