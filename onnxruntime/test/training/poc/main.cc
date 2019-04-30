@@ -67,6 +67,8 @@ int main(int argc, char* args[]) {
   params.num_of_epoch_ = NUM_OF_EPOCH;
   params.learning_rate_ = LEARNING_RATE;
   params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
+  // Uncomment following line to enable in-graph optimizer, which currently only when in GPU
+  //params.in_graph_optimizer_name_ = "SGDOptimizer";
 
   int true_count = 0;
   float total_loss = 0.0f;
@@ -84,7 +86,6 @@ int main(int argc, char* args[]) {
     const TensorShape label_shape = label_t.Shape();
     const TensorShape loss_shape = loss_t.Shape();
     ORT_ENFORCE(predict_shape == label_shape);
-    ORT_ENFORCE(loss_shape.NumDimensions() == 1 && loss_shape[0] == 1);
 
     int64_t batch_size = predict_shape[0];
     for (int n = 0; n < batch_size; ++n) {

@@ -4,7 +4,9 @@
 #include "core/graph/model.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/loss_function_builder.h"
+#include "core/training/training_optimizer.h"
 #include "core/training/training_session.h"
+#include "core/training/weight_updater.h"
 
 using namespace std;
 
@@ -17,13 +19,15 @@ static Status AddLossFuncionInternal(Graph& graph,
 }
 
 static Status BuildGradientGraphInternal(Graph& graph,
-                                         const std::string& loss_function_output_name,
-                                         const std::vector<std::string>& node_arg_names_to_train) {
+                                         const string& loss_function_output_name,
+                                         const vector<string>& node_arg_names_to_train,
+                                         const vector<in_graph_optimizer::OptimizerInfo>& opt_info) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
-                                          loss_function_output_name);
+                                          loss_function_output_name,
+                                          opt_info);
   return grad_graph_builder.Build();
 }
 
@@ -38,13 +42,17 @@ Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_train, const std::string& loss_function_output_name) {
+Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_train,
+                                           const string& loss_function_output_name,
+                                           const vector<in_graph_optimizer::OptimizerInfo>& opt_info) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
+  opt_info_ = opt_info;
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
-                                                 weights_to_train_));
+                                                 weights_to_train_,
+                                                 opt_info_));
 
   return DoPostLoadProcessing(*model_);
 }
@@ -81,7 +89,8 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    loss_func_info_.loss_name_,
-                                                   weights_to_train_));
+                                                   weights_to_train_,
+                                                   opt_info_));
   }
 
   return Model::Save(*new_model, model_uri);

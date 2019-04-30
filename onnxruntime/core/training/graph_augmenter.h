@@ -128,10 +128,20 @@ class GraphAugmenter {
       return graph_initializers_;
     }
 
+    // When adding ArgDef, if new TypeProto is needed, call this func to get a new one
+    // So that the life cycle is managed by GraphDefs.
+    TypeProto* CreateTypeProto() {
+      graph_type_protos.push_back(std::make_unique<TypeProto>());
+      return graph_type_protos.back().get();
+    }
+
    private:
     std::vector<NodeDef> node_defs_;
     std::vector<std::string> graph_output_names_;
     std::vector<TensorProto> graph_initializers_;
+
+    // A pool of TypeProto, used when adding ArgDef if new TypeProto is needed.
+    std::vector<std::unique_ptr<TypeProto>> graph_type_protos;
   };
 
   // Augment the graph with new_graph_elements which defines new nodes, outputs, initializers.

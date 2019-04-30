@@ -15,6 +15,7 @@
 #include "core/training/gradient_builder_registry.h"
 #include "core/training/gradient_schema_defs.h"
 #include "core/training/loss_function_registry.h"
+#include "core/training/training_optimizer.h"
 #endif
 
 namespace onnxruntime {
@@ -52,6 +53,7 @@ Status Environment::Initialize() {
       training::RegisterGradientSchemas();
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
+      training::in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
 #endif
     });
     //TODO:put all of the following things into call_once

@@ -22,6 +22,13 @@ class TrainingRunner {
     std::string model_trained_with_loss_func_path_;  // To save the model with loss func after training.
     LossFunctionInfo loss_func_info_;
 
+    // The in-graph optimizer info.
+    // It is the name of the optimizer OP.
+    // If specified, every gradient output will be connected to a new optimizer node
+    // who has the updated weights as new graph outputs.
+    // For now all to-be-trained weights use the same optimizer type.
+    std::string in_graph_optimizer_name_;
+
     // For some model, loss function's input "prediction" is not the model output.
     // So model_prediction_name must be specified.
     std::string model_prediction_name_;

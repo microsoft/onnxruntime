@@ -6,6 +6,7 @@
 #include "core/session/inference_session.h"
 #include "core/training/loss_func/loss_func_common.h"
 #include "core/training/loss_function_registry.h"
+#include "core/training/training_optimizer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -42,8 +43,19 @@ class TrainingSession : public InferenceSession {
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a list of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
+  @param opt_info optional, specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
+  @remarks if optimizer_and_params is not empty, in the gradient graph, every gradient will be fed into a new optimizer
+           node:
+           1. New inputs: the parameters of the optimizer are the new graph inputs
+                          Optimizer with same names share the same parameters.
+           2. New outputs: the output of optimizer will become the new graph outputs.
+           3. Every weight in weights_to_train must have the optimizer info specified.
+           4. Differnt weights can have different optimizers and parameters.
   */
-  common::Status BuildGradientGraph(const std::vector<std::string>& weights_to_train, const std::string& loss_function_output_name);
+
+  common::Status BuildGradientGraph(const std::vector<std::string>& weights_to_train,
+                                    const std::string& loss_function_output_name,
+                                    const std::vector<in_graph_optimizer::OptimizerInfo>& opt_info = {});
 
   /** Save a model, 3 options:
   1. save with updated weights
@@ -73,6 +85,7 @@ class TrainingSession : public InferenceSession {
  private:
   std::vector<std::string> weights_to_train_;
   LossFunctionInfo loss_func_info_;
+  std::vector<in_graph_optimizer::OptimizerInfo> opt_info_;
 };
 }  // namespace training
 }  // namespace onnxruntime

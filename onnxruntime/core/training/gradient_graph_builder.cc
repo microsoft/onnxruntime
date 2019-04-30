@@ -14,6 +14,7 @@
 #include "core/optimizer/insert_output_rewriter.h"
 
 using namespace ONNX_NAMESPACE;
+using namespace std;
 
 namespace onnxruntime {
 namespace training {
@@ -21,12 +22,15 @@ namespace training {
 using namespace common;
 
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
-                                           const std::vector<std::string>& y_node_arg_names,
-                                           const std::vector<std::string>& x_node_arg_names,
-                                           std::string loss_node_arg_name) : graph_(graph),
-                                                                             loss_node_arg_name_(loss_node_arg_name),
-                                                                             pre_training_graph_transformer_{"pre_training_graph_transformer", ""} {
-  pre_training_graph_transformer_.Register(std::make_unique<InsertMaxPoolOutput>());
+                                           const vector<string>& y_node_arg_names,
+                                           const vector<string>& x_node_arg_names,
+                                           string loss_node_arg_name,
+                                           const vector<in_graph_optimizer::OptimizerInfo>& opt_info)
+    : graph_(graph),
+      loss_node_arg_name_(loss_node_arg_name),
+      pre_training_graph_transformer_{"pre_training_graph_transformer", ""},
+      opt_info_(opt_info) {
+  pre_training_graph_transformer_.Register(make_unique<InsertMaxPoolOutput>());
 
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -49,7 +53,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     }
     x_node_args_.push_back(node_arg);
 
-    std::vector<const Node*> nodes = graph_->GetConsumerNodes(node_arg->Name());
+    vector<const Node*> nodes = graph_->GetConsumerNodes(node_arg->Name());
     if (nodes.empty()) {
       ORT_THROW(node_arg->Name(), " couldn't find the consumer node.");
     }
@@ -59,7 +63,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
 
 NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
   NodeSet visited(nodes);
-  std::deque<const Node*> queue(nodes.begin(), nodes.end());
+  deque<const Node*> queue(nodes.begin(), nodes.end());
 
   while (!queue.empty()) {
     const Node* n = queue.front();
@@ -118,9 +122,9 @@ Status GradientGraphBuilder::Build() {
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable(reachable_nodes));
 
   // Going forward to figure out which node_args need backprop-ed.
-  std::deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
+  deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
   NodeSet visited(x_nodes_);
-  std::unordered_set<const NodeArg*> visited_node_args(x_node_args_.begin(), x_node_args_.end());
+  unordered_set<const NodeArg*> visited_node_args(x_node_args_.begin(), x_node_args_.end());
   visited_node_args.insert(y_node_args_.begin(), y_node_args_.end());
 
   while (!queue.empty()) {
@@ -133,7 +137,7 @@ Status GradientGraphBuilder::Build() {
       if (reachable_nodes.find(&next_node) == reachable_nodes.end()) continue;
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
-      std::string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
+      string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
       pending_[grad_node_arg_name] += 1;
 
       visited_node_args.insert(node_arg);
@@ -150,7 +154,7 @@ Status GradientGraphBuilder::Build() {
 
   for (auto node : visited) {
     //TODO: might not need two sets, the union of them might be enough
-    std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
+    unordered_set<string> input_args_need_grad, output_args_need_grad;
     for (auto arg : node->InputDefs()) {
       if (visited_node_args.find(arg) != visited_node_args.end()) {
         input_args_need_grad.insert(arg->Name());
@@ -170,7 +174,7 @@ Status GradientGraphBuilder::Build() {
         auto found = pending_.find(arg.name);
         if (found != pending_.end() && found->second > 1) {
           auto idx = gradients_to_accumulate_[arg].size();
-          std::string indexed_arg_name = arg.name + "_" + std::to_string(idx);
+          string indexed_arg_name = arg.name + "_" + to_string(idx);
           gradients_to_accumulate_[arg].push_back(ArgDef(indexed_arg_name, arg.type_proto));
 
           arg.name = indexed_arg_name;
@@ -185,9 +189,23 @@ Status GradientGraphBuilder::Build() {
     gradient_graph_defs.AddNodeDefs({NodeDef("Sum", gradient_pair.second, {gradient_pair.first})});
   }
 
-  // Set the gradients as graph outputs.
-  for (auto x_node_arg : x_node_args_) {
-    gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
+  // Set the gradients as graph outputs, if in-graph optimizers are not used.
+  // Otherwise, add optimizer nodes and their outputs as graph outputs.
+  if (opt_info_.empty()) {
+    for (auto x_node_arg : x_node_args_) {
+      gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
+    }
+  } else {
+    // Add optimizer nodes
+    // For now every weight has its own optimizer node.
+    for (size_t i = 0; i < x_node_args_.size(); ++i) {
+      auto opt_builder = in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info_[i].name_);
+      const string& weight_name = x_node_args_[i]->Name();
+      opt_builder->Build({weight_name},
+                         {GradientBuilderBase::GradientName(weight_name)},
+                         opt_info_[i],
+                         gradient_graph_defs);
+    }
   }
 
   return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);

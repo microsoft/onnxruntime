@@ -20,6 +20,9 @@ using namespace std;
 namespace onnxruntime {
 namespace training {
 
+const static string SGD_OP_NAME = "SGDOptimizer";
+const static string SGD_LEARNING_RATE_STRING = "learning_rate";
+
 TrainingRunner::TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params)
     : training_data_(trainingData), test_data_(testData), params_(params), session_(SessionOptions()) {
   ORT_ENFORCE(!params_.model_path_.empty());
@@ -27,6 +30,8 @@ TrainingRunner::TrainingRunner(DataSet& trainingData, DataSet& testData, const P
               (params_.weights_to_train_.empty() && !params_.weights_not_to_train_.empty()));
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
+  ORT_ENFORCE(params_.in_graph_optimizer_name_.empty() ||
+              params_.in_graph_optimizer_name_ == SGD_OP_NAME);
 }
 
 Status TrainingRunner::Initialize() {
@@ -36,7 +41,7 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.AddLossFuncion(params_.loss_func_info_));
   if (!params_.model_with_loss_func_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_loss_func_path_,
-                                      TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
+                                      TrainingSession::SaveOption::NO_RELOAD));
   }
 
   // Get the weights-to-train list if user specify it.
@@ -53,11 +58,22 @@ Status TrainingRunner::Initialize() {
     }
   }
 
+  // If in-graph optimizer is used, prepare the weight<->optimizer mapping.
+  // Here all weights use the same SGDOptimizer.
+  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
+  vector<in_graph_optimizer::OptimizerInfo> opt_info;
+  opt_info.reserve(weights_to_train.size());
+  if (use_in_graph_optimizer) {
+    for (int i = 0; i < weights_to_train.size(); ++i) {
+      opt_info.push_back({params_.in_graph_optimizer_name_, {SGD_LEARNING_RATE_STRING}});
+    }
+  }
+
   // Add gradient graph
-  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name_));
+  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name_, opt_info));
   if (!params_.model_with_training_graph_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_training_graph_path_,
-                                      TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS));
+                                      TrainingSession::SaveOption::NO_RELOAD));
   }
 
 #ifdef USE_CUDA
@@ -84,11 +100,26 @@ Status TrainingRunner::Run() {
 }
 
 Status TrainingRunner::TrainingLoop() {
-  WeightUpdater<GradientDescent> weight_updater(session_, {params_.learning_rate_, TrainingUtil::GetCpuAllocator()});
+  // The optimizer out of the graph, will be used if params_.in_graph_optimizer_name_ is not set
+  WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(session_,
+                                                                     {params_.learning_rate_,
+                                                                      TrainingUtil::GetCpuAllocator()});
 
   // Prepare output names
   auto output_names_include_gradients = session_.GetModelOutputNames();
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
+
+  // If use in-graph optimizer, the learning_rate is a new feed
+  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
+  vector<string> feed_names = training_data_.TensorNames();
+  MLValue learning_rate_ml_value;
+  if (use_in_graph_optimizer) {
+    feed_names.insert(feed_names.begin(), SGD_LEARNING_RATE_STRING);
+    TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(),
+                                {1},
+                                vector<float>(1, params_.learning_rate_),
+                                &learning_rate_ml_value);
+  }
 
   for (size_t epoch = 0; epoch < params_.num_of_epoch_; ++epoch) {
     // Shuffle the data for each epoch
@@ -96,12 +127,15 @@ Status TrainingRunner::TrainingLoop() {
 
     // loop through the data
     for (size_t batch = 0; batch < training_data_.TotalBatch(params_.batch_size_); ++batch) {
-      std::vector<MLValue> feed = training_data_.GetKthBatch(params_.batch_size_, batch);
+      std::vector<MLValue> feeds = training_data_.GetKthBatch(params_.batch_size_, batch);
+      if (use_in_graph_optimizer) {
+        feeds.insert(feeds.begin(), learning_rate_ml_value);
+      }
 
       vector<MLValue> gradient_fetches;
       ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                       training_data_.TensorNames(),
-                                       feed,
+                                       feed_names,
+                                       feeds,
                                        training_output_names,
                                        &gradient_fetches));
 
@@ -124,7 +158,9 @@ Status TrainingRunner::TrainingLoop() {
              static_cast<int>(batch * params_.batch_size_),
              static_cast<int>((batch + 1) * params_.batch_size_ - 1));
 
-      weight_updater.Update(grad, params_.batch_size_);
+      if (params_.in_graph_optimizer_name_.empty()) {
+        weight_updater.Update(grad, params_.batch_size_);
+      }
       ORT_RETURN_IF_ERROR(Evaluate(session_));
     }
   }
@@ -172,17 +208,31 @@ Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
          static_cast<int>(current_batch * evaluation_batch_size),
          static_cast<int>((current_batch + 1) * evaluation_batch_size - 1));
 
-  std::vector<MLValue> feed = test_data_.GetKthBatch(evaluation_batch_size, current_batch);
+  // If use in-graph optimizer, the learning_rate is a new feed
+  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
+
+  vector<string> feed_names = test_data_.TensorNames();
+  std::vector<MLValue> feeds = test_data_.GetKthBatch(evaluation_batch_size, current_batch);
+  if (use_in_graph_optimizer) {
+    feed_names.insert(feed_names.begin(), SGD_LEARNING_RATE_STRING);
+
+    MLValue learning_rate_ml_value;
+    TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(),
+                                {1},
+                                vector<float>(1, params_.learning_rate_),
+                                &learning_rate_ml_value);
+    feeds.insert(feeds.begin(), learning_rate_ml_value);
+  }
   vector<MLValue> fetches;
   ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
-                                  test_data_.TensorNames(),
-                                  feed,
+                                  feed_names,
+                                  feeds,
                                   {params_.model_prediction_name_, params_.loss_func_info_.loss_name_},
                                   &fetches));
 
   // Call error function with predict, label and loss.
   if (params_.error_function_) {
-    params_.error_function_(fetches[0] /*predict*/, feed.back() /*label*/, fetches[1] /*loss*/);
+    params_.error_function_(fetches[0] /*predict*/, feeds.back() /*label*/, fetches[1] /*loss*/);
   }
 
   // Call afer a test batch.

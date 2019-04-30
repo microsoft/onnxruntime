@@ -95,7 +95,7 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
   // Create a WeightUpdater powered by GradientDescent algorithm.
   const static float LEARNING_RATE = 0.5f;
 
-  WeightUpdater<GradientDescent> weight_updater(training_session, {LEARNING_RATE, GetAllocator()});
+  WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(training_session, {LEARNING_RATE, GetAllocator()});
 
   std::vector<MLValue> gradient_fetches;
   RunOptions run_option;
