@@ -12,7 +12,6 @@
 #include <mutex>
 #include <functional>
 #include <unordered_map>
-#include <stdarg.h>
 
 using namespace std;
 namespace PythonFuncionWrapper {
