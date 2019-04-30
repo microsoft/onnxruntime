@@ -39,7 +39,7 @@ class HttpSession : public std::enable_shared_from_this<HttpSession> {
   tcp::socket socket_;
   net::strand<net::io_context::executor_type> strand_;
   beast::flat_buffer buffer_;
-  http::request<http::string_body> req_;
+  boost::optional<http::request_parser<http::string_body>> req_;
   std::shared_ptr<void> res_{nullptr};
 
   // Writes the message asynchronously back to the socket
@@ -76,4 +76,3 @@ class HttpSession : public std::enable_shared_from_this<HttpSession> {
 
 }  // namespace server
 }  // namespace onnxruntime
-

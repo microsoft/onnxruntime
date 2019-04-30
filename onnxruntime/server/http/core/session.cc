@@ -15,11 +15,12 @@ HttpSession::HttpSession(const Routes& routes, tcp::socket socket)
 }
 
 void HttpSession::DoRead() {
-  // Make the request empty before reading,
-  // otherwise the operation behavior is undefined.
-  req_ = {};
+  req_.emplace();
 
-  http::async_read(socket_, buffer_, req_,
+  // TODO: make the max request size configable.
+  req_->body_limit(10 * 1024 * 1024);  // Max request size: 10 MiB
+
+  http::async_read(socket_, buffer_, *req_,
                    net::bind_executor(
                        strand_,
                        std::bind(
@@ -43,7 +44,7 @@ void HttpSession::OnRead(beast::error_code ec, std::size_t bytes_transferred) {
   }
 
   // Send the response
-  HandleRequest(std::move(req_));
+  HandleRequest(req_->release());
 }
 
 void HttpSession::OnWrite(beast::error_code ec, std::size_t bytes_transferred, bool close) {

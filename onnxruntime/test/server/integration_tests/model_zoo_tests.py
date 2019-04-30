@@ -20,7 +20,7 @@ class ModelZooTests(unittest.TestCase):
     model_zoo_model_path = ''  # Required
     model_zoo_test_data_path = ''  # Required
     supported_opsets = ['opset_7', 'opset_8', 'opset_9']
-    skipped_models = ['tiny_yolov2']
+    skipped_models = []
 
     def test_models_from_model_zoo(self):
         json_request_headers = {

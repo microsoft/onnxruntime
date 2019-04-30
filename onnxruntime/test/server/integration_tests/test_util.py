@@ -55,9 +55,9 @@ def decode_base64_string(s, count_and_type):
     return r
 
 
-def compare_floats(a, b, rel_tol=0.0001):
-    if not math.isclose(a, b, rel_tol=rel_tol):
-        test_log('Not match with relative tolerance {0}: {1} and {2}'.format(rel_tol, a, b))
+def compare_floats(a, b, rel_tol=0.0001, abs_tol=0.0001):
+    if not math.isclose(a, b, rel_tol=rel_tol, abs_tol=abs_tol):
+        test_log('Not match with relative tolerance {0} and absolute tolerance {1}: {2} and {3}'.format(rel_tol, abs_tol, a, b))
         return False
 
     return True
