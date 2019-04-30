@@ -727,27 +727,15 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
-  /** When programmatically constructing a Graph, explicitly set the order to use for graph inputs when the graph is
-  resolved.
-  This will determine the graph input order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
-  @param inputs NodeArgs that represent graph inputs which need to be explicitly ordered.
-  Any graph inputs not in this list will be appended to the ordered graph input list, in the order that they were first
-  used by Nodes (i.e. the order of Node creation implicitly determines the ordering).
+  /** When programmatically constructing a Graph, explicitly set graph inputs.
+  @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetInputOrder(const std::vector<const NodeArg*> inputs) {
-    graph_input_order_ = inputs;
-  }
+  void SetInputs(const std::vector<const NodeArg*> inputs);
 
-  /** When programmatically constructing a Graph, explicitly set the order to use for graph outputs when the graph is
-  resolved.
-  This will determine the graph output order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
-  @param outputs NodeArgs that represent graph outputs which need to be explicitly ordered.
-  Any graph outputs not in this list will be appended to the ordered graph output list, in the order that they were first
-  produced by Nodes (i.e. the order of Node creation implicitly determines the ordering).
+  /** When programmatically constructing a Graph, explicitly set graph outputs.
+  @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetOutputOrder(const std::vector<const NodeArg*> outputs) {
-    graph_output_order_ = outputs;
-  }
+  void SetOutputs(const std::vector<const NodeArg*> outputs);
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
@@ -945,12 +933,14 @@ class Graph {
 
   // Full list of graph inputs. Matches number and order of inputs in the GraphProto.
   std::vector<const NodeArg*> graph_inputs_including_initializers_;
+  bool graph_inputs_manually_set_ = false;
 
   // Graph inputs excluding initializers.
   std::vector<const NodeArg*> graph_inputs_excluding_initializers_;
 
   // Graph outputs.
   std::vector<const NodeArg*> graph_outputs_;
+  bool graph_outputs_manually_set_ = false;
 
   // Graph value_info.
   std::vector<const NodeArg*> value_info_;
@@ -975,12 +965,6 @@ class Graph {
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
-
-  // Explicit graph input order to be used when constructing a Graph manually.
-  std::vector<const NodeArg*> graph_input_order_;
-
-  // Explicit graph output order to be used when constructing a Graph manually.
-  std::vector<const NodeArg*> graph_output_order_;
 };
 
 }  // namespace onnxruntime

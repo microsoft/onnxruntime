@@ -119,6 +119,14 @@ class PoolBase {
         strides_.resize(kernel_shape_.size(), 1);
       }
 
+      if (!info.GetAttr<int64_t>("ceil_mode", &ceil_mode_).IsOK()) {
+        ceil_mode_ = 0;
+      }
+
+      if (!info.GetAttrs<int64_t>("dilations", dilations_).IsOK() || dilations_.empty()) {
+        dilations_.resize(kernel_shape_.size(), 1);
+      }
+
       if (op_name_ == "AveragePool") {
         int64_t temp;
         ORT_ENFORCE(info.GetAttr<int64_t>("count_include_pad", &temp).IsOK());
@@ -140,6 +148,8 @@ class PoolBase {
       }
 
       ORT_ENFORCE(strides_.size() == kernel_shape_.size());
+      ORT_ENFORCE(dilations_.size() == kernel_shape_.size(),
+                  "Dilations dimensions should match kernel shape");
     }
   }
 
@@ -147,11 +157,13 @@ class PoolBase {
 
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
-                                     std::vector<int64_t>* pads) const {
+                                     std::vector<int64_t>* pads,
+                                     const std::vector<int64_t>& dilations,
+                                     int64_t ceil_mode) const {
     ORT_ENFORCE(input_shape.Size() > 0);
     std::vector<int64_t> output_dims;
     int64_t N = input_shape[0];
-    InferOutputSize(input_shape.GetDims(), &output_dims, pads);
+    InferOutputSize(input_shape.GetDims(), &output_dims, pads, dilations, ceil_mode);
 
     output_dims.insert(output_dims.begin(), {N, output_channel});
 
@@ -160,43 +172,49 @@ class PoolBase {
 
   inline void InferOutputSize(const std::vector<int64_t>& input_dims,
                               std::vector<int64_t>* output_dims,
-                              std::vector<int64_t>* pads) const {
+                              std::vector<int64_t>* pads,
+                              const std::vector<int64_t>& dilations,
+                              int64_t ceil_mode) const {
     ORT_ENFORCE(input_dims.size() >= 2);
     if (global_pooling_) {
       output_dims->assign(input_dims.size() - 2, 1);
     } else {
       for (size_t dim = 0; dim < input_dims.size() - 2; ++dim) {
         int64_t dim_size = 0;
-        ComputeSizeAndPad(static_cast<int>(input_dims[dim + 2]),
-                          strides_[dim],
-                          kernel_shape_[dim],
-                          &pads->at(dim),
-                          &pads->at(input_dims.size() + dim - 2),
-                          &dim_size);
+        ComputeSizePadDilations(static_cast<int>(input_dims[dim + 2]),
+                                strides_[dim],
+                                kernel_shape_[dim],
+                                &pads->at(dim),
+                                &pads->at(input_dims.size() + dim - 2),
+                                dilations[dim],
+                                ceil_mode,
+                                &dim_size);
         output_dims->push_back(dim_size);
       }
     }
   }
 
-  inline void ComputeSizeAndPad(const int64_t in_size,
-                                const int64_t stride,
-                                const int64_t kernel,
-                                int64_t* pad_head,
-                                int64_t* pad_tail,
-                                int64_t* out_size) const {
+  inline void ComputeSizePadDilations(const int64_t in_size,
+                                      const int64_t stride,
+                                      const int64_t kernel,
+                                      int64_t* pad_head,
+                                      int64_t* pad_tail,
+                                      int64_t dilation,
+                                      int64_t ceil_mode,
+                                      int64_t* out_size) const {
     if (auto_pad_ != AutoPadType::NOTSET) {
       switch (auto_pad_) {
         case AutoPadType::VALID:
           *pad_head = 0;
           *pad_tail = 0;
-          *out_size = (in_size - kernel) / stride + 1;
+          *out_size = ComputeOutputSize(in_size, stride, kernel, 0, dilation, ceil_mode);
           break;
         case AutoPadType::SAME_LOWER: {
           int64_t legacy_target_size = (in_size + stride - 1) / stride;
           int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
           *pad_head = (pad_needed + 1) / 2;
           *pad_tail = pad_needed - *pad_head;
-          *out_size = (in_size + pad_needed - kernel) / stride + 1;
+          *out_size = ComputeOutputSize(in_size, stride, kernel, pad_needed, dilation, ceil_mode);
           break;
         }
         case AutoPadType::SAME_UPPER: {
@@ -204,7 +222,7 @@ class PoolBase {
           int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_size;
           *pad_head = pad_needed / 2;
           *pad_tail = pad_needed - *pad_head;
-          *out_size = (in_size + pad_needed - kernel) / stride + 1;
+          *out_size = ComputeOutputSize(in_size, stride, kernel, pad_needed, dilation, ceil_mode);
           break;
         }
         default: {
@@ -212,8 +230,20 @@ class PoolBase {
         }
       }
     } else {
-      *out_size = static_cast<int64_t>(
-          static_cast<float>(in_size + *pad_head + *pad_tail - kernel) / stride + 1);
+      *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head + *pad_tail, dilation, ceil_mode);
+    }
+  }
+
+  inline int64_t ComputeOutputSize(int64_t in_size,
+                                   int64_t stride,
+                                   int64_t kernel,
+                                   int64_t pad_needed,
+                                   int64_t dilation,
+                                   int64_t ceil_mode) const {
+    if (ceil_mode == 0) {
+      return static_cast<int64_t>(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1);
+    } else {
+      return static_cast<int64_t>(ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
     }
   }
 
@@ -224,9 +254,11 @@ class PoolBase {
   bool global_pooling_{};
   bool count_include_pad_{};
   int64_t storage_order_{0};  // MaxPool_8 only. 0 is row major, and 1 is column major. Default is 0.
+  int64_t ceil_mode_{0};      // Introduced in MaxPool_10
   std::vector<int64_t> kernel_shape_;
   std::vector<int64_t> pads_;
   std::vector<int64_t> strides_;
+  std::vector<int64_t> dilations_;  // Introduced in MaxPool_10
 
   AutoPadType auto_pad_;
 

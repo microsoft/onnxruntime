@@ -8,7 +8,6 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-namespace contrib {
 
 class ReverseSequenceOp : public OpKernel {
  public:
@@ -32,5 +31,4 @@ class ReverseSequenceOp : public OpKernel {
   bool time_major_;
 };
 
-}  // namespace contrib
 }  // namespace onnxruntime

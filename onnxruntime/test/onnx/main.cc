@@ -236,11 +236,11 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
-      "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
 
-#if (defined (_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests (data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests] (ITestCase* l) {
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests](ITestCase* l) {
       std::unique_ptr<ITestCase> test_case_ptr(l);
       if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
         return;
@@ -253,15 +253,14 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     });
 #else
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests] (ITestCase* l) { tests.push_back(l); });
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&tests](ITestCase* l) { tests.push_back(l); });
     if (enable_cuda) {
       for (auto it = tests.begin(); it != tests.end();) {
         auto iter = cuda_flaky_tests.find((*it)->GetTestCaseName());
         if (iter != cuda_flaky_tests.end()) {
           delete *it;
           it = tests.erase(it);
-        }
-        else {
+        } else {
           ++it;
         }
       }
@@ -357,14 +356,22 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
       {"tf_mobilenet_v1_1.0_224", "result mismatch"},
       {"mobilenetv2-1.0", "result mismatch"},
       {"mxnet_arcface", "result mismatch"},
+      {"mod_float_mixed_sign_example", "faulty test"}
   };
+
+#ifdef USE_NGRAPH
+  broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+#endif
 
 #ifdef USE_CUDA
   broken_tests["mxnet_arcface"] = "result mismatch";
+  broken_tests["tf_inception_v1"] = "flaky test"; //TODO: Investigate cause for flakiness
 #endif
   // clang-format on
 
-#if defined (_WIN32) && !defined(_WIN64)
+#if defined(_WIN32) && !defined(_WIN64)
   broken_tests["vgg19"] = "failed: bad allocation";
 #endif
 

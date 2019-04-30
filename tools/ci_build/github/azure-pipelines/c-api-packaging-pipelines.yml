@@ -12,7 +12,7 @@ jobs:
       parameters:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
+          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -28,7 +28,7 @@ jobs:
       parameters:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x86-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
+          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)          
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -44,7 +44,7 @@ jobs:
       parameters:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
+          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
  
@@ -65,7 +65,7 @@ jobs:
       parameters:
           buildConfig: 'RelWithDebInfo'
           artifactName: 'onnxruntime-osx-x64-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.dylib'
+          libraryName: 'libonnxruntime.$(OnnxRuntimeVersion).dylib'
           commitId: $(OnnxRuntimeGitCommitHash)
           
     - template: templates/clean-agent-build-directory-step.yml
