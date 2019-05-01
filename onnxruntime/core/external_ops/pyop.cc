@@ -1,7 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _DEBUG
+#undef _DEBUG
 #include <Python.h>
+#define _DEBUG
+#else
+#include <Python.h>
+#endif
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "numpy/arrayobject.h"
 #include <functional>
@@ -82,7 +88,7 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
         scoper.Add(type);
         scoper.Add(value);
         scoper.Add(trace);
-        if (nullptr != type)  ss << "python error type: "  << PyBytes_AsString(type)  << endl;
+        if (nullptr != type)  ss << "python error type:  " << PyBytes_AsString(type)  << endl;
         if (nullptr != value) ss << "python error value: " << PyBytes_AsString(value) << endl;
         if (nullptr != trace) ss << "python error trace: " << PyBytes_AsString(trace) << endl;
         err = ss.str();

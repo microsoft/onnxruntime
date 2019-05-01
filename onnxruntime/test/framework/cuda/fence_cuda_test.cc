@@ -193,7 +193,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
 TEST(CUDAFenceTests, TileWithComputedInput) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), std::make_shared<SchemaRegistryManager>(), domain_to_version);
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);

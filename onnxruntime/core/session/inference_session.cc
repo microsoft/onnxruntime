@@ -272,7 +272,6 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
 
       if ("" != shape_infer) {
           LOGS(*session_logger_, WARNING) << "shape inference disabled for PyOp temporarily, " << shape_infer << " will not be called";
-          shape_infer = "";
       }
 
       auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(),
