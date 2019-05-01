@@ -940,11 +940,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
             // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
             if (!loaded_from_model_file) {
-              auto in_ordered_graph_outputs = find(graph_output_order_.cbegin(), graph_output_order_.cend(), node_arg);
-              if (in_ordered_graph_outputs == graph_output_order_.cend()) {
-                graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
-                                     graph_outputs_.end());
-              }
+              graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
+                                   graph_outputs_.end());
             }
           }
         }
@@ -2219,10 +2216,8 @@ void Graph::CleanUnusedInitializers() {
 
 GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
 Status Graph::SetGraphInputsOutputs() {
-  // Reset graph inputs/outputs/value info state.
+  // Reset graph inputs excluding initializers/value_info.
   graph_inputs_excluding_initializers_.clear();
-  graph_inputs_including_initializers_.clear();
-  graph_outputs_.clear();
   value_info_.clear();
 
   // Flag indicates that this graph is loaded from model file.
@@ -2231,10 +2226,11 @@ Status Graph::SetGraphInputsOutputs() {
   // and outputs will be inferred.
   const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
 
-  // if something is coming from outer scope, consider it already added
-  std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
-
   if (loaded_from_model_file) {
+    // Reset graph inputs/outputs.
+    graph_inputs_including_initializers_.clear();
+    graph_outputs_.clear();
+
     // Name to NodeArg mapping of all graph initializers.
     std::unordered_map<std::string, const NodeArg*> graph_initializers;
 
@@ -2302,49 +2298,31 @@ Status Graph::SetGraphInputsOutputs() {
     }
 
   } else {
-    std::unordered_map<std::string, const NodeArg*> output_name_to_node_arg;
-    std::vector<std::string> ordered_output_names;
+    std::unordered_map<std::string, size_t> output_name_to_node_arg_index;
+    std::vector<const NodeArg*> output_node_args_in_order;
 
-    // add any explicitly ordered inputs
-    for (auto* node_arg : graph_input_order_) {
-      if (!node_arg || !node_arg->Exists()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered inputs");
-      }
-
-      added_input_names.insert(node_arg->Name());
-      graph_inputs_including_initializers_.push_back(node_arg);
-      if (name_to_initial_tensor_.find(node_arg->Name()) == name_to_initial_tensor_.end()) {
-        graph_inputs_excluding_initializers_.push_back(node_arg);
-      }
+    // if something is coming from outer scope, consider it already added
+    std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
+    if (!graph_inputs_manually_set_) {
+      graph_inputs_including_initializers_.clear();
     }
 
-    // add any explicitly ordered outputs
-    for (auto* node_arg : graph_output_order_) {
-      if (!node_arg || !node_arg->Exists()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid entry in explicitly ordered outputs");
-      }
-      output_name_to_node_arg.insert({node_arg->Name(), node_arg});
-      ordered_output_names.push_back(node_arg->Name());
+    if (!graph_outputs_manually_set_) {
+      graph_outputs_.clear();
     }
 
-    // add all other outputs
+    // Collect all nodes' outputs
     for (const auto& node : Nodes()) {
       for (const auto* output_def : node.OutputDefs()) {
         if (output_def->Exists()) {
-          auto& name = output_def->Name();
-          // check it wasn't in the explicitly ordered outputs
-          if (output_name_to_node_arg.find(name) == output_name_to_node_arg.cend()) {
-            output_name_to_node_arg.insert({name, output_def});
-            ordered_output_names.push_back(name);
-          }
+          output_node_args_in_order.push_back(output_def);
+          output_name_to_node_arg_index.insert({output_def->Name(), output_node_args_in_order.size() - 1});
         }
       }
     }
 
     // Init graph output args with copy of all node output args.
-    auto graph_output_args = output_name_to_node_arg;
-    std::unordered_set<Node*> inner_nodes;
-
+    auto graph_output_args = output_name_to_node_arg_index;
     for (const auto& node : Nodes()) {
       // Go thru all node's inputs.
       for (const auto* input_arg : node.InputDefs()) {
@@ -2353,15 +2331,28 @@ Status Graph::SetGraphInputsOutputs() {
           continue;
         }
 
-        auto output_arg_iter = output_name_to_node_arg.find(input_arg->Name());
-        if (output_name_to_node_arg.end() == output_arg_iter) {
+        auto output_arg_iter = output_name_to_node_arg_index.find(input_arg->Name());
+        if (output_name_to_node_arg_index.end() == output_arg_iter) {
           // This input arg should be fed when running evaluation.
           // it should be a graph input.
           const std::string& name = input_arg->Name();
           if (added_input_names.end() == added_input_names.find(name)) {
             // This graph input has not been added into <graph_inputs_>.
-            graph_inputs_including_initializers_.push_back(input_arg);
-
+            if (!graph_inputs_manually_set_) {
+              graph_inputs_including_initializers_.push_back(input_arg);
+            } else {
+              // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
+              auto& inputs = GetInputsIncludingInitializers();
+              auto iter = std::find(inputs.begin(), inputs.end(), input_arg);
+              if (inputs.end() == iter) {
+                // it's not in graph inputs.
+                auto initializers = GetAllInitializedTensors();
+                if (initializers.end() == initializers.find(input_arg->Name())) {
+                  // It's not in graph initializers.
+                  return Status(ONNXRUNTIME, FAIL, input_arg->Name() + " must be either specified in graph inputs or graph initailizers.");
+                }
+              }
+            }
             if (name_to_initial_tensor_.find(name) == name_to_initial_tensor_.end()) {
               graph_inputs_excluding_initializers_.push_back(input_arg);
             }
@@ -2377,12 +2368,15 @@ Status Graph::SetGraphInputsOutputs() {
       }
     }
 
-    // Set graph outputs
-    auto end = graph_output_args.end();
-    for (auto& name : ordered_output_names) {
-      auto graph_output = graph_output_args.find(name);
-      if (graph_output != end) {
-        graph_outputs_.push_back(graph_output->second);
+    if (!graph_outputs_manually_set_) {
+      // Set graph outputs in order.
+      std::vector<size_t> graph_output_args_index;
+      for (auto output_arg : graph_output_args) {
+        graph_output_args_index.push_back(output_arg.second);
+      }
+      std::sort(graph_output_args_index.begin(), graph_output_args_index.end());
+      for (auto& output_arg_index : graph_output_args_index) {
+        graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
       }
     }
   }
@@ -2481,6 +2475,25 @@ Status Graph::InlineFunction(Node& node) {
   }
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
+}
+
+void Graph::SetInputs(const std::vector<const NodeArg*> inputs) {
+  if (GraphLoadedFromModelFile(graph_proto_)) {
+    // TODO: add this support.
+    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
+  }
+
+  graph_inputs_including_initializers_ = inputs;
+  graph_inputs_manually_set_ = true;
+}
+
+void Graph::SetOutputs(const std::vector<const NodeArg*> outputs) {
+  if (GraphLoadedFromModelFile(graph_proto_)) {
+    // TODO: add this support.
+    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
+  }
+  graph_outputs_ = outputs;
+  graph_outputs_manually_set_ = true;
 }
 
 void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
