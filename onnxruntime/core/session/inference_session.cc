@@ -236,7 +236,7 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
     if (node->OpType() == "PyOp") {
       ONNX_ATTRS attrs;
       ONNX_TYPES input_types, output_types;
-      std::string module, class_name, compute = "compute", shape_infer = "shape_infer", domain = node->Domain();
+      std::string module, class_name, compute = "compute", shape_infer, domain = node->Domain();
 
       for (const auto& iter: node->GetAttributes()) {
 

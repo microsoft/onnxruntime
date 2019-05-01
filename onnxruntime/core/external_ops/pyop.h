@@ -123,6 +123,10 @@ struct PyCustomKernel {
 
     void GetOutputShape (OrtKernelContext* context, size_t index, OrtTensorTypeAndShapeInfo* info) {
 
+        if ("" == shape_infer_) {
+            return; // do nothing if shape inference function not specified
+        }
+
         ORT_ENFORCE (nullptr != context);
         ORT_ENFORCE (nullptr != info);
 
@@ -238,7 +242,7 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
                const std::string&   module,
                const std::string&   class_name,
                const std::string&   compute      = "compute",
-               const std::string&   shape_infer  = "shape_infer",
+               const std::string&   shape_infer  = "", // shape inference is optional
                LOG_FUNC             logging_func = [](const char*){}):
                attrs_(attrs), input_types_(input_types),
                output_types_(output_types), module_(module),
