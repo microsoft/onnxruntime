@@ -47,7 +47,7 @@ class DummyRewriteRule : public RewriteRule {
     return true;
   }
 
-  Status Apply(Graph& /*graph*/, Node& /*node*/, bool& /*modified*/, bool& /*deleted*/) override {
+  Status Apply(Graph& /*graph*/, Node& /*node*/, RewriteRuleEffect& /*rule_effect*/) override {
     rewrite_rule_invoked_ = true;
     return Status::OK();
   }

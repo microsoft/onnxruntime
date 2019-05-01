@@ -3,6 +3,7 @@
 
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/rewrite_rule.h"
 
 using namespace ::onnxruntime::common;
 
@@ -22,11 +23,11 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
 
 Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
                                                    const std::vector<std::unique_ptr<RewriteRule>>& rules,
-                                                   bool& modified, bool& deleted) const {
+                                                   RuleEffect& rule_effect) const {
   for (const auto& rule : rules) {
-    ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, node, modified, deleted));
-    if (deleted) {
-      modified = true;  // should be set by rewriter but in case it wasn't...
+    ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, node, rule_effect));
+    // If the current node was removed as a result of a rule, stop rule application for that node.
+    if (rule_effect == RuleEffect::kRemovedCurrentNode) {
       break;
     }
   }
@@ -39,10 +40,15 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
+    // A node might not be found as it might have already been deleted from one of the rules.
     if (!node) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+      continue;
     }
 
+    // Initialize the effect of rules on this node to denote that the graph has not yet been modified
+    // by the rule application on the current node.
+    auto rule_effect = RuleEffect::kNone;
+ 
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -50,22 +56,26 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     // First apply rewrite rules that are registered for the op type of the current node; then apply rules that are
     // registered to be applied regardless of the op type; then recursively apply rules to subgraphs (if any).
     // Stop further rule application for the current node, if the node gets removed by a rule.
-    bool deleted = false;
     const std::vector<std::unique_ptr<RewriteRule>>* rules = nullptr;
 
     rules = GetRewriteRulesForOpType(node->OpType());
     if (rules) {
-      ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, modified, deleted));
+      ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect));
     }
 
-    if (!deleted) {
+    if (rule_effect != RuleEffect::kRemovedCurrentNode) {
       rules = GetAnyOpRewriteRules();
       if (rules) {
-        ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, modified, deleted));
+        ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect));
       }
     }
 
-    if (!deleted) {
+    // Update the modified field of the rule-based transformer.
+    if (rule_effect != RuleEffect::kNone) {
+      modified = true;
+    }
+
+    if (rule_effect != RuleEffect::kRemovedCurrentNode) {
       ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
     }
   }
