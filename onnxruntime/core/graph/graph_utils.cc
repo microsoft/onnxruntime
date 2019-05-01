@@ -69,7 +69,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(Node& node,
     for (auto& subgraph_node : attr_subgraph_pair.second->Nodes()) {
       // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
       // subgraphs, and at least one level lower uses removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -99,7 +99,7 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       // recurse if this node also consumes removed_output_name as an implicit input
       // (i.e. there are multiple levels of nested subgraphs, and at least one level lower uses
       // removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
