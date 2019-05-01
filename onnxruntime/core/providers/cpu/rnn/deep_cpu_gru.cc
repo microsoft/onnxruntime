@@ -377,7 +377,12 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
     std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        Direction::kForward,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
@@ -386,7 +391,12 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        Direction::kReverse,
         bias_2, initial_hidden_2,
         activation_funcs_.Entries()[2],
         activation_funcs_.Entries()[3],
@@ -395,7 +405,12 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        direction_,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
