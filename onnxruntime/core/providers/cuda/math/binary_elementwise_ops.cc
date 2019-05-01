@@ -317,7 +317,7 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
 
   BinaryElementwisePreparation prepare(this);
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
-  Impl_Compare<CudaT>(
+  Impl_Greater<CudaT>(
       prepare.output_rank_or_simple_broadcast,
       prepare.lhs_padded_strides.GpuPtr(),
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
