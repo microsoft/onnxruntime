@@ -245,6 +245,62 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <typename T>
+Status Max<T>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  const auto& node = Node();
+  const auto& node_name = node.Name();
+  auto input_count = node.InputArgCount().front();
+  ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
+
+  if (input_count == 1) {
+    auto input_tensor = context->Input<Tensor>(0);
+    const auto& input_shape = input_tensor->Shape();
+    auto output_tensor = context->Output(0, input_shape);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), input_tensor->DataRaw(), sizeof(CudaT) * input_shape.Size(), cudaMemcpyDeviceToDevice));
+  } else {
+    // compute output shape first, using broadcast rule
+    TensorShape output_shape;
+    ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, context->Input<Tensor>(0)->Shape(), context->Input<Tensor>(1)->Shape(), output_shape));
+    for (int index = 2; index < input_count; index++) {
+      TensorShape previous_output_shape = output_shape;
+      ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
+    }
+    Tensor* output_tensor = context->Output(0, output_shape);
+    BinaryElementwisePreparation prepare(this);
+
+    // More than 2 inputs, set output to 0, add input0 to output, so that input0 can be broadcast with output shape correctly
+    CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
+    ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(0), output_tensor, &prepare));
+    Impl_Add<CudaT>(
+        prepare.output_rank_or_simple_broadcast,
+        prepare.lhs_padded_strides.GpuPtr(),
+        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+        prepare.rhs_padded_strides.GpuPtr(),
+        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+        prepare.fdm_output_strides.GpuPtr(),
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+    for (int index = 1; index < input_count; index++) {
+      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
+      Impl_Max<CudaT>(
+          prepare.output_rank_or_simple_broadcast,
+          prepare.lhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+          prepare.rhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+          prepare.fdm_output_strides.GpuPtr(),
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+    }
+  }
+  return Status::OK();
+}
+
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
 template <typename T>
@@ -261,7 +317,7 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
 
   BinaryElementwisePreparation prepare(this);
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
-  Impl_Compare<CudaT>(
+  Impl_Greater<CudaT>(
       prepare.output_rank_or_simple_broadcast,
       prepare.lhs_padded_strides.GpuPtr(),
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -280,6 +336,8 @@ BINARY_OP_REGISTER_UZILHFD(Sum, 8)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
 BINARY_OP_REGISTER_UZILHFD(Greater, 9)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
+BINARY_OP_REGISTER_HFD(Max, 8)
+BINARY_OP_REGISTER_VERSIONED_HFD(Max, 6, 7)
 
 }  // namespace cuda
 }  // namespace onnxruntime
