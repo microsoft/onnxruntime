@@ -624,7 +624,7 @@ def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     for config in configs:
         #copy the gen_doc.py
-        shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
+        shutil.copy(os.path.join(source_dir,'tools','python','gen_doc.py'),
                     os.path.join(build_dir,config, config))
         run_subprocess([
                         sys.executable,
