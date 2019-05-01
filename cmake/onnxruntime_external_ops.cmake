@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if(NOT PYTHON_INCLUDE_DIR)
+if(NOT NUMPY_INCLUDE_DIR)
   include(onnxruntime_python.cmake)
-endif(NOT PYTHON_INCLUDE_DIR)
+endif(NOT NUMPY_INCLUDE_DIR)
 include_directories(${PYTHON_INCLUDE_DIR})
 include_directories(${NUMPY_INCLUDE_DIR})
 file(GLOB onnxruntime_pyop_srcs "${ONNXRUNTIME_ROOT}/core/external_ops/pyop.cc")
