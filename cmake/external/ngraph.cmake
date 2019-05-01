@@ -32,6 +32,7 @@ ExternalProject_Add(project_ngraph
         PREFIX ngraph
         GIT_REPOSITORY ${ngraph_URL}
         GIT_TAG ${ngraph_TAG}
+        GIT_SHALLOW TRUE
         # Here we use onnx and protobuf built by onnxruntime to avoid linking with incompatible libraries. This might change in future.
         PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
         # TODO: Use cmake.file+copy as above. 
