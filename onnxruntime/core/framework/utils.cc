@@ -128,8 +128,8 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
       ORT_ENFORCE(p_input_provider);
     }
 
-    //no copy for TRT
-    if (required_provider_type == onnxruntime::kTensorrtExecutionProvider) {
+    //no copy for TRT and  nGraph
+    if (required_provider_type == onnxruntime::kTensorrtExecutionProvider || required_provider_type == onnxruntime::kNGraphExecutionProvider) {
       new_mlvalue = orig_mlvalue;
       break;
     }

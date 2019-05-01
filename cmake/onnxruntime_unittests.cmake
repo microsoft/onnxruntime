@@ -68,24 +68,24 @@ endfunction(AddTest)
 #Use onnxruntime_add_include_to_target or target_link_libraries, so that compile definitions
 #can propagate correctly.
 
-file(GLOB onnxruntime_test_utils_src
+file(GLOB onnxruntime_test_utils_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/util/include/*.h"
   "${TEST_SRC_DIR}/util/*.cc"
 )
 
-file(GLOB onnxruntime_test_common_src
+file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.cc"
   "${TEST_SRC_DIR}/common/*.h"
   "${TEST_SRC_DIR}/common/logging/*.cc"
   "${TEST_SRC_DIR}/common/logging/*.h"
   )
 
-file(GLOB onnxruntime_test_ir_src
+file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/ir/*.cc"
   "${TEST_SRC_DIR}/ir/*.h"
   )
 
-file(GLOB onnxruntime_test_optimizer_src
+file(GLOB onnxruntime_test_optimizer_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/optimizer/*.cc"
   "${TEST_SRC_DIR}/optimizer/*.h"
   )
@@ -118,14 +118,15 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
 endif()
 
-file(GLOB onnxruntime_test_providers_src ${onnxruntime_test_providers_src_patterns})
-file(GLOB_RECURSE onnxruntime_test_providers_cpu_src
+file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
+  ${onnxruntime_test_providers_src_patterns})
+file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/providers/cpu/*"
   )
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
 if (onnxruntime_USE_NGRAPH)
-  file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src
+  file(GLOB_RECURSE onnxruntime_test_providers_ngraph_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/ngraph/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
@@ -185,7 +186,7 @@ if(onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
 endif()
 
-file(GLOB_RECURSE onnxruntime_test_tvm_src
+file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
@@ -230,7 +231,9 @@ if(WIN32)
   endif()
 endif()
 
-file(GLOB onnxruntime_test_framework_src ${onnxruntime_test_framework_src_patterns})
+file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
+  ${onnxruntime_test_framework_src_patterns}
+  )
 
 #with auto initialize onnxruntime
 add_library(onnxruntime_test_utils_for_framework ${onnxruntime_test_utils_src})
@@ -263,7 +266,9 @@ if (SingleUnitTestProject)
   endif()
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
   # up everything we need for all tests
-  file(GLOB_RECURSE test_mains "${TEST_SRC_DIR}/*/test_main.cc")
+  file(GLOB_RECURSE test_mains CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/*/test_main.cc"
+    )
   list(REMOVE_ITEM all_tests ${test_mains})
   list(APPEND all_tests "${TEST_SRC_DIR}/providers/test_main.cc")
 
@@ -476,7 +481,9 @@ else ()
     "${onnxruntime_perf_test_src_dir}/posix/*.h" )
 endif()
 
-file(GLOB onnxruntime_perf_test_src ${onnxruntime_perf_test_src_patterns})
+file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
+  ${onnxruntime_perf_test_src_patterns}
+  )
 add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/framework/path_lib.cc)
 
 target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
