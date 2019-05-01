@@ -51,14 +51,10 @@ Status BinaryElementwiseBroadcastPrepare(
     BinaryElementwisePreparation* p,
     const TensorShape* override_lhs_shape = nullptr,
     const TensorShape* override_rhs_shape = nullptr) {
-  auto lhs_size = lhs_tensor->Shape().Size();
-  auto rhs_size = rhs_tensor->Shape().Size();
-
-  p->lhs_tensor = lhs_size >= rhs_size ? lhs_tensor : rhs_tensor;
-  p->rhs_tensor = lhs_size >= rhs_size ? rhs_tensor : lhs_tensor;
-
-  const auto& lhs_shape = override_lhs_shape ? *override_lhs_shape : p->lhs_tensor->Shape();
-  const auto& rhs_shape = override_rhs_shape ? *override_rhs_shape : p->rhs_tensor->Shape();
+  p->lhs_tensor = lhs_tensor;
+  p->rhs_tensor = rhs_tensor;
+  const auto& lhs_shape = override_lhs_shape ? *override_lhs_shape : lhs_tensor->Shape();
+  const auto& rhs_shape = override_rhs_shape ? *override_rhs_shape : rhs_tensor->Shape();
 
   p->output_tensor = output_tensor;
   const auto& output_shape = output_tensor->Shape();
@@ -273,8 +269,22 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
     Tensor* output_tensor = context->Output(0, output_shape);
     BinaryElementwisePreparation prepare(this);
 
-    if (input_count == 2) {
-      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, context->Input<Tensor>(0), context->Input<Tensor>(1), output_tensor, &prepare));
+    // More than 2 inputs, set output to 0, add input0 to output, so that input0 can be broadcast with output shape correctly
+    CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
+    ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(0), output_tensor, &prepare));
+    Impl_Add<CudaT>(
+        prepare.output_rank_or_simple_broadcast,
+        prepare.lhs_padded_strides.GpuPtr(),
+        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+        prepare.rhs_padded_strides.GpuPtr(),
+        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+        prepare.fdm_output_strides.GpuPtr(),
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+    for (int index = 1; index < input_count; index++) {
+      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
       Impl_Max<CudaT>(
           prepare.output_rank_or_simple_broadcast,
           prepare.lhs_padded_strides.GpuPtr(),
@@ -286,35 +296,6 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
           prepare.fdm_C,
           reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
           prepare.output_tensor->Shape().Size());
-    } else {
-      // More than 2 inputs, set output to 0, add input0 to output, so that input0 can be broadcast with output shape correctly
-      CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
-      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(0), output_tensor, &prepare));
-      Impl_Add<CudaT>(
-          prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
-          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
-          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-          prepare.fdm_output_strides.GpuPtr(),
-          prepare.fdm_H,
-          prepare.fdm_C,
-          reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
-          prepare.output_tensor->Shape().Size());
-      for (int index = 1; index < input_count; index++) {
-        ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
-        Impl_Max<CudaT>(
-            prepare.output_rank_or_simple_broadcast,
-            prepare.lhs_padded_strides.GpuPtr(),
-            reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-            prepare.rhs_padded_strides.GpuPtr(),
-            reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-            prepare.fdm_output_strides.GpuPtr(),
-            prepare.fdm_H,
-            prepare.fdm_C,
-            reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
-            prepare.output_tensor->Shape().Size());
-      }
     }
   }
   return Status::OK();
