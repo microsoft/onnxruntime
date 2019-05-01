@@ -43,10 +43,11 @@ static common::Status SaveKernels(const ExecutionProviders& execution_providers,
                                   const KernelRegistryManager& custom_registry_manager,
                                   const logging::Logger& logger);
 
-static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
-                                                        const KernelRegistryManager& custom_registry_manager,
-                                                        SessionState& session_state,
-                                                        const std::vector<NodeArg*>* implicit_inputs);
+static common::Status SaveInputOutputNamesToNodeMapping(
+    const onnxruntime::Graph& graph,
+    const KernelRegistryManager& custom_registry_manager,
+    SessionState& session_state,
+    const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs);
 
 SessionStateInitializer::SessionStateInitializer(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                                  onnxruntime::Graph& graph, SessionState& session_state,
@@ -59,9 +60,10 @@ SessionStateInitializer::SessionStateInitializer(const std::basic_string<PATH_CH
       kernel_registry_manager_{kernel_registry_manager},
       logger_{session_state.Logger()} {}
 
-common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
-                                                   const std::vector<NodeArg*>& outer_scope_node_args,
-                                                   bool enable_sequential_execution) {
+common::Status SessionStateInitializer::CreatePlan(
+    const Node* parent_node,
+    const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
+    bool enable_sequential_execution) {
   auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
 
   // populate the SessionState MLValueNameIdxMap
@@ -70,13 +72,15 @@ common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
-  std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
-                [&mlvalue_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
-                  int idx;
-                  if (mlvalue_name_idx_map.GetIdx(node_arg->Name(), idx).IsOK()) {
-                    valid_outer_scope_node_args.push_back(node_arg);
-                  };
-                });
+  if (outer_scope_node_args) {
+    std::for_each(outer_scope_node_args->cbegin(), outer_scope_node_args->cend(),
+                  [&mlvalue_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
+                    int idx;
+                    if (mlvalue_name_idx_map.GetIdx(node_arg->Name(), idx).IsOK()) {
+                      valid_outer_scope_node_args.push_back(node_arg);
+                    };
+                  });
+  }
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
 
@@ -103,7 +107,8 @@ common::Status SessionStateInitializer::CreatePlan(const Node* parent_node,
   return Status::OK();
 }
 
-common::Status SessionStateInitializer::InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs) {
+common::Status SessionStateInitializer::InitializeAndSave(
+    const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs) {
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
@@ -188,7 +193,8 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
-                                             const ExecutionProviders& exec_providers, MLValue& mlvalue, OrtCallback& deleter) {
+                                             const ExecutionProviders& exec_providers, MLValue& mlvalue,
+                                             OrtCallback& deleter) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
@@ -212,8 +218,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   size_t cpu_tensor_length;
   ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
   if (m.GetLen() < cpu_tensor_length) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ", cpu_tensor_length,
-                           ", Got ", m.GetLen());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
+                           cpu_tensor_length, ", Got ", m.GetLen());
   }
   OrtAllocatorInfo info(CPU, OrtDeviceAllocator, 0, OrtMemTypeDefault);
   std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
@@ -411,19 +417,19 @@ common::Status SaveKernels(const ExecutionProviders& execution_providers,
   return Status::OK();
 }
 
-template <typename T>  // T is const NodeArg or NodeArg
+template <typename T>  // T is container of const NodeArg* or NodeArg*
 static bool IsArgNameInInputsOutputs(const std::string& name,
-                                     const std::vector<T*>& graph_args) {
-  auto it = std::find_if(std::begin(graph_args), std::end(graph_args), [&name](const onnxruntime::NodeArg* arg) {
+                                     const T& graph_args) {
+  auto it = std::find_if(graph_args.cbegin(), graph_args.cend(), [&name](const onnxruntime::NodeArg* arg) {
     return arg->Name() == name;
   });
-  return it != graph_args.end();
+  return it != graph_args.cend();
 }
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
                                                  const KernelRegistryManager& custom_registry_manager,
                                                  SessionState& session_state,
-                                                 const std::vector<NodeArg*>* implicit_inputs) {
+                                                 const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 

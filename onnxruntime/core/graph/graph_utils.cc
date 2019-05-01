@@ -69,7 +69,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(Node& node,
     for (auto& subgraph_node : attr_subgraph_pair.second->Nodes()) {
       // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
       // subgraphs, and at least one level lower uses removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -99,7 +99,7 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       // recurse if this node also consumes removed_output_name as an implicit input
       // (i.e. there are multiple levels of nested subgraphs, and at least one level lower uses
       // removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -265,17 +265,24 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
   return outputs[index]->Name();
 }
 
-// fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain) {
-  if (node.OpType() != op_type ||
-      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!node.Domain().empty() && node.Domain() != domain)) {
-    return false;
-  }
-  return true;
+  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
+          MatchesOpSinceVersion(node, version) && MatchesOpSetDomain(node, domain));
+}
+
+bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
+  return node.Op()->SinceVersion() == version;
+}
+
+bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
+  const auto& node_domain = node.Domain();
+  // We do a special check for the ONNX domain, as it has two aliases.
+  return node_domain == domain ||
+         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
+          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
 }
 
 bool IsSupportedProvider(const Node& node,

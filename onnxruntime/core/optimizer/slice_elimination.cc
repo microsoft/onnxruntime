@@ -17,6 +17,12 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& rem
 }
 
 bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
+  // We currently support elimination for Slice operator v1.
+  // TODO Extend to support Slice operator v10, which includes "steps" and all attributes are now given as inputs.
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", 1)) {
+    return false;
+  }
+  
   if (!graph_utils::IsSingleInSingleOutNode(node) ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
@@ -34,15 +40,14 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
     for (int i = 0; (size_t)i < starts.size(); ++i) {
       axes.push_back(i);
     }
-  } else if (axes.size() != starts.size() || axes.size() != ends.size()) {
+  } else if (axes.size() != starts.size()) {
     return false;
   }
 
-  // For now eliminate slice operators if starts=0 and ends=MAX_INT or -1.
+  // For now eliminate slice operators if starts=0 and ends=MAX_INT.
   // TODO: Take into account the input's shape to get a tighter bound for the ends.
   for (size_t i = 0; i < axes.size(); ++i) {
-    if (starts[i] > 0 || starts[i] < 0 ||
-        (ends[i] > 0 && ends[i] < INT64_MAX)) {
+    if (starts[i] != 0 || ends[i] < INT64_MAX) {
       return false;
     }
   }

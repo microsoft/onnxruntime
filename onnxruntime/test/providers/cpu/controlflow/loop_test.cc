@@ -268,8 +268,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     }
   }
 
-  graph.SetInputOrder({&iter_num_in, &cond_in, &loop_var_0_in, &loop_var_1_in});
-  graph.SetOutputOrder({cond_out, loop_var_0_out, loop_var_1_out, loop_out_0});
+  graph.SetInputs({&iter_num_in, &cond_in, &loop_var_0_in, &loop_var_1_in});
+  graph.SetOutputs({cond_out, loop_var_0_out, loop_var_1_out, loop_out_0});
 
   // optional input backed by an initializer to make sure that's handled too.
   // we expect that Graph::InferAndVerifySubgraphTypes will be able to ignore the optional input if not provided
@@ -447,8 +447,8 @@ TEST(Loop, InfiniteLoopTermination) {
       graph.AddNode("loop_var_out", "Identity", "Forward outer_scope_0 to loop_var_0_out", inputs, outputs);
     }
 
-    graph.SetInputOrder({&iter_num_in, &cond_in, &outer_scope_0});
-    graph.SetOutputOrder({&cond_out, &loop_var_0_out});
+    graph.SetInputs({&iter_num_in, &cond_in, &outer_scope_0});
+    graph.SetOutputs({&cond_out, &loop_var_0_out});
 
     auto status = graph.Resolve();
     EXPECT_EQ(status, Status::OK());
