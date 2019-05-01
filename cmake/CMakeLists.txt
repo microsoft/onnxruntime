@@ -639,4 +639,6 @@ if (onnxruntime_BUILD_CSHARP)
   include(onnxruntime_csharp.cmake)
 endif()
 
-include (onnxruntime_external_ops.cmake)
+if (NOT (${CMAKE_SYSTEM_NAME} MATCHES "Android"))
+  include (onnxruntime_external_ops.cmake)
+endif()

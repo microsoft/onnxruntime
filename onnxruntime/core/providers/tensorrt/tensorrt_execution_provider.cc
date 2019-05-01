@@ -49,7 +49,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
+  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), std::make_shared<SchemaRegistryManager>(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   for (const auto& node : graph.Nodes()) {
@@ -221,7 +221,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), std::make_shared<SchemaRegistryManager>(), graph_body.DomainToVersionMap());
     onnxruntime::Graph& graph = model.MainGraph();
 
     for (const auto& graph_body_node : graph_body.Nodes()) {
