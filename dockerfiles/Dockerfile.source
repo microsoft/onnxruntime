@@ -6,49 +6,17 @@
 
 # Ubuntu 16.04 Base Image
 FROM ubuntu:16.04
-WORKDIR /work/deps
-
-# Dependencies: Ubuntu-core
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends sudo \
-    wget \
-    zip \
-    ca-certificates \
-    build-essential curl libcurl4-openssl-dev libssl-dev python3-dev git
-
-# Dependencies: conda
-ENV PATH /opt/miniconda/bin:${PATH}
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
-    /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
-    rm ~/miniconda.sh && \
-    /opt/miniconda/bin/conda clean -tipsy
-
-RUN conda install -y python=3.6 numpy && \
-    conda clean -aqy && \
-    rm -rf /opt/miniconda/pkgs && \
-    find / -type d -name __pycache__ -prune -exec rm -rf {} \;
-
-# Install the latest cmake
 WORKDIR /code
-RUN wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz
-RUN tar zxf cmake-3.14.3-Linux-x86_64.tar.gz
+ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
 
-ENV PATH /code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
+# Dependencies: Ubuntu core, conda, cmake
+COPY install_common_deps.sh /code/install_common_deps.sh
+RUN /bin/sh install_common_deps.sh
 
-# Prepare onnxruntime repository
-RUN git clone --recursive http://github.com/Microsoft/onnxruntime -b master --single-branch
-WORKDIR /code/onnxruntime
-
-# Start the source onnxruntime build
-RUN /bin/sh ./build.sh --config Release --build_wheel --update --build
-
-# Copy the ONNX Runtime wheel into the root directory
-RUN cp /code/onnxruntime/build/Linux/Release/dist/*.whl /code
-
-WORKDIR /code
-
-# Remove unecessary files to reduce image size
-RUN rm -rf onnxruntime cmake-3.14.3-Linux-x86_64.tar.gz cmake-3.14.3-Linux-x86_64
-
-# Install the onnxruntime cpu wheel
-RUN pip install *.whl
+# Prepare onnxruntime repository & build onnxruntime
+RUN git clone --recursive http://github.com/Microsoft/onnxruntime -b master --single-branch && \
+    cd onnxruntime && \
+    /bin/sh ./build.sh --config Release --build_wheel --update --build && \
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl && \
+    cd .. && \
+    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64.tar.gz cmake-3.14.3-Linux-x86_64
