@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB_RECURSE onnxruntime_graph_src
+file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_INCLUDE_DIR}/core/graph/*.h"
   "${ONNXRUNTIME_ROOT}/core/graph/*.h"
   "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
@@ -14,7 +14,7 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     )
 endif()
 
-file(GLOB_RECURSE onnxruntime_ir_defs_src
+file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
 )
 

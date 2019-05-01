@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB_RECURSE onnxruntime_framework_srcs
+file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/*.h"
     "${ONNXRUNTIME_ROOT}/core/framework/*.h"
     "${ONNXRUNTIME_ROOT}/core/framework/*.cc"
