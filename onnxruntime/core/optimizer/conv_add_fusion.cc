@@ -90,7 +90,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   // Remove Add node.
   auto* add_node_to_remove = graph.GetNode(add_node.Index());
   if (graph_utils::RemoveNode(graph, *add_node_to_remove)) {
-    modified = RewriteRuleEffect::kModifiedGraph;
+    modified = RewriteRuleEffect::kModifiedRestOfGraph;
   }
 
   return Status::OK();

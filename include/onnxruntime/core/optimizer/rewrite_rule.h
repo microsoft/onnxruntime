@@ -41,9 +41,10 @@ class RewriteRule {
   Class used to indicate the effect of rule application on a graph's node.
   */
   enum class RewriteRuleEffect : uint8_t {
-    kUnmodifiedGraph,    // The graph has not been modified by the rewrite rule.
-    kModifiedGraph,      // The graph was modified (some nodes were updated or removed).
-    kRemovedCurrentNode  // The graph was modified and the node on which the rewrite rule was triggered is removed.
+    kNone,                // The rewrite rule has not modified the graph.
+    kUpdatedCurrentNode,  // The rewrite rule updated (but did not remove) the node on which it was triggered.
+    kRemovedCurrentNode,  // The rewrite rule removed the node on which it was triggered.
+    kModifiedRestOfGraph  // The rewrite rule modified nodes other than the one it was triggered on.
   };
 
   RewriteRule(const std::string& name) : name_(name) {}

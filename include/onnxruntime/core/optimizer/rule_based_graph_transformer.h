@@ -58,13 +58,16 @@ class RuleBasedGraphTransformer : public GraphTransformer {
       @param[in] graph The Graph.
       @param[in] node The Node to apply the rules to.
       @param[in] rules The vector of RewriteRules that will be applied to the Node.
-      @param[out] rule_effect Enum that indicates whether and how the graph was modified as a result of rule application.
+      @param[out] rule_effect Enum that indicates whether and how the graph was modified as a result of
+      applying rules on this node.
       @returns Status indicating success or providing error information. */
   common::Status ApplyRulesOnNode(Graph& graph, Node& node,
                                   const std::vector<std::unique_ptr<RewriteRule>>& rules,
                                   RewriteRule::RewriteRuleEffect& rule_effect) const;
 
  private:
+  using RuleEffect = RewriteRule::RewriteRuleEffect;
+  
   // Map that associates a node's op type with the vector of rules that are registered to be triggered for that node.
   std::unordered_map<std::string, std::vector<std::unique_ptr<RewriteRule>>> op_type_to_rules_;
   // Rules that will be evaluated regardless of the op type of the node.

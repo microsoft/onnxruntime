@@ -89,7 +89,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   // Remove Mul node.
   auto* mul_node_to_remove = graph.GetNode(mul_node.Index());
   if (graph_utils::RemoveNode(graph, *mul_node_to_remove)) {
-    rule_effect = RewriteRuleEffect::kModifiedGraph;
+    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
   }
 
   return Status::OK();

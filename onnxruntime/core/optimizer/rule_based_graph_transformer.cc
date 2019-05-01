@@ -23,11 +23,11 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
 
 Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
                                                    const std::vector<std::unique_ptr<RewriteRule>>& rules,
-                                                   RewriteRule::RewriteRuleEffect& rule_effect) const {
+                                                   RuleEffect& rule_effect) const {
   for (const auto& rule : rules) {
     ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, node, rule_effect));
     // If the current node was removed as a result of a rule, stop rule application for that node.
-    if (rule_effect == RewriteRule::RewriteRuleEffect::kRemovedCurrentNode) {
+    if (rule_effect == RuleEffect::kRemovedCurrentNode) {
       break;
     }
   }
@@ -47,7 +47,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // Initialize the effect of rules on this node to denote that the graph has not yet been modified
     // by the rule application on the current node.
-    auto rule_effect = RewriteRule::RewriteRuleEffect::kUnmodifiedGraph;
+    auto rule_effect = RuleEffect::kNone;
  
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders())) {
       continue;
@@ -63,7 +63,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
       ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect));
     }
 
-    if (rule_effect != RewriteRule::RewriteRuleEffect::kRemovedCurrentNode) {
+    if (rule_effect != RuleEffect::kRemovedCurrentNode) {
       rules = GetAnyOpRewriteRules();
       if (rules) {
         ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect));
@@ -71,11 +71,11 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     }
 
     // Update the modified field of the rule-based transformer.
-    if (rule_effect != RewriteRule::RewriteRuleEffect::kUnmodifiedGraph) {
+    if (rule_effect != RuleEffect::kNone) {
       modified = true;
     }
 
-    if (rule_effect != RewriteRule::RewriteRuleEffect::kRemovedCurrentNode) {
+    if (rule_effect != RuleEffect::kRemovedCurrentNode) {
       ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
     }
   }

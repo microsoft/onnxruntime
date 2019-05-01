@@ -136,7 +136,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   // Remove BN node.
   auto* bn_node_to_remove = graph.GetNode(bn_node.Index());
   if (graph_utils::RemoveNode(graph, *bn_node_to_remove)) {
-    rule_effect = RewriteRuleEffect::kModifiedGraph;
+    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
   }
 
   return Status::OK();
