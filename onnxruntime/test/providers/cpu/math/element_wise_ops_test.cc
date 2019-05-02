@@ -585,6 +585,21 @@ TEST(MathOpTest, Max_8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Max_8_2inputbroadcast) {
+  OpTester test("Max", 8);
+  test.AddInput<float>("data_0", {1, 3},
+                       {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("data_1", {3, 3},
+                       {10.0f, 20.0f, 30.0f,
+                        40.0f, 50.0f, 60.0f,
+                        70.0f, 80.0f, 90.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {10.0f, 20.0f, 30.0f,
+                         40.0f, 50.0f, 60.0f,
+                         70.0f, 80.0f, 90.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //Input batch size is inconsistent
+}
+
 TEST(MathOpTest, Not) {
   OpTester test("Not");
   std::vector<int64_t> dims{2};

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/optimizer/rewrite_rule.h"
+#include "core/optimizer/graph_transformer.h"
 #include "core/framework/ml_value.h"
 
 namespace onnxruntime {
@@ -11,19 +11,13 @@ namespace onnxruntime {
 /**
 @class ConstantFolding
 
-Rewrite rule that performs constant folding to the graph.
-The rule gets applied to nodes that have only initializers as inputs. It statically computes these 
-nodes and replaces their output with an initializer that corresponds to the result of the computation.
-
-It is attempted to be triggered on all nodes irrespective of their op type.
+Transformer that traverses the graph top-down and performs constant folding, i.e.,
+it statically computes parts of the graph that rely only on constant initializers.
 */
-class ConstantFolding : public RewriteRule {
+class ConstantFolding : public GraphTransformer {
  public:
-  ConstantFolding() noexcept : RewriteRule("ConstantFolding") {}
-
-  std::vector<std::string> TargetOpTypes() const noexcept override {
-    return std::vector<std::string>();
-  }
+  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept :
+    GraphTransformer("ConstantFolding", compatible_execution_providers) {}
 
  private:
   /** Constant folding will not be applied to nodes whose op_type is included in this set.
@@ -31,15 +25,13 @@ class ConstantFolding : public RewriteRule {
   const std::unordered_set<std::string> excluded_op_types_ =
       {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 
-  bool SatisfyCondition(const Graph& graph, const Node& node) override;
-
-  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 
   /** Create a TensorProto that has the same value as the given MLValue 
   and the same type and dimensions as the given NodeArg. */
   void BuildTensorProtoForInitializer(const MLValue& mlvalue,
                                       const NodeArg& constant_node_arg,
-                                      ONNX_NAMESPACE::TensorProto& tensorproto);
+                                      ONNX_NAMESPACE::TensorProto& tensorproto) const;
 };
 
 }  // namespace onnxruntime
