@@ -93,7 +93,7 @@ struct Base {
 
 template <typename T>
 struct Unowned : T {
-  Unowned(decltype(p_) p) : T{p} {}
+  Unowned(decltype(T::p_) p) : T{p} {}
   Unowned(Unowned&& v) : T{v.p_} {}
   ~Unowned() { p_ = nullptr; }
 };
@@ -284,13 +284,13 @@ inline SessionOptions SessionOptions::clone() const {
 
 inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool_size) {
   if (OrtSetSessionThreadPoolSize(p_, session_thread_pool_size) == -1)
-    throw std::exception("Error calling SessionOptions::SetThreadPoolSize");
+    throw Exception("Error calling SessionOptions::SetThreadPoolSize", ORT_FAIL);
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_optimization_level) {
   if (OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level) == -1)
-    throw std::exception("Error calling SessionOptions::SetGraphOptimizationLevel");
+    throw Exception("Error calling SessionOptions::SetGraphOptimizationLevel", ORT_FAIL);
   return *this;
 }
 
