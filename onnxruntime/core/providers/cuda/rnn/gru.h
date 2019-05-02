@@ -18,9 +18,9 @@ class GRU final : public CudnnRnnBase<T> {
     CudnnRnnBase<T>::rnn_mode_ = CUDNN_GRU;
     CudnnRnnBase<T>::SetCudnnRnnDesc();
 
-    // ONNX W layout is Wzrh, WBzrh, mapping to RNNLinLayerMatrixParams the linLayerID is 0, 3, 1, 2
+    // ONNX W layout is Wzrh, WBzrh, mapping to RNNLinLayerMatrixParams the linLayerID is 1, 0, 2
     CudnnRnnBase<T>::W_lin_layer_id_.assign({1, 0, 2});
-    // ONNX R layout is Rzrh, RBzrh, mapping to RNNLinLayerMatrixParams the linLayerID is 4, 7, 5, 6
+    // ONNX R layout is Rzrh, RBzrh, mapping to RNNLinLayerMatrixParams the linLayerID is 4, 3, 5
     CudnnRnnBase<T>::R_lin_layer_id_.assign({4, 3, 5});
     // ONNX B layout is Wbzrh, Rbzrh, mapping to RNNLinLayerMatrixParams
     // the linLayerID is 1, 0, 2, 4, 3, 5, we can reuse it from W_lin_layer_id & R_lin_layer_id

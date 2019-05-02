@@ -4,6 +4,7 @@
 #pragma once
 #include <map>
 
+#include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/path_lib.h"
@@ -35,13 +36,14 @@ class SessionStateInitializer {
 
   // First perform any transformations and create the execution plan
   common::Status CreatePlan(const Node* parent_node,
-                            const std::vector<NodeArg*>& outer_scope_node_args,
+                            const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
                             bool enable_sequential_execution);
 
   // initialize tensors, and save. save kernels and input/output node mappings
   // \param implicit_inputs could be NULL
   // \param clean_initializers clean initializers to save space
-  common::Status InitializeAndSave(const std::vector<NodeArg*>* implicit_inputs, bool clean_initializers);
+  common::Status InitializeAndSave(const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs,
+                                   bool clean_initializers);
 
  private:
   const std::basic_string<PATH_CHAR_TYPE>& graph_loc_;

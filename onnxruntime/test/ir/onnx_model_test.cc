@@ -141,9 +141,15 @@ TEST_P(ONNXModelsTest, LoadFromProtobuf) {
   TestResolve(model->MainGraph());
 }
 
+#ifndef DISABLE_CONTRIB_OPS
 INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
                         ONNXModelsTest,
                         ::testing::Values("bvlc_alexnet", "bvlc_googlenet", "bvlc_reference_caffenet", "bvlc_reference_rcnn_ilsvrc13", "densenet121", "emotion_ferplus", "inception_v1", "inception_v2", "mnist", "resnet50", "shufflenet", "squeezenet", "tiny_yolov2", "vgg19", "zfnet512"));
+#else
+INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
+                        ONNXModelsTest,
+                        ::testing::Values("bvlc_alexnet", "bvlc_googlenet", "bvlc_reference_caffenet", "bvlc_reference_rcnn_ilsvrc13", "densenet121", "emotion_ferplus", "inception_v1", "inception_v2", "mnist", "resnet50", "shufflenet", "squeezenet", "vgg19", "zfnet512"));
+#endif
 
 #endif
 

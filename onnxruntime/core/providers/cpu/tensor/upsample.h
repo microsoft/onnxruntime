@@ -18,6 +18,10 @@ enum UpsampleMode {
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) : scales_cached_(false) {
+    int start, end;
+    info.GetKernelDef().SinceVersion(&start, &end);
+    is_resize = (start == 10);
+
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
@@ -28,7 +32,6 @@ class UpsampleBase {
       ScalesValidation(scales_, mode_);
     }
 
-    // opset 9
     if (input_count > 1) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(1, &scale);

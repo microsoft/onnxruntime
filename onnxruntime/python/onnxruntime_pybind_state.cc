@@ -34,13 +34,20 @@
 #define BACKEND_MKLML ""
 #endif
 
+#if USE_NGRAPH
+#define BACKEND_NGRAPH "-NGRAPH"
+#include "core/providers/ngraph/ngraph_execution_provider.h"
+#else
+#define BACKEND_NGRAPH ""
+#endif
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -55,6 +62,9 @@
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
+#ifdef USE_NGRAPH
+#include "core/providers/ngraph/ngraph_provider_factory.h"
+#endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
@@ -67,6 +77,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(in
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 }  // namespace onnxruntime
@@ -218,6 +229,11 @@ void InitializeSession(InferenceSession* sess) {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
   }
 #endif
+#if USE_NGRAPH
+  {
+    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
+  }
+#endif
 
 #if 0  //USE_NUPHAR
   {
@@ -249,7 +265,8 @@ void addGlobalMethods(py::module& m) {
       []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
         return ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
       },
-      "Return a vector of OpSchema all registed operators");
+      "Return a vector of OpSchema all registed operators"
+  );
 #endif
 }
 
@@ -391,7 +408,18 @@ This parameter is unused unless *enable_sequential_execution* is false.)pbdoc")
             p.session_thread_pool_size = t[pos++].cast<int>();
             p.clean_initializers = t[pos++].cast<bool>();
             return p;
-          }));
+          }))
+      .def_property_readonly("graph_optimization_level",
+                             [](const SessionOptions* options) -> uint32_t {
+                               return static_cast<uint32_t>(options->graph_optimization_level);
+                             },
+                             R"pbdoc(Graph optimization level for this session.)pbdoc")
+      .def("set_graph_optimization_level",
+           [](SessionOptions* options, uint32_t level) -> void {
+             options->graph_optimization_level = static_cast<TransformerLevel>(level);
+           },
+           R"pbdoc(Graph optimization level for this session. 0 disables all optimizations.
+Whereas 1 enables basic optimizations and 2 enables all optimizations.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())

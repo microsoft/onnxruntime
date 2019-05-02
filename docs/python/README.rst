@@ -52,6 +52,11 @@ replaces *scikit-learn* to compute the predictions.
 Changes
 -------
 
+0.4.0
+^^^^^
+
+Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v0.4.0
+
 0.3.1
 ^^^^^
 

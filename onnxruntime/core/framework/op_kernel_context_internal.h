@@ -19,7 +19,7 @@ class OpKernelContextInternal : public OpKernelContext {
                                    IExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const std::vector<NodeArg*>& implicit_inputs,
+                                   const ConstPointerContainer<std::vector<NodeArg*>> implicit_inputs,
                                    const bool& terminate_flag)
       : OpKernelContext(&frame, &kernel, logger),
         session_state_{session_state},
@@ -57,9 +57,11 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
+  const onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return session_state_.GetThreadPool(); }
+
  private:
   const SessionState& session_state_;
-  const std::vector<NodeArg*>& implicit_inputs_;
+  const ConstPointerContainer<std::vector<NodeArg*>> implicit_inputs_;
   const bool& terminate_flag_;
 };
 

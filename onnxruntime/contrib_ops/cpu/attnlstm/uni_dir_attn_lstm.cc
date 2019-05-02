@@ -45,11 +45,7 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
                                                   const ActivationFuncs::Entry& activation_func_g,
                                                   const ActivationFuncs::Entry& activation_func_h,
                                                   const float clip,
-#ifdef USE_EIGEN_THREADPOOL
-                                                  Eigen::NonBlockingThreadPool& ttp)
-#else
-                                                  TaskThreadPool& ttp)
-#endif
+                                                  onnxruntime::concurrency::ThreadPool& ttp)
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),

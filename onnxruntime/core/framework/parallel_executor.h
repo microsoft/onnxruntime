@@ -61,5 +61,7 @@ class ParallelExecutor : public IExecutor {
   OrtCondVar complete_cv_;
 
   const bool& terminate_flag_;
+  // TODO: Temporary threadpool for the executor.  This is a costly way to handle the problem.
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> executor_pool_;
 };
 }  // namespace onnxruntime

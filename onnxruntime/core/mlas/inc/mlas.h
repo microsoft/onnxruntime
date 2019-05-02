@@ -44,7 +44,22 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Activiation routines.
+// Forward declare the thread pool implementation class.
+//
+// N.B. Avoid including onnxruntime headers here to keep the dependencies for
+// standalone MLAS test executables smaller.
+//
+
+namespace onnxruntime {
+    namespace concurrency {
+        class ThreadPool;
+    };
+};
+
+using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+
+//
+// Activation routines.
 //
 
 enum MLAS_ACTIVATION_KIND {
@@ -91,7 +106,8 @@ MlasSgemm(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -121,6 +137,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t OutputSize;
     size_t K;
     MLAS_CONV_ALGORITHM Algorithm;
+    int32_t ThreadCount;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -148,7 +165,8 @@ MlasConvPrepare(
     const int64_t* OutputShape,
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
-    size_t* WorkingBufferSize
+    size_t* WorkingBufferSize,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
@@ -159,7 +177,8 @@ MlasConv(
     const float* Filter,
     const float* Bias,
     float* WorkingBuffer,
-    float* Output
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -183,7 +202,8 @@ MlasPool(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //

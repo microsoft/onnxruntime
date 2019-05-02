@@ -86,15 +86,17 @@ __global__ void _RnnMaskKernel(const int32_t seq_length,
                                const int32_t hidden_size,
                                const int32_t* sequence_lens,
                                const fast_divmod div_seq_block,
+                               const fast_divmod div_dir_block,
                                const fast_divmod div_batch_block,
                                T* y_output_data,
                                T* y_h_output_data,
                                const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
-  int seq_id, offset, batch_id, batch_offset;
+  int seq_id, direction_id, batch_id, offset;
   div_seq_block.divmod(id, seq_id, offset);
-  div_batch_block.divmod(offset, batch_id, batch_offset);
+  div_dir_block.divmod(offset, direction_id, offset);
+  div_batch_block.divmod(offset, batch_id, offset);
   int32_t batch_seq_length = sequence_lens[batch_id];
 
   if (batch_id >= batch_size || batch_seq_length == seq_length) {
@@ -106,8 +108,9 @@ __global__ void _RnnMaskKernel(const int32_t seq_length,
     return;
   }
 
-  if ((y_h_output_data != nullptr) && (batch_seq_length != seq_length) && ((seq_id + 1) == batch_seq_length)) {
-    int hy_idx = batch_id * hidden_size + batch_offset;
+  if ((y_h_output_data != nullptr) && 
+      ((direction_id == 0 && (seq_id + 1) == batch_seq_length) || (direction_id == 1 && seq_id == 0))) {
+    int hy_idx = direction_id * batch_size * hidden_size + batch_id * hidden_size + offset;
     y_h_output_data[hy_idx] = y_output_data[id];
   }
 }
@@ -122,11 +125,12 @@ void RnnMaskImpl(const int32_t num_directions,
                  T* y_h_output_data,
                  const size_t N) {
   fast_divmod div_seq_block(batch_size * hidden_size * num_directions);
+  fast_divmod div_dir_block(batch_size * hidden_size);
   fast_divmod div_batch_block(hidden_size);
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   _RnnMaskKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      seq_length, batch_size, hidden_size, sequence_lens,
-      div_seq_block, div_batch_block, y_output_data, y_h_output_data, (CUDA_LONG)N);
+      seq_length, batch_size, hidden_size, sequence_lens, div_seq_block,
+      div_dir_block, div_batch_block, y_output_data, y_h_output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_RNN_IMPL(T)                                                 \

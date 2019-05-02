@@ -29,12 +29,12 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 /*
  Main graph
-                    
- split_input          if_cond      if_graph_input_0,     
+
+ split_input          if_cond      if_graph_input_0,
       |                   |              |
    [Split]                |          [Identity]
-      |                   |              | 
-      |                   |         if_input_0 
+      |                   |              |
+      |                   |         if_input_0
       |  split_out_0      |              |
       ------------------[If]--------------   (see below for then/else subgraphs in If node)
          split_out_1      |
@@ -108,17 +108,17 @@ class IfOpTester : public OpTester {
 THEN branch
     split_out_0    if_input_0   [1]
              \          |
-       [1]    \         |               
+       [1]    \         |
                \------[Add]
-                        |               
+                        |
                    add_out_0    [2]
 
 ELSE branch
-    split_out_1    if_input_0   [1] 
+    split_out_1    if_input_0   [1]
             \          |
-      [10]   \         |             
+      [10]   \         |
               \------[Add]
-                        |           
+                        |
                    add_out_1    [11]
 */
 
@@ -183,6 +183,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 void RunTest(bool condition_value,
              RunOptions options,
+             bool is_tensorrt_supported = true,
              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
              const std::string& failure_message = "") {
   IfOpTester test{options};
@@ -209,6 +210,11 @@ void RunTest(bool condition_value,
     test.AddOutput<float>("if_out_0", output_shape, {11.f});
   }
 
+  std::unordered_set<std::string> excluded_providers;
+  // Disable TensorRT on SymbolicShape or NoShape tests
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }
   if (options.mixed_execution_providers) {
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
@@ -216,9 +222,9 @@ void RunTest(bool condition_value,
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, excluded_providers, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message);
+    test.Run(expect_result, failure_message, excluded_providers);
   }
 }
 
@@ -227,7 +233,7 @@ TEST(If, ShapeInMainGraph_NoShapeInSubgraph_True) {
   options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(true, options);
+  RunTest(true, options, false);
 }
 
 TEST(If, ShapeInMainGraph_NoShapeInSubgraph_False) {
@@ -235,7 +241,7 @@ TEST(If, ShapeInMainGraph_NoShapeInSubgraph_False) {
   options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(false, options);
+  RunTest(false, options, false);
 }
 
 TEST(If, NoShapeInMainGraph_ShapeInSubgraph_True) {
@@ -243,7 +249,7 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_True) {
   options.include_dim_values_in_main_graph = false;
   options.include_dim_values_in_subgraph = true;
 
-  RunTest(true, options);
+  RunTest(true, options, false);
 }
 
 TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
@@ -251,7 +257,7 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
   options.include_dim_values_in_main_graph = false;
   options.include_dim_values_in_subgraph = true;
 
-  RunTest(false, options);
+  RunTest(false, options, false);
 }
 
 #ifdef USE_CUDA
@@ -268,7 +274,7 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
   options.symbolic_dim_value_in_main_graph = 0;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(true, options);
+  RunTest(true, options, false);
 }
 
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
@@ -277,7 +283,7 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   options.symbolic_dim_value_in_main_graph = 0;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(false, options);
+  RunTest(false, options, false);
 }
 
 }  // namespace test
