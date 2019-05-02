@@ -69,7 +69,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(Node& node,
     for (auto& subgraph_node : attr_subgraph_pair.second->Nodes()) {
       // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
       // subgraphs, and at least one level lower uses removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -99,7 +99,7 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       // recurse if this node also consumes removed_output_name as an implicit input
       // (i.e. there are multiple levels of nested subgraphs, and at least one level lower uses
       // removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -265,17 +265,24 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
   return outputs[index]->Name();
 }
 
-// fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
                                        ONNX_NAMESPACE::OperatorSetVersion version,
                                        const std::string& domain) {
-  if (node.OpType() != op_type ||
-      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!node.Domain().empty() && node.Domain() != domain)) {
-    return false;
-  }
-  return true;
+  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
+          MatchesOpSinceVersion(node, version) && MatchesOpSetDomain(node, domain));
+}
+
+bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
+  return node.Op()->SinceVersion() == version;
+}
+
+bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
+  const auto& node_domain = node.Domain();
+  // We do a special check for the ONNX domain, as it has two aliases.
+  return node_domain == domain ||
+         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
+          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
 }
 
 bool IsSupportedProvider(const Node& node,
@@ -346,19 +353,24 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  // Cannot remove a node with multiple output NodeArgs (multiple output edges is fine), neither
-  // a node whose output is also a graph output.
-  if (!IsSingleInSingleOutNode(node) ||
+bool RemoveNode(Graph& graph, Node& node) {
+  // Cannot remove a node with implicit inputs, with multiple output NodeArgs (multiple output edges is fine),
+  // or whose output is also a graph output.
+  if (node.ImplicitInputDefs().size() > 0 ||
+      node.OutputDefs().size() != 1 ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 
-  // If the single input comes from another node (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
+    // If there is a single input edge from another node (initializers are not connected with edges to nodes).
     return RemoveNodeWithSingleNodeIn(graph, node);
-  } else {
+  } else if (node.InputDefs().size() == 1) {
+    // If a single initializer is the only input.
     return RemoveNodeWithSingleInitializerIn(graph, node);
+  } else {
+    // No other node removal is supported, because there will be no way to connect its inputs to its outputs.
+    return false;
   }
 }
 

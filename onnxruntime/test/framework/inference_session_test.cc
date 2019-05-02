@@ -947,12 +947,12 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {

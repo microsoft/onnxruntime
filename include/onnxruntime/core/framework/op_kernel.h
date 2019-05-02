@@ -80,7 +80,11 @@ class OpKernelContext {
   template <typename T>
   const T* Input(int index) const {
     const MLValue* p_ml_value = GetInputMLValue(index);
-    return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
+    try {
+      return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
+    } catch (const std::exception& /*e*/) {
+      throw OnnxRuntimeException(ORT_WHERE_WITH_STACK, "Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
+    }
   }
 
   // Fetch output (non-tensor) with specified index.
@@ -214,7 +218,7 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
-using BuildKernelCreateInfoFn = KernelCreateInfo(*)();
+using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
 // Naming convention for operator kernel classes
 #define ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name) \

@@ -21,7 +21,6 @@
     <ProjectGuid>{B8CA7F10-0171-4EA5-8662-5A9942DDF415}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>MicrosoftMLOnnxRuntimeEndToEndTestsRunCapi</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">

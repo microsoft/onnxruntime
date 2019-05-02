@@ -37,6 +37,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, const PerformanceTes
 #else
     ORT_THROW("MKL-DNN is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
+#ifdef USE_NGRAPH
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+#else
+    ORT_THROW("nGraph is not supported in this build");
+#endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0));

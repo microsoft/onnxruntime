@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because axis=0 is not supported
+
 template <typename T>
 void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<T>& input_vals,
@@ -16,18 +18,18 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<int64_t>& steps,
                   const std::vector<int64_t>& output_dims,
                   const std::vector<T>& output_vals,
-	              bool v10_only = false) {
+                  bool v10_only = false) {
   // V1-9
   if (!v10_only)
   {
-	  OpTester testv9("Slice", 9);
-	  testv9.AddAttribute("starts", starts);
-	  testv9.AddAttribute("ends", ends);
-	  if (axes.size() != 0)
-		testv9.AddAttribute("axes", axes);
-	  testv9.AddInput<T>("data", input_dims, input_vals);
-	  testv9.AddOutput<T>("output", output_dims, output_vals);
-	  testv9.Run();
+      OpTester testv9("Slice", 9);
+      testv9.AddAttribute("starts", starts);
+      testv9.AddAttribute("ends", ends);
+      if (axes.size() != 0)
+        testv9.AddAttribute("axes", axes);
+      testv9.AddInput<T>("data", input_dims, input_vals);
+      testv9.AddOutput<T>("output", output_dims, output_vals);
+      testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   }
 
   // V10
@@ -40,7 +42,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   if (steps.size() != 0)
     testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<T>("output", output_dims, output_vals);
-  testv10.Run();
+  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Slice V1-9 & Slice V10 can both run the following tests
@@ -68,7 +70,7 @@ TEST(SliceTest, Slice1D_ValidStartEndRange_NoOutput) {
 
 TEST(SliceTest, Slice1D_Regular) {
   RunSliceTest<float>
-	          ({6},
+              ({6},
                {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                {2},
                {4},
@@ -234,7 +236,7 @@ TEST(SliceTest, Slice1D_WithPositiveSteps) {
                       {2},
                       {3},
                       {0.0f, 2.0f, 4.0f},
-	                  true);
+                      true);
 }
 
 // In numpy:
@@ -310,7 +312,7 @@ TEST(SliceTest, Slice2D_WithPositiveSteps_1) {
                       {1, 2},
                       {1, 2},
                       {5.0f, 7.0f},
-	                  true);
+                      true);
 }
 
 TEST(SliceTest, Slice2D_WithPositiveSteps_2) {
@@ -322,7 +324,7 @@ TEST(SliceTest, Slice2D_WithPositiveSteps_2) {
                       {}, // default steps
                       {1, 3},
                       {2.0f, 3.0f, 4.0f},
-	                  true);
+                      true);
 }
 
 TEST(SliceTest, Slice2D_WithNegativeSteps_1) {
@@ -352,10 +354,10 @@ TEST(SliceTest, Slice2D_WithNegativeSteps_2) {
 TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
   RunSliceTest<int32_t>({3, 3, 3},
                       {27, 20,  2,
-	                   4, 26, 11,
+                       4, 26, 11,
                        26,  5, 17,
 
-	                   0, 21,  6,
+                       0, 21,  6,
                        22, 13, 29,
                        19, 17, 27,
 
@@ -368,8 +370,8 @@ TEST(SliceTest, Slice3D_WithPositiveSteps_AllAxes) {
                       {2, 2, 2},
                       {2, 1, 1},
                       {26, 9},
-	                  true);
-} 
+                      true);
+}
 
 TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_1) {
   RunSliceTest<int32_t>({3, 3, 3},
@@ -412,12 +414,12 @@ TEST(SliceTest, Slice3D_WithPositiveAndNegativeSteps_SubsetOfAxes_2) {
                         {3, -2},
                         {3, 1, 0},
                         {},
-	                    true);
+                        true);
 }
 
 // Slice for Reversing
-// With numeric_limit_max, it means slice to the end of a dimension 
-// (whichever direction we are stepping) 
+// With numeric_limit_max, it means slice to the end of a dimension
+// (whichever direction we are stepping)
 TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -505,6 +507,25 @@ TEST(SliceTest, Slice2D_ImplicitCopyBySlicingADimensionFully) {
                       {2, 2},
                       {1.0f, 2.0, 3.0f, 4.0f},
                       true);
+}
+
+TEST(SliceTest, OptionalAxesInputAloneMissing) {
+  std::vector<int64_t> input_dims = {6};
+  auto input_vals = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  std::initializer_list<int64_t> starts = {2};
+  std::initializer_list<int64_t> ends = {4};
+  std::initializer_list<int64_t> steps = {1};
+  std::vector<int64_t> output_dims = {2};
+  auto output_vals = {2.0f, 3.0f};
+
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", input_dims, input_vals);
+  testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts);
+  testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
+  testv10.AddMissingOptionalInput<int64_t>();
+  testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
+  testv10.AddOutput<float>("output", output_dims, output_vals);
+  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

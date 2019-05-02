@@ -41,16 +41,6 @@ namespace onnxruntime {
 namespace {
 constexpr int OneMillion = 1000000;
 
-class StdThread : public Thread {
- public:
-  StdThread(std::function<void()> fn)
-      : thread_(fn) {}
-  ~StdThread() override { thread_.join(); }
-
- private:
-  std::thread thread_;
-};
-
 static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
 
 class UnmapFileParam {
@@ -85,13 +75,6 @@ class PosixEnv : public Env {
     return std::thread::hardware_concurrency();
   }
 
-  EnvThread* CreateThread(std::function<void()> fn) const override { return new StdThread(fn); }
-
-  Task CreateTask(std::function<void()> f) const override {
-    return Task{std::move(f)};
-  }
-  void ExecuteTask(const Task& t) const override { t.f(); }
-
   void SleepForMicroseconds(int64_t micros) const override {
     while (micros > 0) {
       timespec sleep_time;
@@ -110,11 +93,6 @@ class PosixEnv : public Env {
         // Ignore signals and wait for the full interval to elapse.
       }
     }
-  }
-
-  Thread* StartThread(const ThreadOptions& /*thread_options*/, const std::string& /*name*/,
-                      std::function<void()> fn) const override {
-    return new StdThread(fn);
   }
 
   PIDType GetSelfPid() const override {

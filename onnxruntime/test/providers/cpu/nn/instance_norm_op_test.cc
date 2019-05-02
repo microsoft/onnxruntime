@@ -7,6 +7,8 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because its parser doesn't support weight as input
+
 TEST(InstanceNormalizationOpTest, InstanceNorm) {
   OpTester test("InstanceNormalization");
   test.AddAttribute("epsilon", 0.3F);
@@ -39,7 +41,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm) {
                                    -0.14644464F, -0.82262872F, -0.66852817F, 1.63760153F,
                                    -1.65898662F, 0.27618144F, 0.64840618F, 0.734399F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
@@ -66,7 +68,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
                                    1.46688162F, -0.98600774F, -0.79911913F, 0.31824524F,
                                    0.57370438F, 0.42193634F, 0.6525492F, -1.64818992F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
@@ -109,7 +111,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
                                    1.88028F, 2.353724F, -0.25549555F,
                                    2.0837004F, 2.8466992F, 2.0773761F};
   test.AddOutput<float>("Y", input_dims, expected_output);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

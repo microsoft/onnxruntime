@@ -39,6 +39,63 @@ class TensorflowTestSession : public TestSession {
     return ret;
   }
 
+  TF_Tensor* AllocateTFTensor(const OrtTensorTypeAndShapeInfo* shape, size_t& buffer_length) const {
+    size_t dim_count = OrtGetNumOfDimensions(shape);
+    std::vector<int64_t> dims(dim_count);
+    OrtGetDimensions(shape, dims.data(), dim_count);
+    int64_t ele_count = OrtGetTensorShapeElementCount(shape);
+    TF_DataType d;
+    switch (OrtGetTensorElementType(shape)) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
+        buffer_length = ele_count * sizeof(float);
+        d = TF_FLOAT;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:  // maps to c type uint8_t
+        buffer_length = ele_count * sizeof(uint8_t);
+        d = TF_UINT8;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:  // maps to c type int8_t
+        buffer_length = ele_count * sizeof(int8_t);
+        d = TF_INT8;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
+        buffer_length = ele_count * sizeof(uint16_t);
+        d = TF_UINT16;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:  // maps to c type int16_t
+        buffer_length = ele_count * sizeof(int16_t);
+        d = TF_INT16;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:  // maps to c type int32_t
+        buffer_length = ele_count * sizeof(int32_t);
+        d = TF_INT32;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:  // maps to c type int64_t
+        buffer_length = ele_count * sizeof(int64_t);
+        d = TF_INT64;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        buffer_length = ele_count * sizeof(bool);
+        d = TF_BOOL;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
+        buffer_length = ele_count * sizeof(double);
+        d = TF_DOUBLE;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
+        buffer_length = ele_count * sizeof(uint32_t);
+        d = TF_UINT32;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
+        buffer_length = ele_count * sizeof(uint64_t);
+        d = TF_UINT64;
+        break;
+      default:
+        ORT_NOT_IMPLEMENTED("unexpected input data type");
+    }
+    return TF_AllocateTensor(d, dims.data(), static_cast<int>(dims.size()), buffer_length);
+  }
+
  public:
   TensorflowTestSession(const PerformanceTestConfig& performance_test_config, const TestModelInfo* m) {
     TF_Status* s = TF_NewStatus();
@@ -76,12 +133,8 @@ class TensorflowTestSession : public TestSession {
       assert(input_buffer != nullptr);
       OrtTensorTypeAndShapeInfo* shape;
       ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(input[i], &shape));
-      size_t dim_count = OrtGetNumOfDimensions(shape);
-      std::vector<int64_t> dims(dim_count);
-      OrtGetDimensions(shape, dims.data(), dim_count);
-      int64_t ele_count = OrtGetTensorShapeElementCount(shape);
-      size_t buffer_length = ele_count * sizeof(float);
-      TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, dims.data(), static_cast<int>(dims.size()), buffer_length);
+      size_t buffer_length = 0;
+      TF_Tensor* t = AllocateTFTensor(shape, buffer_length);
       assert(t != nullptr);
       feed_tensors[i] = t;
       assert(TF_TensorByteSize(t) == buffer_length);
@@ -97,6 +150,7 @@ class TensorflowTestSession : public TestSession {
     TF_DeleteStatus(s);
     return end - start;
   }
+
   ~TensorflowTestSession() override {
     if (model_deleter.f != nullptr) {
       model_deleter.f(model_deleter.param);

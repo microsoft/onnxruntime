@@ -20,7 +20,7 @@ TEST(Identity, StringType) {
   std::vector<int64_t> dims{2, 2};
   test.AddInput<std::string>("X", dims, {"a" , "b", "x", "y"});
   test.AddOutput<std::string>("Y", dims, {"a" , "b", "x", "y"});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: unsupported data type
 }
 
 }  // namespace test

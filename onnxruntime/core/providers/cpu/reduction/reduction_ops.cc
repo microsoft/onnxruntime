@@ -69,8 +69,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
   // If all reduced axes are located at the tail of the input shape, then copy could be skipped is required
   bool need_copy = true;
-  if (axes.size() <= ndim && axes.front() == static_cast<int64_t>(ndim - axes.size()) 
-      && axes.back() == static_cast<int64_t>(ndim) - 1) {
+  if (axes.size() <= ndim && axes.front() == static_cast<int64_t>(ndim - axes.size()) && axes.back() == static_cast<int64_t>(ndim) - 1) {
     need_copy = false;
   }
 
@@ -303,8 +302,7 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
     for (int64_t i = 0; i < block_size; ++i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
     }
-  }
-  else {
+  } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().mean();
   }
@@ -360,8 +358,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
     for (int64_t i = 0; i < block_size; ++i) {
       output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
     }
-  }
-  else {
+  } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();
   }

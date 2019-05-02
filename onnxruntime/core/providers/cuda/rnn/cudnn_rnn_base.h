@@ -153,6 +153,8 @@ class CudnnRnnBase : public CudaKernel {
   // optional
   std::string direction_;
   CudnnFilterDescriptor w_desc_cache_;
+  CudnnDropout cudnn_dropout_desc_;
+  CudnnFilterDescriptor filter_desc_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
 

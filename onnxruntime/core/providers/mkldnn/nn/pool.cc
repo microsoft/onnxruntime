@@ -254,7 +254,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads);
+  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, this->dilations_, this->ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   size_t num_outputs = OpKernel::Node().OutputDefs().size();

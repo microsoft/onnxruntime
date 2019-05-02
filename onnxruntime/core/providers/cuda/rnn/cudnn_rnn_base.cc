@@ -47,21 +47,20 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                               const T* R_data,
                                               const T* B_data) const {
   //Onnx only support 1 layer
-  CudnnFilterDescriptor filter_desc;
   int w_offset = 0;
   int r_offset = 0;
   int bias_offset = 0;
   for (int layer = 0; layer < num_layers_ * num_directions_; ++layer) {
     for (int idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
+      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
+        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
     for (int idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
-      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
+      SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
       if (B_data != nullptr) {
-        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc, w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
+        SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
   }
@@ -84,9 +83,8 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
     reverse_ = true;
   }
 
-  CudnnDropout cudnn_dropout_desc;
-  cudnn_dropout_desc.Set(CudnnHandle());
-  ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc,
+  cudnn_dropout_desc_.Set(CudnnHandle());
+  ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
                                             cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
   return Status::OK();
@@ -137,10 +135,14 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   const Tensor* B;
   bool get_W = info.TryGetConstantInput(Input_Index::W, &W);
   bool get_R = info.TryGetConstantInput(Input_Index::R, &R);
+  bool get_B = info.TryGetConstantInput(Input_Index::B, &B);
 
   if (get_W && get_R) {
-    info.TryGetConstantInput(Input_Index::B, &B);
-    ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_));
+    if (get_B) {
+      ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_));
+    } else {
+      ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, nullptr, w_data_cache_, w_desc_cache_));
+    }
     weight_cached_ = true;
   }
 

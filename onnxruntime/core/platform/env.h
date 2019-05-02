@@ -34,9 +34,6 @@ limitations under the License.
 
 namespace onnxruntime {
 
-class Thread;
-
-struct ThreadOptions;
 #ifdef _WIN32
 using PIDType = unsigned long;
 #else
@@ -54,13 +51,7 @@ using PIDType = pid_t;
 class Env {
  public:
   virtual ~Env() = default;
-  /// for use with Eigen::ThreadPool
-  using EnvThread = Thread;
 
-  /// for use with Eigen::ThreadPool
-  struct Task {
-    std::function<void()> f;
-  };
   /// \brief Returns a default environment suitable for the current operating
   /// system.
   ///
@@ -81,21 +72,6 @@ class Env {
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   /// On Windows, it's the min time to sleep, not the actual one.
   virtual void SleepForMicroseconds(int64_t micros) const = 0;
-
-  /// for use with Eigen::ThreadPool
-  virtual EnvThread* CreateThread(std::function<void()> f) const = 0;
-  /// for use with Eigen::ThreadPool
-  virtual Task CreateTask(std::function<void()> f) const = 0;
-  /// for use with Eigen::ThreadPool
-  virtual void ExecuteTask(const Task& t) const = 0;
-
-  /// \brief Returns a new thread that is running fn() and is identified
-  /// (for debugging/performance-analysis) by "name".
-  ///
-  /// Caller takes ownership of the result and must delete it eventually
-  /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(const ThreadOptions& thread_options, const std::string& name,
-                              std::function<void()> fn) const = 0;
 
 #ifndef _WIN32
   /**
@@ -163,29 +139,6 @@ class Env {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Env);
   EnvTime* env_time_ = EnvTime::Default();
-};
-
-/// Represents a thread used to run a onnxruntime function.
-class Thread {
- public:
-  Thread() noexcept = default;
-
-  /// Blocks until the thread of control stops running.
-  virtual ~Thread();
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Thread);
-};
-
-/// \brief Options to configure a Thread.
-///
-/// Note that the options are all hints, and the
-/// underlying implementation may choose to ignore it.
-struct ThreadOptions {
-  /// Thread stack size to use (in bytes).
-  size_t stack_size = 0;  // 0: use system default value
-  /// Guard area size to use near thread stacks to use (in bytes)
-  size_t guard_size = 0;  // 0: use system default value
 };
 
 }  // namespace onnxruntime
