@@ -9,15 +9,6 @@
 #include <string>
 #include <vector>
 
-//TODO: encode error code in the message?
-#define ORT_THROW_ON_ERROR(expr)                                     \
-  if (OrtStatus* onnx_status = (expr)) {                             \
-    const char* ort_error_message = OrtGetErrorMessage(onnx_status); \
-    OrtReleaseStatus(onnx_status);                                   \
-    throw std::exception(ort_error_message);                         \
-  }                                                                  \
-  //     OrtErrorCode error_code = OrtGetErrorCode(onnx_status);
-
 #define ORT_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \
   decltype(Ort##NAME(value.get())) NAME() {     \
     return Ort##NAME(value.get());              \
@@ -39,6 +30,24 @@ ORT_DEFINE_DELETER(TensorTypeAndShapeInfo);
 }  // namespace std
 
 namespace Ort {
+
+struct Exception : std::exception {
+  Exception(const char* message, OrtErrorCode code) : std::exception{message}, code_{code} {}
+
+  OrtErrorCode GetOrtErrorCode() const { return code_; }
+
+ private:
+  OrtErrorCode code_;
+};
+
+#define ORT_THROW_ON_ERROR(expr)                                     \
+  if (OrtStatus* onnx_status = (expr)) {                             \
+    std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
+    OrtErrorCode ort_error_code = OrtGetErrorCode(onnx_status);      \
+    OrtReleaseStatus(onnx_status);                                   \
+    throw Ort::Exception(ort_error_message.c_str(), ort_error_code); \
+  }
+
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void Release(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
 

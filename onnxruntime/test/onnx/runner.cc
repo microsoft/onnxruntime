@@ -479,6 +479,13 @@ void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions
     }
     r->Start(pci, concurrent_runs);
     return;
+  } catch (const Ort::Exception& ex) {
+    if (ex.GetOrtErrorCode() != ORT_NOT_IMPLEMENTED)
+      throw;
+
+    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
+    std::string node_name;
+    ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   } catch (onnxruntime::NotImplementedException& ex) {
     LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
     std::string node_name;
