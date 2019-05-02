@@ -189,6 +189,7 @@ enum MLAS_POOLING_KIND {
     MlasMaximumPooling,
     MlasAveragePoolingExcludePad,
     MlasAveragePoolingIncludePad,
+    MlasPoolingKindCount,
 };
 
 void

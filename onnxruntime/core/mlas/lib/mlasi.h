@@ -47,6 +47,16 @@ Abstract:
 #endif
 
 //
+// Macro to force inline expansion of a function.
+//
+
+#if defined(_MSC_VER)
+#define MLAS_FORCEINLINE __forceinline
+#else
+#define MLAS_FORCEINLINE __attribute__ ((always_inline))
+#endif
+
+//
 // Macro to suppress unreferenced parameter warnings.
 //
 
@@ -257,19 +267,20 @@ typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
 
 extern "C" {
 
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAdd;
 #if defined(MLAS_TARGET_AMD64_IX86)
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroSse;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddSse;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroAvx;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddAvx;
-#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroFma3;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddFma3;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroAvx512F;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddAvx512F;
+#endif
+#else
+    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
+    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAdd;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -307,6 +318,11 @@ extern "C" {
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelSse;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx512F;
+#else
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernel;
 #endif
 
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
@@ -379,12 +395,14 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL* PoolMaximumFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL* PoolAverageExcludePadFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL* PoolAverageIncludePadFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     size_t NchwcBlockSize;
+#endif
+
+#if defined(MLAS_USE_WIN32_THREADPOOL)
+    int32_t MaximumThreadCount;
 #endif
 
     size_t
@@ -399,10 +417,53 @@ struct MLAS_PLATFORM {
 #endif
     }
 
-#if defined(MLAS_USE_WIN32_THREADPOOL)
-    int32_t MaximumThreadCount;
+    MLAS_CONV_FLOAT_KERNEL*
+    GetConvNchwFloatKernel(
+        void
+        )
+    {
+#if defined(MLAS_TARGET_AMD64)
+        return ConvNchwFloatKernel;
+#else
+        return MlasConvNchwFloatKernel;
 #endif
+    }
 
+    MLAS_CONV_FLOAT_KERNEL*
+    GetConvNchwcFloatKernel(
+        void
+        )
+    {
+#if defined(MLAS_TARGET_AMD64)
+        return ConvNchwcFloatKernel;
+#else
+        return MlasConvNchwcFloatKernel;
+#endif
+    }
+
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL*
+    GetConvDepthwiseFloatKernel(
+        void
+        )
+    {
+#if defined(MLAS_TARGET_AMD64)
+        return ConvDepthwiseFloatKernel;
+#else
+        return MlasConvDepthwiseFloatKernel;
+#endif
+    }
+
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL*
+    GetConvPointwiseFloatKernel(
+        void
+        )
+    {
+#if defined(MLAS_TARGET_AMD64)
+        return ConvPointwiseFloatKernel;
+#else
+        return MlasConvPointwiseFloatKernel;
+#endif
+    }
 };
 
 extern MLAS_PLATFORM MlasPlatform;

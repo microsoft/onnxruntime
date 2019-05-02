@@ -91,9 +91,9 @@ Return Value:
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
-    this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelSse;
-    this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelSse;
-    this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelSse;
+    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelSse;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->NchwcBlockSize = 8;
@@ -136,9 +136,9 @@ Return Value:
             this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx;
             this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx;
             this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx;
-            this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelAvx;
-            this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelAvx;
-            this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelAvx;
+            this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx;
 
             //
             // Check if the processor supports AVX512F (and the operating
@@ -162,9 +162,9 @@ Return Value:
                     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx512F;
                     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
                     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx512F;
-                    this->PoolMaximumFloatKernel = MlasPoolMaximumFloatKernelAvx512F;
-                    this->PoolAverageExcludePadFloatKernel = MlasPoolAverageExcludePadFloatKernelAvx512F;
-                    this->PoolAverageIncludePadFloatKernel = MlasPoolAverageIncludePadFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->NchwcBlockSize = 16;
 
                 } else {

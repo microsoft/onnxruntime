@@ -46,18 +46,44 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
 
         const int64_t output_channels = conv_W_tensor_proto->dims(0);
         const int64_t input_channels = conv_W_tensor_proto->dims(1);
-        if (input_channels >= 8 && (input_channels % 16) != 0) {
-          continue;
-        }
-        if ((output_channels % 16) != 0) {
-          continue;
-        }
 
+        int64_t group_count;
         const onnxruntime::NodeAttributes& conv_attributes = node.GetAttributes();
         const ONNX_NAMESPACE::AttributeProto* group_attr = &(conv_attributes.find("group")->second);
         if (group_attr != nullptr &&
             group_attr->type() == AttributeProto_AttributeType_INT &&
-            group_attr->has_i() && group_attr->i() != 1) {
+            group_attr->has_i()) {
+          group_count = group_attr->i();
+        } else {
+          group_count = 1;
+        }
+
+        bool do_reorder_input = true;
+        bool do_reorder_format1 = true;
+
+        if (group_count > 1) {
+          if (input_channels == 1 && output_channels == group_count) {
+            // Depthwise convolution needs alternate filter formatting.
+            do_reorder_format1 = false;
+          } else {
+            if ((output_channels % group_count) != 0) {
+              continue;
+            }
+            if ((input_channels % 8) != 0 || ((output_channels / group_count) % 8) != 0) {
+              continue;
+            }
+          }
+        } else {
+          if (input_channels < 8) {
+            // Use NCHW input buffer directly.
+            do_reorder_input = false;
+            do_reorder_format1 = false;
+          } else if ((input_channels % 8) != 0) {
+            continue;
+          }
+        }
+
+        if ((output_channels % 8) != 0) {
           continue;
         }
 
@@ -67,7 +93,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         std::vector<float> reordered_filter(conv_W->size());
 
         // Reorder the weights tensor statically.
-        if (input_channels >= 8) {
+        if (do_reorder_format1) {
           MlasConvReorderFilter(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
         } else {
           MlasConvReorderFilter2(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
@@ -95,7 +121,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         }
 
         // Reorder the input tensor.
-        if (input_channels >= 8) {
+        if (do_reorder_input) {
           auto input_original_arg = conv_inputs[0];
           std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
           auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
