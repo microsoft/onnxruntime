@@ -11,6 +11,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/nchwc_transformer.h"
 
 namespace onnxruntime {
 
@@ -34,6 +35,10 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
       break;
+
+    case TransformerLevel::Level3:
+      break;
+
     default:
       ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
   }
@@ -96,6 +101,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
 #endif
+    } break;
+
+    case TransformerLevel::Level3: {
+      transformers.emplace_back(std::make_unique<onnxruntime::NchwcTransformer>());
+
     } break;
 
     default:

@@ -5,10 +5,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
-#include "core/optimizer/conv_bn_fusion.h"
-#include "core/optimizer/conv_mul_fusion.h"
-#include "core/optimizer/conv_add_fusion.h"
-#include "core/optimizer/conv_activation_fusion.h"
 #include "core/mlas/inc/mlas.h"
 
 using namespace ONNX_NAMESPACE;
@@ -125,13 +121,14 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
           auto input_original_arg = conv_inputs[0];
           std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
           auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
-          graph.AddNode(graph.GenerateNodeName("ReorderInput"),
-                        "ReorderInput",
-                        "ReorderInput",
-                        std::vector<NodeArg*>{input_original_arg},
-                        std::vector<NodeArg*>{input_reorder_arg},
-                        nullptr,
-                        kMSDomain);
+          Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderInput"),
+                                                   "ReorderInput",
+                                                   "ReorderInput",
+                                                   std::vector<NodeArg*>{input_original_arg},
+                                                   std::vector<NodeArg*>{input_reorder_arg},
+                                                   nullptr,
+                                                   kMSDomain);
+          reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
           conv_inputs[0] = input_reorder_arg;
         }
 
@@ -139,24 +136,26 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         auto output_original_arg = conv_outputs[0];
         std::string output_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
         auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, output_original_arg->TypeAsProto());
-        graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
-                      "ReorderOutput",
-                      "ReorderOutput",
-                      std::vector<NodeArg*>{output_reorder_arg},
-                      std::vector<NodeArg*>{output_original_arg},
-                      nullptr,
-                      kMSDomain);
+        Node& reorder_output_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
+                                                  "ReorderOutput",
+                                                  "ReorderOutput",
+                                                  std::vector<NodeArg*>{output_reorder_arg},
+                                                  std::vector<NodeArg*>{output_original_arg},
+                                                  nullptr,
+                                                  kMSDomain);
+        reorder_output_node.SetExecutionProviderType(node.GetExecutionProviderType());
         conv_outputs[0] = output_reorder_arg;
 
         // Create the replacement NchwcConv node.
         std::string nchwc_conv_name = graph.GenerateNodeName("NchwcConv");
-        graph.AddNode(output_original_arg->Name() + "_nchwc",
-                      "NchwcConv",
-                      nchwc_conv_name,
-                      conv_inputs,
-                      conv_outputs,
-                      &node.GetAttributes(),
-                      kMSDomain);
+        Node& nchwc_conv_node = graph.AddNode(output_original_arg->Name() + "_nchwc",
+                                              "NchwcConv",
+                                              nchwc_conv_name,
+                                              conv_inputs,
+                                              conv_outputs,
+                                              &node.GetAttributes(),
+                                              kMSDomain);
+        nchwc_conv_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
         removed_nodes.push_front(node.Index());
         continue;
@@ -194,37 +193,40 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         auto input_original_arg = pool_inputs[0];
         std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
         auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
-        graph.AddNode(graph.GenerateNodeName("ReorderInput"),
-                      "ReorderInput",
-                      "ReorderInput",
-                      std::vector<NodeArg*>{input_original_arg},
-                      std::vector<NodeArg*>{input_reorder_arg},
-                      nullptr,
-                      kMSDomain);
+        Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderInput"),
+                                                 "ReorderInput",
+                                                 "ReorderInput",
+                                                 std::vector<NodeArg*>{input_original_arg},
+                                                 std::vector<NodeArg*>{input_reorder_arg},
+                                                 nullptr,
+                                                 kMSDomain);
+        reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
         pool_inputs[0] = input_reorder_arg;
 
         // Reorder the output tensor.
         auto output_original_arg = pool_outputs[0];
         std::string output_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
         auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, output_original_arg->TypeAsProto());
-        graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
-                      "ReorderOutput",
-                      "ReorderOutput",
-                      std::vector<NodeArg*>{output_reorder_arg},
-                      std::vector<NodeArg*>{output_original_arg},
-                      nullptr,
-                      kMSDomain);
+        Node& reorder_output_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
+                                                  "ReorderOutput",
+                                                  "ReorderOutput",
+                                                  std::vector<NodeArg*>{output_reorder_arg},
+                                                  std::vector<NodeArg*>{output_original_arg},
+                                                  nullptr,
+                                                  kMSDomain);
+        reorder_output_node.SetExecutionProviderType(node.GetExecutionProviderType());
         pool_outputs[0] = output_reorder_arg;
 
         // Create the replacement NchwcConv node.
         std::string nchwc_pool_name = graph.GenerateNodeName("NchwcMaxPool");
-        graph.AddNode(output_original_arg->Name() + "_nchwc",
-                      "NchwcMaxPool",
-                      nchwc_pool_name,
-                      pool_inputs,
-                      pool_outputs,
-                      &node.GetAttributes(),
-                      kMSDomain);
+        Node& nchwc_pool_node = graph.AddNode(output_original_arg->Name() + "_nchwc",
+                                              "NchwcMaxPool",
+                                              nchwc_pool_name,
+                                              pool_inputs,
+                                              pool_outputs,
+                                              &node.GetAttributes(),
+                                              kMSDomain);
+        nchwc_pool_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
         removed_nodes.push_front(node.Index());
         continue;
@@ -298,13 +300,14 @@ class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
         auto output_original_arg = node_outputs[0];
         std::string output_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
         auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, output_original_arg->TypeAsProto());
-        graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
-                      "ReorderOutput",
-                      "ReorderOutput",
-                      std::vector<NodeArg*>{output_reorder_arg},
-                      std::vector<NodeArg*>{output_original_arg},
-                      nullptr,
-                      kMSDomain);
+        Node& new_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
+                                       "ReorderOutput",
+                                       "ReorderOutput",
+                                       std::vector<NodeArg*>{output_reorder_arg},
+                                       std::vector<NodeArg*>{output_original_arg},
+                                       nullptr,
+                                       kMSDomain);
+        new_node.SetExecutionProviderType(node.GetExecutionProviderType());
         node_outputs[0] = output_reorder_arg;
       }
     }
@@ -528,31 +531,19 @@ class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
 
 
 NchwcTransformer::NchwcTransformer() noexcept :
-  onnxruntime::GraphTransformer("NchwcTransformer"),
-  stage1_graph_transformer_mgr_{5}, stage2_graph_transformer_mgr_{50}  {
-
-  // Ensure that all simple convolution reshaping has occurred before any of the
-  // block transforms are done.
-  stage1_graph_transformer_mgr_.Register(std::move(std::make_unique<ConvBNFusion>()), TransformerLevel::Default);
-  stage1_graph_transformer_mgr_.Register(std::move(std::make_unique<ConvMulFusion>()), TransformerLevel::Default);
-  stage1_graph_transformer_mgr_.Register(std::move(std::make_unique<ConvAddFusion>()), TransformerLevel::Default);
-  stage1_graph_transformer_mgr_.Register(std::move(std::make_unique<ConvActivationFusion>()), TransformerLevel::Default);
+  onnxruntime::GraphTransformer("NchwcTransformer"), graph_transformer_mgr_{50} {
 
   // As implemented, these transforms can require a large number of steps to
   // reach a fully optimized graph (in particular, NchwcMoveReorderOutputsLater).
-  stage2_graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcConvPoolTransformer>()), TransformerLevel::Default);
-  stage2_graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcMoveReorderOutputsLater>()), TransformerLevel::Default);
-  stage2_graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcReorderElimination>()), TransformerLevel::Default);
-  stage2_graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcConvSumFusion>()), TransformerLevel::Default);
-  stage2_graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcConvReluFusion>()), TransformerLevel::Default);
+  graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcConvPoolTransformer>()), TransformerLevel::Default);
+  graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcMoveReorderOutputsLater>()), TransformerLevel::Default);
+  graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcReorderElimination>()), TransformerLevel::Default);
+  graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcConvSumFusion>()), TransformerLevel::Default);
+  graph_transformer_mgr_.Register(std::move(std::make_unique<NchwcConvReluFusion>()), TransformerLevel::Default);
 }
 
 Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
-  Status status = stage1_graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default);
-  if (status.IsOK()) {
-    status = stage2_graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default);
-  }
-  return status;
+  return graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default);
 }
 
 }  // namespace onnxruntime

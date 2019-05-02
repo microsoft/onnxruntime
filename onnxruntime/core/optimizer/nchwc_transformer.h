@@ -16,8 +16,7 @@ class NchwcTransformer : public onnxruntime::GraphTransformer {
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 
-  GraphTransformerManager stage1_graph_transformer_mgr_;
-  GraphTransformerManager stage2_graph_transformer_mgr_;
+  GraphTransformerManager graph_transformer_mgr_;
 };
 
 }  // namespace onnxruntime
