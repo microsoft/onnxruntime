@@ -236,7 +236,7 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
     if (node->OpType() == "PyOp") {
       ONNX_ATTRS attrs;
       ONNX_TYPES input_types, output_types;
-      std::string module, class_name, compute = "compute", shape_infer, domain = node->Domain();
+      std::string module, class_name, compute = "compute", domain = node->Domain();
 
       for (const auto& iter: node->GetAttributes()) {
 
@@ -244,7 +244,6 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
               if      (iter.first == "module")      module            = iter.second.s();
               else if (iter.first == "class_name")  class_name        = iter.second.s();
               else if (iter.first == "compute")     compute           = iter.second.s();
-              else if (iter.first == "shape_infer") shape_infer       = iter.second.s();
               else                                  attrs[iter.first] = iter.second.s();
           } else if (iter.second.ints_size() > 0) {
               if (iter.first == "input_types") {
@@ -270,12 +269,8 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
       ORT_ENFORCE ( input_types.size() == node->InputDefs().size() , "PyOp node input types mismatch with inputs");
       ORT_ENFORCE (output_types.size() == node->OutputDefs().size(), "PyOp node output types mismatch with outputs");
 
-      if ("" != shape_infer) {
-          LOGS(*session_logger_, WARNING) << "shape inference disabled for PyOp temporarily, " << shape_infer << " will not be called";
-      }
-
       auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(),
-                                 class_name.c_str(), compute.c_str(), shape_infer.c_str(),
+                                 class_name.c_str(), compute.c_str(),
                                  [this] (const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
       auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
       ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));

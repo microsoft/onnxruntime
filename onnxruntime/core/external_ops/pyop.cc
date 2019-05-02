@@ -98,7 +98,10 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
 
 PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
 {
-    std::vector<npy_intp> np_dim(dim);
+    std::vector<npy_intp> np_dim;
+    for (auto d: dim) {
+        np_dim.push_back(static_cast<npy_intp>(d));
+    }
     auto pyObj = static_cast<PyObject*>(PyArray_EMPTY(static_cast<int>(np_dim.size()), np_dim.data(), type, 0));
     auto data_len = std::accumulate(begin(np_dim), end(np_dim),
                                     static_cast<int64_t>(PyArray_DescrFromType(type)->elsize),
