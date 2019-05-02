@@ -115,7 +115,7 @@ struct RunOptions : Base<OrtRunOptions> {
 
 struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions();
-  SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {}
+  explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {}
 
   SessionOptions clone() const;
 
@@ -162,7 +162,7 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
 
 struct TypeInfo : Base<OrtTypeInfo> {
   TypeInfo() = default;
-  TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
+  explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
 };
@@ -172,7 +172,7 @@ struct Value : Base<OrtValue> {
                             ONNXTensorElementDataType type);
 
   Value() = default;
-  Value(OrtValue* p) : Base<OrtValue>{p} {}
+  explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
 
   bool IsTensor() const;
   template <typename T>
