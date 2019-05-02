@@ -38,7 +38,7 @@ struct Finalizer
 class Scoper
 {
 public:
-    Scoper() {
+    Scoper(const vector<PyObject*> objs = {}): objs_(objs) {
         mtx_.lock();
     }
     ~Scoper() {
@@ -166,10 +166,7 @@ PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const
 
 PYOP_EXPORT void ReleaseInstance (void* instance)
 {
-    Scoper scoper;
-    if (nullptr != instance) {
-        Py_XDECREF(static_cast<PyObject*>(instance));
-    }
+    Scoper scoper({static_cast<PyObject*>(instance)});
 }
 
 PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
