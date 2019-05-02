@@ -1,6 +1,6 @@
 
-pyop_model:ˆ
-Ï
+pyop_model:é
+°
 XY"PyOp*
 A"123 *
 B"456 *
@@ -10,8 +10,7 @@ class_name"MyKernel *
 compute"compute *
 input_types@ *
 module"mymodule *
-output_types@ *
-shape_infer"shape_infer :	pyopfloat
+output_types@ :	pyopfloat
 pyop_graphZ
 X
 
