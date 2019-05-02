@@ -256,6 +256,7 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
+#ifndef USE_CUDA
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
@@ -274,6 +275,7 @@ TEST_F(CApiTest, test_pyop) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
   TestInference<PATH_TYPE>(env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr);
 }
+#endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {

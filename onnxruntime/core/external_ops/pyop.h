@@ -7,7 +7,11 @@
 #define PY_UNLOAD_LIB(h)   FreeLibrary(h)
 #define PYDLE              HMODULE
 #else
+#ifdef __APPLE__
+#define PY_LIB_NAME        "./libonnxruntime_pyop.dylib"
+#else
 #define PY_LIB_NAME        "./libonnxruntime_pyop.so"
+#endif
 #define PY_LOAD_LIB(n)     dlopen(n,RTLD_NOW|RTLD_GLOBAL)
 #define PY_LOAD_SYM(h,n)   dlsym(h,n)
 #define PY_UNLOAD_LIB(h)   dlclose(h)
