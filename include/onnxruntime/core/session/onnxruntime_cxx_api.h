@@ -421,6 +421,7 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
 
 }  // namespace Ort
 
+// Deprecated: Will be removed once all dependencies of it are removed
 #if 1
 namespace onnxruntime {
 
