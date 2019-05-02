@@ -1013,6 +1013,44 @@ Example 4:
           "Constrain to tensor(float).")
       .SetDoc(R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DenseIntersection)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr(
+          "set_operation",
+          "set operation.",
+          AttributeProto::STRING)
+      .Attr(
+          "validate_indices",
+          "validate_indices.",
+          AttributeProto::INT)
+      .Input(0, "Sequence_0", "Sequence 0 for intersection", "T")
+      .Input(1, "Sequence_1", "Sequence 1 for intersection", "T")
+      .Output(0, "Y", "output", "T")
+      .Output(1, "Y1", "output_temp", "T")
+      .Output(2, "Y2", "output_temp_2", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain to tensor(int32), tensor(int64).")
+      .SetDoc(R"DOC(The DenseIntersection takes in two sequence calculate the intersection.)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Unique)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr(
+          "out_idx",
+          "out idx.",
+          AttributeProto::INT)
+      .Input(0, "Sequence", "Sequence 0 for unique", "T")
+      .Output(0, "Y", "output", "T")
+      .Output(1, "Y1", "output_temp", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(int32)"},
+          "Constrain to tensor(int32).")
+      .SetDoc(R"DOC(The Unique.)DOC");
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
