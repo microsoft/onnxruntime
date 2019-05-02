@@ -32,7 +32,7 @@ ORT_DEFINE_DELETER(TensorTypeAndShapeInfo);
 namespace Ort {
 
 struct Exception : std::exception {
-  Exception(const char* message, OrtErrorCode code) : std::exception{message}, code_{code} {}
+  Exception(const char* message, OrtErrorCode code) : std::exception(message), code_{code} {}
 
   OrtErrorCode GetOrtErrorCode() const { return code_; }
 
@@ -229,9 +229,9 @@ inline const OrtAllocatorInfo* Allocator::GetInfo() const {
   return OrtAllocatorGetInfo(p_);
 }
 
-inline AllocatorInfo AllocatorInfo::Create_Cpu(OrtAllocatorType type, OrtMemType mem_type1) {
+inline AllocatorInfo AllocatorInfo::Create_Cpu(OrtAllocatorType type, OrtMemType mem_type) {
   OrtAllocatorInfo* p;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &p));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(type, mem_type, &p));
   return AllocatorInfo(p);
 }
 
