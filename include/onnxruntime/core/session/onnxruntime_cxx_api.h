@@ -32,20 +32,22 @@ ORT_DEFINE_DELETER(TensorTypeAndShapeInfo);
 namespace Ort {
 
 struct Exception : std::exception {
-  Exception(const char* message, OrtErrorCode code) : std::exception(message), code_{code} {}
+  Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
 
   OrtErrorCode GetOrtErrorCode() const { return code_; }
+  const char* what() const noexcept { return message_.c_str(); }
 
  private:
+  std::string message_;
   OrtErrorCode code_;
 };
 
-#define ORT_THROW_ON_ERROR(expr)                                     \
-  if (OrtStatus* onnx_status = (expr)) {                             \
-    std::string ort_error_message = OrtGetErrorMessage(onnx_status); \
-    OrtErrorCode ort_error_code = OrtGetErrorCode(onnx_status);      \
-    OrtReleaseStatus(onnx_status);                                   \
-    throw Ort::Exception(ort_error_message.c_str(), ort_error_code); \
+#define ORT_THROW_ON_ERROR(expr)                                        \
+  if (OrtStatus* onnx_status = (expr)) {                                \
+    std::string ort_error_message = OrtGetErrorMessage(onnx_status);    \
+    OrtErrorCode ort_error_code = OrtGetErrorCode(onnx_status);         \
+    OrtReleaseStatus(onnx_status);                                      \
+    throw Ort::Exception(std::move(ort_error_message), ort_error_code); \
   }
 
 #define ORT_DEFINE_RELEASE(NAME) \
