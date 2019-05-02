@@ -89,6 +89,9 @@ struct Base {
   }
 
   T* p_{};
+
+  template <typename>
+  friend struct Unowned;
 };
 
 template <typename T>
@@ -102,17 +105,19 @@ struct TypeInfo;
 struct Value;
 
 struct Env : Base<OrtEnv> {
-  Env() = default;
+  Env(nullptr_t) {}
   Env(OrtLoggingLevel default_warning_level, _In_ const char* logid);
 };
 
 struct CustomOpDomain : Base<OrtCustomOpDomain> {
+  CustomOpDomain(nullptr_t) {}
   CustomOpDomain(const char* domain);
 
   void Add(OrtCustomOp* op);
 };
 
 struct RunOptions : Base<OrtRunOptions> {
+  RunOptions(nullptr_t) {}
   RunOptions();
 
   RunOptions& SetRunLogVerbosityLevel(unsigned int);
@@ -125,6 +130,7 @@ struct RunOptions : Base<OrtRunOptions> {
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
+  SessionOptions(nullptr_t) {}
   SessionOptions();
   explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {}
 
@@ -145,6 +151,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 };
 
 struct Session : Base<OrtSession> {
+  Session(nullptr_t) {}
   Session(OrtEnv* env, const ORTCHAR_T* model_path, const OrtSessionOptions* options);
 
   template <unsigned InputCount>
@@ -162,7 +169,8 @@ struct Session : Base<OrtSession> {
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
-  TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
+  TensorTypeAndShapeInfo(nullptr_t) {}
+  explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
 
   ONNXTensorElementDataType GetElementType() const;
 
@@ -172,7 +180,7 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
 };
 
 struct TypeInfo : Base<OrtTypeInfo> {
-  TypeInfo() = default;
+  TypeInfo(nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
@@ -182,7 +190,7 @@ struct Value : Base<OrtValue> {
   static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
 
-  Value() = default;
+  Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
 
   bool IsTensor() const;
@@ -195,20 +203,20 @@ struct Value : Base<OrtValue> {
 struct Allocator : Base<OrtAllocator> {
   static Allocator Create_Default();
 
+  Allocator(nullptr_t) {}
+  explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
+
   void* Alloc(size_t size);
   void Free(void* p);
 
   const OrtAllocatorInfo* GetInfo() const;
-
- private:
-  Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
 };
 
 struct AllocatorInfo : Base<OrtAllocatorInfo> {
   static AllocatorInfo Create_Cpu(OrtAllocatorType type, OrtMemType mem_type1);
 
- private:
-  AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
+  AllocatorInfo(nullptr_t) {}
+  explicit AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
 };
 }  // namespace Ort
 

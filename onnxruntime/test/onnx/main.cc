@@ -430,7 +430,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  Ort::Env env;
+  Ort::Env env{nullptr};
   int retval = -1;
   try {
     retval = real_main(argc, argv, env);
