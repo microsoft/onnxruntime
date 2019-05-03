@@ -11,6 +11,7 @@
 #include <numeric>
 #include <stack>
 #include <execinfo.h>
+#include <stdint.h>
 
 #include "gsl/pointers"
 #include "core/graph/function.h"
@@ -43,7 +44,7 @@ static Status MergeShapeInfo(const std::string& output_name,
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
     void *array[20];
-    size = backtrace(array, 20);
+    size_t size = backtrace(array, 20);
     backtrace_symbols_fd(array, size, STDERR);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
   }
