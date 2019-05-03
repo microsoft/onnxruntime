@@ -35,13 +35,13 @@ struct Finalizer
     }
 };
 
-class Scoper
+class Scope
 {
 public:
-    Scoper(const vector<PyObject*> objs = {}): objs_(objs) {
+    Scope(const vector<PyObject*> objs = {}): objs_(objs) {
         mtx_.lock();
     }
-    ~Scoper() {
+    ~Scope() {
         for (auto obj: objs_) {
             Py_XDECREF(obj);
         }
@@ -55,11 +55,11 @@ private:
     vector<PyObject*> objs_;
 };
 
-std::mutex Scoper::mtx_;
+std::mutex Scope::mtx_;
 
 PYOP_EXPORT bool Initialize() 
 {
-    Scoper scoper;
+    Scope scope;
     Py_Initialize();
     if (_import_array() < 0) {
         return false;
@@ -75,16 +75,16 @@ PYOP_EXPORT bool Initialize()
 
 PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
 {
-    Scoper scoper;
+    Scope scope;
     if (PyErr_Occurred()) {
         stringstream ss;
         PyObject* type  = nullptr;
         PyObject* value = nullptr;
         PyObject* trace = nullptr;
         PyErr_Fetch(&type, &value, &trace);
-        scoper.Add(type);
-        scoper.Add(value);
-        scoper.Add(trace);
+        scope.Add(type);
+        scope.Add(value);
+        scope.Add(trace);
         if (nullptr != type)  ss << "python error type:  " << PyBytes_AsString(type)  << endl;
         if (nullptr != value) ss << "python error value: " << PyBytes_AsString(value) << endl;
         if (nullptr != trace) ss << "python error trace: " << PyBytes_AsString(trace) << endl;
@@ -110,7 +110,7 @@ PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
 
 bool ExtractOutput (PyObject*                pyObj,
                     vector<const void*>&     outputs,
-                    vector<int32_t>&         outputs_size,
+                    vector<int32_t>&         outputs_elem_size,
                     vector<vector<int64_t>>& outputs_dim)
 {
     if (!PyArray_Check(pyObj)) {
@@ -119,7 +119,7 @@ bool ExtractOutput (PyObject*                pyObj,
 
     outputs_dim.push_back({});
     auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
-    outputs_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
+    outputs_elem_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
 
     for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
         outputs_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
@@ -127,7 +127,7 @@ bool ExtractOutput (PyObject*                pyObj,
 
     auto data_len = std::accumulate(begin(outputs_dim.back()),
                                     end(outputs_dim.back()),
-                                    static_cast<int64_t>(outputs_size.back()),
+                                    static_cast<int64_t>(outputs_elem_size.back()),
                                     std::multiplies<int64_t>());
 
     outputs.push_back(new char[data_len]);
@@ -137,23 +137,23 @@ bool ExtractOutput (PyObject*                pyObj,
 
 PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
 {
-    Scoper scoper; 
+    Scope scope; 
     auto pyModule = PyImport_ImportModule(module);
     if (nullptr == pyModule) {
         return nullptr;
     }
 
-    scoper.Add(pyModule);
+    scope.Add(pyModule);
     auto pyClass  = PyObject_GetAttrString(pyModule, class_name);
     if (nullptr == pyClass) {
         return nullptr;
     }
 
-    scoper.Add(pyClass);
+    scope.Add(pyClass);
     auto empty_args = PyTuple_New(0);
-    scoper.Add(empty_args);
+    scope.Add(empty_args);
     auto named_args = PyDict_New();
-    scoper.Add(named_args);
+    scope.Add(named_args);
     for (const auto& iter: args) {
         PyDict_SetItemString(named_args, iter.first.c_str(), PyUnicode_FromString(iter.second.c_str()));
     }
@@ -163,20 +163,20 @@ PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const
 
 PYOP_EXPORT void ReleaseInstance (void* instance)
 {
-    Scoper scoper({static_cast<PyObject*>(instance)});
+    Scope scope({static_cast<PyObject*>(instance)});
 }
 
 PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
                                    const char*                      function,
-                                   const vector<const void*>&       input,
-                                   const vector<int32_t>&           input_type,
-                                   const vector<vector<int64_t>>&   input_dim,
-                                   vector<const void*>&             output,
-                                   vector<int32_t>&                 output_size,
-                                   vector<vector<int64_t>>&         output_dim,
+                                   const vector<const void*>&       inputs,
+                                   const vector<int32_t>&           inputs_type,
+                                   const vector<vector<int64_t>>&   inputs_dim,
+                                   vector<const void*>&             outputs,
+                                   vector<int32_t>&                 outputs_elem_size,
+                                   vector<vector<int64_t>>&         outputs_dim,
                                    std::function<void(const char*)> logging_func = [](const char*){})
 {
-    Scoper scoper;
+    Scope scope;
     auto instance = static_cast<PyObject*>(raw_inst);
     if (nullptr == instance || nullptr == function) {
         logging_func("InvokePythonFunc: found invalid instance or function");
@@ -189,25 +189,25 @@ PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
         return false;
     }
 
-    scoper.Add(pyFunc);
-    auto pyArgs = PyTuple_New(input.size());
-    for (size_t i = 0; i < input.size(); ++i) {
-        PyTuple_SetItem(pyArgs, i, MakePyObj(input[i], input_type[i], input_dim[i]));
+    scope.Add(pyFunc);
+    auto pyArgs = PyTuple_New(inputs.size());
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        PyTuple_SetItem(pyArgs, i, MakePyObj(inputs[i], inputs_type[i], inputs_dim[i]));
     }
 
-    scoper.Add(pyArgs);
+    scope.Add(pyArgs);
     auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
     if (nullptr == pyResult) {
         logging_func("InvokePythonFunc: no result");
         return false;
     }
 
-    scoper.Add(pyResult);
+    scope.Add(pyResult);
     if (PyArray_Check(pyResult)) {
-        ExtractOutput(pyResult, output, output_size, output_dim);
+        ExtractOutput(pyResult, outputs, outputs_elem_size, outputs_dim);
     } else if (PyTuple_Check(pyResult)) {
         for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
-            if (!ExtractOutput(PyTuple_GetItem(pyResult, i), output, output_size, output_dim)) {
+            if (!ExtractOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
                 logging_func("InvokePythonFunc: failed to extract output");
                 return false;
             }

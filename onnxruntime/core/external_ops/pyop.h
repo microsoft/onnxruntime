@@ -206,14 +206,14 @@ private:
 struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
 
     PyCustomOp(const ONNX_ATTRS&    attrs,
-               const ONNX_TYPES&    input_types,
-               const ONNX_TYPES&    output_types,
+               const ONNX_TYPES&    inputs_type,
+               const ONNX_TYPES&    outputs_type,
                const std::string&   module,
                const std::string&   class_name,
                const std::string&   compute      = "compute",
                LOG_FUNC             logging_func = [](const char*){}):
-               attrs_(attrs), input_types_(input_types),
-               output_types_(output_types), module_(module),
+               attrs_(attrs), inputs_type_(inputs_type),
+               outputs_type_(outputs_type), module_(module),
                class_name_(class_name), compute_(compute),
                logging_func_(logging_func) {
                OrtCustomOp::version = ORT_API_VERSION; }
@@ -224,17 +224,17 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
 
     const char* GetName() const { return "PyOp"; }
 
-    size_t GetInputTypeCount() const { return input_types_.size(); }
-    ONNXTensorElementDataType GetInputType(size_t index) const { return input_types_[index]; }
+    size_t GetInputTypeCount() const { return inputs_type_.size(); }
+    ONNXTensorElementDataType GetInputType(size_t index) const { return inputs_type_[index]; }
 
-    size_t GetOutputTypeCount() const { return output_types_.size(); }
-    ONNXTensorElementDataType GetOutputType(size_t index) const { return output_types_[index]; }
+    size_t GetOutputTypeCount() const { return outputs_type_.size(); }
+    ONNXTensorElementDataType GetOutputType(size_t index) const { return outputs_type_[index]; }
 
 private:
 
     ONNX_ATTRS     attrs_;
-    ONNX_TYPES     input_types_;
-    ONNX_TYPES     output_types_;
+    ONNX_TYPES     inputs_type_;
+    ONNX_TYPES     outputs_type_;
     std::string    module_;
     std::string    class_name_;
     std::string    compute_;
