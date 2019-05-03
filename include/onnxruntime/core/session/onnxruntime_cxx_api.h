@@ -5,6 +5,7 @@
 #include "onnxruntime_c_api.h"
 #include <cstddef>
 #include <array>
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -99,7 +100,7 @@ template <typename T>
 struct Unowned : T {
   Unowned(decltype(T::p_) p) : T{p} {}
   Unowned(Unowned&& v) : T{v.p_} {}
-  ~Unowned() { p_ = nullptr; }
+  ~Unowned() { this->p_ = nullptr; }
 };
 
 struct TypeInfo;
