@@ -403,7 +403,7 @@ inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
   std::vector<int64_t> output;
   output.resize(GetDimensionsCount());
   GetDimensions(output.data(), output.size());
-  return std::move(output);
+  return output;
 }
 
 inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() const {
