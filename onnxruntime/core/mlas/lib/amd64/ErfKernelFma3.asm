@@ -166,7 +166,7 @@ LComputeErf4x8Loop:
         vmovaps ymm9,ymm8
         vmovaps ymm10,ymm8
         vmovaps ymm11,ymm8
-        
+
         vbroadcastss ymm15,ErfConstants.ErfSMALL_P1[rax]
         vmulps  ymm4,ymm0,ymm0                  ; vs0 (square)
         vmulps  ymm5,ymm1,ymm1                  ; vs1
@@ -422,7 +422,7 @@ LErfProcess1x8:
 
         vandps  ymm4,ymm0,ymm15                 ; vsign0
         vandnps ymm0,ymm15,ymm0                 ; abs(vx0)  va0
-        
+
         vbroadcastss ymm14,ErfConstants.ErfUpperAbsRange[rax]
         vmovups YMMWORD PTR ErfKernelFrame.ErfBuffer0[rsp],ymm4
 

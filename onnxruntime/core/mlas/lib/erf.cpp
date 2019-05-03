@@ -187,7 +187,6 @@ Return Value:
         N -= 4;
     }
 
-#define FP_FAST_FMAF
     while (N > 0) {
         float Value = *Input++;
         float AbsValue = fabsf(Value);

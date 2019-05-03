@@ -44,7 +44,7 @@ Abstract:
         .equ    ErfBIG_P6_Minus_One, 60
         .equ    ErfNegZero, 64
         .equ    ErfOne, 68
-        
+
         .equ    ExpConstOffset, 72
         .equ    Exp_UpperRange, 0 + ExpConstOffset
         .equ    Exp_LowerRange, 4 + ExpConstOffset
