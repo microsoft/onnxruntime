@@ -21,6 +21,48 @@ ONNX_CPU_OPERATOR_KERNEL(
                                       }),
     Split);
 
+Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
+                                    const int num_outputs,
+                                    int64_t& axis,
+                                    int& before_dims,
+                                    int& after_dims_including_split_axis,
+                                    int& after_dims_excluding_split,
+                                    std::vector<int64_t>& split_sizes) const {
+  auto& input_dims = input_shape.GetDims();
+  const int64_t num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
+  axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
+  const int64_t split_dim_size = input_dims[axis];
+
+  before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
+  after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
+  after_dims_excluding_split = (axis + 1 == num_dimensions)
+                                       ? 1  // we multiply by this value so must be 1 not 0
+                                       : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+
+  if (split_sizes_.empty()) {
+    // equal split based on number of outputs
+    if (split_dim_size % num_outputs != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
+                             " Axis=", axis_, " NumOutputs=", num_outputs);
+    }
+
+    // populate split_sizes with the same size for each output
+    split_sizes = std::vector<int64_t>(num_outputs, split_dim_size / num_outputs);
+  } else {
+    if (split_sizes_.size() != num_outputs || split_size_sum_ != split_dim_size)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Cannot split using values in 'split' attribute. Axis=", axis_,
+                             " Input shape=", input_shape,
+                             " NumOutputs=", num_outputs,
+                             " Num entries in 'split' (must equal number of outputs) was ", split_sizes_.size(),
+                             " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum_);
+
+    split_sizes = split_sizes_;
+  }
+
+  return Status::OK();
+}
+
 Status Split::Compute(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
 
@@ -44,45 +86,23 @@ Status Split::Compute(OpKernelContext* context) const {
 template <typename T>
 Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   auto& input_shape = input.Shape();
-  auto& input_dims = input_shape.GetDims();
-  const int64_t num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
-  const int64_t axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
-  const int64_t split_dim_size = input_dims[axis];
-
   auto num_outputs = context.OutputCount();
-  std::vector<Tensor*> outputs;
-  outputs.reserve(num_outputs);
-
-  int before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
-  int after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
-  int after_dims_excluding_split = (axis + 1 == num_dimensions)
-                                       ? 1  // we multiply by this value so must be 1 not 0
-                                       : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
-
+  int64_t axis = axis_;
+  int before_dims = 0;
+  int after_dims_including_split_axis = 0;
+  int after_dims_excluding_split = 0;
   std::vector<int64_t> split_sizes;
 
-  if (split_sizes_.empty()) {
-    // equal split based on number of outputs
-    if (split_dim_size % num_outputs != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
-                             " Axis=", axis_, " NumOutputs=", num_outputs);
-    }
-
-    // populate split_sizes with the same size for each output
-    split_sizes = std::vector<int64_t>(num_outputs, split_dim_size / num_outputs);
-  } else {
-    if (split_sizes_.size() != num_outputs || split_size_sum_ != split_dim_size)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Cannot split using values in 'split' attribute. Axis=", axis_,
-                             " Input shape=", input_shape,
-                             " NumOutputs=", num_outputs,
-                             " Num entries in 'split' (must equal number of outputs) was ", split_sizes_.size(),
-                             " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum_);
-
-    split_sizes = split_sizes_;
-  }
+  ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
+                                        num_outputs,
+                                        axis,
+                                        before_dims,
+                                        after_dims_including_split_axis,
+                                        after_dims_excluding_split,
+                                        split_sizes));
 
   // copy dimensions so we can update the selected axis in place
+  auto& input_dims = input_shape.GetDims();
   std::vector<int64_t> output_dimensions{input_dims};
 
   int64_t input_offset = 0;

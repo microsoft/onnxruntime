@@ -658,7 +658,7 @@ def generate_documentation(source_dir, build_dir, configs):
     
 
     if len(docdiff) > 0:
-        raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in.\n diff:\n"+docdiff)
+        raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
 
 def main():
