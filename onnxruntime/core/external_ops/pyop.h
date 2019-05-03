@@ -59,8 +59,20 @@ struct PyCustomKernel;
 
 class PythonWrapper {
 
-    friend struct PyCustomKernel;
+public:
+    static const PythonWrapper& GetInstance() {
+        static PythonWrapper wrapper;
+        return wrapper;
+    }
 
+    HMODULE     handle  = nullptr;
+    INIT*       init    = nullptr;
+    NEWINST*    newInst = nullptr;
+    INVOKE*     invoke  = nullptr;
+    RELEASE*    release = nullptr;
+    LASTERR*    lastErr = nullptr;
+
+private:
     PythonWrapper() {
 
         handle = LOAD_PYOP_LIB(LIB_PYOP);
@@ -88,13 +100,6 @@ class PythonWrapper {
     ~PythonWrapper() {
         UNLD_PYOP_LIB(handle);
     }
-
-    HMODULE     handle  = nullptr;
-    INIT*       init    = nullptr;
-    NEWINST*    newInst = nullptr;
-    INVOKE*     invoke  = nullptr;
-    RELEASE*    release = nullptr;
-    LASTERR*    lastErr = nullptr;
 };
 
 struct PyCustomKernel {
@@ -108,20 +113,21 @@ struct PyCustomKernel {
                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                    compute_(compute), logging_func_(logging_func) {
         std::string err;
-        instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
-        ORT_ENFORCE(nullptr != instance_, GetPyWrapper().lastErr(err));
+        instance_ = PythonWrapper::GetInstance().newInst(module.c_str(), class_name_.c_str(), attrs_);
+        ORT_ENFORCE(nullptr != instance_, PythonWrapper::GetInstance().lastErr(err));
     }
 
     ~PyCustomKernel() {
         if (nullptr != instance_) {
-            GetPyWrapper().release(instance_);
+            PythonWrapper::GetInstance().release(instance_);
             instance_ = nullptr;
         }
     }
 
-    void GetOutputShape (OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*) {}
+    // Custom Op does not support share inference 
+    void GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*) {}
 
-    void Compute (OrtKernelContext* context) {
+    void Compute(OrtKernelContext* context) {
 
         ORT_ENFORCE (nullptr != context);
         auto inputs_count = (size_t)reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
@@ -137,7 +143,7 @@ struct PyCustomKernel {
         }
 
         std::string err;
-        ORT_ENFORCE (GetPyWrapper().invoke(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), GetPyWrapper().lastErr(err));
+        ORT_ENFORCE (PythonWrapper::GetInstance().invoke(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), PythonWrapper::GetInstance().lastErr(err));
         for (size_t i = 0; i < outputs.size(); ++i) {
             auto ort_output  = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
             auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
@@ -185,13 +191,6 @@ struct PyCustomKernel {
     }
 
 private:
-
-    PythonWrapper& GetPyWrapper()
-    {
-        static PythonWrapper pyWrapper;
-        return pyWrapper;
-    }
-
     ORT_API        ort_;
     ONNX_ATTRS     attrs_;
     std::string    module_;
