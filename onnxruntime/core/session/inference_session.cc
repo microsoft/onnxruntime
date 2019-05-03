@@ -231,7 +231,6 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
   auto new_registry_func = [&] (void* info) {
 
     auto node = reinterpret_cast<Node*>(info);
-    LOGS(*session_logger_, WARNING) << node->Domain();
 
     if (node->OpType() == "PyOp") {
       ONNX_ATTRS attrs;

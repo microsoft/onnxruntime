@@ -25,9 +25,6 @@
 #include <vector>
 #include <unordered_map>
 
-#define PYOP(op) (static_cast<PyCustomOp*>(op))
-#define PYKL(kl) (static_cast<PyCustomKernel*>(kl))
-
 using ONNX_TYPES = std::vector<ONNXTensorElementDataType>;
 using ONNX_ATTRS = std::unordered_map<std::string, std::string>;
 using ORT_SHAPE  = OrtTensorTypeAndShapeInfo;
