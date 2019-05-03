@@ -65,12 +65,9 @@ PYOP_EXPORT bool Initialize()
         return false;
     }
     auto path_list = PySys_GetObject("path");// do not release it
-    if (nullptr == path_list || !PyList_Check(path_list)) {
-        return false;
-    } else {
-       if (PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
-           return false;
-       } 
+    if (nullptr == path_list || !PyList_Check(path_list) ||
+        PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
+        return false; 
     }
     static Finalizer finalizer;
     return true;
