@@ -55,8 +55,6 @@ typedef void SETPATH(const wchar_t*);
 
 namespace onnxruntime {
 
-struct PyCustomKernel;
-
 class PythonWrapper {
 
 public:
@@ -124,7 +122,7 @@ struct PyCustomKernel {
         }
     }
 
-    // Custom Op does not support share inference 
+    // Do nothing since Custom Op does not trigger share inference
     void GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*) {}
 
     void Compute(OrtKernelContext* context) {
