@@ -73,6 +73,26 @@
   docker run -it onnxruntime-ngraph
   ```
 
+## ONNX Runtime Server (Preview)
+#### Linux 16.04
+
+1. Build the docker image from the directory that contains our server "onnxruntime_server"
+  ```
+  docker build -t {docker_image_name} .
+  ```
+  
+2. Run the ONNXRuntime server in Docker image
+
+  ```
+  docker run -it -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -e MODEL_ABSOLUTE_PATH={dockerModelAbsolutePath} -p {your_local_port}:8001 {imageName}
+  ```
+3. Send the request to server
+
+  Send the request to the docker through the binding local port. Here is the full [usage document](https://github.com/Microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md).
+  ```
+  curl  -X POST -d "@request.json" -H "Content-Type: application/json" http://0.0.0.0:{your_local_port}/v1/models/mymodel/versions/3:predict  
+  ```
+
 ### Other options to get started with ONNX Runtime
 
 - Deploy [inference for pretrained ONNX models](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx) for handwritten digit recognition (MNIST)
