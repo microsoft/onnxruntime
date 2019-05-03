@@ -208,7 +208,7 @@ PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
     } else if (PyTuple_Check(pyResult)) {
         for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
             if (!ExtractOutput(PyTuple_GetItem(pyResult, i), output, output_size, output_dim)) {
-                logging_func("InvokePythonFunc: failed to extrace output");
+                logging_func("InvokePythonFunc: failed to extract output");
                 return false;
             }
         }
