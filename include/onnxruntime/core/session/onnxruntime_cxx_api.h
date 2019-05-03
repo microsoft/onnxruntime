@@ -26,6 +26,7 @@
 
 namespace std {
 ORT_DEFINE_DELETER(Allocator);
+ORT_DEFINE_DELETER(TypeInfo);
 ORT_DEFINE_DELETER(RunOptions);
 ORT_DEFINE_DELETER(SessionOptions);
 ORT_DEFINE_DELETER(TensorTypeAndShapeInfo);
