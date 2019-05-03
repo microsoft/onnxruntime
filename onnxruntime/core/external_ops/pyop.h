@@ -1,21 +1,20 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
-#define PY_LIB_NAME        "onnxruntime_pyop.dll"
-#define PY_LOAD_LIB(n)     LoadLibraryA(n)
-#define PY_LOAD_SYM(h,n)   GetProcAddress(h,n)
-#define PY_UNLOAD_LIB(h)   FreeLibrary(h)
-#define PYDLE              HMODULE
+#define LIB_PYOP           "onnxruntime_pyop.dll"
+#define LOAD_PYOP_LIB(n)   LoadLibraryA(n)
+#define LOAD_PYOP_SYM(h,n) GetProcAddress(h,n)
+#define UNLD_PYop_LIB(h)   FreeLibrary(h)
 #else
 #ifdef __APPLE__
-#define PY_LIB_NAME        "./libonnxruntime_pyop.dylib"
+#define LIB_PYOP           "./libonnxruntime_pyop.dylib"
 #else
-#define PY_LIB_NAME        "./libonnxruntime_pyop.so"
+#define LIB_PYOP           "./libonnxruntime_pyop.so"
 #endif
-#define PY_LOAD_LIB(n)     dlopen(n,RTLD_NOW|RTLD_GLOBAL)
-#define PY_LOAD_SYM(h,n)   dlsym(h,n)
-#define PY_UNLOAD_LIB(h)   dlclose(h)
-#define PYDLE              void*
+#define LOAD_PYOP_LIB(n)   dlopen(n,RTLD_NOW|RTLD_GLOBAL)
+#define LOAD_PYOP_SYM(h,n) dlsym(h,n)
+#define UNLD_PYOP_LIB(h)   dlclose(h)
+#define HMODULE            void*
 #include "dlfcn.h"
 #endif
 #include "core/framework/ml_value.h"
@@ -64,22 +63,22 @@ class PythonWrapper {
 
     PythonWrapper() {
 
-        handle = PY_LOAD_LIB(PY_LIB_NAME);
+        handle = LOAD_PYOP_LIB(LIB_PYOP);
         ORT_ENFORCE(nullptr != handle, "Failed to load pyop library");
 
-        init = (INIT*)PY_LOAD_SYM(handle, "Initialize");
+        init = (INIT*)LOAD_PYOP_SYM(handle, "Initialize");
         ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
 
-        newInst = (NEWINST*)PY_LOAD_SYM(handle, "NewInstance");
+        newInst = (NEWINST*)LOAD_PYOP_SYM(handle, "NewInstance");
         ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
 
-        invoke = (INVOKE*)PY_LOAD_SYM(handle, "InvokePythonFunc");
+        invoke = (INVOKE*)LOAD_PYOP_SYM(handle, "InvokePythonFunc");
         ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
 
-        release = (RELEASE*)PY_LOAD_SYM(handle, "ReleaseInstance");
+        release = (RELEASE*)LOAD_PYOP_SYM(handle, "ReleaseInstance");
         ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
 
-        lastErr = (LASTERR*)PY_LOAD_SYM(handle, "GetLastErrorMessage"); 
+        lastErr = (LASTERR*)LOAD_PYOP_SYM(handle, "GetLastErrorMessage"); 
         ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
 
         std::string err;
@@ -87,10 +86,10 @@ class PythonWrapper {
     }
 
     ~PythonWrapper() {
-        PY_UNLOAD_LIB(handle);
+        UNLD_PYOP_LIB(handle);
     }
 
-    PYDLE       handle  = nullptr;
+    HMODULE     handle  = nullptr;
     INIT*       init    = nullptr;
     NEWINST*    newInst = nullptr;
     INVOKE*     invoke  = nullptr;
@@ -100,15 +99,14 @@ class PythonWrapper {
 
 struct PyCustomKernel {
 
-    PyCustomKernel (ORT_API               ort,
-                    const ONNX_ATTRS&     attrs,
-                    const std::string&    module,
-                    const std::string&    class_name,
-                    const std::string&    compute,
-                    LOG_FUNC              logging_func):
-                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
-                    compute_(compute), logging_func_(logging_func) {
-
+    PyCustomKernel(ORT_API               ort,
+                   const ONNX_ATTRS&     attrs,
+                   const std::string&    module,
+                   const std::string&    class_name,
+                   const std::string&    compute,
+                   LOG_FUNC              logging_func):
+                   ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
+                   compute_(compute), logging_func_(logging_func) {
         std::string err;
         instance_ = GetPyWrapper().newInst(module.c_str(), class_name_.c_str(), attrs_);
         ORT_ENFORCE(nullptr != instance_, GetPyWrapper().lastErr(err));
