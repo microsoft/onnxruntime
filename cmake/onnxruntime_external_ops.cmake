@@ -1,10 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-#if(NOT NUMPY_INCLUDE_DIR)
-#  include(onnxruntime_python.cmake)
-#endif(NOT NUMPY_INCLUDE_DIR)
-
 FIND_PACKAGE(PythonLibs)
 FIND_PACKAGE(NumPy)
 
@@ -15,8 +11,7 @@ if(NOT PYTHON_INCLUDE_DIR)
     OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
     RETURN_VALUE PYTHON_NOT_FOUND)
   if(${PYTHON_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get Python include directory. Is distutils installed?")
+    message(FATAL_ERROR "Cannot get Python include directory. Is distutils installed?")
   endif(${PYTHON_NOT_FOUND})
 endif(NOT PYTHON_INCLUDE_DIR)
 
@@ -27,8 +22,7 @@ if(NOT NUMPY_INCLUDE_DIR)
     OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
     RETURN_VALUE NUMPY_NOT_FOUND)
   if(${NUMPY_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get NumPy include directory: Is NumPy installed?")
+    message(FATAL_ERROR "Cannot get NumPy include directory: Is NumPy installed?")
   endif(${NUMPY_NOT_FOUND})
 endif(NOT NUMPY_INCLUDE_DIR)
 
