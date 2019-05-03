@@ -34,6 +34,8 @@ ORT_DEFINE_DELETER(TensorTypeAndShapeInfo);
 
 namespace Ort {
 
+using std::nullptr_t;
+
 struct Exception : std::exception {
   Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
 
