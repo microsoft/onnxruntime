@@ -7,15 +7,17 @@
 #include "core/providers/cpu/tensor/upsample.h"
 
 namespace onnxruntime {
-
+namespace contrib {
 template <typename T>
 class Resize : public Upsample<T> {
  public:
   Resize(const OpKernelInfo& info) : Upsample<T>(info) {
+    UpsampleBase::is_resize = true;
   }
 
   Status Compute(OpKernelContext* context) const override {
     return Upsample<T>::Compute(context);
   }
 };
+}  // namespace contrib
 }  // namespace onnxruntime
