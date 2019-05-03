@@ -69,7 +69,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(Node& node,
     for (auto& subgraph_node : attr_subgraph_pair.second->Nodes()) {
       // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
       // subgraphs, and at least one level lower uses removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -99,7 +99,7 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       // recurse if this node also consumes removed_output_name as an implicit input
       // (i.e. there are multiple levels of nested subgraphs, and at least one level lower uses
       // removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -353,19 +353,24 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  // Cannot remove a node with multiple output NodeArgs (multiple output edges is fine), neither
-  // a node whose output is also a graph output.
-  if (!IsSingleInSingleOutNode(node) ||
+bool RemoveNode(Graph& graph, Node& node) {
+  // Cannot remove a node with implicit inputs, with multiple output NodeArgs (multiple output edges is fine),
+  // or whose output is also a graph output.
+  if (node.ImplicitInputDefs().size() > 0 ||
+      node.OutputDefs().size() != 1 ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 
-  // If the single input comes from another node (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
+    // If there is a single input edge from another node (initializers are not connected with edges to nodes).
     return RemoveNodeWithSingleNodeIn(graph, node);
-  } else {
+  } else if (node.InputDefs().size() == 1) {
+    // If a single initializer is the only input.
     return RemoveNodeWithSingleInitializerIn(graph, node);
+  } else {
+    // No other node removal is supported, because there will be no way to connect its inputs to its outputs.
+    return false;
   }
 }
 

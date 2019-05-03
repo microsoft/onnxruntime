@@ -19,8 +19,10 @@ __global__ void _ResizeNearestKernel(const size_t rank,
   for (int dim = 0; dim < rank; ++dim) {
     output_div_pitches[dim].divmod(output_index, div, mod);
     output_index = mod;
-    if (scales[dim] > 0) {
+    if (scales[dim] <= 1) {  //downsample
       div = std::ceil(div / scales[dim]);
+    } else {  //upsample
+      div = div / scales[dim];
     }
     input_index += input_pitches[dim] * div;
   }
@@ -46,15 +48,46 @@ __global__ void _ResizeBilinearKernel(const int64_t input_dim2,
   output_div_pitches[2].divmod(mod, index_of_dim2, mod);
   index_of_dim3 = mod;
   int index_of_input_dim2, index_of_input_dim3;
+  float x_offset_0, y_offset_0, x_offset_1, y_offset_1;
   index_of_input_dim2 = static_cast<int64_t>(index_of_dim2 / scales[2]);
   index_of_input_dim3 = static_cast<int64_t>(index_of_dim3 / scales[3]);
-
   input_index = index_of_dim0 * input_pitches[0] +
                 index_of_dim1 * input_pitches[1] +
                 index_of_input_dim2 * input_pitches[2] +
                 index_of_input_dim3;
 
-  output_data[id] = input_data[input_index];
+  T x00 = input_data[input_index];
+  T x10, x01, x11;
+
+  bool end_of_dim2 = false, end_of_dim3 = false;
+  if (index_of_input_dim2 == (input_dim2 - 1)) {
+    // It's the end in dimension 2
+    x01 = x00;
+    end_of_dim2 = true;
+  } else {
+    x01 = input_data[input_index + input_pitches[2]];
+  }
+
+  if (index_of_input_dim3 == (input_pitches[2] - 1)) {
+    // It's the end in dimension 3
+    x10 = x00;
+    x11 = x01;
+    end_of_dim3 = true;
+  } else {
+    x10 = input_data[input_index + 1];
+    x11 = end_of_dim2 ? x10 : input_data[input_index + input_pitches[2] + 1];
+  }
+
+  y_offset_0 = end_of_dim2 ? 0.5f : index_of_dim2 / scales[2] - index_of_input_dim2;
+  y_offset_1 = 1.0f - y_offset_0;
+  x_offset_0 = end_of_dim3 ? 0.5f : index_of_dim3 / scales[3] - index_of_input_dim3;
+  x_offset_1 = 1.0f - x_offset_0;
+
+  output_data[id] =
+      x00 * static_cast<T>(y_offset_1 * x_offset_1) +
+      x01 * static_cast<T>(y_offset_0 * x_offset_1) +
+      x10 * static_cast<T>(y_offset_1 * x_offset_0) +
+      x11 * static_cast<T>(y_offset_0 * x_offset_0);
 }
 
 template <typename T>

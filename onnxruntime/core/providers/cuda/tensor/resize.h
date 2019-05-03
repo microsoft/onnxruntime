@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "upsample.h"
+#include "core/providers/cuda/tensor/upsample.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -11,11 +11,11 @@ namespace cuda {
 template <typename T>
 class Resize : public Upsample<T> {
  public:
-  Resize(OpKernelInfo info) : Upsample(info) {
+  Resize(OpKernelInfo info) : Upsample<T>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    return Upsample::ComputeInternal(context);
+    return Upsample<T>::ComputeInternal(context);
   }
 };
 

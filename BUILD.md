@@ -53,6 +53,10 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 1. For Windows, just add --x86 argument when launching build.bat
 2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
+## Build ONNX Runtime Server on Linux
+
+1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+
 ## Build/Test Flavors for CI
 
 ### CI Build Environments
@@ -109,6 +113,9 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 ### MKL-DNN/MKLML
 To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
 To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
+
+### nGraph
+ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`
 
 ### TensorRT
 ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).

@@ -36,7 +36,9 @@ set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.h"
 )
 
-file(GLOB onnxruntime_pybind_srcs ${onnxruntime_pybind_srcs_pattern})
+file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
+  ${onnxruntime_pybind_srcs_pattern}
+  )
 
 #TODO(): enable cuda and test it
 add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
@@ -114,22 +116,22 @@ else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
 endif()
 
-file(GLOB onnxruntime_backend_srcs
+file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/backend/*.py"
 )
-file(GLOB onnxruntime_python_srcs
+file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/*.py"
 )
-file(GLOB onnxruntime_python_test_srcs
+file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
 )
-file(GLOB onnxruntime_python_tools_srcs
+file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
-file(GLOB onnxruntime_python_datasets_srcs
+file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
-file(GLOB onnxruntime_python_datasets_data
+file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.pb"
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )

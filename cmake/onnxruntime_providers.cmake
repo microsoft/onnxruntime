@@ -1,12 +1,16 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB_RECURSE onnxruntime_providers_srcs
+file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
+#<<<<<<< HEAD
 file(GLOB onnxruntime_contrib_ops_srcs
+#=======
+#file(GLOB_RECURSE onnxruntime_contrib_ops_srcs CONFIGURE_DEPENDS
+#>>>>>>> master
   "${ONNXRUNTIME_ROOT}/contrib_ops/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/*.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
@@ -15,7 +19,7 @@ file(GLOB onnxruntime_contrib_ops_srcs
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.cc"
 )
 
-file(GLOB onnxruntime_providers_common_srcs
+file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
@@ -57,13 +61,13 @@ set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_CUDA)
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
@@ -101,7 +105,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_MKLDNN)
-  file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.cc"
   )
@@ -165,7 +169,7 @@ if (onnxruntime_USE_TENSORRT)
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   set(onnxparser_link_libs nvonnxparser_static nvonnxparser_plugin)
 
-  file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
   )
@@ -188,7 +192,7 @@ endif()
 
 if (onnxruntime_USE_NGRAPH)
   include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
-  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.cc"
   )

@@ -8,9 +8,9 @@
 
 namespace onnxruntime {
 
-Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
-  if (graph_utils::RemoveSingleInputNode(graph, node)) {
-    removed = modified = true;
+Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+  if (graph_utils::RemoveNode(graph, node)) {
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
   return Status::OK();

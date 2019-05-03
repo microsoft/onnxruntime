@@ -78,32 +78,34 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
-    Barrier barrier(static_cast<unsigned int>(total));
+    Barrier barrier(static_cast<unsigned int>(total - 1));
     std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
       fn(iteration);
       barrier.Notify();
     };
 
-    for (int32_t id = 0; id < total; ++id) {
+    for (int32_t id = 1; id < total; ++id) {
       Schedule([=, &handle_iteration]() { handle_iteration(id); });
     }
 
+    fn(0);
     barrier.Wait();
   }
 
   void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
-    Barrier barrier(static_cast<unsigned int>(last - first + 1));
+    Barrier barrier(static_cast<unsigned int>(last - first));
     std::function<void(int64_t, int64_t)> handle_range = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
 
-    for (int64_t id = first; id <= last; ++id) {
+    for (int64_t id = first + 1; id <= last; ++id) {
       Schedule([=, &handle_range]() { handle_range(id, id + 1); });
     }
 
+    fn(first, first + 1);
     barrier.Wait();
   }
 };
@@ -127,15 +129,16 @@ class ThreadPool::Impl : public TaskThreadPool {
       fn(id);
     }
 #else
-    Barrier barrier(static_cast<unsigned int>(total));
+    Barrier barrier(static_cast<unsigned int>(total - 1));
     std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
       fn(iteration);
       barrier.Notify();
     };
-    for (int32_t id = 0; id < total; ++id) {
+    for (int32_t id = 1; id < total; ++id) {
       std::packaged_task<void()> task(std::bind(handle_iteration, id));
       RunTask(std::move(task));
     }
+    fn(0);
     barrier.Wait();
 #endif
   }
@@ -147,15 +150,16 @@ class ThreadPool::Impl : public TaskThreadPool {
       fn(id, id + 1);
     }
 #else
-    Barrier barrier(static_cast<unsigned int>(last - first + 1));
+    Barrier barrier(static_cast<unsigned int>(last - first));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
-    for (int64_t id = first; id < last; ++id) {
+    for (int64_t id = first + 1; id < last; ++id) {
       std::packaged_task<void()> task(std::bind(handle_iteration, id, id + 1));
       RunTask(std::move(task));
     }
+    fn(first, first + 1);
     barrier.Wait();
 #endif
   }

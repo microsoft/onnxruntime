@@ -207,7 +207,7 @@ static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
   auto& node_to_remove = *graph.GetNode(1);
   const auto& if_node = *graph.GetNode(2);
 
-  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveNode(graph, node_to_remove);
   ASSERT_TRUE(removed);
 
   // check subgraph implicit input was updated
@@ -238,7 +238,7 @@ static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveNode(graph, node_to_remove);
   ASSERT_FALSE(removed);
 }
 
@@ -287,7 +287,7 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
   ASSERT_EQ(nodes[2]->GetOutputEdgesCount(), 2);
 
   // Remove id_2. This leaves id_0 with 3 output edges. id_0 is now incoming node to id_3 and id_4.
-  ASSERT_TRUE(graph_utils::RemoveSingleInputNode(graph, *nodes[2]));
+  ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[2]));
   ASSERT_EQ(graph.NumberOfNodes(), 4);
   ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 3);
   ASSERT_EQ(nodes[3]->InputDefs().size(), 1);
@@ -296,7 +296,7 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
   ASSERT_TRUE(nodes[4]->InputDefs()[0]->Name() == "id_0_out");
 
   // Remove id_0
-  ASSERT_TRUE(graph_utils::RemoveSingleInputNode(graph, *nodes[0]));
+  ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
   ASSERT_EQ(graph.NumberOfNodes(), 3);
   ASSERT_TRUE(nodes[1]->InputDefs()[0]->Name() == "id_0_in");
   ASSERT_TRUE(nodes[3]->InputDefs()[0]->Name() == "id_0_in");
