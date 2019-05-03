@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
   // OrtSessionOptionsAppendExecutionProvider_CUDA(session_opsions, 1);
 
   // Sets graph optimization level
-  // Available levels are 
+  // Available levels are
   // 0 -> To disable all optimizations
   // 1 -> To enable basic optimizations (Such as redundant node removals)
   // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
@@ -37,10 +37,10 @@ int main(int argc, char* argv[]) {
 
   //*************************************************************************
   // print model input layer (node names, types, shape etc.)
-  Ort::Allocator allocator=Ort::Allocator::Create_Default();
+  Ort::Allocator allocator = Ort::Allocator::Create_Default();
 
   // print number of model input nodes
-  size_t num_input_nodes=session.GetInputCount();
+  size_t num_input_nodes = session.GetInputCount();
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                          // Otherwise need vector<vector<>>
@@ -50,21 +50,19 @@ int main(int argc, char* argv[]) {
   // iterate over all input nodes
   for (int i = 0; i < num_input_nodes; i++) {
     // print input node names
-    char* input_name=session.GetInputName(i, allocator);
+    char* input_name = session.GetInputName(i, allocator);
     printf("Input %d : name=%s\n", i, input_name);
     input_node_names[i] = input_name;
 
     // print input node types
-    Ort::TypeInfo type_info=session.GetInputTypeInfo(i);
-    auto tensor_info=type_info.GetTensorTypeAndShapeInfo();
-
-    tensor_info.NonConstTest();
+    Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
     ONNXTensorElementDataType type = tensor_info.GetElementType();
     printf("Input %d : type=%d\n", i, type);
 
     // print input shapes/dims
-    input_node_dims=tensor_info.GetShape();
+    input_node_dims = tensor_info.GetShape();
     printf("Input %d : num_dims=%zu\n", i, input_node_dims.size());
     for (int j = 0; j < input_node_dims.size(); j++)
       printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
@@ -100,15 +98,15 @@ int main(int argc, char* argv[]) {
 
   // create input tensor object from data values
   Ort::AllocatorInfo allocator_info = Ort::AllocatorInfo::Create_Cpu(OrtArenaAllocator, OrtMemTypeDefault);
-  Ort::Value input_tensors[1]={Ort::Value::CreateTensor(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)};
+  Ort::Value input_tensors[1] = {Ort::Value::CreateTensor(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)};
   assert(input_tensors[0].IsTensor());
 
   // score model & input tensor, get back output tensor
-  Ort::Value output_tensor=session.Run(nullptr, input_node_names.data(), input_tensors, output_node_names.data(), 1);
+  Ort::Value output_tensor = session.Run(nullptr, input_node_names.data(), input_tensors, output_node_names.data(), 1);
   assert(output_tensor.IsTensor());
 
   // Get pointer to output tensor float values
-  float* floatarr=output_tensor.GetTensorMutableData<float>();
+  float* floatarr = output_tensor.GetTensorMutableData<float>();
   assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes
