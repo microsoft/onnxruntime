@@ -91,6 +91,9 @@ backend_test.exclude(r'('
 '|^test_reversesequence_batch_cpu.*'
 '|^test_reversesequence_time_cpu.*'
 '|^test_roialign_cpu.*'
+'|^test_mod_mixed_sign_float16_cpu.*'
+'|^test_mod_uint32_cpu.*'
+'|^test_mod_uint64_cpu.*'
 ')')
 
 # import all test cases at global scope to make

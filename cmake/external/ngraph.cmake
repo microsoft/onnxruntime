@@ -6,7 +6,7 @@ include (ExternalProject)
 set(ngraph_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/ngraph)
 set(ngraph_INSTALL_DIR ${ngraph_ROOT_DIR})
 set(ngraph_INCLUDE_DIRS ${ngraph_INSTALL_DIR}/include)
-set(ngraph_LIBRARIES ${ngraph_INSTALL_DIR}/lib)
+set(ngraph_LIBRARIES ${ngraph_INSTALL_DIR}/${CMAKE_INSTALL_LIBDIR})
 set(ngraph_SRC ${CMAKE_CURRENT_BINARY_DIR}/ngraph/src/project_ngraph)
 set(prebuilt_ONNX_SOURCE_DIR "${PROJECT_SOURCE_DIR}/external/onnx")
 set(prebuilt_ONNX_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/onnx")
@@ -32,6 +32,7 @@ ExternalProject_Add(project_ngraph
         PREFIX ngraph
         GIT_REPOSITORY ${ngraph_URL}
         GIT_TAG ${ngraph_TAG}
+        GIT_SHALLOW TRUE
         # Here we use onnx and protobuf built by onnxruntime to avoid linking with incompatible libraries. This might change in future.
         PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/patches/ngraph/ngraph_onnx.cmake ${ngraph_SRC}/cmake/external_onnx.cmake
         # TODO: Use cmake.file+copy as above. 

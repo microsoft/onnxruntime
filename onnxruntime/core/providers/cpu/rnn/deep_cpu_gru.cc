@@ -165,7 +165,6 @@ template <typename T>
 class UniDirectionalGru {
  public:
   UniDirectionalGru(AllocatorPtr allocator,
-                    const logging::Logger& logger,
                     const int seq_length,
                     const int batch_size,
                     const int input_size,
@@ -190,7 +189,6 @@ class UniDirectionalGru {
 
  private:
   AllocatorPtr allocator_;
-  const logging::Logger& logger_;
 
   int seq_length_;
   int batch_size_;
@@ -277,8 +275,6 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
-  auto& logger = context.Logger();
-
   const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
   const Tensor& W = *context.Input<Tensor>(1);  // weights. [num_directions, 3*hidden_size, input_size]
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 3*hidden_size, hidden_size]
@@ -380,8 +376,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                                          hidden_output_size_per_direction);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
+        alloc,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        Direction::kForward,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
@@ -389,8 +390,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+        alloc,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        Direction::kReverse,
         bias_2, initial_hidden_2,
         activation_funcs_.Entries()[2],
         activation_funcs_.Entries()[3],
@@ -398,8 +404,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
+        alloc,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        direction_,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
@@ -422,7 +433,6 @@ namespace detail {
 
 template <typename T>
 UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
-                                        const logging::Logger& logger,
                                         const int seq_length,
                                         const int batch_size,
                                         const int input_size,
@@ -435,7 +445,6 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const ActivationFuncs::Entry& activation_func_g,
                                         const float clip)
     : allocator_(allocator),
-      logger_(logger),
       seq_length_(seq_length),
       batch_size_(batch_size),
       input_size_(input_size),
