@@ -176,87 +176,96 @@ void RoiAlignForward(
     const auto roi_batch_ind = batch_indices_ptr[n];
 
     // Do not using rounding; this implementation detail is critical
+	/*
     T roi_start_w = offset_bottom_rois[0] * spatial_scale;
     T roi_start_h = offset_bottom_rois[1] * spatial_scale;
     T roi_end_w = offset_bottom_rois[2] * spatial_scale;
     T roi_end_h = offset_bottom_rois[3] * spatial_scale;
+	*/
+	T roi_start_w = offset_bottom_rois[1] * spatial_scale; // *(width - 1);
+	T roi_start_h = offset_bottom_rois[0] * spatial_scale; // * (height - 1);
+	T roi_end_w = offset_bottom_rois[3] * spatial_scale; // *(width - 1);
+	T roi_end_h = offset_bottom_rois[2] * spatial_scale; // *(height - 1);
 
-    // Force malformed ROIs to be 1x1
-    T roi_width = std::max(roi_end_w - roi_start_w, (T)1.);
-    T roi_height = std::max(roi_end_h - roi_start_h, (T)1.);
-    T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
-    T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
-
-    // We use roi_bin_grid to sample the grid and mimic integral
-    int64_t roi_bin_grid_h = (sampling_ratio > 0)
-                                 ? sampling_ratio
-                                 : static_cast<int64_t>(ceil(roi_height / pooled_height));  // e.g., = 2
-    int64_t roi_bin_grid_w =
-        (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(ceil(roi_width / pooled_width));
-
-    // We do average (integral) pooling inside a bin
-    const int64_t count = roi_bin_grid_h * roi_bin_grid_w;  // e.g. = 4
-
-    // we want to precalculate indices and weights shared by all channels,
-    // this is the key point of optimization
-    std::vector<PreCalc<T>> pre_calc(
-        roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height);
-    pre_calc_for_bilinear_interpolate(
-        height,
-        width,
-        pooled_height,
-        pooled_width,
-        roi_bin_grid_h,
-        roi_bin_grid_w,
-        roi_start_h,
-        roi_start_w,
-        bin_size_h,
-        bin_size_w,
-        roi_bin_grid_h,
-        roi_bin_grid_w,
-        pre_calc);
+    T height_scale =
+		(pooled_height > 1)
+		? (roi_end_h - roi_start_h) * (height - 1) / (pooled_height - 1)
+		: 0;
+	T width_scale =
+		(pooled_width > 1) ? (roi_end_w - roi_start_w) * (width - 1) / (pooled_width - 1)
+		: 0;
 
     for (int64_t c = 0; c < channels; c++) {
       int64_t index_n_c = index_n + c * pooled_width * pooled_height;
       const T* offset_bottom_data =
-          bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
-      int64_t pre_calc_index = 0;
+          bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);      
 
       for (int64_t ph = 0; ph < pooled_height; ph++) {
+		T in_y = static_cast<T>((pooled_height > 1)
+			? roi_start_h * (height - 1) + ph * height_scale
+			: 0.5 * (roi_start_h + roi_end_h) * (height - 1));
+		if (ph == pooled_height - 1) {
+			in_y = static_cast<T>((pooled_height > 1)
+				? roi_end_h * (height - 1)
+				: 0.5 * (roi_start_h + roi_end_h) * (height - 1));
+		}
+		if (ph == 0) {
+			in_y = static_cast<T>((pooled_height > 1)
+				? roi_start_h * (height - 1)
+				: 0.5 * (roi_start_h + roi_end_h) * (height - 1));
+		}
+		if (in_y < 0 || in_y > height - 1) {
+			for (int64_t pw = 0; pw < pooled_width; pw++) {
+				int64_t index = index_n_c + ph * pooled_width + pw;
+				top_data[index] = 0.;
+			}
+			continue;
+		}
+
+		const int top_y_index = static_cast<int>(floorf(static_cast<float>(in_y)));
+		const int bottom_y_index = static_cast<int>(ceilf(static_cast<float>(in_y)));
+		const float y_lerp = static_cast<float>(in_y - top_y_index);
+
         for (int64_t pw = 0; pw < pooled_width; pw++) {
           int64_t index = index_n_c + ph * pooled_width + pw;
+		  T in_x = static_cast<T>((pooled_width > 1)
+			  ? roi_start_w * (width - 1) + pw * width_scale
+			  : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
+		  if (pw == pooled_width - 1) {
+			  in_x = static_cast<T>((pooled_width > 1)
+				  ? roi_end_w * (width - 1)
+				  : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
+		  }
+		  if (pw == 0) {
+			  in_x = static_cast<T>((pooled_width > 1)
+				  ? roi_start_w * (width - 1)
+				  : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
+		  }
+		  if (in_x < 0 || in_x > width - 1) {
+			  top_data[index] = 0.;
+			  continue;
+		  }
 
           T output_val = 0.;
           if (mode == "avg") {  // avg pooling
-            for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
-              for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                PreCalc<T> pc = pre_calc[pre_calc_index];
-                output_val += pc.w1 * offset_bottom_data[pc.pos1] +
-                              pc.w2 * offset_bottom_data[pc.pos2] +
-                              pc.w3 * offset_bottom_data[pc.pos3] +
-                              pc.w4 * offset_bottom_data[pc.pos4];
+			const int left_x_index = static_cast<int>(floorf(static_cast<float>(in_x)));
+			const int right_x_index = static_cast<int>(ceilf(static_cast<float>(in_x)));
+			const float x_lerp = static_cast<float>(in_x - left_x_index);
 
-                pre_calc_index += 1;
-              }
-            }
-            output_val /= count;
-          } else {  // max pooling
-            bool max_flag = false;
-            for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
-              for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                PreCalc<T> pc = pre_calc[pre_calc_index];
-                if (!max_flag) {
-                  output_val = pc.w1 * offset_bottom_data[pc.pos1];
-                  max_flag = true;
-                } else {
-                  output_val = std::max(std::max(std::max(output_val, pc.w2 * offset_bottom_data[pc.pos2]),
-                                                 pc.w3 * offset_bottom_data[pc.pos3]),
-                                        pc.w4 * offset_bottom_data[pc.pos4]);
-                }
-
-                pre_calc_index += 1;
-              }
-            }
+			const float top_left(static_cast<float>(
+				offset_bottom_data[top_y_index * width + left_x_index]));
+			const float top_right(static_cast<float>(
+				offset_bottom_data[top_y_index * width + right_x_index]));
+			const float bottom_left(static_cast<float>(
+				offset_bottom_data[bottom_y_index * width + left_x_index]));
+			const float bottom_right(static_cast<float>(
+				offset_bottom_data[bottom_y_index * width + right_x_index]));
+			const float top = top_left + (top_right - top_left) * x_lerp;
+			const float bottom =
+				bottom_left + (bottom_right - bottom_left) * x_lerp;
+			output_val = top + (bottom - top) * y_lerp;
+          } else {
+			output_val = 0.;
           }
 
           top_data[index] = output_val;
