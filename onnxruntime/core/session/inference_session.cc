@@ -229,9 +229,7 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
     schema_registry_manager->RegisterRegistry(schema_collection);
   }
   auto new_registry_func = [&] (void* info) {
-
     auto node = reinterpret_cast<Node*>(info);
-
     if (node->OpType() == "PyOp") {
       ONNX_ATTRS attrs;
       ONNX_TYPES input_types, output_types;
@@ -272,6 +270,16 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
                                  class_name.c_str(), compute.c_str(),
                                  [this] (const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
       auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
+
+      static std::mutex mtx;
+      static std::vector<std::unique_ptr<void*>> allocates;
+      {
+          mtx.lock();
+          allocates.push_back(std::make_unique<void*>(pyop));
+          allocates.push_back(std::make_unique<void*>(pyop_domain));
+          mtx.unlock();
+      }
+
       ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));
       AddCustomOpDomains({pyop_domain});
       return custom_schema_registries_.back();
