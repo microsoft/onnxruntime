@@ -4,7 +4,7 @@
 #define LIB_PYOP           "onnxruntime_pyop.dll"
 #define LOAD_PYOP_LIB(n)   LoadLibraryA(n)
 #define LOAD_PYOP_SYM(h,n) GetProcAddress(h,n)
-#define UNLD_PYop_LIB(h)   FreeLibrary(h)
+#define UNLD_PYOP_LIB(h)   FreeLibrary(h)
 #else
 #ifdef __APPLE__
 #define LIB_PYOP           "./libonnxruntime_pyop.dylib"
