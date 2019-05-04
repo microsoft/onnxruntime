@@ -111,6 +111,11 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
         if(pFunc && PyCallable_Check(pFunc)){
             pOutput = PyObject_CallFunction(pFunc, NULL);
 
+            if(pOutput == NULL){
+
+                throw "Model Optimizer Failed";
+            }
+
             pArg1 = PyTuple_GetItem(pOutput, 0);
             pArg2 = PyTuple_GetItem(pOutput, 1);
             // PyObject* pResultStr = PyObject_Repr(pOutput);
@@ -135,9 +140,6 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
     }else {
         std::cout << "Python module not found " << std::endl;
     }
-
-
-
 
 
   InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
@@ -180,10 +182,16 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   // Configure input & output
   // Prepare input blobs
   std::cout << "[OpenVINO-EP]Preparing input blobs" << std::endl;
+  size_t first_dim = 1;
+
 
   auto inputInfo = network->getInputsInfo();
   for(auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter) {
     iter->second->setPrecision(precision);
+    auto dims = iter->second->getTensorDesc().getDims();
+    if(dims.size() == 2 || dims.size() == 4 ){
+        first_dim = iter->second->getTensorDesc().getDims()[0];
+    }
     switch (iter->second->getTensorDesc().getDims().size()) {
       case 1:
         iter->second->setLayout(InferenceEngine::Layout::C);
@@ -205,7 +213,8 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     }
   }
 
-  network->setBatchSize(1);
+
+  network->setBatchSize(first_dim);
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
@@ -288,7 +297,6 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
       auto graph_input_buffer =
           graph_input_blob->buffer().as<
               InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
-
       // Get data size
       size_t num_input_elements = 1;
       for (auto dim : input_info_iter->second->getTensorDesc().getDims()) {
@@ -296,12 +304,14 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
       }
 
       size_t input_data_size = num_input_elements * sizeof(float);
-
+    //   for(int j=0; j< num_input_elements; j++){
+    //       std::cout << "Input tensors " << ((float*)input_tensors[i].data)[j] << std::endl ;
+    //   }
       // Copy input data into OpenVINO's input buffer
       std::memcpy(graph_input_buffer, input_tensors[i].data, input_data_size);
+
     }
   }
-
 
 	// Start Async inferences
 	for(auto infer_request : infer_requests_) {
@@ -332,6 +342,10 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
 
 		// Get data size & initialize output tensor info
 		auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
+        // for(auto dims : graph_output_dims){
+        //     std::cout << "Output Dims are " << dims << std::endl;
+        // }
+
 		auto num_dims = graph_output_dims.size();
 		size_t output_data_size = graph_output_blob->byteSize();
 

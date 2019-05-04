@@ -423,7 +423,7 @@ def convert_fp32():
 
         float_array = np.asarray(weights, dtype=np.float32)
 
-        size = weights.size
+        # size = weights.size
 
         return float_array, xml_string
     except (FileNotFoundError, NotADirectoryError) as e:

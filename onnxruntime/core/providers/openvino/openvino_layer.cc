@@ -32,6 +32,9 @@ const std::unordered_map<std::string, std::tuple<std::string, int>> OpenVINOLaye
     mMap.emplace("Unsqueeze",std::make_tuple("Reshape",OpenVINOReshape));
     mMap.emplace("ImageScaler",std::make_tuple("ScaleShift",OpenVINOScaleShift));
     mMap.emplace("LeakyRelu",std::make_tuple("ReLU",OpenVINOReLU));
+    mMap.emplace("GlobalMaxPool",std::make_tuple("Pooling",OpenVINOReshape));
+
+
 
     return mMap;
 }
