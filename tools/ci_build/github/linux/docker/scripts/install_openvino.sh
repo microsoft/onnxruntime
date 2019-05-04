@@ -7,6 +7,7 @@ o) OPENVINO_VERSION=${OPTARG};;
 esac
 done
 
+OPENVINO_VERSION=${OPENVINO_VERSION:=2018_R5}
 git clone https://github.com/opencv/dldt.git /data/dldt
 
 export INTEL_CVSDK_DIR=/data/dldt
