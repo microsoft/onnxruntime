@@ -274,12 +274,10 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
       static std::mutex mtx;
       static std::vector<std::unique_ptr<PyCustomOp>> pyops;
       static std::vector<std::unique_ptr<OrtCustomOpDomain>> pyop_domains;
-      {
-          mtx.lock();
-          pyops.push_back(std::unique_ptr<PyCustomOp>(pyop));
-          pyop_domains.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
-          mtx.unlock();
-      }
+      mtx.lock();
+      pyops.push_back(std::unique_ptr<PyCustomOp>(pyop));
+      pyop_domains.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
+      mtx.unlock();
 
       ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));
       AddCustomOpDomains({pyop_domain});
