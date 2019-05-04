@@ -77,18 +77,13 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
 {
     Scope scope;
     if (PyErr_Occurred()) {
-        stringstream ss;
-        PyObject* type  = nullptr;
-        PyObject* value = nullptr;
-        PyObject* trace = nullptr;
+        PyObject *type, *value, *trace;
         PyErr_Fetch(&type, &value, &trace);
-        scope.Add(type);
-        scope.Add(value);
-        scope.Add(trace);
-        if (nullptr != type)  ss << "python error type:  " << PyBytes_AsString(type)  << endl;
-        if (nullptr != value) ss << "python error value: " << PyBytes_AsString(value) << endl;
-        if (nullptr != trace) ss << "python error trace: " << PyBytes_AsString(trace) << endl;
-        err = ss.str();
+        if (nullptr != value) {
+            auto pyStr = PyUnicode_AsEncodedString(PyObject_Repr(value), "utf-8", "Error ~");
+            err = PyBytes_AS_STRING(pyStr);
+        }
+        PyErr_Restore(type, value, trace);
     }
     return err.c_str();
 }

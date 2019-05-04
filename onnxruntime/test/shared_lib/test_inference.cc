@@ -256,7 +256,7 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
-#ifndef USE_CUDA
+#if !defined(USE_CUDA) && !defined(_DEBUG)
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
