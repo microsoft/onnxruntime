@@ -28,7 +28,7 @@ using ONNX_TYPES = std::vector<ONNXTensorElementDataType>;
 using ONNX_ATTRS = std::unordered_map<std::string, std::string>;
 using ORT_SHAPE  = OrtTensorTypeAndShapeInfo;
 using LOG_FUNC   = std::function<void(const char*)>;
-using ORT_API    = onnxruntime::CustomOpApi;
+using ORT_API    = Ort::CustomOpApi;
 
 typedef bool INIT();
 typedef bool PYFUNC(const char*,
@@ -151,7 +151,7 @@ struct PyCustomKernel {
         }
     }
 
-    int32_t GetType(OrtValue* input) const
+    int32_t GetType(const OrtValue* input) const
     {
         int32_t numpy_type;
         ORT_ENFORCE (nullptr != input);
@@ -198,7 +198,7 @@ private:
     LOG_FUNC       logging_func_;
 };
 
-struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
+struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
 
     PyCustomOp(const ONNX_ATTRS&    attrs,
                const ONNX_TYPES&    inputs_type,
@@ -213,7 +213,7 @@ struct PyCustomOp: onnxruntime::CustomOpBase<PyCustomOp, PyCustomKernel> {
                logging_func_(logging_func) {
                OrtCustomOp::version = ORT_API_VERSION; }
  
-    void* CreateKernel (onnxruntime::CustomOpApi api, const OrtKernelInfo*) {
+    void* CreateKernel (Ort::CustomOpApi api, const OrtKernelInfo*) {
         return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, logging_func_);
     }
 
