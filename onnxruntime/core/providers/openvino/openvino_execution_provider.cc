@@ -96,6 +96,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     // std::vector<std::vector<onnxruntime::NodeIndex>> groups;
     std::vector<onnxruntime::NodeIndex> group;
     int counter = 0;
+    auto initializers = graph_viewer.GetAllInitializedTensors();
 
     auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -113,6 +114,64 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             isGraphSupported = false;
             return result;
         }
+        //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
+        if(node->OpType() == "Gemm" || node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape"){
+
+            int count = 0;
+            for(auto input : node->InputDefs()){
+                auto name = input->Name();
+                auto it = initializers.find(name);
+                if(it == initializers.end()){
+                    count++;
+                }
+            }
+            if(count > 1){
+                return result;
+            }
+        }
+        //Dropout or Identity can't have graph inputs
+        if(node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
+
+            auto graph_inputs = graph_viewer.GetInputs();
+            for(auto input : node->InputDefs()){
+                auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+                if(it != graph_inputs.end()){
+                    return result;
+                }
+            }
+        }
+
+        if(node->OpType() == "MaxPool" || node->OpType() == "AveragePool"){
+            auto attributes = node->GetAttributes();
+            auto auto_pad = attributes["auto_pad"].s();
+            if(auto_pad == ""){
+                return result;
+            }
+            if(node->OutputDefs().size() > 1){
+                return result;
+            }
+        }
+        //Transpose with no attr is not supported
+        if(node->OpType() == "Transpose"){
+            auto attributes = node->GetAttributes();
+            auto perm = attributes["perm"].ints();
+            if(perm.size() == 0){
+                return result;
+            }
+
+            const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
+            if(type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING){
+                return result;
+            }
+        }
+
+        if(node->OpType() == "Softmax"){
+            auto attributes = node->GetAttributes();
+            auto axis = attributes["axis"].i();
+            if(axis < 0)
+                return result;
+        }
+
     }
     std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
@@ -146,6 +205,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
         auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
         SaveModel(model_proto,"ov_model.onnx");
+
     }
 
     return result;
