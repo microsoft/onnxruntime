@@ -80,7 +80,10 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
         PyObject *type, *value, *trace;
         PyErr_Fetch(&type, &value, &trace);
         if (nullptr != value) {
-            auto pyStr = PyUnicode_AsEncodedString(PyObject_Repr(value), "utf-8", "Error ~");
+            auto pyVal = PyObject_Repr(value);
+            scope.Add(pyVal);
+            auto pyStr = PyUnicode_AsEncodedString(pyVal, "utf-8", "Error ~");
+            scope.Add(pyStr);
             err = PyBytes_AS_STRING(pyStr);
         }
         PyErr_Restore(type, value, trace);
