@@ -5,6 +5,7 @@
 #include <vector>
 #include <mutex>
 #include <unordered_map>
+#include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/framework/path_lib.h>
