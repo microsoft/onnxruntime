@@ -267,14 +267,14 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
-                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain) {
   return (node.OpType() == op_type && !node.Op()->Deprecated() &&
-          MatchesOpSinceVersion(node, version) && MatchesOpSetDomain(node, domain));
+          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
 
-bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
-  return node.Op()->SinceVersion() == version;
+bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
@@ -353,19 +353,24 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  // Cannot remove a node with multiple output NodeArgs (multiple output edges is fine), neither
-  // a node whose output is also a graph output.
-  if (!IsSingleInSingleOutNode(node) ||
+bool RemoveNode(Graph& graph, Node& node) {
+  // Cannot remove a node with implicit inputs, with multiple output NodeArgs (multiple output edges is fine),
+  // or whose output is also a graph output.
+  if (node.ImplicitInputDefs().size() > 0 ||
+      node.OutputDefs().size() != 1 ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 
-  // If the single input comes from another node (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
+    // If there is a single input edge from another node (initializers are not connected with edges to nodes).
     return RemoveNodeWithSingleNodeIn(graph, node);
-  } else {
+  } else if (node.InputDefs().size() == 1) {
+    // If a single initializer is the only input.
     return RemoveNodeWithSingleInitializerIn(graph, node);
+  } else {
+    // No other node removal is supported, because there will be no way to connect its inputs to its outputs.
+    return false;
   }
 }
 

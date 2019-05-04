@@ -35,6 +35,18 @@ If the list of op types is left empty, that rule will be triggered for every op 
 */
 class RewriteRule {
  public:
+  /**
+  @class RewriteRuleEffect
+
+  Class used to indicate the effect of rule application on a graph's node.
+  */
+  enum class RewriteRuleEffect : uint8_t {
+    kNone,                // The rewrite rule has not modified the graph.
+    kUpdatedCurrentNode,  // The rewrite rule updated (but did not remove) the node on which it was triggered.
+    kRemovedCurrentNode,  // The rewrite rule removed the node on which it was triggered.
+    kModifiedRestOfGraph  // The rewrite rule modified nodes other than the one it was triggered on.
+  };
+
   RewriteRule(const std::string& name) : name_(name) {}
 
   virtual ~RewriteRule() = default;
@@ -52,11 +64,10 @@ class RewriteRule {
   /** Checks if the condition of the rule is satisfied, and if so applies the body of the rule.
       @param[in] graph The Graph.
       @param[in] node The Node to apply the rewrite to.
-      @param[out] modified Set to indicate whether the node was modified or not.
-      @param[out] deleted Set to indicate if the node was deleted.
+      @param[out] rule_effect Enum to indicate if and how the graph was modified as a result of the rule application.
       @returns Status indicating success or providing error information */
-  common::Status CheckConditionAndApply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-    return SatisfyCondition(graph, node) ? Apply(graph, node, modified, deleted) : Status::OK();
+  common::Status CheckConditionAndApply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+    return SatisfyCondition(graph, node) ? Apply(graph, node, rule_effect) : Status::OK();
   }
 
  private:
@@ -72,8 +83,7 @@ class RewriteRule {
 
   /** This is the actual body of the rule that performs the graph transformation. The transformation happens in-place. 
       The return-value of node may be different from the input-value due to rewriting.
-      The value of "modified" indicates if the graph was modified or not.
-      The value of "deleted" indicates if the node was deleted or not. */
-  virtual common::Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) = 0;
+      The value of "rule_effect" indicates whether and how the graph was modified by the rule. */
+  virtual common::Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) = 0;
 };
 }  // namespace onnxruntime

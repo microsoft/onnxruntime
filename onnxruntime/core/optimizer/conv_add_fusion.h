@@ -3,16 +3,29 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
-class ConvAddFusion : public onnxruntime::GraphTransformer {
+/**
+@Class ConvAddFusion
+
+Rewrite rule that fuses two Conv+Add nodes to a single Conv node.
+
+It is attempted to be triggered only on nodes with op type "Conv".
+*/
+class ConvAddFusion : public RewriteRule {
  public:
-  ConvAddFusion() noexcept : onnxruntime::GraphTransformer("ConvAddFusion") {}
+  ConvAddFusion() noexcept : RewriteRule("ConvAddFusion") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Conv"};
+  }
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) override;
 };
 
 }  // namespace onnxruntime

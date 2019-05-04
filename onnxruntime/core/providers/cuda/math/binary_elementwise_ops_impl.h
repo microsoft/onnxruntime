@@ -25,7 +25,8 @@ namespace cuda {
   BINARY_OP_NAME_EXPR(Or, (a | b))                   \
   BINARY_OP_NAME_EXPR(Xor, (a ^ b))                  \
   BINARY_OP_NAME_EXPR(PRelu, (a > (T)0 ? a : a * b)) \
-  BINARY_OP_NAME_EXPR(Compare, (a > b) ? 1 : 0)
+  BINARY_OP_NAME_EXPR(Greater, (a > b) ? 1 : 0)      \
+  BINARY_OP_NAME_EXPR(Max, _Max(a, b))
 
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here
