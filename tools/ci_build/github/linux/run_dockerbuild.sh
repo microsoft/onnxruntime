@@ -5,7 +5,7 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.0-cudnn7.3
 
-while getopts c:o:d:r:p:x:a:v parameter_Option
+while getopts c:o:d:r:p:x:a:v: parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04
@@ -47,7 +47,7 @@ else
         IMAGE="ubuntu16.04-cuda10.0-cudnn7.4-tensorrt5.0"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
-    elif [ $BUILD_DEVICE = "openvino"]; then
+    elif [ $BUILD_DEVICE = "openvino" ]; then
         IMAGE="ubuntu16.04"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f Dockerfile.ubuntu_openvino .
