@@ -102,12 +102,12 @@ private:
 
 struct PyCustomKernel {
 
-    PyCustomKernel(ORT_API               ort,
-                   const ONNX_ATTRS&     attrs,
-                   const std::string&    module,
-                   const std::string&    class_name,
-                   const std::string&    compute,
-                   LOG_FUNC              logging_func):
+    PyCustomKernel(ORT_API             ort,
+                   const ONNX_ATTRS&   attrs,
+                   const std::string&  module,
+                   const std::string&  class_name,
+                   const std::string&  compute,
+                   LOG_FUNC            logging_func):
                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                    compute_(compute), logging_func_(logging_func) {
         std::string err;
