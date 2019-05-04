@@ -24,12 +24,14 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
       {DataTypeImpl::GetType<bool>(), NPY_BOOL},
       {DataTypeImpl::GetType<float>(), NPY_FLOAT},
+      {DataTypeImpl::GetType<MLFloat16>(), NPY_FLOAT16},
       {DataTypeImpl::GetType<double>(), NPY_DOUBLE},
-      {DataTypeImpl::GetType<int32_t>(), NPY_INT},
       {DataTypeImpl::GetType<int8_t>(), NPY_INT8},
       {DataTypeImpl::GetType<uint8_t>(), NPY_UINT8},
       {DataTypeImpl::GetType<int16_t>(), NPY_INT16},
       {DataTypeImpl::GetType<uint16_t>(), NPY_UINT16},
+      {DataTypeImpl::GetType<int32_t>(), NPY_INT},
+      {DataTypeImpl::GetType<uint32_t>(), NPY_ULONG},
       {DataTypeImpl::GetType<int64_t>(), NPY_LONGLONG},
       {DataTypeImpl::GetType<uint64_t>(), NPY_ULONGLONG},
       {DataTypeImpl::GetType<std::string>(), NPY_OBJECT},
@@ -47,6 +49,7 @@ const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
   static std::map<int, MLDataType> type_map{
       {NPY_BOOL, DataTypeImpl::GetType<bool>()},
       {NPY_FLOAT, DataTypeImpl::GetType<float>()},
+      {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
       {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
       {NPY_INT, DataTypeImpl::GetType<int32_t>()},
       {NPY_INT8, DataTypeImpl::GetType<int8_t>()},
@@ -56,6 +59,9 @@ const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
       {NPY_LONG,
        sizeof(long) == sizeof(int) ? DataTypeImpl::GetType<int32_t>()
                                    : DataTypeImpl::GetType<int64_t>()},
+      {NPY_ULONG,
+       sizeof(unsigned long) == sizeof(unsigned int) ? DataTypeImpl::GetType<uint32_t>()
+                                                     : DataTypeImpl::GetType<uint64_t>()},
       {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
       {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
       {NPY_UNICODE, DataTypeImpl::GetType<std::string>()},
