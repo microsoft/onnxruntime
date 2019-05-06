@@ -70,10 +70,10 @@
 in <em>ONNX Runtime</em>.</p>
 <div class="contents local topic" id="contents">
 <ul class="simple">
-<li><a class="reference internal" href="#device" id="id1">Device</a></li>
-<li><a class="reference internal" href="#examples-and-datasets" id="id2">Examples and datasets</a></li>
-<li><a class="reference internal" href="#load-and-run-a-model" id="id3">Load and run a model</a></li>
-<li><a class="reference internal" href="#backend" id="id4">Backend</a></li>
+<li><p><a class="reference internal" href="#device" id="id1">Device</a></p></li>
+<li><p><a class="reference internal" href="#examples-and-datasets" id="id2">Examples and datasets</a></p></li>
+<li><p><a class="reference internal" href="#load-and-run-a-model" id="id3">Load and run a model</a></p></li>
+<li><p><a class="reference internal" href="#backend" id="id4">Backend</a></p></li>
 </ul>
 </div>
 <div class="section" id="device">
@@ -184,19 +184,15 @@ facilitate the comparison.</p>
 <dt id="onnxruntime.InferenceSession.run">
 <code class="descname">run</code><span class="sig-paren">(</span><em>output_names</em>, <em>input_feed</em>, <em>run_options=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.run"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the predictions.</p>
-<table class="docutils field-list" frame="void" rules="none">
-<col class="field-name" />
-<col class="field-body" />
-<tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
-<li><strong>output_names</strong> – name of the outputs</li>
-<li><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_value</span> <span class="pre">}</span></code></li>
-<li><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</li>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output_names</strong> – name of the outputs</p></li>
+<li><p><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_value</span> <span class="pre">}</span></code></p></li>
+<li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
 </ul>
-</td>
-</tr>
-</tbody>
-</table>
+</dd>
+</dl>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
 </pre></div>
 </div>
@@ -266,15 +262,6 @@ Set this option to false if you don’t want it. Default is True.</p>
 </dd></dl>
 
 <dl class="attribute">
-<dt id="onnxruntime.SessionOptions.enable_mem_pattern">
-<code class="descname">enable_mem_pattern</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_mem_pattern" title="Permalink to this definition">¶</a></dt>
-<dd><p>Enables the memory pattern optimization.
-The idea is if the input shapes are the same, we could trace the internal memory allocation
-and generate a memory pattern for future request. So next time we could just do one allocation
-with a big chunk for all the internal memory allocation. Default is true.</p>
-</dd></dl>
-
-<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.enable_profiling">
 <code class="descname">enable_profiling</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_profiling" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enable profiling for this session. Default is false.</p>
@@ -284,6 +271,12 @@ with a big chunk for all the internal memory allocation. Default is true.</p>
 <dt id="onnxruntime.SessionOptions.enable_sequential_execution">
 <code class="descname">enable_sequential_execution</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_sequential_execution" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enables sequential execution, disables parallel execution. Default is true.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="onnxruntime.SessionOptions.graph_optimization_level">
+<code class="descname">graph_optimization_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.graph_optimization_level" title="Permalink to this definition">¶</a></dt>
+<dd><p>Graph optimization level for this session.</p>
 </dd></dl>
 
 <dl class="attribute">
@@ -311,6 +304,13 @@ with a big chunk for all the internal memory allocation. Default is true.</p>
 This parameter is unused unless <em>enable_sequential_execution</em> is false.</p>
 </dd></dl>
 
+<dl class="method">
+<dt id="onnxruntime.SessionOptions.set_graph_optimization_level">
+<code class="descname">set_graph_optimization_level</code><span class="sig-paren">(</span><em>self: onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</em>, <em>arg0: int</em><span class="sig-paren">)</span> &#x2192; None<a class="headerlink" href="#onnxruntime.SessionOptions.set_graph_optimization_level" title="Permalink to this definition">¶</a></dt>
+<dd><p>Graph optimization level for this session. 0 disables all optimizations.
+Whereas 1 enables basic optimizations and 2 enables all optimizations.</p>
+</dd></dl>
+
 </dd></dl>
 
 </div>
@@ -323,80 +323,68 @@ for verification of <em>ONNX</em> specification conformance.
 The following functions are supported:</p>
 <dl class="function">
 <dt id="onnxruntime.backend.is_compatible">
-<code class="descclassname">onnxruntime.backend.</code><code class="descname">is_compatible</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">is_compatible</code><span class="sig-paren">(</span><em>model</em>, <em>device=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return whether the model is compatible with the backend.</p>
-<table class="docutils field-list" frame="void" rules="none">
-<col class="field-name" />
-<col class="field-body" />
-<tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>model</strong> – unused</li>
-<li><strong>device</strong> – None to use the default device or a string (ex: <cite>‘CPU’</cite>)</li>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – unused</p></li>
+<li><p><strong>device</strong> – None to use the default device or a string (ex: <cite>‘CPU’</cite>)</p></li>
 </ul>
-</td>
-</tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">boolean</p>
-</td>
-</tr>
-</tbody>
-</table>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>boolean</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="function">
 <dt id="onnxruntime.backend.prepare">
-<code class="descclassname">onnxruntime.backend.</code><code class="descname">prepare</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.prepare" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">prepare</code><span class="sig-paren">(</span><em>model</em>, <em>device=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.prepare" title="Permalink to this definition">¶</a></dt>
 <dd><p>Load the model and creates a <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a>
 ready to be used as a backend.</p>
-<table class="docutils field-list" frame="void" rules="none">
-<col class="field-name" />
-<col class="field-body" />
-<tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>model</strong> – ModelProto (returned by <cite>onnx.load</cite>),
-string for a filename or bytes for a serialized model</li>
-<li><strong>device</strong> – requested device for the computation,
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – ModelProto (returned by <cite>onnx.load</cite>),
+string for a filename or bytes for a serialized model</p></li>
+<li><p><strong>device</strong> – requested device for the computation,
 None means the default one which depends on
-the compilation settings</li>
-<li><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a></li>
+the compilation settings</p></li>
+<li><p><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a></p></li>
 </ul>
-</td>
-</tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a></p>
-</td>
-</tr>
-</tbody>
-</table>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="function">
 <dt id="onnxruntime.backend.run">
-<code class="descclassname">onnxruntime.backend.</code><code class="descname">run</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">run</code><span class="sig-paren">(</span><em>model</em>, <em>inputs</em>, <em>device=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the prediction.</p>
-<table class="docutils field-list" frame="void" rules="none">
-<col class="field-name" />
-<col class="field-body" />
-<tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>model</strong> – <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a> returned
-by function <em>prepare</em></li>
-<li><strong>inputs</strong> – inputs</li>
-<li><strong>device</strong> – requested device for the computation,
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a> returned
+by function <em>prepare</em></p></li>
+<li><p><strong>inputs</strong> – inputs</p></li>
+<li><p><strong>device</strong> – requested device for the computation,
 None means the default one which depends on
-the compilation settings</li>
-<li><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a></li>
+the compilation settings</p></li>
+<li><p><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a></p></li>
 </ul>
-</td>
-</tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">predictions</p>
-</td>
-</tr>
-</tbody>
-</table>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>predictions</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="function">
 <dt id="onnxruntime.backend.supports_device">
-<code class="descclassname">onnxruntime.backend.</code><code class="descname">supports_device</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.supports_device" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">supports_device</code><span class="sig-paren">(</span><em>device</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.supports_device" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check whether the backend is compiled with particular device support.
 In particular it’s used in the testing suite.</p>
 </dd></dl>
