@@ -267,14 +267,14 @@ const std::string& GetNodeOutputName(const Node& node, int index) {
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
-                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain) {
   return (node.OpType() == op_type && !node.Op()->Deprecated() &&
-          MatchesOpSinceVersion(node, version) && MatchesOpSetDomain(node, domain));
+          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
 
-bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version) {
-  return node.Op()->SinceVersion() == version;
+bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
 }
 
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
