@@ -122,7 +122,7 @@ struct PyCustomKernel {
         }
     }
 
-    // Do nothing since Custom Op does not trigger share inference
+    // Do nothing since Custom Op does not trigger shape inference
     void GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*) {}
 
     void Compute(OrtKernelContext* context) {
