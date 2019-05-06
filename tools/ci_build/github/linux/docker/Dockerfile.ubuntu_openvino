@@ -18,8 +18,8 @@ ENV INTEL_CVSDK_DIR /data/dldt
 
 ENV LD_LIBRARY_PATH $INTEL_CVSDK_DIR/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64:$INTEL_CVSDK_DIR/deployment_tools/inference_engine/temp/omp/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 
-ENV PATH $INTEL_CVSDK_DIR/model_optimizer:$PATH
-ENV PYTHONPATH $INTEL_CVSDK_DIR/model_optimizer:$INTEL_CVSDK_DIR/tools:$PYTHONPATH
+ENV PATH $INTEL_CVSDK_DIR/deployment_tools/model_optimizer:$PATH
+ENV PYTHONPATH $INTEL_CVSDK_DIR/deployment_tools/model_optimizer:$INTEL_CVSDK_DIR/tools:$PYTHONPATH
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev

@@ -25,6 +25,9 @@ make -j$(nproc)
 cd ${INTEL_CVSDK_DIR}
 mkdir -p deployment_tools
 mv inference-engine inference_engine && mv inference_engine deployment_tools/
+mv model-optimizer model_optimizer && mv model_optimizer deployment_tools/
+
+cd ${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
 
 cd ${INTEL_CVSDK_DIR}/deployment_tools/inference_engine
 mkdir -p lib/ubuntu_16.04/intel64
