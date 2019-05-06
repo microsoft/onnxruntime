@@ -38,7 +38,7 @@ struct Finalizer
 class Scope
 {
 public:
-    Scope(const vector<PyObject*> objs = {}): objs_(objs) {
+    Scope(const vector<PyObject*>& objs = {}): objs_(objs) {
         mtx_.lock();
     }
     ~Scope() {
