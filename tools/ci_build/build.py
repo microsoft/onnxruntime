@@ -805,7 +805,7 @@ def main():
 
 def set_python_home():
     if is_windows():
-        os.environ['PYTHONHOME'] += ';'.join(sys.path)
+        os.environ['PYTHONHOME'] = ';'.join(sys.path)
 
 if __name__ == "__main__":
     try:
