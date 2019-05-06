@@ -24,8 +24,8 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", 1, kMSDomain)) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
 
         auto& conv_inputs = node.MutableInputDefs();
         auto& conv_outputs = node.MutableOutputDefs();
@@ -161,9 +161,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         continue;
       }
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 1) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 8) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 10)) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10})) {
 
         auto& pool_inputs = node.MutableInputDefs();
         auto& pool_outputs = node.MutableOutputDefs();
@@ -259,9 +257,9 @@ class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", 8) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", 4)) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8}) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
 
         // BUGBUG: Concat should only do this if the input blocks are fully aligned...
 
@@ -272,7 +270,7 @@ class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
         bool all_inputs_reorder_output = true;
         for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
           auto& input_node = *it;
-          if (!graph_utils::IsSupportedOptypeVersionAndDomain(input_node, "ReorderOutput", 1, kMSDomain) ||
+          if (!graph_utils::IsSupportedOptypeVersionAndDomain(input_node, "ReorderOutput", {1}, kMSDomain) ||
               (input_node.GetInputEdgesCount() != 1) || (input_node.GetOutputEdgesCount() != 1)) {
             all_inputs_reorder_output = false;
             break;
@@ -337,7 +335,7 @@ class NchwcReorderElimination : public onnxruntime::GraphTransformer {
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "ReorderOutput", 1, kMSDomain)) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "ReorderOutput", {1}, kMSDomain)) {
 
         // Capture the array of output ReorderOutput edges.
         std::vector<Node::EdgeEnd> reorder_edges;
@@ -352,7 +350,7 @@ class NchwcReorderElimination : public onnxruntime::GraphTransformer {
 
           const auto& next_node = reorder_edge.GetNode();
           if ((next_node.GetOutputEdgesCount() != 1) ||
-              !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "ReorderInput", 1, kMSDomain)) {
+              !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "ReorderInput", {1}, kMSDomain)) {
             continue;
           }
 
@@ -399,7 +397,7 @@ class NchwcConvSumFusion : public onnxruntime::GraphTransformer {
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", 8) &&
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8}) &&
           (node.GetInputEdgesCount() == 2)) {
 
         auto input_nodes = node.InputNodesBegin();
@@ -409,7 +407,7 @@ class NchwcConvSumFusion : public onnxruntime::GraphTransformer {
 
         auto can_fuse_input_node = [](const Node& input_node) {
           if ((input_node.GetOutputEdgesCount() == 1) &&
-              graph_utils::IsSupportedOptypeVersionAndDomain(input_node, "NchwcConv", 1, kMSDomain)) {
+              graph_utils::IsSupportedOptypeVersionAndDomain(input_node, "NchwcConv", {1}, kMSDomain)) {
             const auto& attrs = input_node.GetAttributes();
             if (attrs.find("activation") == attrs.end()) {
               return true;
@@ -489,13 +487,13 @@ class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
 
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6)) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
 
         auto input_edge = *node.InputEdgesBegin();
         auto& input_node = *graph.GetNode(input_edge.GetNode().Index());
         const auto& attrs = input_node.GetAttributes();
 
-        if (graph_utils::IsSupportedOptypeVersionAndDomain(input_node, "NchwcConv", 1, kMSDomain) &&
+        if (graph_utils::IsSupportedOptypeVersionAndDomain(input_node, "NchwcConv", {1}, kMSDomain) &&
             (input_node.GetOutputEdgesCount() == 1) &&
             (attrs.find("activation") == attrs.end())) {
 
