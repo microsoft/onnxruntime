@@ -4,6 +4,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
+#include "core/mlas/inc/mlas.h"
 
 #include <cmath>
 
@@ -1032,7 +1033,8 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X_ptr != nullptr);
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
-  EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
+
+  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
 
   return Status::OK();
 }
