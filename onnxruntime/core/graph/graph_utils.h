@@ -13,11 +13,11 @@ namespace graph_utils {
 /** Checks if the operator's type, version, and domain of the given node match the given values. */
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
-                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain = kOnnxDomainAlias);
 
 /** Checks if the node has the same operator since version as the given one. */
-bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version);
+bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions);
 
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, const std::string& domain);
