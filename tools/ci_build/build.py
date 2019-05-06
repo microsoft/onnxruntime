@@ -803,8 +803,13 @@ def main():
 
     log.info("Build complete")
 
+def set_python_home():
+    if is_windows():
+        os.environ['PYTHONHOME'] = ';'.join(sys.path)
+
 if __name__ == "__main__":
     try:
+        set_python_home()
         sys.exit(main())
     except BaseError as e:
         log.error(str(e))
