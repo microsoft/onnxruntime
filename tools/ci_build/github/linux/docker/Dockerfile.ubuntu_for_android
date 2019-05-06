@@ -9,21 +9,6 @@ RUN /tmp/scripts/install_ubuntu_for_android.sh -p ${PYTHON_VERSION} && /tmp/scri
 
 WORKDIR /root
 
-# Build and Install LLVM
-# ARG LLVM_VERSION=6.0.1
-# RUN cd /tmp && \
-#    wget --no-verbose http://releases.llvm.org/$LLVM_VERSION/llvm-$LLVM_VERSION.src.tar.xz && \
-#    xz -d llvm-$LLVM_VERSION.src.tar.xz && \
-#    tar xvf llvm-$LLVM_VERSION.src.tar && \
-#    cd llvm-$LLVM_VERSION.src && \
-#    mkdir -p build && \
-#    cd build && \
-#    cmake .. -DCMAKE_BUILD_TYPE=Release && \
-#    cmake --build . -- -j$(nproc) && \
-#    cmake -DCMAKE_INSTALL_PREFIX=/usr/local/llvm-$LLVM_VERSION -DBUILD_TYPE=Release -P cmake_install.cmake && \
-#    cd /tmp && \
-#    rm -rf llvm*
-
 ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ARG BUILD_UID=1000
@@ -31,5 +16,3 @@ ARG BUILD_USER=onnxruntimedev
 WORKDIR /home/$BUILD_USER
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 USER $BUILD_USER
-
-

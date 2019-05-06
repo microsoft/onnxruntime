@@ -331,7 +331,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_BUILD_SERVER=" + ("ON" if args.build_server else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server else "OFF"),
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
@@ -642,7 +642,7 @@ def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     for config in configs:
         #copy the gen_doc.py
-        shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
+        shutil.copy(os.path.join(source_dir,'tools','python','gen_doc.py'),
                     os.path.join(build_dir,config, config))
         run_subprocess([
                         sys.executable,
@@ -650,10 +650,16 @@ def generate_documentation(source_dir, build_dir, configs):
                         '--output_path', operator_doc_path
                     ], 
                     cwd = os.path.join(build_dir,config, config))
-        
-    docdiff = run_subprocess(['git', 'diff', operator_doc_path], capture=True).stdout
+    docdiff = ''
+    try:    
+        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    
+
     if len(docdiff) > 0:
-        raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in")
+        raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
+
 
 def main():
     args = parse_arguments()
@@ -792,7 +798,7 @@ def main():
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
             build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, nightly_build)
 
-    if args.gen_doc:
+    if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
 
     log.info("Build complete")
