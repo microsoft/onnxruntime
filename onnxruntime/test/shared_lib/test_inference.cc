@@ -256,7 +256,7 @@ TEST_F(CApiTest, custom_op_handler) {
   OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
-#if !(defined(_WIN32)&&defined(_DEBUG))
+#if !(defined(_WIN32) && (defined(_DEBUG) || defined(USE_CUDA)))
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
