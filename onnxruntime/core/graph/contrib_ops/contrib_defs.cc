@@ -634,6 +634,11 @@ Sample echo operator.)DOC");
           "",
           AttributeProto::INT,
           static_cast<int64_t>(0))
+      .Attr(
+          "ceil_mode",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .Input(0, "X", "", "T")
       .Output(0, "Y", "","T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
