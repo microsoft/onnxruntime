@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
-# Official user quickstart docker container for ONNX Runtime
+# Official user quickstart docker container for ONNX Runtime CPU
 # Ubuntu 16.04, CPU version, Python 3.
 #--------------------------------------------------------------------------
 
