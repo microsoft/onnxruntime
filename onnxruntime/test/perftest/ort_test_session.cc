@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace perftest {
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
-  const std::uniform_int_distribution<int>::param_type p(0, input_length);
+  const std::uniform_int_distribution<int>::param_type p(0, input_length - 1);
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   OrtValueArray* const input = test_inputs.at(id);
   auto start = std::chrono::high_resolution_clock::now();

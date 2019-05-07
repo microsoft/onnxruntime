@@ -195,7 +195,7 @@ class TensorflowTestSession : public TestSession {
   }
   std::chrono::duration<double> Run() override {
     size_t input_len = feed_.size();
-    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(input_len));
+    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(input_len - 1));
     const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
     std::vector<TF_Tensor*>& feed_tensors = feed_tensors_.at(id);
 
