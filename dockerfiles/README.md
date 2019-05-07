@@ -76,7 +76,7 @@
 ## ONNX Runtime Server (Preview)
 #### Linux 16.04
 
-1. Build the docker image from the directory that contains our server "onnxruntime_server"
+1. Build the docker image from the Dockerfile in this repository
   ```
   docker build -t {docker_image_name} .
   ```
@@ -84,7 +84,7 @@
 2. Run the ONNXRuntime server in Docker image
 
   ```
-  docker run -it -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -e MODEL_ABSOLUTE_PATH={dockerModelAbsolutePath} -p {your_local_port}:8001 {imageName}
+  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -e MODEL_ABSOLUTE_PATH={dockerModelAbsolutePath} -p {your_local_port}:8001 {imageName}
   ```
 3. Send the request to server
 
