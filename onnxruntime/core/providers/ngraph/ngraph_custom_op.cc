@@ -5,10 +5,18 @@
 #include <iostream>
 #include <string>
 
+#if defined(_MSC_VER)
+#pragma warning(disable:4244 4245)
+#elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+#if defined(_MSC_VER)
+#pragma warning(default:4244 4245)
+#elif __GNUC__
 #pragma GCC diagnostic pop
+#endif
 
 #include "ngraph_custom_op.h"
 #include "core/common/logging/logging.h"
@@ -45,6 +53,16 @@ static DType GetDataType(const ngraph::element::Type& ng_type) {
   }
 }
 
+static bool check_ngraph_dump_ops() {
+#ifdef _WIN32
+  size_t env_name_len = 0;
+  char* env_name = nullptr;
+  return (_dupenv_s(&env_name, &env_name_len, "ONNXRUNTIME_NGRAPH_DUMP_OPS") == 0);
+#else
+  return (std::getenv("ONNXRUNTIME_NGRAPH_DUMP_OPS") != nullptr);
+#endif
+}
+
 NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto,
                                const std::shared_ptr<ngraph::runtime::Backend>& ng_backend)
     : ng_backend_{ng_backend},
@@ -54,7 +72,7 @@ NGRAPHCustomOp::NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPA
   allocator_ = context->allocator_handle;
   name_ = context->node_name;
 
-  if (std::getenv("ONNXRUNTIME_NGRAPH_DUMP_OPS") != nullptr) {
+  if (check_ngraph_dump_ops()) {
     std::fstream dump(name_ + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto_.SerializeToOstream(&dump);
   }
@@ -92,7 +110,7 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
     auto graph_proto = model_proto_.mutable_graph();
     // Clear previous shapes if any and set new input shapes
     for (size_t i = 0; i < num_inputs; i++) {
-      auto g_in_shape = graph_proto->mutable_input(i)->mutable_type()->mutable_tensor_type()->mutable_shape();
+      auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
       g_in_shape->clear_dim();
 
       for (size_t dim = 0; dim < input_tensors[i].ndim; dim++) {

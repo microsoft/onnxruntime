@@ -354,8 +354,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_mobilenet_v2_1.4_224", "result mismatch"},
       {"tf_mobilenet_v1_1.0_224", "result mismatch"},
       {"mobilenetv2-1.0", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"},
-      {"mod_float_mixed_sign_example", "faulty test"}
+      {"mxnet_arcface", "result mismatch"}
   };
 
 #ifdef USE_NGRAPH

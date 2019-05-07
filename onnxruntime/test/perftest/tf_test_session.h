@@ -12,9 +12,12 @@ namespace onnxruntime {
 namespace perftest {
 class TensorflowTestSession : public TestSession {
  private:
+  std::mt19937 rand_engine_;
+  std::uniform_int_distribution<int> dist_;
   OrtCallback model_deleter;
   std::vector<TF_Output> feed_;
   std::vector<TF_Output> fetches_;
+  std::vector<std::vector<TF_Tensor*>> feed_tensors_;
   TF_Session* sess_;
   TF_Graph* tf_graph_;
   // This function is for both graph inputs and outputs
@@ -39,65 +42,10 @@ class TensorflowTestSession : public TestSession {
     return ret;
   }
 
-  TF_Tensor* AllocateTFTensor(const OrtTensorTypeAndShapeInfo* shape, size_t& buffer_length) const {
-    size_t dim_count = OrtGetNumOfDimensions(shape);
-    std::vector<int64_t> dims(dim_count);
-    OrtGetDimensions(shape, dims.data(), dim_count);
-    int64_t ele_count = OrtGetTensorShapeElementCount(shape);
-    TF_DataType d;
-    switch (OrtGetTensorElementType(shape)) {
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
-        buffer_length = ele_count * sizeof(float);
-        d = TF_FLOAT;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:  // maps to c type uint8_t
-        buffer_length = ele_count * sizeof(uint8_t);
-        d = TF_UINT8;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:  // maps to c type int8_t
-        buffer_length = ele_count * sizeof(int8_t);
-        d = TF_INT8;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
-        buffer_length = ele_count * sizeof(uint16_t);
-        d = TF_UINT16;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:  // maps to c type int16_t
-        buffer_length = ele_count * sizeof(int16_t);
-        d = TF_INT16;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:  // maps to c type int32_t
-        buffer_length = ele_count * sizeof(int32_t);
-        d = TF_INT32;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:  // maps to c type int64_t
-        buffer_length = ele_count * sizeof(int64_t);
-        d = TF_INT64;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-        buffer_length = ele_count * sizeof(bool);
-        d = TF_BOOL;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
-        buffer_length = ele_count * sizeof(double);
-        d = TF_DOUBLE;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
-        buffer_length = ele_count * sizeof(uint32_t);
-        d = TF_UINT32;
-        break;
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
-        buffer_length = ele_count * sizeof(uint64_t);
-        d = TF_UINT64;
-        break;
-      default:
-        ORT_NOT_IMPLEMENTED("unexpected input data type");
-    }
-    return TF_AllocateTensor(d, dims.data(), static_cast<int>(dims.size()), buffer_length);
-  }
-
  public:
-  TensorflowTestSession(const PerformanceTestConfig& performance_test_config, const TestModelInfo* m) {
+  TensorflowTestSession(std::random_device& rd, const PerformanceTestConfig& performance_test_config,
+                        const TestModelInfo* m)
+      : rand_engine_(rd()) {
     TF_Status* s = TF_NewStatus();
     tf_graph_ = TF_NewGraph();
     TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
@@ -124,24 +72,135 @@ class TensorflowTestSession : public TestSession {
     }
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorflowTestSession);
-  std::chrono::duration<double> Run(const OrtValue* const* input) override {
-    size_t input_len = feed_.size();
-    std::vector<TF_Tensor*> feed_tensors(input_len);
-    for (size_t i = 0; i != input_len; ++i) {
-      void* input_buffer = nullptr;
-      ORT_THROW_ON_ERROR(OrtGetTensorMutableData(const_cast<OrtValue*>(input[i]), &input_buffer));
-      assert(input_buffer != nullptr);
-      OrtTensorTypeAndShapeInfo* shape;
-      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(input[i], &shape));
-      size_t buffer_length = 0;
-      TF_Tensor* t = AllocateTFTensor(shape, buffer_length);
-      assert(t != nullptr);
-      feed_tensors[i] = t;
-      assert(TF_TensorByteSize(t) == buffer_length);
-      memcpy(TF_TensorData(t), input_buffer, buffer_length);
+
+  bool isDimMatches(const std::vector<int64_t>& dims1, const std::vector<int64_t>& dims2) {
+    if (dims1.size() != dims2.size()) return false;
+    size_t len = dims1.size();
+    for (size_t i = 0; i != len; ++i) {
+      if (dims1[i] > 0 && dims2[i] > 0 && dims1[i] != dims2[i]) return false;
     }
-    std::vector<TF_Tensor*> output_tensors(fetches_.size());
+    return true;
+  }
+
+  /**
+   * convert input from CHW format to HWC format
+   * \param input A single image. This float array has length of 3*h*w
+   * \param h image height
+   * \param w image width
+   * \param output A float array. should be freed by caller after use
+   */
+  template <typename T>
+  static void chw_to_hwc(const T* input, int64_t h, int64_t w, T* output_data) {
+    int64_t stride = h * w;
+    for (int c = 0; c != 3; ++c) {
+      int64_t t = c * stride;
+      for (int64_t i = 0; i != stride; ++i) {
+        output_data[i * 3 + c] = input[t + i];
+      }
+    }
+  }
+
+  void PreLoadTestData(size_t test_data_id, size_t input_id, OrtValue* value) override {
+    if (feed_tensors_.size() < test_data_id + 1) {
+      feed_tensors_.resize(test_data_id + 1);
+    }
+    if (feed_tensors_.at(test_data_id).size() < input_id + 1) {
+      feed_tensors_.at(test_data_id).resize(input_id + 1);
+    }
+
     TF_Status* s = TF_NewStatus();
+    void* input_buffer = nullptr;
+    ORT_THROW_ON_ERROR(OrtGetTensorMutableData(const_cast<OrtValue*>(value), &input_buffer));
+    assert(input_buffer != nullptr);
+    OrtTensorTypeAndShapeInfo* shape = nullptr;
+    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &shape));
+    size_t buffer_length = 0;
+    std::vector<int64_t> dims;
+    size_t dim_count = OrtGetNumOfDimensions(shape);
+    dims.resize(dim_count);
+    OrtGetDimensions(shape, dims.data(), dim_count);
+    int64_t ele_count = OrtGetTensorShapeElementCount(shape);
+    TF_DataType tf_datatype;
+    switch (OrtGetTensorElementType(shape)) {
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
+        buffer_length = ele_count * sizeof(float);
+        tf_datatype = TF_FLOAT;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:  // maps to c type uint8_t
+        buffer_length = ele_count * sizeof(uint8_t);
+        tf_datatype = TF_UINT8;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:  // maps to c type int8_t
+        buffer_length = ele_count * sizeof(int8_t);
+        tf_datatype = TF_INT8;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
+        buffer_length = ele_count * sizeof(uint16_t);
+        tf_datatype = TF_UINT16;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:  // maps to c type int16_t
+        buffer_length = ele_count * sizeof(int16_t);
+        tf_datatype = TF_INT16;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:  // maps to c type int32_t
+        buffer_length = ele_count * sizeof(int32_t);
+        tf_datatype = TF_INT32;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:  // maps to c type int64_t
+        buffer_length = ele_count * sizeof(int64_t);
+        tf_datatype = TF_INT64;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        buffer_length = ele_count * sizeof(bool);
+        tf_datatype = TF_BOOL;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
+        buffer_length = ele_count * sizeof(double);
+        tf_datatype = TF_DOUBLE;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
+        buffer_length = ele_count * sizeof(uint32_t);
+        tf_datatype = TF_UINT32;
+        break;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
+        buffer_length = ele_count * sizeof(uint64_t);
+        tf_datatype = TF_UINT64;
+        break;
+      default:
+        ORT_NOT_IMPLEMENTED("unexpected input data type");
+    }
+    TF_Tensor* t = nullptr;
+    int tf_dims_count = TF_GraphGetTensorNumDims(tf_graph_, feed_[input_id], s);
+    if (TF_GetCode(s) != TF_OK || tf_dims_count < 0) ORT_THROW("run TF model failed:", TF_Message(s));
+    std::vector<int64_t> tf_dims(static_cast<size_t>(tf_dims_count));
+    TF_GraphGetTensorShape(tf_graph_, feed_[input_id], tf_dims.data(), tf_dims_count, s);
+    if (TF_GetCode(s) != TF_OK || tf_dims_count < 0) ORT_THROW("run TF model failed:", TF_Message(s));
+    if (!isDimMatches(dims, tf_dims)) {
+      // detect if it's NCHW, if it is, switch it to NHWC
+      // TODO: make this code more generic
+      if (dims.size() == 4 && tf_dims.size() == 4 && dims[0] == 1 && dims[1] == 3 && dims[2] == dims[3] &&
+          (tf_dims[0] == 1 || tf_dims[0] == -1) && tf_dims[3] == 3 && tf_dims[1] == tf_dims[2] && tf_dims[1] > 0) {
+        tf_dims[0] = 1;
+        t = TF_AllocateTensor(tf_datatype, tf_dims.data(), static_cast<int>(tf_dims.size()), buffer_length);
+        chw_to_hwc<float>((const float*)input_buffer, tf_dims[1], tf_dims[2], (float*)TF_TensorData(t));
+      } else
+        ORT_THROW("dimension doesn't match");
+    } else {
+      memcpy(TF_TensorData(t), input_buffer, buffer_length);
+      t = TF_AllocateTensor(tf_datatype, dims.data(), static_cast<int>(dims.size()), buffer_length);
+    }
+    assert(TF_TensorByteSize(t) == buffer_length);
+    assert(t != nullptr);
+    feed_tensors_[test_data_id][input_id] = t;
+  }
+  std::chrono::duration<double> Run() override {
+    size_t input_len = feed_.size();
+    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(input_len));
+    const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
+    std::vector<TF_Tensor*>& feed_tensors = feed_tensors_.at(id);
+
+    TF_Status* s = TF_NewStatus();
+    std::vector<TF_Tensor*> output_tensors(fetches_.size());
     auto start = std::chrono::high_resolution_clock::now();
     TF_SessionRun(sess_, nullptr, feed_.data(), feed_tensors.data(), static_cast<int>(feed_.size()), fetches_.data(),
                   output_tensors.data(), static_cast<int>(fetches_.size()), nullptr, 0, nullptr, s);
