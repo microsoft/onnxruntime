@@ -189,7 +189,7 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   for(auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter) {
     iter->second->setPrecision(precision);
     auto dims = iter->second->getTensorDesc().getDims();
-    if(dims.size() == 2 || dims.size() == 4 ){
+    if(dims.size() == 2 || dims.size() == 4 || dims.size() == 5){
         first_dim = iter->second->getTensorDesc().getDims()[0];
     }
     switch (iter->second->getTensorDesc().getDims().size()) {

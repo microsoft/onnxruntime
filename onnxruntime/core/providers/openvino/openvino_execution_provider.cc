@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <Python.h>
 
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
@@ -18,6 +19,7 @@
 #include "openvino_layer.h"
 #include "core/graph/model.h"
 #include "openvino_graph.h"
+
 
 #include "core/util/protobuf_parsing_utils.h"
 namespace onnxruntime {
@@ -115,7 +117,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             return result;
         }
         //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
-        if(node->OpType() == "Gemm" || node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape"){
+        if(node->OpType() == "Gemm" || node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape" || node->OpType() == "MatMul"){
 
             int count = 0;
             for(auto input : node->InputDefs()){
@@ -177,6 +179,31 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
 
     if(isGraphSupported){
+
+        auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+        SaveModel(model_proto,"ov_model.onnx");
+
+        PyObject *pModule, *pOutput,*pFunc;
+
+        Py_Initialize();
+        pModule = PyImport_ImportModule("openvino_mo");
+
+        if(pModule != NULL){
+            pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
+
+            if(pFunc && PyCallable_Check(pFunc)){
+                pOutput = PyObject_CallFunction(pFunc, NULL);
+
+                if(!PyTuple_CheckExact(pOutput)){
+                    return result;
+                }
+                else{
+                    Py_DECREF(pOutput);
+                }
+            }
+        }
+
+
         for(auto index : node_indexes){
             sub_graph->nodes.push_back(index);
         }
@@ -203,8 +230,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         sub_graph->SetMetaDef(meta_def);
         result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
 
-        auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
-        SaveModel(model_proto,"ov_model.onnx");
 
     }
 

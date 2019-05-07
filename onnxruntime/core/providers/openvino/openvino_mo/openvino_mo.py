@@ -426,9 +426,9 @@ def convert_fp32():
         # size = weights.size
 
         return float_array, xml_string
-    except (FileNotFoundError, NotADirectoryError) as e:
-        log.error('File {} was not found'.format(str(e).split('No such file or directory:')[1]))
-        log.debug(traceback.format_exc())
+    except:
+        # log.error('File {} was not found'.format(str(e).split('No such file or directory:')[1]))
+        # log.debug(traceback.format_exc())
     return 1
 
 if __name__ == "__main__":
