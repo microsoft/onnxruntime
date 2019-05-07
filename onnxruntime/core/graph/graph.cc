@@ -1614,10 +1614,27 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
+std::unordered_map<std::string, int> Graph::GetAllDomains()
+{
+    std::unordered_map<std::string, int> domains = domain_to_version_;
+    std::vector<Graph*> subgraphs;
+    FindAllSubgraphs(subgraphs);
+    for (auto& subgraph: subgraphs) {
+        auto sub_domains = subgraph->GetAllDomains();
+        for (auto& iter: sub_domains) {
+            if (domains.find(iter.first) == domains.end()) {
+                domains[iter.first] = iter.second;
+            }
+        }
+    }
+    return domains;
+}
+
 Status Graph::VerifyNodeAndOpMatch() {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
-  ctx.set_opset_imports(DomainToVersionMap());
+  //ctx.set_opset_imports(DomainToVersionMap());
+  ctx.set_opset_imports(GetAllDomains());
   ctx.set_schema_registry(schema_registry_manager_.get());
 
   LexicalScopeContext lsc{resolve_context_.inputs_and_initializers};

@@ -699,9 +699,12 @@ class Graph {
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
 
   /** Gets the map of operator domains to their opset versions. */
+
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
   }
+
+  std::unordered_map<std::string, int> GetAllDomains();
 
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
