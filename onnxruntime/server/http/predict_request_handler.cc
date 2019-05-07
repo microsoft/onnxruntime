@@ -62,10 +62,9 @@ void Predict(const std::string& name,
   }
 
   // Run Prediction
-  protobufutil::Status status;
   Executor executor(env.get(), context.request_id);
   PredictResponse predict_response{};
-  status = executor.Predict(name, version, predict_request, predict_response);
+  auto status = executor.Predict(name, version, predict_request, predict_response);
   if (!status.ok()) {
     GenerateErrorResponse(logger, GetHttpStatusCode((status)), status.error_message(), context);
     return;

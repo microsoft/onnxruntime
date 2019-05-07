@@ -36,7 +36,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
     return GenerateProtobufStatus(status, "GetSizeInBytesFromTensorProto() failed: " + status.ToString());
   }
 
-  std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
+  std::unique_ptr<uint8_t[]> data(new uint8_t[cpu_tensor_length]);
   memset(data.get(), 0, cpu_tensor_length);
 
   OrtCallback deleter;
@@ -54,9 +54,10 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
 protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map, const onnxruntime::server::PredictRequest& request) {
   auto logger = env_->GetLogger(request_id_);
 
-  OrtAllocatorInfo* cpu_allocator_info = nullptr;
-  auto ort_status = OrtCreateAllocatorInfo("Cpu", OrtArenaAllocator, 0, OrtMemTypeDefault, &cpu_allocator_info);
-  if (ort_status != nullptr || cpu_allocator_info == nullptr) {
+  OrtAllocatorInfo* allocator_info = nullptr;
+  auto ort_status = OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info);
+
+  if (ort_status != nullptr || allocator_info == nullptr) {
     LOGS(*logger, ERROR) << "OrtCreateAllocatorInfo failed";
     return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateAllocatorInfo() failed");
   }
@@ -66,19 +67,22 @@ protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name
     using_raw_data_ = using_raw_data_ && input.second.has_raw_data();
 
     MLValue ml_value;
-    auto status = SetMLValue(input.second, cpu_allocator_info, ml_value);
+    auto status = SetMLValue(input.second, allocator_info, ml_value);
     if (status != protobufutil::Status::OK) {
+      OrtReleaseAllocatorInfo(allocator_info);
       LOGS(*logger, ERROR) << "SetMLValue() failed! Input name: " << input.first;
       return status;
     }
 
     auto insertion_result = name_value_map.insert(std::make_pair(input.first, ml_value));
     if (!insertion_result.second) {
+      OrtReleaseAllocatorInfo(allocator_info);
       LOGS(*logger, ERROR) << "SetNameMLValueMap() failed! Input name: " << input.first << " Trying to overwrite existing input value";
       return protobufutil::Status(protobufutil::error::Code::INVALID_ARGUMENT, "SetNameMLValueMap() failed: Cannot have two inputs with the same name");
     }
   }
 
+  OrtReleaseAllocatorInfo(allocator_info);
   return protobufutil::Status::OK;
 }
 
@@ -120,6 +124,12 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
     LOGS(*logger, ERROR) << "Run() failed."
                          << ". Error Message: " << status.ToString();
     return GenerateProtobufStatus(status, "Run() failed: " + status.ToString());
+  }
+
+  // Manually free all memory in NameMLValMap
+  for (auto& elem : name_ml_value_map) {
+      auto* buf = static_cast<uint8_t*>(elem.second.GetMutable<Tensor>()->MutableDataRaw());
+      delete[] buf;
   }
 
   // Build the response
