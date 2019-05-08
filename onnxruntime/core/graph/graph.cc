@@ -902,7 +902,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             if (!parent_graph_) {
               return ORT_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
-                  "This is an invalid graph. At top level graph without matching NodeArg that subgraph consumes. Name=",
+                  "This is an invalid model. At top level graph without matching NodeArg that subgraph consumes. Name=",
                   node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
@@ -913,7 +913,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             if (!node_arg) {
               return ORT_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
-                  "This is an invalid graph. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
+                  "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
           }
@@ -1130,7 +1130,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
       const NodeIndex idx = (*iter).Index();
       if (output_nodes.find(idx) != output_nodes.end()) {
-        Status status(ONNXRUNTIME, FAIL, "This is an invalid graph. Error: the graph is not acyclic.");
+        Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
         return status;
       }
 
@@ -1146,7 +1146,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   if (num_of_nodes_ >= 0 && static_cast<size_t>(num_of_nodes_) == nodes_in_topological_order_.size()) {
     return Status::OK();
   } else {
-    return Status(ONNXRUNTIME, FAIL, "This is an invalid graph. Error: the graph is not acyclic.");
+    return Status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
   }
 }
 
@@ -1437,7 +1437,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
         // Type error in input model/graph.
 
         Status status(ONNXRUNTIME, INVALID_GRAPH,
-                      "This is an invalid graph. "
+                      "This is an invalid model. "
                       "Type Error: Type '" + *input_type + "' of input parameter (" + input_def->Name() +
                           ") of operator (" + op.Name() + ") in node (" + node_name + ") is invalid.");
         return status;
@@ -1661,7 +1661,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       try {
         checker::check_node(node_proto, ctx, lsc);
       } catch (const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid graph. Error in Node:", node_name, " : ", ex.what());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
       }
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
