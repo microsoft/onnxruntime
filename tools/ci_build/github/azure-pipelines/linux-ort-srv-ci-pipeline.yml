@@ -1,19 +1,79 @@
 jobs:
 - job: Debug_Build
-  pool: Hosted Ubuntu 1604
+  pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - script: 'tools/ci_build/github/linux/server_run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -k $(acr.key) -x "--config Debug --build_server --use_openmp --use_full_protobuf --enable_server_tests"'
-      displayName: 'Debug Build'
+
+    - task: CmdLine@2
+      displayName: 'Clean untagged docker images'
+      inputs:
+        script: |
+          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
+        workingDirectory: $(Build.BinariesDirectory)
+      continueOnError: true
+      condition: always()
+
+    - task: CmdLine@2
+      displayName: 'Download azcopy'
+      inputs:
+        script: |
+          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+          tar -zxvf azcopy.tar.gz --strip 1
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl)
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--config Debug --build_server --use_openmp --use_full_protobuf --enable_server_tests"'
+      displayName: 'Run build script'
+
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
     - template: templates/clean-agent-build-directory-step.yml
 - job: Release_Build
-  pool: Hosted Ubuntu 1604
+  pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - script: 'tools/ci_build/github/linux/server_run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -k $(acr.key) -x "--config Release --build_server --use_openmp --use_full_protobuf --enable_server_tests"'
-      displayName: 'Release Build'
+
+    - task: CmdLine@2
+      displayName: 'Clean untagged docker images'
+      inputs:
+        script: |
+          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
+        workingDirectory: $(Build.BinariesDirectory)
+      continueOnError: true
+      condition: always()
+
+    - task: CmdLine@2
+      displayName: 'Download azcopy'
+      inputs:
+        script: |
+          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+          tar -zxvf azcopy.tar.gz --strip 1
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl)
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--config Release --build_server --use_openmp --use_full_protobuf --enable_server_tests"'
+      displayName: 'Run build script'
+
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
     - template: templates/clean-agent-build-directory-step.yml
