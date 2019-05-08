@@ -30,7 +30,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Scatter);
 
-template <class Tin>
+template <class Tin, class Tdata>
 Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
@@ -45,24 +45,26 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   }
 
   const auto input_elements = input_data_shape.Size();
-  const auto element_bytes = data_input->DataType()->Size();
   const auto total_input_bytes = data_input->Size();
 
-  const uint8_t* src_base = reinterpret_cast<const uint8_t*>(data_input->DataRaw());
-  uint8_t* dst_base = reinterpret_cast<uint8_t*>(data_output->MutableDataRaw());
-  const bool is_string_type = data_input->DataType() == DataTypeImpl::GetType<std::string>();
+  const Tdata* src_base = static_cast<const Tdata*>(data_input->DataRaw());
+  Tdata* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
+  bool is_string_type = data_input->DataType() == DataTypeImpl::GetType<std::string>();
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy
   if (src_base != dst_base) {
-    if (is_string_type) {
-      const std::string* str_begin = data_input->template Data<std::string>();
-      const std::string* str_end = str_begin + input_elements;
-      std::string* dst = data_output->template MutableData<std::string>();
-      std::copy(str_begin, str_end, dst);
-    } else {
-      memcpy(dst_base, src_base, total_input_bytes);
-    }
+     if( is_string_type )
+     {
+        const std::string* str_begin = data_input->template Data<std::string>();
+        const std::string* str_end = str_begin + input_elements;
+        std::string* dst = data_output->template MutableData<std::string>();
+        std::copy( str_begin, str_end, dst );
+     }
+     else
+     {
+        memcpy( dst_base, src_base, total_input_bytes );
+     }
   }
 
   // Now poke updates
@@ -110,7 +112,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
     }
   }
 
-  const uint8_t* update_data = reinterpret_cast<const uint8_t*>(updates_input->DataRaw());
+  const Tdata* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
   // For every update we compute the destination offset and copy it there
   for (int64_t index = 0; index < num_indices;) {
     const Tin axis_idx = indices_data[index];
@@ -127,16 +129,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
       }
     }
 
-    const size_t dst_offset_bytes = dst_offset * element_bytes;
-    assert(dst_offset_bytes < total_input_bytes);
-    if (is_string_type) {
-      reinterpret_cast<std::string*>(dst_base)[dst_offset] =
-          reinterpret_cast<const std::string*>(update_data)[index];
-    } else {
-      // Copy an element
-      auto src_offset_bytes = index * element_bytes;
-      memcpy(dst_base + dst_offset_bytes, update_data + src_offset_bytes, element_bytes);
-    }
+    dst_base[ dst_offset ] = update_data[ index ];
 
     if (++index == num_indices) {
       break;
@@ -203,10 +196,69 @@ Status Scatter::Compute(OpKernelContext* context) const {
   auto* data_output = context->Output(0, input_data_shape);
 
   MLDataType Tind_type = indices_input->DataType();
+  MLDataType Tdata_type = data_input->DataType();
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
-    return CopyScatterData<int32_t>(data_input, indices_input, updates_input, axis, data_output);
+    if (Tdata_type == DataTypeImpl::GetType<float>())
+      return CopyScatterData<int32_t, float>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<double>())
+      return CopyScatterData<int32_t, double>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int8_t>())
+      return CopyScatterData<int32_t, int8_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int16_t>())
+      return CopyScatterData<int32_t, int16_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int32_t>())
+      return CopyScatterData<int32_t, int32_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int64_t>())
+      return CopyScatterData<int32_t, int64_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint8_t>())
+      return CopyScatterData<int32_t, uint8_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint16_t>())
+      return CopyScatterData<int32_t, uint16_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint32_t>())
+      return CopyScatterData<int32_t, uint32_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint64_t>())
+      return CopyScatterData<int32_t, uint64_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<bool>())
+      return CopyScatterData<int32_t, bool>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<MLFloat16>())
+      return CopyScatterData<int32_t, MLFloat16>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<BFloat16>())
+      return CopyScatterData<int32_t, BFloat16>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<std::string>())
+      return CopyScatterData<int32_t, std::string>(data_input, indices_input, updates_input, axis, data_output);
+    else
+      ORT_ENFORCE(false, "Unknown tensor type of ", Tdata_type);
   } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
-    return CopyScatterData<int64_t>(data_input, indices_input, updates_input, axis, data_output);
+    if (Tdata_type == DataTypeImpl::GetType<float>())
+      return CopyScatterData<int64_t, float>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<double>())
+      return CopyScatterData<int64_t, double>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int8_t>())
+      return CopyScatterData<int64_t, int8_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int16_t>())
+      return CopyScatterData<int64_t, int16_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int32_t>())
+      return CopyScatterData<int64_t, int32_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<int64_t>())
+      return CopyScatterData<int64_t, int64_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint8_t>())
+      return CopyScatterData<int64_t, uint8_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint16_t>())
+      return CopyScatterData<int64_t, uint16_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint32_t>())
+      return CopyScatterData<int64_t, uint32_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<uint64_t>())
+      return CopyScatterData<int64_t, uint64_t>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<bool>())
+      return CopyScatterData<int64_t, bool>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<MLFloat16>())
+      return CopyScatterData<int64_t, MLFloat16>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<BFloat16>())
+      return CopyScatterData<int64_t, BFloat16>(data_input, indices_input, updates_input, axis, data_output);
+    else if (Tdata_type == DataTypeImpl::GetType<std::string>())
+      return CopyScatterData<int64_t, std::string>(data_input, indices_input, updates_input, axis, data_output);
+    else
+      ORT_ENFORCE(false, "Unknown tensor type of ", Tdata_type);
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");
 }
