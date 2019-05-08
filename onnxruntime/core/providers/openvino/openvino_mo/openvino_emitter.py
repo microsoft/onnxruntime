@@ -134,9 +134,8 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
     for d in shape:
         dim = SubElement(element, 'dim')
         if d <= 0:
-            d = 1
-            #raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
-            #            'wrong.'.format(d))
+            raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
+                        'wrong.'.format(d))
         if int(d) != d:
             raise Error('The value "{}" for shape is not integer.'.format(d))
         if not isinstance(d, np.int64):
