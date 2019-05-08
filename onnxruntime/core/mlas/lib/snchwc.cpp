@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(__GNUC__)
+#pragma GCC target "sse4.1"
+#endif
+
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
 //
@@ -186,9 +190,6 @@ MlasConvReorderFilter(
 {
     const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
 
-    constexpr size_t HeightShapeIndex = 0;
-    constexpr size_t WidthShapeIndex = 1;
-
     const size_t OutputChannels = size_t(FilterShape[0]);
     const size_t InputChannels = size_t(FilterShape[1]);
     const size_t KernelHeight = size_t(FilterShape[2]);
@@ -262,9 +263,6 @@ MlasConvReorderFilter2(
     )
 {
     const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
-
-    constexpr size_t HeightShapeIndex = 0;
-    constexpr size_t WidthShapeIndex = 1;
 
     const size_t OutputChannels = size_t(FilterShape[0]);
     const size_t InputChannels = size_t(FilterShape[1]);

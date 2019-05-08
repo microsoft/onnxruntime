@@ -59,20 +59,20 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   const Tensor* Sum = context->Input<Tensor>(3);
   const int64_t N = X->Shape()[0];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(ConvBase::ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ConvBase::ComputeKernelShape(W->Shape(), kernel_shape));
 
-  std::vector<int64_t> pads(pads_);
+  std::vector<int64_t> pads(ConvBase::pads_);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(dilations_);
+  std::vector<int64_t> dilations(ConvBase::dilations_);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(strides_);
+  std::vector<int64_t> strides(ConvBase::strides_);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
@@ -80,23 +80,23 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, Y_dims);
 
   MLAS_ACTIVATION Activation;
-  if (activation_.empty()) {
+  if (ConvBase::activation_.empty()) {
     Activation.ActivationKind = MlasIdentityActivation;
-  } else if (activation_ == "Relu") {
+  } else if (ConvBase::activation_ == "Relu") {
     Activation.ActivationKind = MlasReluActivation;
-  } else if (activation_ == "LeakyRelu") {
+  } else if (ConvBase::activation_ == "LeakyRelu") {
     Activation.ActivationKind = MlasLeakyReluActivation;
-    Activation.alpha = alpha_;
-  } else if (activation_ == "Tanh") {
+    Activation.alpha = ConvBase::alpha_;
+  } else if (ConvBase::activation_ == "Tanh") {
     Activation.ActivationKind = MlasTanhActivation;
-  } else if (activation_ == "Sigmoid") {
+  } else if (ConvBase::activation_ == "Sigmoid") {
     Activation.ActivationKind = MlasLogisticActivation;
   } else {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
+    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", ConvBase::activation_);
   }
 
   MlasConvNchwc(kernel_shape.size(),
@@ -106,7 +106,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
                 pads.data(),
                 strides.data(),
                 Y_dims.data(),
-                static_cast<size_t>(group_),
+                static_cast<size_t>(ConvBase::group_),
                 X->template Data<float>(),
                 W->template Data<float>(),
                 B != nullptr ? B->template Data<float>() : nullptr,

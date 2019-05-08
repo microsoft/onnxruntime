@@ -23,6 +23,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
     GraphViewer graph_viewer(graph);
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
@@ -256,6 +257,7 @@ class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
     GraphViewer graph_viewer(graph);
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
@@ -334,6 +336,7 @@ class NchwcReorderElimination : public onnxruntime::GraphTransformer {
     GraphViewer graph_viewer(graph);
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "ReorderOutput", {1}, kMSDomain)) {
 
@@ -396,6 +399,7 @@ class NchwcConvSumFusion : public onnxruntime::GraphTransformer {
     GraphViewer graph_viewer(graph);
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8}) &&
           (node.GetInputEdgesCount() == 2)) {
@@ -486,6 +490,7 @@ class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
     GraphViewer graph_viewer(graph);
     for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
       auto& node = *graph.GetNode(index);
+      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
 
@@ -541,6 +546,8 @@ NchwcTransformer::NchwcTransformer() noexcept :
 }
 
 Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+  ORT_UNUSED_PARAMETER(modified);
+  ORT_UNUSED_PARAMETER(graph_level);
   return graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default);
 }
 
