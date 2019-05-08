@@ -7,17 +7,22 @@
 #TODO: Get this working, not tested yet
 set -x
 
-
-
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
+Arch=${4:-x64}
+PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
+
 IMAGE="ubuntu16.04"
 PYTHON_VER=3.5
 OldDir=$(pwd)
-cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
-docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
 
+cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
+if [ $Arch = "x86" ]; then
+   docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+else
+   docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
+fi
 
 docker rm -f "onnxruntime-cpu" || true
 
@@ -43,6 +48,4 @@ EXIT_CODE=$?
 
 set -e
 exit $EXIT_CODE
-
-
 cd $OldDir
