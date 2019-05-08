@@ -45,6 +45,21 @@ class SubgraphPrimitive : public PrimitiveBase {
     }
   }
 
+  Status Compute(const ONNXRunTimeTensor* input_tensors, ONNXRunTimeTensor* const output_tensors) {
+    Status status;
+    for (auto& kernel : context_.kernels) {
+      status = kernel->Bind(input_tensors, output_tensors);
+      if (!status.IsOK())
+        break;
+    }
+    if (status.IsOK())
+      context_.stream->submit(context_.net);
+    return status;
+  }
+
+  ~SubgraphPrimitive() = default;
+
+ private:
   void CreateKernels(const SubgraphParams& params) {
     for (auto& mklnode : params.subgraph->mklnodes) {
       if (mklnode.name == "Conv") {
@@ -151,20 +166,6 @@ class SubgraphPrimitive : public PrimitiveBase {
       }
     }
   }
-
-  Status Compute(const ONNXRunTimeTensor* input_tensors, ONNXRunTimeTensor* const output_tensors) {
-    Status status;
-    for (auto& kernel : context_.kernels) {
-      status = kernel->Bind(input_tensors, output_tensors);
-      if (!status.IsOK())
-        break;
-    }
-    if (status.IsOK())
-      context_.stream->submit(context_.net);
-    return status;
-  }
-
-  ~SubgraphPrimitive() = default;
 
  private:
   struct SubgraphContext {
