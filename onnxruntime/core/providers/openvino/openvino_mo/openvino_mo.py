@@ -429,7 +429,7 @@ def convert_fp32():
     except:
         # log.error('File {} was not found'.format(str(e).split('No such file or directory:')[1]))
         # log.debug(traceback.format_exc())
-    return 1
+        return 1
 
 if __name__ == "__main__":
     ret_code = check_python_version()
