@@ -186,16 +186,16 @@ class TensorflowTestSession : public TestSession {
       } else
         ORT_THROW("dimension doesn't match");
     } else {
-      memcpy(TF_TensorData(t), input_buffer, buffer_length);
       t = TF_AllocateTensor(tf_datatype, dims.data(), static_cast<int>(dims.size()), buffer_length);
+      memcpy(TF_TensorData(t), input_buffer, buffer_length);
     }
     assert(TF_TensorByteSize(t) == buffer_length);
     assert(t != nullptr);
     feed_tensors_[test_data_id][input_id] = t;
   }
   std::chrono::duration<double> Run() override {
-    size_t input_len = feed_.size();
-    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(input_len));
+    //Randomly pick one OrtValueArray from feed_tensors_. (NOT ThreadSafe)
+    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(feed_tensors_.size() - 1));
     const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
     std::vector<TF_Tensor*>& feed_tensors = feed_tensors_.at(id);
 
@@ -206,6 +206,9 @@ class TensorflowTestSession : public TestSession {
                   output_tensors.data(), static_cast<int>(fetches_.size()), nullptr, 0, nullptr, s);
     auto end = std::chrono::high_resolution_clock::now();
     if (TF_GetCode(s) != TF_OK) ORT_THROW("run TF model failed:", TF_Message(s));
+    for (TF_Tensor* f : output_tensors) {
+      TF_DeleteTensor(f);
+    }
     TF_DeleteStatus(s);
     return end - start;
   }

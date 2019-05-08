@@ -12,9 +12,10 @@ namespace onnxruntime {
 namespace perftest {
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
-  const std::uniform_int_distribution<int>::param_type p(0, input_length);
+  //Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
+  const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
-  OrtValueArray* const input = test_inputs.at(id);
+  OrtValueArray* const input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
   ORT_THROW_ON_ERROR(OrtRun(session_object_, nullptr, input_names_.data(), input->Data(), input_names_.size(),
                             output_names_raw_ptr.data(), output_names_raw_ptr.size(), output_values_.data()));
@@ -30,7 +31,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo* m)
-    : rand_engine_(rd()), input_names_(m->GetInputCount()), input_length(m->GetInputCount()) {
+    : rand_engine_(rd()), input_names_(m->GetInputCount()), input_length_(m->GetInputCount()) {
   SessionOptionsWrapper sf(env);
   const bool enable_cpu_mem_arena = true;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
