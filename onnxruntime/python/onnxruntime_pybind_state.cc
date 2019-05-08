@@ -21,6 +21,7 @@
 #define BACKEND_OPENMP ""
 #endif
 
+
 #if USE_MKLDNN
 #define BACKEND_MKLDNN "-MKL-DNN"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
@@ -41,13 +42,21 @@
 #define BACKEND_NGRAPH ""
 #endif
 
+#if USE_OPENVINO
+#define BACKEND_OPENVINO "-OPENVINO"
+#else
+#define BACKEND_OPENVINO ""
+#endif
+
+
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
