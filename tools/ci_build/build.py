@@ -784,9 +784,6 @@ def main():
             if is_windows() or not os.path.exists(onnx_test_data_dir):
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data")
 
-            if args.use_openvino:
-               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False,1)
-
             if args.use_tensorrt:
               # Disable some onnx unit tests that TensorRT parser doesn't supported yet
               onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
@@ -797,8 +794,8 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, False, 1)
             elif args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', True, 1)
-            if args.use_openvino:
-               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False)
+            elif args.use_openvino:
+               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', False,1)
               # TODO: parallel executor test fails on MacOS
             else:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
