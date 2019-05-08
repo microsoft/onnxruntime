@@ -427,7 +427,7 @@ common::Status InferenceSession::Initialize() {
         first_provider->get()->Type() != onnxruntime::kCpuExecutionProvider) {
       LOGS(*session_logger_, ERROR) << "Parallel execution is only supported "
                                        "for the CPU Execution Provider currently.";
-      return common::Status(common::ONNXRUNTIME, common::FAIL,
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                             "Parallel execution is only supported "
                             "for the CPU Execution Provider currently.");
     }
