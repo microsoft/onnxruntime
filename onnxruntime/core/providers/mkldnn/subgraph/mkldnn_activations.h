@@ -17,7 +17,10 @@ template <typename T>
 class MklDnnRelu : public MklDnnKernel {
  public:
   MklDnnRelu(MklDnnNode& node,
-          MKLDNNExecutionProvider* provider, std ::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
+             MKLDNNExecutionProvider* provider,
+             std ::shared_ptr<MKLContext> mkl_context,
+             const NodeAttributes& attributes,
+             const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
@@ -100,7 +103,7 @@ class MklDnnRelu : public MklDnnKernel {
   }
 
   Status Bind(const ONNXRunTimeTensor* input_tensors,
-                 ONNXRunTimeTensor* const output_tensors) override {
+              ONNXRunTimeTensor* const output_tensors) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {

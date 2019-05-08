@@ -17,8 +17,11 @@ template <typename T>
 class MklDnnLrn : public MklDnnKernel {
  public:
   MklDnnLrn(MklDnnNode& node,
-         MKLDNNExecutionProvider* provider,
-         std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
+            MKLDNNExecutionProvider* provider,
+            std ::shared_ptr<MKLContext> mkl_context,
+            const NodeAttributes& attributes,
+            const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
+    ReadAttributes(attributes, attributes_prefix);
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
@@ -100,7 +103,7 @@ class MklDnnLrn : public MklDnnKernel {
   }
 
   Status Bind(const ONNXRunTimeTensor* input_tensors,
-                 ONNXRunTimeTensor* const output_tensors) override {
+              ONNXRunTimeTensor* const output_tensors) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {
@@ -114,8 +117,9 @@ class MklDnnLrn : public MklDnnKernel {
 
     return Status::OK();
   }
-  
-  void ReadAttributes(const std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>& attributes,
+
+ private:
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");
     if (attr != attributes.end() &&

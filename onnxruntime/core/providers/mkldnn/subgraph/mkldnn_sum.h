@@ -17,7 +17,10 @@ class MklDnnSum : public MklDnnKernel {
  public:
   explicit MklDnnSum(MklDnnNode& node,
                   MKLDNNExecutionProvider* provider,
-                  std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
+                     std ::shared_ptr<MKLContext> mkl_context,
+                     const NodeAttributes& attributes,
+                     const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
+    ReadAttributes(attributes, attributes_prefix);
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,

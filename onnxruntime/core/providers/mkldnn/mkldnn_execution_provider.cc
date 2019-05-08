@@ -327,7 +327,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(SubgraphVariables& sub_var, const No
 
   ONNX_NAMESPACE::AttributeProto ap;
   ap.set_s(subgraph_id);
-  // ap.add_strings(node_list.c_str());
+  ap.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   meta_def->attributes["subgraph_id"] = ap;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   sub_graph->nodes = sub_var.subgraph_node_indexes;

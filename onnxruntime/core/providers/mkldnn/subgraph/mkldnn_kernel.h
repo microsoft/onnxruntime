@@ -16,21 +16,14 @@ namespace mkl_dnn {
 class MklDnnKernel {
  public:
   explicit MklDnnKernel(MklDnnNode& node,
-                     MKLDNNExecutionProvider* provider,
-                     std::shared_ptr<MKLContext> mkl_context) {
+                        MKLDNNExecutionProvider* provider,
+                        std::shared_ptr<MKLContext> mkl_context) {
     mkl_context_ = mkl_context;
     mklnode_ptr_ = std::make_shared<MklDnnNode>(node);
     provider_ = provider;
     alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);
   }
   virtual ~MklDnnKernel(){};
-
-  virtual void ReadAttributes(const std::unordered_map<std::string,
-                                                       ONNX_NAMESPACE::AttributeProto>& attributes,
-                              const std::string attributes_prefix = "") {
-    ORT_UNUSED_PARAMETER(attributes);
-    ORT_UNUSED_PARAMETER(attributes_prefix);
-  }
 
   virtual Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
                                   mkldnn::engine& cpu_engine,
@@ -43,9 +36,15 @@ class MklDnnKernel {
   }
 
   virtual Status Bind(const ONNXRunTimeTensor* input_tensors,
-                         ONNXRunTimeTensor* const output_tensors) = 0;
+                      ONNXRunTimeTensor* const output_tensors) = 0;
 
  protected:
+  virtual void ReadAttributes(const NodeAttributes& attributes,
+                              const std::string attributes_prefix = "") {
+    ORT_UNUSED_PARAMETER(attributes);
+    ORT_UNUSED_PARAMETER(attributes_prefix);
+  }
+
   Status GetIntsAttr(ONNX_NAMESPACE::AttributeProto& proto, std::vector<int64_t>& values) {
     ORT_RETURN_IF_NOT(proto.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
     values.reserve(proto.ints_size());
@@ -91,8 +90,8 @@ class MklDnnKernel {
     // End of sub-graph. Allocate memory and get the output
     auto& y_dims = primitive_dst_shape_.GetDims();
     AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index,
-                          &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()),
-                          dtype);
+                         &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()),
+                         dtype);
     if (primitive_dst_format_ != ort_source_format_) {
       reorder_dst_mem_to_->set_data_handle(output_tensors[mklnode_ptr_->output_index].data);
     } else {

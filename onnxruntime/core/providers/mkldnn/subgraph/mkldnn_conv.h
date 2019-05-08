@@ -64,67 +64,11 @@ template <typename T>
 class MklDnnConv : public MklDnnKernel {
  public:
   MklDnnConv(MklDnnNode& node,
-          MKLDNNExecutionProvider* provider,
-          std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
-  }
-
-  void ReadAttributes(const std::unordered_map<std::string,
-                                               ONNX_NAMESPACE::AttributeProto>& attributes,
-                      const std::string attributes_prefix = "") override {
-    std::string auto_pad;
-    auto attr = attributes.find(attributes_prefix + "auto_pad");
-    if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-      auto_pad = attr->second.s();
-    }
-    auto_pad_ = (auto_pad != "") ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET;
-
-    kernel_shape_specified_ = false;
-    attr = attributes.find(attributes_prefix + "kernel_shape");
-    if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
-      Status status = GetIntsAttr(proto, kernel_shape_);
-      kernel_shape_specified_ = true;
-    }
-
-    attr = attributes.find(attributes_prefix + "strides");
-    if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
-      Status status = GetIntsAttr(proto, strides_);
-    }
-
-    bool attr_read = false;
-    attr = attributes.find(attributes_prefix + "pads");
-    if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
-      if (GetIntsAttr(proto, pads_) == Status::OK())
-        attr_read = true;
-    }
-    if (!attr_read) {
-      pads_.resize(kernel_shape_.size() * 2, 0);
-    }
-
-    attr_read = false;
-    attr = attributes.find(attributes_prefix + "dilations");
-    if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
-      if (GetIntsAttr(proto, dilations_) == Status::OK())
-        attr_read = true;
-    }
-    if (!attr_read) {
-      dilations_.resize(kernel_shape_.size(), 1);
-    }
-
-    attr_read = false;
-    attr = attributes.find(attributes_prefix + "group");
-    if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
-      if (GetIntAttr(proto, group_) == Status::OK())
-        attr_read = true;
-    }
-    if (!attr_read) {
-      group_ = 1;
-    }
+             MKLDNNExecutionProvider* provider,
+             std ::shared_ptr<MKLContext> mkl_context,
+             const NodeAttributes& attributes,
+             const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
+    ReadAttributes(attributes, attributes_prefix);
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
@@ -171,16 +115,16 @@ class MklDnnConv : public MklDnnKernel {
 
     if (kernel_rank + 2 != input_tensors[input_index + 1].ndim) {
       primitive_created_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape num_dims is not compatible with W num_dims.",
-                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                             " W: ", w_shape.ToString().c_str());
+                                           " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                           " W: ", w_shape.ToString().c_str());
       return primitive_created_;
     }
 
     for (size_t i = 0; i < kernel_rank; ++i) {
       if (kernel_shape[i] != w_shape[i + 2]) {
         primitive_created_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "kernel_shape is not compatible with W shape.",
-                               " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
-                               " W: ", w_shape.ToString().c_str());
+                                             " kernel_shape: ", TensorShape(kernel_shape).ToString().c_str(),
+                                             " W: ", w_shape.ToString().c_str());
         return primitive_created_;
       }
     }
@@ -418,7 +362,7 @@ class MklDnnConv : public MklDnnKernel {
   }
 
   Status Bind(const ONNXRunTimeTensor* input_tensors,
-                 ONNXRunTimeTensor* const output_tensors) {
+              ONNXRunTimeTensor* const output_tensors) {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     if (!primitive_created_.IsOK()) {
       // abort as MKLDNN cannot execute this. but
@@ -428,7 +372,7 @@ class MklDnnConv : public MklDnnKernel {
       auto xdim = input_tensors[input_index].ndim;
       AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
       return primitive_created_;
-	}
+    }
 
     const T* filter_data = reinterpret_cast<const T*>(input_tensors[input_index + 1].data);
     const T* bias_data = mklnode_ptr_->num_inputs == 3 ? reinterpret_cast<const T*>(input_tensors[input_index + 2].data) : nullptr;
@@ -462,6 +406,65 @@ class MklDnnConv : public MklDnnKernel {
       AllocateMemoryAndReorderIfNeeded(output_tensors, input_tensors[0].dtype);
     }
     return Status::OK();
+  }
+
+ private:
+  void ReadAttributes(const NodeAttributes& attributes,
+                      const std::string attributes_prefix = "") override {
+    std::string auto_pad;
+    auto attr = attributes.find(attributes_prefix + "auto_pad");
+    if (attr != attributes.end() &&
+        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
+      auto_pad = attr->second.s();
+    }
+    auto_pad_ = (auto_pad != "") ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET;
+
+    kernel_shape_specified_ = false;
+    attr = attributes.find(attributes_prefix + "kernel_shape");
+    if (attr != attributes.end()) {
+      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      Status status = GetIntsAttr(proto, kernel_shape_);
+      kernel_shape_specified_ = true;
+    }
+
+    attr = attributes.find(attributes_prefix + "strides");
+    if (attr != attributes.end()) {
+      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      Status status = GetIntsAttr(proto, strides_);
+    }
+
+    bool attr_read = false;
+    attr = attributes.find(attributes_prefix + "pads");
+    if (attr != attributes.end()) {
+      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      if (GetIntsAttr(proto, pads_) == Status::OK())
+        attr_read = true;
+    }
+    if (!attr_read) {
+      pads_.resize(kernel_shape_.size() * 2, 0);
+    }
+
+    attr_read = false;
+    attr = attributes.find(attributes_prefix + "dilations");
+    if (attr != attributes.end()) {
+      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      if (GetIntsAttr(proto, dilations_) == Status::OK())
+        attr_read = true;
+    }
+    if (!attr_read) {
+      dilations_.resize(kernel_shape_.size(), 1);
+    }
+
+    attr_read = false;
+    attr = attributes.find(attributes_prefix + "group");
+    if (attr != attributes.end()) {
+      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      if (GetIntAttr(proto, group_) == Status::OK())
+        attr_read = true;
+    }
+    if (!attr_read) {
+      group_ = 1;
+    }
   }
 
  private:

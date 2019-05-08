@@ -6,6 +6,8 @@
 #include <vector>
 #include <string>
 #include <map>
+#include "core/framework/op_node_proto_helper.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 

@@ -15,7 +15,10 @@ class MklDnnPool : public MklDnnKernel {
  public:
   MklDnnPool(MklDnnNode& node,
           MKLDNNExecutionProvider* provider,
-          std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
+             std ::shared_ptr<MKLContext> mkl_context,
+             const NodeAttributes& attributes,
+             const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
+    ReadAttributes(attributes, attributes_prefix);
     op_name_ = node.name;
   }
 
@@ -216,8 +219,8 @@ class MklDnnPool : public MklDnnKernel {
     return Status::OK();
   }
 
-  void ReadAttributes(const std::unordered_map<std::string,
-                                               ONNX_NAMESPACE::AttributeProto>& attributes,
+private:
+  void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
