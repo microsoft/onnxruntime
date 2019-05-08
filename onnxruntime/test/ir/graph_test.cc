@@ -626,7 +626,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
 
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ("This is an invalid graph. Error: the graph is not acyclic.", status.ErrorMessage());
+  EXPECT_EQ("This is an invalid model. Error: the graph is not acyclic.", status.ErrorMessage());
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
