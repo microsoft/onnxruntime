@@ -7,41 +7,46 @@
 
 namespace onnxruntime {
 namespace cuda {
-#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                                              \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                \
-      Slice,                                                                              \
-      kOnnxDomain,                                                                        \
-      1, 9,                                                                               \
-      TIND,                                                                               \
-      kCudaExecutionProvider,                                                             \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
-                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
-                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,false>);
+#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                                                                                                                                                                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                                                                                                                                              \
+      Slice,                                                                                                                                                                                                                                                            \
+      kOnnxDomain,                                                                                                                                                                                                                                                      \
+      1, 9,                                                                                                                                                                                                                                                             \
+      TIND,                                                                                                                                                                                                                                                             \
+      kCudaExecutionProvider,                                                                                                                                                                                                                                           \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).InputMemoryType<OrtMemTypeCPUInput>(2).InputMemoryType<OrtMemTypeCPUInput>(3).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+      Slice<TIND, false>);
 
-REGISTER_VERSIONED_TYPED_SLICE(int32_t) 
-REGISTER_VERSIONED_TYPED_SLICE(int64_t) 
-      
-#define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
-      DynamicSlice,                                                                       \
-      kOnnxDomain,                                                                        \
-      1,                                                                                  \
-      TIND,                                                                               \
-      kCudaExecutionProvider,                                                             \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
-                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
-                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,true>);
+REGISTER_VERSIONED_TYPED_SLICE(int32_t)
+REGISTER_VERSIONED_TYPED_SLICE(int64_t)
 
-REGISTER_TYPED_DYNAMICSLICE(int32_t) 
+#define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                                                                                                                                                                                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                                                                                                        \
+      DynamicSlice,                                                                                                                                                                                                                                                     \
+      kOnnxDomain,                                                                                                                                                                                                                                                      \
+      1,                                                                                                                                                                                                                                                                \
+      TIND,                                                                                                                                                                                                                                                             \
+      kCudaExecutionProvider,                                                                                                                                                                                                                                           \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).InputMemoryType<OrtMemTypeCPUInput>(2).InputMemoryType<OrtMemTypeCPUInput>(3).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+      Slice<TIND, true>);
+
+REGISTER_TYPED_DYNAMICSLICE(int32_t)
 REGISTER_TYPED_DYNAMICSLICE(int64_t)
 
-template<typename Tind, bool dynamic>
+#define REGISTER_TYPED_SLICE(TIND)                                                                                                                                                                                                                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                                                                                                        \
+      Slice,                                                                                                                                                                                                                                                            \
+      kOnnxDomain,                                                                                                                                                                                                                                                      \
+      10,                                                                                                                                                                                                                                                               \
+      TIND,                                                                                                                                                                                                                                                             \
+      kCudaExecutionProvider,                                                                                                                                                                                                                                           \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).InputMemoryType<OrtMemTypeCPUInput>(2).InputMemoryType<OrtMemTypeCPUInput>(3).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+      Slice<TIND, true>);
+
+REGISTER_TYPED_SLICE(int32_t)
+REGISTER_TYPED_SLICE(int64_t)
+
+template <typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
@@ -57,11 +62,11 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
     FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                        input_steps, input_dimensions, starts, steps, output_dims));
+                                          input_steps, input_dimensions, starts, steps, output_dims));
 
   } else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
-	                    input_dimensions, starts, output_dims));
+    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
+                                          input_dimensions, starts, output_dims));
   }
 
   TensorShape output_shape(output_dims);
@@ -94,13 +99,13 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   size_t element_size = input_tensor->DataType()->Size();
 
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
-                              gsl::narrow_cast<int32_t>(dimension_count),
-                              starts_buffer.GpuPtr(),
-                              input_strides.GpuPtr(),
-                              div_strides.GpuPtr(),
-                              input_tensor->DataRaw(),
-                              output_tensor->MutableDataRaw(),
-                              output_size));
+                                gsl::narrow_cast<int32_t>(dimension_count),
+                                starts_buffer.GpuPtr(),
+                                input_strides.GpuPtr(),
+                                div_strides.GpuPtr(),
+                                input_tensor->DataRaw(),
+                                output_tensor->MutableDataRaw(),
+                                output_size));
 
   return Status::OK();
 }
