@@ -432,7 +432,7 @@ common::Status InferenceSession::Initialize() {
 
         if (it->get()->Type() == onnxruntime::kCudaExecutionProvider) {
           LOGS(*session_logger_, ERROR) << "Parallel execution cannot be enabled "
-                                           "when CUDA execution provider is registeredas first priority.";
+                                           "when CUDA execution provider is registered as first priority.";
           return common::Status(common::ONNXRUNTIME, common::FAIL,
                                 "Parallel execution cannot be enabled "
                                 "when CUDA execution provider is registered as first priority.");
