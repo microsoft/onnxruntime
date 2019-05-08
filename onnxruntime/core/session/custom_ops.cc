@@ -29,8 +29,8 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API(OrtValue*, OrtKernelContext_GetInput, OrtKernelContext* context, _In_ size_t index) {
-  return reinterpret_cast<OrtValue*>(const_cast<onnxruntime::MLValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index)));
+ORT_API(const OrtValue*, OrtKernelContext_GetInput, const OrtKernelContext* context, _In_ size_t index) {
+  return reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
 };
 
 ORT_API(OrtValue*, OrtKernelContext_GetOutput, OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
@@ -58,7 +58,6 @@ constexpr OrtCustomOpApi g_custom_op_api = {
 };
 
 namespace onnxruntime {
-
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
     if (op_.version != 1)

@@ -115,7 +115,7 @@ To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkld
 To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
 
 ### nGraph
-ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`
+ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`.
 
 ### TensorRT
 ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
