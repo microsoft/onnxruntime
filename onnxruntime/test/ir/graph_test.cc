@@ -36,72 +36,72 @@ namespace test {
 
 static bool RegisterCustomSchemas() {
   OPERATOR_SCHEMA(Variable_DFS)
-	  .SetDoc("Input variable.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Input variable.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   OPERATOR_SCHEMA(Add_DFS)
-	  .SetDoc("Add two integers.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Input(1, "input_2", "docstr for input_2.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Add two integers.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Input(1, "input_2", "docstr for input_2.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   OPERATOR_SCHEMA(NoOp_DFS)
-	  .SetDoc("Operator doing nothing.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Operator doing nothing.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
 
   OPERATOR_SCHEMA(Variable_Fake)
-	  .SetDoc("Input variable.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Input variable.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   OPERATOR_SCHEMA(Add_Fake)
-	  .SetDoc("Add two integers.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Input(1, "input_2", "docstr for input_2.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Add two integers.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Input(1, "input_2", "docstr for input_2.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   OPERATOR_SCHEMA(NoOp_Fake)
-	  .SetDoc("Operator doing nothing.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Operator doing nothing.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
 
   OPERATOR_SCHEMA(Identity_Fake)
-	  .SetDoc("Identity.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Identity.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   OPERATOR_SCHEMA(Merge_Fake)
-	  .SetDoc("Merge.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Input(1, "input_2", "docstr for input_2.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
+      .SetDoc("Merge.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Input(1, "input_2", "docstr for input_2.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
 
   // we need more than 8 outputs to trigger the unordered_map that's used in Graph::SetGraphInputsOutputs to
   // re-allocate and re-order to prove the code works.
   OPERATOR_SCHEMA(Split_Fake)
-	  .SetDoc("Split.")
-	  .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
-	  .Output(1, "output_2", "docstr for output_2.", "tensor(int32)")
-	  .Output(2, "output_3", "docstr for output_3.", "tensor(int32)")
-	  .Output(3, "output_4", "docstr for output_4.", "tensor(int32)")
-	  .Output(4, "output_5", "docstr for output_5.", "tensor(int32)")
-	  .Output(5, "output_6", "docstr for output_6.", "tensor(int32)")
-	  .Output(6, "output_7", "docstr for output_7.", "tensor(int32)")
-	  .Output(7, "output_8", "docstr for output_8.", "tensor(int32)")
-	  .Output(8, "output_9", "docstr for output_9.", "tensor(int32)")
-	  .Output(9, "output_10", "docstr for output_10.", "tensor(int32)");
+      .SetDoc("Split.")
+      .Input(0, "input_1", "docstr for input_1.", "tensor(int32)")
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int32)")
+      .Output(1, "output_2", "docstr for output_2.", "tensor(int32)")
+      .Output(2, "output_3", "docstr for output_3.", "tensor(int32)")
+      .Output(3, "output_4", "docstr for output_4.", "tensor(int32)")
+      .Output(4, "output_5", "docstr for output_5.", "tensor(int32)")
+      .Output(5, "output_6", "docstr for output_6.", "tensor(int32)")
+      .Output(6, "output_7", "docstr for output_7.", "tensor(int32)")
+      .Output(7, "output_8", "docstr for output_8.", "tensor(int32)")
+      .Output(8, "output_9", "docstr for output_9.", "tensor(int32)")
+      .Output(9, "output_10", "docstr for output_10.", "tensor(int32)");
 
   OPERATOR_SCHEMA(Variable2_Fake)
-	  .SetDoc("Input variable.")
-	  .Input(0, "input_1", "docstr for input_1.", "T")
-	  .Output(0, "output_1", "docstr for output_1.", "T")
-	  .TypeConstraint("T", {"tensor(int32)", "tensor(float)"}, "input/output types");
+      .SetDoc("Input variable.")
+      .Input(0, "input_1", "docstr for input_1.", "T")
+      .Output(0, "output_1", "docstr for output_1.", "T")
+      .TypeConstraint("T", {"tensor(int32)", "tensor(float)"}, "input/output types");
 
   OPERATOR_SCHEMA(Max_Fake)
-	  .SetDoc("Add two integers.")
-	  .Input(0, "input_1", "docstr for input_1.", "T")
-	  .Input(1, "input_2", "docstr for input_2.", "T")
-	  .Input(2, "input_3", "docstr for input_3.", "T")
-	  .Output(0, "output_1", "docstr for output_1.", "T")
-	  .TypeConstraint("T", {"tensor(int32)", "tensor(float)"}, "input/output types");
+      .SetDoc("Add two integers.")
+      .Input(0, "input_1", "docstr for input_1.", "T")
+      .Input(1, "input_2", "docstr for input_2.", "T")
+      .Input(2, "input_3", "docstr for input_3.", "T")
+      .Output(0, "output_1", "docstr for output_1.", "T")
+      .TypeConstraint("T", {"tensor(int32)", "tensor(float)"}, "input/output types");
 
   return true;
 }
@@ -117,7 +117,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
   // Case 1: A normal graph.
   //                 SouceNode
   //                 /       \
-			//  node_1 (Variable)      node_2 (Variable)
+            //  node_1 (Variable)      node_2 (Variable)
   //                 \       /
   //                 node_3 (Add)
   //                     |
@@ -168,33 +168,33 @@ TEST(GraphTraversalTest, ReverseDFS) {
 
   std::vector<const Node*> from;
   for (auto& node : graph.Nodes()) {
-	if (node.OutputEdgesBegin() == node.OutputEdgesEnd()) {
-	  // This is a leaf node.
-	  from.push_back(&node);
-	}
+    if (node.OutputEdgesBegin() == node.OutputEdgesEnd()) {
+      // This is a leaf node.
+      from.push_back(&node);
+    }
   }
 
   std::vector<std::string> enter_leave_sequence;
 
   struct NodeCompareName {
-	bool operator()(const Node* n1, const Node* n2) const {
-	  return n1->Name() < n2->Name();
-	}
+    bool operator()(const Node* n1, const Node* n2) const {
+      return n1->Name() < n2->Name();
+    }
   };
 
   graph.ReverseDFSFrom(
-	  from,
-	  [&enter_leave_sequence](const Node* n) {
-		std::string s("enter:");
-		s += n->Name();
-		enter_leave_sequence.push_back(s);
-	  },
-	  [&enter_leave_sequence](const Node* n) {
-		std::string s("leave:");
-		s += n->Name();
-		enter_leave_sequence.push_back(s);
-	  },
-	  NodeCompareName());
+      from,
+      [&enter_leave_sequence](const Node* n) {
+        std::string s("enter:");
+        s += n->Name();
+        enter_leave_sequence.push_back(s);
+      },
+      [&enter_leave_sequence](const Node* n) {
+        std::string s("leave:");
+        s += n->Name();
+        enter_leave_sequence.push_back(s);
+      },
+      NodeCompareName());
 
   EXPECT_EQ(enter_leave_sequence.size(), 8);
   EXPECT_EQ("enter:node_4", enter_leave_sequence.at(0));
@@ -270,7 +270,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   // A normal graph.
   //                 SouceNode
   //                 /       \
-			//    node_1 (Variable)  node_2 (Variable)
+            //    node_1 (Variable)  node_2 (Variable)
   //                 \       /
   //                 node_3 (Add)
   //                     |
@@ -281,7 +281,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   std::vector<NodeArg*> outputs;
 
   std::unordered_map<std::string, std::pair<std::vector<NodeArg*>, std::vector<NodeArg*>>>
-	  expected_node_name_to_input_output_args;
+      expected_node_name_to_input_output_args;
 
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
@@ -336,20 +336,20 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   model2.reset(new Model(model_proto2));
   Graph& graph2 = model2->MainGraph();
   for (auto& node : graph2.Nodes()) {
-	auto node_name_to_input_output_iter = expected_node_name_to_input_output_args.find(node.Name());
-	EXPECT_FALSE(node_name_to_input_output_iter == expected_node_name_to_input_output_args.end());
+    auto node_name_to_input_output_iter = expected_node_name_to_input_output_args.find(node.Name());
+    EXPECT_FALSE(node_name_to_input_output_iter == expected_node_name_to_input_output_args.end());
 
-	EXPECT_EQ(node_name_to_input_output_iter->second.first.size(), node.InputDefs().size());
-	for (size_t i = 0; i < node_name_to_input_output_iter->second.first.size(); ++i) {
-	  EXPECT_EQ(node_name_to_input_output_iter->second.first[i]->Name(), node.InputDefs()[i]->Name());
-	  EXPECT_EQ(node_name_to_input_output_iter->second.first[i]->Type(), node.InputDefs()[i]->Type());
-	}
+    EXPECT_EQ(node_name_to_input_output_iter->second.first.size(), node.InputDefs().size());
+    for (size_t i = 0; i < node_name_to_input_output_iter->second.first.size(); ++i) {
+      EXPECT_EQ(node_name_to_input_output_iter->second.first[i]->Name(), node.InputDefs()[i]->Name());
+      EXPECT_EQ(node_name_to_input_output_iter->second.first[i]->Type(), node.InputDefs()[i]->Type());
+    }
 
-	EXPECT_EQ(node_name_to_input_output_iter->second.second.size(), node.OutputDefs().size());
-	for (size_t i = 0; i < node_name_to_input_output_iter->second.second.size(); ++i) {
-	  EXPECT_EQ(node_name_to_input_output_iter->second.second[i]->Name(), node.OutputDefs()[i]->Name());
-	  EXPECT_EQ(node_name_to_input_output_iter->second.second[i]->Type(), node.OutputDefs()[i]->Type());
-	}
+    EXPECT_EQ(node_name_to_input_output_iter->second.second.size(), node.OutputDefs().size());
+    for (size_t i = 0; i < node_name_to_input_output_iter->second.second.size(); ++i) {
+      EXPECT_EQ(node_name_to_input_output_iter->second.second[i]->Name(), node.OutputDefs()[i]->Name());
+      EXPECT_EQ(node_name_to_input_output_iter->second.second[i]->Type(), node.OutputDefs()[i]->Type());
+    }
   }
 }
 
@@ -367,7 +367,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   //                     |
 
   std::unordered_map<std::string, std::pair<std::vector<NodeArg*>, std::vector<NodeArg*>>>
-	  expected_node_name_to_input_output_args;
+      expected_node_name_to_input_output_args;
 
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
@@ -421,15 +421,15 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   bool seen2 = false;
 
   for (auto i : topological_order) {
-	auto node = graph.GetNode(i);
+    auto node = graph.GetNode(i);
 
-	if (node->Name() == "node_1") {
-	  EXPECT_TRUE(!seen2) << "node_1 should remain before node_2 after the topological sort.";
-	  seen1 = true;
-	} else if (node->Name() == "node_2") {
-	  EXPECT_TRUE(seen1) << "node_1 should be before node_2 after the topological sort.";
-	  seen2 = true;
-	}
+    if (node->Name() == "node_1") {
+      EXPECT_TRUE(!seen2) << "node_1 should remain before node_2 after the topological sort.";
+      seen1 = true;
+    } else if (node->Name() == "node_2") {
+      EXPECT_TRUE(seen1) << "node_1 should be before node_2 after the topological sort.";
+      seen2 = true;
+    }
   }
 }
 
@@ -442,7 +442,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   std::unordered_map<std::string, int> map;
 
   for (auto i = 0; i < 20; ++i) {
-	map.insert({std::to_string(i), i});
+    map.insert({std::to_string(i), i});
   }
 
   //               |         |
@@ -468,9 +468,9 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   std::vector<NodeArg*> split_outputs;
   std::vector<const NodeArg*> graph_outputs;
   for (int i = 0; i < 10; ++i) {
-	auto arg = &graph.GetOrCreateNodeArg("node_d_out_" + std::to_string(i + 1), &tensor_int32);
-	split_outputs.push_back(arg);
-	graph_outputs.push_back(arg);
+    auto arg = &graph.GetOrCreateNodeArg("node_d_out_" + std::to_string(i + 1), &tensor_int32);
+    split_outputs.push_back(arg);
+    graph_outputs.push_back(arg);
   }
   std::reverse(graph_outputs.begin(), graph_outputs.end());
   std::vector<NodeArg*> inputs;
@@ -496,18 +496,18 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   graph.AddNode("d", "Split_Fake", "d", inputs, split_outputs);
 
   auto validate_inputs_outputs = [&graph_outputs](const Graph& graph) {
-	auto inputs = graph.GetInputs();
-	auto outputs = graph.GetOutputs();
+    auto inputs = graph.GetInputs();
+    auto outputs = graph.GetOutputs();
 
-	ASSERT_TRUE(inputs.size() == 2);
+    ASSERT_TRUE(inputs.size() == 2);
 
-	EXPECT_TRUE(inputs[0]->Name() == "node_a_in_1");  // 'a' was added first
-	EXPECT_TRUE(inputs[1]->Name() == "node_b_in_1");
+    EXPECT_TRUE(inputs[0]->Name() == "node_a_in_1");  // 'a' was added first
+    EXPECT_TRUE(inputs[1]->Name() == "node_b_in_1");
 
-	ASSERT_TRUE(outputs.size() == 10);
-	for (int i = 0; i < 10; ++i) {
-	  EXPECT_TRUE(graph_outputs[i]->Name() == outputs[i]->Name());
-	}
+    ASSERT_TRUE(outputs.size() == 10);
+    for (int i = 0; i < 10; ++i) {
+      EXPECT_TRUE(graph_outputs[i]->Name() == outputs[i]->Name());
+    }
   };
   graph.SetInputs({&input_arg_a, &input_arg_b});
   graph.SetOutputs(graph_outputs);
@@ -626,7 +626,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
 
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ("This is an invalid model. Error: the graph is not acyclic.", status.ErrorMessage());
+  EXPECT_EQ("This is an invalid graph. Error: the graph is not acyclic.", status.ErrorMessage());
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
@@ -656,7 +656,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   // Case 1: A normal graph.
   //                         SourceNode
   //                   /         |         \
-			//  node_1 (Variable)  node_2 (Variable)  node_3 (Variable)
+            //  node_1 (Variable)  node_2 (Variable)  node_3 (Variable)
   //                   \         |         / (it's all 3 nodes above outputs to the one input of node_4)
   //                        node_4 (Max)
   //                             |
@@ -703,7 +703,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   std::unordered_set<std::string> expected_graph_inputs = {"node_1_in_1", "node_3_in_1"};
   EXPECT_EQ(2, graph.GetInputs().size());
   for (auto& graph_input : graph.GetInputs()) {
-	EXPECT_TRUE(expected_graph_inputs.find(graph_input->Name()) != expected_graph_inputs.end());
+    EXPECT_TRUE(expected_graph_inputs.find(graph_input->Name()) != expected_graph_inputs.end());
   }
   EXPECT_EQ(1, graph.GetOutputs().size());
   EXPECT_EQ("node_4_out_1", graph.GetOutputs()[0]->Name());
@@ -717,7 +717,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   auto& graph_proto = graph.ToGraphProto();
   EXPECT_EQ(2, graph_proto.input_size());
   for (auto& graphProtoInput : graph_proto.input()) {
-	EXPECT_TRUE(expected_graph_inputs.find(graphProtoInput.name()) != expected_graph_inputs.end());
+    EXPECT_TRUE(expected_graph_inputs.find(graphProtoInput.name()) != expected_graph_inputs.end());
   }
   EXPECT_EQ(1, graph_proto.output_size());
   EXPECT_EQ("node_4_out_1", graph_proto.output(0).name());
@@ -725,9 +725,9 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
 
 TEST(TestAddAttribute, AddTensorAttribute) {
   OPERATOR_SCHEMA(__Constant)
-	  .SetDoc("Constant Op.")
-	  .Attr(kConstantValue, "constant value", AttrType::AttributeProto_AttributeType_TENSOR)
-	  .Output(0, "output_1", "docstr for output_1.", "tensor(int64)");
+      .SetDoc("Constant Op.")
+      .Attr(kConstantValue, "constant value", AttrType::AttributeProto_AttributeType_TENSOR)
+      .Output(0, "output_1", "docstr for output_1.", "tensor(int64)");
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
   Model model("graph_1");
@@ -766,7 +766,7 @@ void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::
   attr.set_name(attr_name);
   attr.set_type(AttributeProto_AttributeType_INTS);
   for (auto v : attr_value) {
-	attr.add_ints(v);
+    attr.add_ints(v);
   }
   p_node.AddAttribute(attr_name, attr);
 }
