@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-struct MklNode {
+struct MklDnnNode {
   std::string name;
   int node_index = -1;
   int input_start_index = -1;  // start index in inputs()
@@ -41,7 +41,7 @@ struct MklNode {
 
 struct Subgraph {
   std::string subgraph_id;
-  std::vector<MklNode> mklnodes;
+  std::vector<MklDnnNode> mklnodes;
 };
 
 struct SubgraphVariables {

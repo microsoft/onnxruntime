@@ -8,16 +8,16 @@
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 #include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkl_kernel.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
 
 template <typename T>
-class MklRelu : public MklKernel {
+class MklDnnRelu : public MklDnnKernel {
  public:
-  MklRelu(MklNode& node,
-          MKLDNNExecutionProvider* provider, std ::shared_ptr<MKLContext> mkl_context) : MklKernel(node, provider, mkl_context) {
+  MklDnnRelu(MklDnnNode& node,
+          MKLDNNExecutionProvider* provider, std ::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,

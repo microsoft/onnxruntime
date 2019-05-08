@@ -92,21 +92,22 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
 
   // SUBGRAPH
  private:
-  bool RunSubgraph(const onnxruntime::GraphViewer& graph_viewer,
+  bool UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
                                             const std::vector<const KernelRegistry*>& kernel_registries,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const;
   void CreateMetaDef(SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
                      std::vector<std::unique_ptr<ComputeCapability>>& result) const;
 
  public:
-  const std::shared_ptr<Subgraph> GetMklSubgraph(const std::string& subgraph_id) {
-    auto iter = mkl_subgraphs_.find(subgraph_id);
-    if (iter != mkl_subgraphs_.end())
-      return iter->second;
-    return nullptr;
+  const std::shared_ptr<Subgraph> GetMklDnnSubgraph(const std::string& subgraph_id) {
+    return mkl_subgraphs_[subgraph_id];
   }
 
  private:
+  // supported MklDnn Operators
+  std::set<std::string> mkldnn_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
+                                       "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+
   mutable std::unordered_map<std::string, std::shared_ptr<Subgraph>> mkl_subgraphs_;
 };
 

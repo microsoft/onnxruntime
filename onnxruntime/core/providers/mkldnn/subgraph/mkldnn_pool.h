@@ -1,21 +1,21 @@
-// Copyright(C) 2019 Intel Corporation
-// Licensed under the MIT License
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 #include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkl_kernel.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
 template <typename T>
-class MklPool : public MklKernel {
+class MklDnnPool : public MklDnnKernel {
  public:
-  MklPool(MklNode& node,
+  MklDnnPool(MklDnnNode& node,
           MKLDNNExecutionProvider* provider,
-          std::shared_ptr<MKLContext> mkl_context) : MklKernel(node, provider, mkl_context) {
+          std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
     op_name_ = node.name;
   }
 

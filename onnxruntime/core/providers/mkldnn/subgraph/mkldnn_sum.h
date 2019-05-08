@@ -6,18 +6,18 @@
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 #include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/cpu/nn/autopad_type.h"
-#include "core/providers/mkldnn/subgraph/mkl_kernel.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
 
 template <typename T>
-class MklSum : public MklKernel {
+class MklDnnSum : public MklDnnKernel {
  public:
-  explicit MklSum(MklNode& node,
+  explicit MklDnnSum(MklDnnNode& node,
                   MKLDNNExecutionProvider* provider,
-                  std::shared_ptr<MKLContext> mkl_context) : MklKernel(node, provider, mkl_context) {
+                  std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
@@ -121,7 +121,6 @@ class MklSum : public MklKernel {
     int num_inputs = mklnode_ptr_->num_inputs;
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    std::vector<float> coeff;
     if (mklnode_ptr_->parent_nodes.size() == 0) {
       for (int i = 0; i < num_inputs; i++) {
         srcs_memory_[i].set_data_handle(input_tensors[input_index + i].data);

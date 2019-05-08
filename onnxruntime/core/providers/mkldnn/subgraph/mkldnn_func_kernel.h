@@ -7,13 +7,13 @@
 #include "core/common/exceptions.h"
 #include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkl_kernel.h"
-#include "core/providers/mkldnn/subgraph/MklConv.h"
-#include "core/providers/mkldnn/subgraph/MklBatchNorm.h"
-#include "core/providers/mkldnn/subgraph/MklActivations.h"
-#include "core/providers/mkldnn/subgraph/MklPool.h"
-#include "core/providers/mkldnn/subgraph/MklSum.h"
-#include "core/providers/mkldnn/subgraph/MklLrn.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_func_kernel.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_conv.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_batchnorm.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_activations.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_pool.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_sum.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_lrn.h"
 #include "core/providers/cpu/nn/autopad_type.h"
 
 namespace onnxruntime {
@@ -25,6 +25,8 @@ struct SubgraphParams {
   MKLDNNExecutionProvider* provider;
   std::shared_ptr<Subgraph> subgraph;
   std::shared_ptr<MKLContext> mkl_context;
+  std::string subgraph_id;
+  std::string subgraph_key;
 
   SubgraphParams() {}
 };
@@ -48,8 +50,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       if (mklnode.name == "Conv") {
         std::ostringstream os;
         os << "Conv-" << mklnode.node_index << "-";
-        std::shared_ptr<MklConv<T>> kernel;
-        kernel.reset(new MklConv<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnConv<T>> kernel;
+        kernel.reset(new MklDnnConv<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -58,8 +60,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "Conv-Relu") {
         std::ostringstream os;
         os << "Conv-" << mklnode.node_index << "-";
-        std::shared_ptr<MklConv<T>> kernel;
-        kernel.reset(new MklConv<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnConv<T>> kernel;
+        kernel.reset(new MklDnnConv<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         kernel->fuse_relu_ = true;
         for (auto& index : mklnode.parent_nodes) {
@@ -69,8 +71,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "Relu") {
         std::ostringstream os;
         os << "Relu-" << mklnode.node_index << "-";
-        std::shared_ptr<MklRelu<T>> kernel;
-        kernel.reset(new MklRelu<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnRelu<T>> kernel;
+        kernel.reset(new MklDnnRelu<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -79,8 +81,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "BatchNormalization") {
         std::ostringstream os;
         os << "BatchNormalization-" << mklnode.node_index << "-";
-        std::shared_ptr<MklBatchNorm<T>> kernel;
-        kernel.reset(new MklBatchNorm<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnBatchNorm<T>> kernel;
+        kernel.reset(new MklDnnBatchNorm<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -89,8 +91,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "BatchNormalization-Relu") {
         std::ostringstream os;
         os << "BatchNormalization-" << mklnode.node_index << "-";
-        std::shared_ptr<MklBatchNorm<T>> kernel;
-        kernel.reset(new MklBatchNorm<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnBatchNorm<T>> kernel;
+        kernel.reset(new MklDnnBatchNorm<T>(mklnode, params.provider, params.mkl_context));
         kernel->fuse_relu_ = true;
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
@@ -100,8 +102,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "MaxPool") {
         std::ostringstream os;
         os << "MaxPool-" << mklnode.node_index << "-";
-        std::shared_ptr<MklPool<T>> kernel;
-        kernel.reset(new MklPool<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnPool<T>> kernel;
+        kernel.reset(new MklDnnPool<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -110,8 +112,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "GlobalMaxPool") {
         std::ostringstream os;
         os << "GlobalMaxPool-" << mklnode.node_index << "-";
-        std::shared_ptr<MklPool<T>> kernel;
-        kernel.reset(new MklPool<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnPool<T>> kernel;
+        kernel.reset(new MklDnnPool<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -120,8 +122,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "AveragePool") {
         std::ostringstream os;
         os << "AveragePool-" << mklnode.node_index << "-";
-        std::shared_ptr<MklPool<T>> kernel;
-        kernel.reset(new MklPool<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnPool<T>> kernel;
+        kernel.reset(new MklDnnPool<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -130,8 +132,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "GlobalAveragePool") {
         std::ostringstream os;
         os << "GlobalAveragePool-" << mklnode.node_index << "-";
-        std::shared_ptr<MklPool<T>> kernel;
-        kernel.reset(new MklPool<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnPool<T>> kernel;
+        kernel.reset(new MklDnnPool<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -140,8 +142,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "Sum") {
         std::ostringstream os;
         os << "Sum-" << mklnode.node_index << "-";
-        std::shared_ptr<MklSum<T>> kernel;
-        kernel.reset(new MklSum<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnSum<T>> kernel;
+        kernel.reset(new MklDnnSum<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -150,8 +152,8 @@ class SubgraphPrimitive : public PrimitiveBase {
       } else if (mklnode.name == "LRN") {
         std::ostringstream os;
         os << "LRN-" << mklnode.node_index << "-";
-        std::shared_ptr<MklLrn<T>> kernel;
-        kernel.reset(new MklLrn<T>(mklnode, params.provider, params.mkl_context));
+        std::shared_ptr<MklDnnLrn<T>> kernel;
+        kernel.reset(new MklDnnLrn<T>(mklnode, params.provider, params.mkl_context));
         kernel->ReadAttributes(params.attributes, os.str());
         for (auto& index : mklnode.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -179,20 +181,23 @@ class SubgraphPrimitive : public PrimitiveBase {
   struct SubgraphContext {
     std::unique_ptr<mkldnn::stream> stream;
     std::vector<mkldnn::primitive> net;
-    std::vector<std::shared_ptr<MklKernel>> kernels;
+    std::vector<std::shared_ptr<MklDnnKernel>> kernels;
 
     SubgraphContext() : stream(nullptr) {}
   };
 
-  void Initialize(const ONNXRunTimeTensor* input_tensors) {
+  Status Initialize(const ONNXRunTimeTensor* input_tensors) {
     // Propagate mkldnn block format
     // dst format of current node to src format of next node
     mkldnn::memory::format source_format = mkldnn::memory::format::any;  // ONNXRuntime format
     for (auto& kernel : context_.kernels) {
       Status status = kernel->CreatePrimitives(input_tensors, cpu_engine_, context_.net, source_format);
       if (status.IsOK())
-		kernel->ReorderWeights(input_tensors, cpu_engine_);
+        kernel->ReorderWeights(input_tensors, cpu_engine_);
+      else
+        return status;
     }
+    return Status::OK();
   }
 
   SubgraphContext context_;
@@ -205,15 +210,22 @@ template <typename T>
 class SubgraphPrimitivePool : public PrimitivePool<T> {
  public:
   static SubgraphPrimitive<T>* Get(const ONNXRunTimeTensor* input_tensors,
-                                   const std::string subgraph_key,
                                    const SubgraphParams& params) {
+
+	auto xshape = input_tensors[0].shape;
+    auto xdim = input_tensors[0].ndim;
+    TensorShape x_shape(xshape, xdim);
+    mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+    std::string dims_str;
+    AddDimsToKey(dims_str, src_dims);
+
     SubgraphPrimitive<T>* primitive = dynamic_cast<SubgraphPrimitive<T>*>(
-        SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(subgraph_key));
+        SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));
 
     if (primitive == nullptr) {
       auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(input_tensors, params);
       primitive = subgraph_primitive.get();
-      SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(subgraph_key, std::move(subgraph_primitive));
+      SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
     }
     return primitive;
   }
@@ -230,9 +242,9 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
 }  // namespace
 
 template <typename T>
-class MkldnnCustomOp {
+class MkldnnFuncKernel {
  public:
-  explicit MkldnnCustomOp(const ComputeContext* context,
+  explicit MkldnnFuncKernel(const ComputeContext* context,
                           const std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>& attributes,
                           MKLDNNExecutionProvider* provider) {
     params_.provider = provider;
@@ -241,11 +253,11 @@ class MkldnnCustomOp {
 
     auto sub_it = attributes.find("subgraph_id");
     if (sub_it->second.type() != ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-      subgraph_id_ = sub_it->second.s();
-      params_.subgraph = provider->GetMklSubgraph(subgraph_id_);
+      params_.subgraph_id = sub_it->second.s();
+      params_.subgraph = provider->GetMklDnnSubgraph(params_.subgraph_id);
       std::ostringstream key_os;
-      key_os << subgraph_id_ << "-" << params_.subgraph->mklnodes.back().name << "-" << params_.subgraph->mklnodes.back().output_name;
-      subgraph_key_ = key_os.str();
+      key_os << params_.subgraph_id << "-" << params_.subgraph->mklnodes.back().name << "-" << params_.subgraph->mklnodes.back().output_name;
+      params_.subgraph_key = key_os.str();
     }
   }
 
@@ -256,18 +268,9 @@ class MkldnnCustomOp {
     ORT_UNUSED_PARAMETER(num_outputs);
 
     try {
-      auto xshape = input_tensors[0].shape;
-      auto xdim = input_tensors[0].ndim;
-      TensorShape x_shape(xshape, xdim);
-      mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
-      std::string key;
-      key.reserve(128);
-      key = subgraph_key_;
-      AddDimsToKey(key, src_dims);
-
-      SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(input_tensors, key, params_);
+      SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(input_tensors, params_);
       status = primitive->Compute(input_tensors, output_tensors);
-    } catch (mkldnn::error& e) {
+    } catch (const mkldnn::error& e) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
                              ", message: ", e.message.c_str());
     }
@@ -275,8 +278,6 @@ class MkldnnCustomOp {
   }
 
  private:
-  std::string subgraph_id_;
-  std::string subgraph_key_;
   SubgraphParams params_;
 };
 }  // namespace mkl_dnn

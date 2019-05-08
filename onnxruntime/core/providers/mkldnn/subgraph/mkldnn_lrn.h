@@ -1,5 +1,5 @@
-// Copyright(C) 2019 Intel Corporation
-// Licensed under the MIT License
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 #include "core/util/math.h"
@@ -8,17 +8,17 @@
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 #include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkl_kernel.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
 
 template <typename T>
-class MklLrn : public MklKernel {
+class MklDnnLrn : public MklDnnKernel {
  public:
-  MklLrn(MklNode& node,
+  MklDnnLrn(MklDnnNode& node,
          MKLDNNExecutionProvider* provider,
-         std::shared_ptr<MKLContext> mkl_context) : MklKernel(node, provider, mkl_context) {
+         std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
@@ -114,6 +114,7 @@ class MklLrn : public MklKernel {
 
     return Status::OK();
   }
+  
   void ReadAttributes(const std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto>& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "size");

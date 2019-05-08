@@ -6,7 +6,7 @@
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 #include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkl_kernel.h"
+#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
 #include "core/providers/mkldnn/memcpy_s.h"
 #include "core/util/math.h"
 
@@ -81,11 +81,11 @@ class BatchNormHelper {
 };
 
 template <typename T>
-class MklBatchNorm : public MklKernel {
+class MklDnnBatchNorm : public MklDnnKernel {
  public:
-  explicit MklBatchNorm(MklNode& node,
+  explicit MklDnnBatchNorm(MklDnnNode& node,
                         MKLDNNExecutionProvider* provider,
-                        std::shared_ptr<MKLContext> mkl_context) : MklKernel(node, provider, mkl_context) {
+                        std::shared_ptr<MKLContext> mkl_context) : MklDnnKernel(node, provider, mkl_context) {
   }
   void ReadAttributes(const std::unordered_map<std::string,
                                                ONNX_NAMESPACE::AttributeProto>& attributes,

@@ -13,17 +13,17 @@
 namespace onnxruntime {
 namespace mkl_dnn {
 
-class MklKernel {
+class MklDnnKernel {
  public:
-  explicit MklKernel(MklNode& node,
+  explicit MklDnnKernel(MklDnnNode& node,
                      MKLDNNExecutionProvider* provider,
                      std::shared_ptr<MKLContext> mkl_context) {
     mkl_context_ = mkl_context;
-    mklnode_ptr_ = std::make_shared<MklNode>(node);
+    mklnode_ptr_ = std::make_shared<MklDnnNode>(node);
     provider_ = provider;
     alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);
   }
-  virtual ~MklKernel(){};
+  virtual ~MklDnnKernel(){};
 
   virtual void ReadAttributes(const std::unordered_map<std::string,
                                                        ONNX_NAMESPACE::AttributeProto>& attributes,
@@ -144,7 +144,7 @@ class MklKernel {
   }
 
  public:
-  std::vector<std::shared_ptr<MklKernel>> parents_;
+  std::vector<std::shared_ptr<MklDnnKernel>> parents_;
   bool fuse_relu_ = false;
   bool fuse_sum_ = false;
   std::shared_ptr<mkldnn::memory> primitive_dst_mem_;
@@ -159,7 +159,7 @@ class MklKernel {
   // It can be ORT format (nchw) or blocked memory format from parent nce
   mkldnn::memory::format src_format_ = mkldnn::memory::format::any;
   // Pointer to MklNode of subgraph IR
-  std::shared_ptr<MklNode> mklnode_ptr_;
+  std::shared_ptr<MklDnnNode> mklnode_ptr_;
   // input format expected by primitive object
   mkldnn::memory::format primitive_src_format_ = mkldnn::memory::format::any;
 
