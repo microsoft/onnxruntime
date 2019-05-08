@@ -78,7 +78,7 @@
 
 1. Build the docker image from the Dockerfile in this repository
   ```
-  docker build -t {docker_image_name} .
+  docker build -t {docker_image_name} -f Dockerfile.server .
   ```
   
 2. Run the ONNXRuntime server with the image created in step 1
