@@ -1,0 +1,127 @@
+From 280fbc003ea2794adb24d6a81d42db838a793dd9 Mon Sep 17 00:00:00 2001
+From: Sang Ik Lee <sang.ik.lee@intel.com>
+Date: Mon, 15 Apr 2019 16:11:27 -0700
+Subject: [PATCH] CMAKE_CFG_INTDIR does not work at install time. Use
+ CMAKE_INSTALL_CONFIG_NAME on Windows.
+
+---
+ CMakeLists.txt                    |  7 ++++++-
+ cmake/external_mkldnn.cmake       | 22 +++++++++++-----------
+ cmake/external_tbb.cmake          |  4 ++--
+ cmake/external_tbb_prebuilt.cmake |  6 +++---
+ 4 files changed, 22 insertions(+), 17 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2a21ed3a3..a695e217f 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -390,12 +390,17 @@ endif()
+ 
+ set(NGRAPH_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/src/ngraph)
+ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR})
+-set(NGRAPH_LIBRARY_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR}/${CMAKE_CFG_INTDIR})
+ if(WIN32)
++    set(NGRAPH_LIBRARY_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR}/${CMAKE_CFG_INTDIR})
++    set(NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY ${NGRAPH_BUILD_DIR}/\${CMAKE_INSTALL_CONFIG_NAME})
+     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR})
+     set(NGRAPH_ARCHIVE_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR}/${CMAKE_CFG_INTDIR})
++    set(NGRAPH_ARCHIVE_INSTALLSRC_DIRECTORY ${NGRAPH_BUILD_DIR}/\${CMAKE_INSTALL_CONFIG_NAME})
+     set(CMAKE_PDB_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR})
+     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR})
++else()
++    set(NGRAPH_LIBRARY_OUTPUT_DIRECTORY ${NGRAPH_BUILD_DIR})
++    set(NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY ${NGRAPH_BUILD_DIR})
+ endif()
+ 
+ set(EXTERNAL_INSTALL_DIR ${CMAKE_BINARY_DIR}/external)
+diff --git a/cmake/external_mkldnn.cmake b/cmake/external_mkldnn.cmake
+index 25445bf0b..7874aca76 100644
+--- a/cmake/external_mkldnn.cmake
++++ b/cmake/external_mkldnn.cmake
+@@ -312,12 +312,12 @@ endif()
+ if(WIN32)
+     install(
+         FILES
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${MKLML_LIB}
+-            ${NGRAPH_ARCHIVE_OUTPUT_DIRECTORY}/${MKLML_IMPLIB}
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${OMP_LIB}
+-            ${NGRAPH_ARCHIVE_OUTPUT_DIRECTORY}/${OMP_IMPLIB}
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${MKLDNN_LIB}
+-            ${NGRAPH_ARCHIVE_OUTPUT_DIRECTORY}/${MKLDNN_IMPLIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${MKLML_LIB}
++            ${NGRAPH_ARCHIVE_INSTALLSRC_DIRECTORY}/${MKLML_IMPLIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${OMP_LIB}
++            ${NGRAPH_ARCHIVE_INSTALLSRC_DIRECTORY}/${OMP_IMPLIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${MKLDNN_LIB}
++            ${NGRAPH_ARCHIVE_INSTALLSRC_DIRECTORY}/${MKLDNN_IMPLIB}
+         DESTINATION
+             ${NGRAPH_INSTALL_LIB}
+         OPTIONAL
+@@ -325,9 +325,9 @@ if(WIN32)
+ else()
+     install(
+         FILES
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${MKLML_LIB}
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${OMP_LIB}
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${MKLDNN_LIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${MKLML_LIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${OMP_LIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${MKLDNN_LIB}
+         DESTINATION
+             ${NGRAPH_INSTALL_LIB}
+         OPTIONAL
+@@ -335,8 +335,8 @@ else()
+     if(NGRAPH_LIB_VERSIONING_ENABLE)
+         install(
+             FILES
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${MKLDNN_SHORT_LIB}
+-            ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${MKLDNN_FULL_LIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${MKLDNN_SHORT_LIB}
++            ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${MKLDNN_FULL_LIB}
+             DESTINATION
+                 ${NGRAPH_INSTALL_LIB}
+             OPTIONAL
+diff --git a/cmake/external_tbb.cmake b/cmake/external_tbb.cmake
+index 761c5b3bd..6960ea929 100644
+--- a/cmake/external_tbb.cmake
++++ b/cmake/external_tbb.cmake
+@@ -63,10 +63,10 @@ if(NGRAPH_TBB_ENABLE)
+                 ${TBB_BUILD_DIR}/${TBB_LIB}.${TBB_SOVER}
+              DESTINATION ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY})
+     endif()
+-    install(FILES ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${TBB_LIB}
++    install(FILES ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${TBB_LIB}
+         DESTINATION ${NGRAPH_INSTALL_LIB})
+     if(LINUX)
+-        install(FILES ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${TBB_LIB}.${TBB_SOVER}
++        install(FILES ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${TBB_LIB}.${TBB_SOVER}
+             DESTINATION ${NGRAPH_INSTALL_LIB})
+     endif()
+     add_library(libtbb INTERFACE)
+diff --git a/cmake/external_tbb_prebuilt.cmake b/cmake/external_tbb_prebuilt.cmake
+index 3e1d0688f..a1cf1922a 100644
+--- a/cmake/external_tbb_prebuilt.cmake
++++ b/cmake/external_tbb_prebuilt.cmake
+@@ -69,8 +69,8 @@ if (WIN32)
+         DEPENDEES download
+         )
+ 
+-    install(FILES ${NGRAPH_ARCHIVE_OUTPUT_DIRECTORY}/${TBB_LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}
+-                  ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${TBB_LIB_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX}
++    install(FILES ${NGRAPH_ARCHIVE_INSTALLSRC_DIRECTORY}/${TBB_LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}
++                  ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${TBB_LIB_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX}
+             DESTINATION ${NGRAPH_INSTALL_LIB})
+ elseif(APPLE)
+     set(TBB_LINK_LIBS
+@@ -82,7 +82,7 @@ elseif(APPLE)
+         COMMENT "Move tbb libraries to ngraph build directory"
+     )
+ 
+-    install(FILES ${NGRAPH_LIBRARY_OUTPUT_DIRECTORY}/${CMAKE_SHARED_LIBRARY_PREFIX}${TBB_LIB_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX}
++    install(FILES ${NGRAPH_LIBRARY_INSTALLSRC_DIRECTORY}/${CMAKE_SHARED_LIBRARY_PREFIX}${TBB_LIB_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX}
+             DESTINATION ${NGRAPH_INSTALL_LIB})
+ endif()
+ 
+-- 
+2.13.0.windows.1
+

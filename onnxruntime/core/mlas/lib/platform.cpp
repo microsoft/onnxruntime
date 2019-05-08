@@ -96,6 +96,7 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
+    this->ErfKernelRoutine = MlasErfKernel;
     this->NchwcBlockSize = 8;
 #endif
 
@@ -179,6 +180,7 @@ Return Value:
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
+                this->ErfKernelRoutine = MlasErfKernelFma3;
             }
 
 #endif
