@@ -1,381 +1,304 @@
 {
-  "DependencyDefinitions": {
-    "direct": "The module is built and included as part of the binary (either the official binary or test binary)",
-    "indirect": "This dependency was brought in by one of the other direct dependencies",
-    "code": "Only parts of the code from this dependency is included as part of the binary",
-    "build_flavor": "Default is DLL or .so or .dylib contained in NuGet pkgs."
-  },
-  "Registrations" : [
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "e7e1482087f58913b80a20b04d5c58d9d6d90155",
-          "repositoryUrl" : "https://github.com/HowardHinnant/date.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
+   "Registrations":[
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"e7e1482087f58913b80a20b04d5c58d9d6d90155",
+               "repositoryUrl":"https://github.com/HowardHinnant/date.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
+               "repositoryUrl":"https://github.com/google/gemmlowp.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"9bda90b7e5e08c4c37a832d0cea218aed6af6470",
+               "repositoryUrl":"https://github.com/google/googletest.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"cee3125af7208258d024a75e24f73977eddaec5b",
+               "repositoryUrl":"https://github.com/Microsoft/GSL.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"8f50e4463c2c7ba9b3f580c61ca21abc91197b7c",
+               "repositoryUrl":"https://github.com/google/nsync.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef",
+               "repositoryUrl":"https://github.com/onnx/onnx.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"e776aa0275e293707b6a0901e0e8d8a8a3679508",
+               "repositoryUrl":"https://github.com/google/benchmark.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"a1041190c8b8ff0cd9e2f0752248ad5e3789ea0c",
+               "repositoryUrl":"https://github.com/pybind/pybind11.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
+               "repositoryUrl":"https://github.com/wjakob/clang-cindex-python3.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
+               "repositoryUrl":"https://github.com/google/benchmark.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"c3bb0ee2a63279a803aaad956b9b26d74bf9e6e2",
+               "repositoryUrl":"https://github.com/google/googletest.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"c2b36154778503a509a70a3b5309b201969eccab",
+               "repositoryUrl":"https://github.com/dmlc/tvm.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"e4a4c02764d37c9c3db0d64c4996651a3ef9513c",
+               "repositoryUrl":"https://github.com/dmlc/HalideIR.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"bee4d1dd8dc1ee4a1fd8fa6a96476c2f8b7492a3",
+               "repositoryUrl":"https://github.com/dmlc/dlpack.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"4d49691f1a9d944c3b0aa5e63f1db3cad1f941f8",
+               "repositoryUrl":"https://github.com/dmlc/dmlc-core.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"1456fe2fac0cd074bbbb8630ba003a7c325d015b",
+               "repositoryUrl":"https://github.com/eigenteam/eigen-git-mirror.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"e02b83cc5e3c4d30f93dba945162e3aa58d962d6",
+               "repositoryUrl":"https://github.com/jemalloc/jemalloc.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"7de7e5d02bf687f971e7668963649728356e0c20",
+               "repositoryUrl":"https://github.com/intel/mkl-dnn.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"d860915b0198ddb96f93e9e97a789af156544dc6",
+               "repositoryUrl":"https://github.com/tensorflow/tensorflow.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"eddf9023206dc40974c26f589ee2ad63a4227a1e",
+               "repositoryUrl":"https://github.com/glennrp/libpng.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"217f52fb121ef92491e5d5f71394b07ce4ead1d0",
+               "repositoryUrl":"https://github.com/KjellKod/g3log.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"50893291621658f355bc5b4d450a8d06a563053d",
+               "repositoryUrl":"https://github.com/madler/zlib.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"d264a2603493fecda607c1d1cda87fedba77d36b",
+               "repositoryUrl":"https://github.com/Microsoft/CNTK.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"971e2e89d08deeae0139d3011d15646fdac13c92",
+               "repositoryUrl":"https://github.com/numpy/numpy.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"90537289a04ef5d572496240e2ac3a881be518d2",
+               "repositoryUrl":"https://github.com/pytorch/pytorch.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
+               "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
+            }
+         }    
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+               "repositoryUrl":"https://github.com/google/re2.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "repositoryUrl":"https://github.com/protocolbuffers/protobuf.git"
+              }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
+               "repositoryUrl":"https://github.com/BVLC/caffe.git"
+              }
+         }
+      },
+      {
+         "component":{
+            "Type":"other",
+            "Other":{
+               "Name":"LLVM",
+               "Version":"6.0.1",
+               "DownloadUrl":"https://releases.llvm.org/6.0.1/llvm-6.0.1.src.tar.xz"
+            }
+         }
+      },
+      {
+         "component":{
+            "Type":"other",
+            "Other":{
+               "Name":"FreeBSD GetOpt",
+               "Version":"12.0.0",
+               "DownloadUrl":"https://svnweb.freebsd.org/base/release/12.0.0/lib/libc/stdlib/getopt.c?revision=341707&view=co"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"c8ebe0da0776c1a6347139b074a901bd57fae499",
+               "repositoryUrl":"https://github.com/onnx/onnx-tensorrt.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"950fbf183274ab7d2092f99bab6c809ae87c7054",
+               "repositoryUrl":"https://github.com/NervanaSystems/ngraph.git"
+            }
+         }
       }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
-          "repositoryUrl" : "https://github.com/google/gemmlowp.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "9bda90b7e5e08c4c37a832d0cea218aed6af6470",
-          "repositoryUrl" : "https://github.com/google/googletest.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "cee3125af7208258d024a75e24f73977eddaec5b",
-          "repositoryUrl" : "https://github.com/Microsoft/GSL.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "8f50e4463c2c7ba9b3f580c61ca21abc91197b7c",
-          "repositoryUrl" : "https://github.com/google/nsync.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef",
-          "repositoryUrl" : "https://github.com/onnx/onnx.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "e776aa0275e293707b6a0901e0e8d8a8a3679508",
-          "repositoryUrl" : "https://github.com/google/benchmark.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "a1041190c8b8ff0cd9e2f0752248ad5e3789ea0c",
-          "repositoryUrl" : "https://github.com/pybind/pybind11.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes",
-        "build_flavor" : "python"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
-          "repositoryUrl" : "https://github.com/wjakob/clang-cindex-python3.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes",
-        "build_flavor" : "python"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
-          "repositoryUrl" : "https://github.com/google/benchmark.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "c3bb0ee2a63279a803aaad956b9b26d74bf9e6e2",
-          "repositoryUrl" : "https://github.com/google/googletest.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "c2b36154778503a509a70a3b5309b201969eccab",
-          "repositoryUrl" : "https://github.com/dmlc/tvm.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "e4a4c02764d37c9c3db0d64c4996651a3ef9513c",
-          "repositoryUrl" : "https://github.com/dmlc/HalideIR.git"
-        },
-        "dep_type" : "indirect",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "bee4d1dd8dc1ee4a1fd8fa6a96476c2f8b7492a3",
-          "repositoryUrl" : "https://github.com/dmlc/dlpack.git"
-        },
-        "dep_type" : "indirect",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "4d49691f1a9d944c3b0aa5e63f1db3cad1f941f8",
-          "repositoryUrl" : "https://github.com/dmlc/dmlc-core.git"
-        },
-        "dep_type" : "indirect",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "1456fe2fac0cd074bbbb8630ba003a7c325d015b",
-          "repositoryUrl" : "https://github.com/eigenteam/eigen-git-mirror.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "e02b83cc5e3c4d30f93dba945162e3aa58d962d6",
-          "repositoryUrl" : "https://github.com/jemalloc/jemalloc.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "7de7e5d02bf687f971e7668963649728356e0c20",
-          "repositoryUrl" : "https://github.com/intel/mkl-dnn.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes",
-        "build_flavor" : "mkldnn"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "d860915b0198ddb96f93e9e97a789af156544dc6",
-          "repositoryUrl" : "https://github.com/tensorflow/tensorflow.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "eddf9023206dc40974c26f589ee2ad63a4227a1e",
-          "repositoryUrl" : "https://github.com/glennrp/libpng.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "217f52fb121ef92491e5d5f71394b07ce4ead1d0",
-          "repositoryUrl" : "https://github.com/KjellKod/g3log.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "50893291621658f355bc5b4d450a8d06a563053d",
-          "repositoryUrl" : "https://github.com/madler/zlib.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "d264a2603493fecda607c1d1cda87fedba77d36b",
-          "repositoryUrl" : "https://github.com/Microsoft/CNTK.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "971e2e89d08deeae0139d3011d15646fdac13c92",
-          "repositoryUrl" : "https://github.com/numpy/numpy.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "90537289a04ef5d572496240e2ac3a881be518d2",
-          "repositoryUrl" : "https://github.com/pytorch/pytorch.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "7389dbac82d362f296dc2746f10e43ffa1615660",
-          "repositoryUrl" : "https://github.com/scikit-learn/scikit-learn.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
-          "repositoryUrl" : "https://github.com/google/re2.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
-          "repositoryUrl" : "https://github.com/protocolbuffers/protobuf.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
-          "repositoryUrl" : "https://github.com/BVLC/caffe.git"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "Type" : "other",
-        "Other" : {
-          "Name" : "LLVM",
-          "Version" : "6.0.1",
-          "DownloadUrl" : "https://releases.llvm.org/6.0.1/llvm-6.0.1.src.tar.xz"
-        },
-        "dep_type" : "direct",
-        "distributed": "no"
-      }
-    },
-    {
-      "component" : {
-        "Type" : "other",
-        "Other" : {
-          "Name" : "FreeBSD GetOpt",
-          "Version" : "12.0.0",
-          "DownloadUrl" : "https://svnweb.freebsd.org/base/release/12.0.0/lib/libc/stdlib/getopt.c?revision=341707&view=co"
-        },
-        "dep_type" : "code",
-        "distributed": "yes"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "c8ebe0da0776c1a6347139b074a901bd57fae499",
-          "repositoryUrl" : "https://github.com/onnx/onnx-tensorrt.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes",
-        "build_flavor" : "tensorrt"
-      }
-    },
-    {
-      "component" : {
-        "type" : "git",
-        "git" : {
-          "commitHash" : "950fbf183274ab7d2092f99bab6c809ae87c7054",
-          "repositoryUrl" : "https://github.com/NervanaSystems/ngraph.git"
-        },
-        "dep_type" : "direct",
-        "distributed": "yes",
-        "build_flavor" : "ngraph"
-      }
-    }
-  ],
-  "Version" : 1
+   ],
+   "Version":1
 }
