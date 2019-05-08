@@ -15,13 +15,13 @@ class OnnxRuntimeTestSession : public TestSession {
                          const TestModelInfo* m);
 
   void PreLoadTestData(size_t test_data_id, size_t input_id, OrtValue* value) override {
-    if (test_inputs.size() < test_data_id + 1) {
-      test_inputs.resize(test_data_id + 1);
+    if (test_inputs_.size() < test_data_id + 1) {
+      test_inputs_.resize(test_data_id + 1);
     }
-    if (test_inputs.at(test_data_id) == nullptr) {
-      test_inputs[test_data_id] = new OrtValueArray(input_length);
+    if (test_inputs_.at(test_data_id) == nullptr) {
+      test_inputs_[test_data_id] = new OrtValueArray(input_length_);
     }
-    test_inputs[test_data_id]->Set(input_id, value);
+    test_inputs_[test_data_id]->Set(input_id, value);
   }
 
   ~OnnxRuntimeTestSession() override {
@@ -38,14 +38,14 @@ class OnnxRuntimeTestSession : public TestSession {
   OrtSession* session_object_ = nullptr;
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
-  std::vector<OrtValueArray*> test_inputs;
+  std::vector<OrtValueArray*> test_inputs_;
   std::vector<std::string> output_names_;
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
   std::vector<const char*> output_names_raw_ptr;
   std::vector<OrtValue*> output_values_;
   std::vector<char*> input_names_;
-  int input_length;
+  const int input_length_;
 };
 
 }  // namespace perftest
