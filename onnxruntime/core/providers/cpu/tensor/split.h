@@ -10,12 +10,10 @@
 
 namespace onnxruntime {
 
-class Split final : public OpKernel {
- public:
-  Split(const OpKernelInfo& info) : OpKernel(info) {
-    // required with default of 0
-    if (!info.GetAttr("axis", &axis_).IsOK())
-      ORT_THROW("Missing 'axis' attribute value");
+class SplitBase {
+ protected:
+  SplitBase(const OpKernelInfo& info) {
+    axis_ = info.GetAttrOrDefault<int64_t>("axis", 0);
 
     // optional
     if (info.GetAttrs("split", split_sizes_).IsOK()) {
@@ -25,15 +23,28 @@ class Split final : public OpKernel {
     }
   }
 
+  Status PrepareForCompute(const TensorShape& input_shape,
+                           const int num_outputs,
+                           int64_t& axis,
+                           int& before_dims,
+                           int& after_dims_including_split_axis,
+                           int& after_dims_excluding_split,
+                           std::vector<int64_t>& split_sizes) const;
+
+  int64_t axis_;
+  std::vector<int64_t> split_sizes_;
+  int64_t split_size_sum_ = 0;
+};
+
+class Split final : public OpKernel, public SplitBase {
+ public:
+  Split(const OpKernelInfo& info) : OpKernel(info), SplitBase(info) {}
+
   Status Compute(OpKernelContext* context) const override;
 
  private:
   template <typename T>
   Status ComputeImpl(OpKernelContext& context, const Tensor& input) const;
-
-  int64_t axis_;
-  std::vector<int64_t> split_sizes_;
-  int64_t split_size_sum_ = 0;
 };
 
 }  // namespace onnxruntime
