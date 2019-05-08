@@ -422,22 +422,14 @@ common::Status InferenceSession::Initialize() {
                                                    std::make_unique<CPUExecutionProvider>(epi)));
     }
 
-    if (!session_options_.enable_sequential_execution) {
-      for (auto it = execution_providers_.begin(); it != execution_providers_.end(); ++it) {
-        // very rare case - user has registered CPU provider first -
-        // so parallel execution is still possible as all nodes will get assigned CPU provider
-        if (it->get()->Type() == onnxruntime::kCpuExecutionProvider) {
-          break;
-        }
-
-        if (it->get()->Type() == onnxruntime::kCudaExecutionProvider) {
-          LOGS(*session_logger_, ERROR) << "Parallel execution cannot be enabled "
-                                           "when CUDA execution provider is registered as first priority.";
-          return common::Status(common::ONNXRUNTIME, common::FAIL,
-                                "Parallel execution cannot be enabled "
-                                "when CUDA execution provider is registered as first priority.");
-        }
-      }
+    const auto first_provider = std::cbegin(execution_providers_);
+    if (!session_options_.enable_sequential_execution &&
+        first_provider->get()->Type() != onnxruntime::kCpuExecutionProvider) {
+      LOGS(*session_logger_, ERROR) << "Parallel execution is only supported "
+                                       "for the CPU Execution Provider currently.";
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Parallel execution is only supported "
+                            "for the CPU Execution Provider currently.");
     }
 
     // add predefined transformers
