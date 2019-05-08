@@ -1459,7 +1459,6 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // Type error in input model/graph:
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
-                        "This is an invalid model. "
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
                         ") bound to different types (" + *(param_to_type_iter->second) +
                         " and " + *(input_def->Type()) +
