@@ -572,7 +572,13 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
 
 
 def run_server_tests(build_dir, configs):
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    if hasattr(sys, 'real_prefix'):
+        # In virtualenv
+        run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    else:
+        # Outside virtualenv
+        run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         if is_windows():
