@@ -8,7 +8,8 @@
 #include <vector>
 #include <algorithm>
 #include <mutex>
-
+#include <iostream>
+#include <random>
 // onnxruntime dependencies
 #include <core/common/common.h>
 #include <core/common/status.h>
@@ -72,7 +73,7 @@ struct PerformanceResult {
 
 class PerformanceRunner {
  public:
-  PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config);
+  PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config, std::random_device& rd);
 
   ~PerformanceRunner();
   Status Run();
@@ -87,7 +88,21 @@ class PerformanceRunner {
 
  private:
   bool Initialize();
-  Status RunOneIteration(bool isWarmup = false);
+
+  template <bool isWarmup>
+  Status RunOneIteration() {
+    std::chrono::duration<double> duration_seconds = session_->Run();
+    if (!isWarmup) {
+      std::lock_guard<std::mutex> guard(results_mutex_);
+      performance_result_.time_costs.emplace_back(duration_seconds.count());
+      performance_result_.total_time_cost += duration_seconds.count();
+      if (performance_test_config_.run_config.f_verbose) {
+        std::cout << "iteration:" << performance_result_.time_costs.size() << ","
+                  << "time_cost:" << performance_result_.time_costs.back() << std::endl;
+      }
+    }
+    return Status::OK();
+  }
 
   Status FixDurationTest();
   Status RepeatedTimesTest();
@@ -96,14 +111,14 @@ class PerformanceRunner {
 
   inline Status RunFixDuration() {
     while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
-      ORT_RETURN_IF_ERROR(RunOneIteration());
+      ORT_RETURN_IF_ERROR(RunOneIteration<false>());
     }
     return Status::OK();
   }
 
   inline Status RunRepeatedTimes() {
     for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
-      ORT_RETURN_IF_ERROR(RunOneIteration());
+      ORT_RETURN_IF_ERROR(RunOneIteration<false>());
     }
     return Status::OK();
   }
@@ -113,7 +128,6 @@ class PerformanceRunner {
   PerformanceTestConfig performance_test_config_;
   TestModelInfo* test_model_info_;
   std::unique_ptr<TestSession> session_;
-  OrtValueArray inputs_;
   HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
 
