@@ -422,6 +422,15 @@ common::Status InferenceSession::Initialize() {
                                                    std::make_unique<CPUExecutionProvider>(epi)));
     }
 
+    if (!session_options_.enable_sequential_execution &&
+        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
+      LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
+                                       "for the registered CUDA Execution Provider.";
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "Parallel execution is currently not supported "
+                            "for the registered CUDA Execution Provider.");
+    }
+
     // add predefined transformers
     AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level, transformers_to_enable_);
 
