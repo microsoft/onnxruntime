@@ -8,6 +8,7 @@ jobs:
       displayName: 'Clean untagged docker images'
       inputs:
         script: |
+          docker container prune -f
           docker image prune -f
         workingDirectory: $(Build.BinariesDirectory)
       continueOnError: true
