@@ -1051,7 +1051,7 @@ Example 4:
           "Constrain to tensor(int32).")
       .SetDoc(R"DOC(The Unique.)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicPad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Pad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr(
@@ -1084,65 +1084,65 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-    // Type inference
-    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-    // Shape inference needs the input data shape
-    if (!hasNInputShapes(ctx, 1)) {
-      return;
-    }
-    const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-    const auto input_rank = input_shape.dim_size();
-
-    // Infer output shape if 'pads' tensor is available
-    const auto* pads_initializer = ctx.getInputData(1);
-    if (nullptr != pads_initializer) {
-      const auto& pads_shape = ctx.getInputType(1)->tensor_type().shape();
-      if ((pads_initializer->dims_size() != 1 &&
-           pads_initializer->dims_size() != 2) ||
-          (pads_initializer->dims_size() == 2 &&
-           pads_shape.dim((int)0).dim_value() != 1) ||
-          pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
-        fail_shape_inference(
-            "'pads' input must be a 1D (shape: [input_rank]) "
-            "or 2D tensor (shape: [1, input_rank]) of type int64");
-
-      // make a copy of the returned const vector - may have to resize
-      // this in next step
-      std::vector<int64_t> pads_data;
-      if (pads_initializer->has_raw_data())
-        return;
-      else
-        pads_data.insert(
-            pads_data.end(),
-            pads_initializer->int64_data().begin(),
-            pads_initializer->int64_data().end());
-
-      // fill with zeros if needed to reach appropriate size
-      if (pads_data.size() != static_cast<size_t>(2 * input_rank))
-        pads_data.resize(2 * input_rank, 0);
-
-      const auto& output_shape =
-          ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-      for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-        const auto& input_dim = input_shape.dim((int)i);
-        auto* output_dim = output_shape->add_dim();
-        if (input_dim.has_dim_value()) {
-          output_dim->set_dim_value(
-              input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
-        } else if (pads_data[i] + pads_data[i + input_rank] == 0) {
-          *output_dim = input_dim;
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference needs the input data shape
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
         }
-      }
-    } else {
-      // Infer ouput shapes' rank in any case
-      auto* output_shape_0 = getOutputShape(ctx, 0);
-      for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-        output_shape_0->add_dim();
-      }
-    }
-    return;
-    })
-    .SetDoc(R"DOC(
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        const auto input_rank = input_shape.dim_size();
+
+        // Infer output shape if 'pads' tensor is available
+        const auto* pads_initializer = ctx.getInputData(1);
+        if (nullptr != pads_initializer) {
+          const auto& pads_shape = ctx.getInputType(1)->tensor_type().shape();
+          if ((pads_initializer->dims_size() != 1 &&
+               pads_initializer->dims_size() != 2) ||
+              (pads_initializer->dims_size() == 2 &&
+               pads_shape.dim((int)0).dim_value() != 1) ||
+              pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
+            fail_shape_inference(
+                "'pads' input must be a 1D (shape: [input_rank]) "
+                "or 2D tensor (shape: [1, input_rank]) of type int64");
+
+          // make a copy of the returned const vector - may have to resize
+          // this in next step
+          std::vector<int64_t> pads_data;
+          if (pads_initializer->has_raw_data())
+            return;
+          else
+            pads_data.insert(
+                pads_data.end(),
+                pads_initializer->int64_data().begin(),
+                pads_initializer->int64_data().end());
+
+          // fill with zeros if needed to reach appropriate size
+          if (pads_data.size() != static_cast<size_t>(2 * input_rank))
+            pads_data.resize(2 * input_rank, 0);
+
+          const auto& output_shape =
+              ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+            const auto& input_dim = input_shape.dim((int)i);
+            auto* output_dim = output_shape->add_dim();
+            if (input_dim.has_dim_value()) {
+              output_dim->set_dim_value(
+                  input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
+            } else if (pads_data[i] + pads_data[i + input_rank] == 0) {
+              *output_dim = input_dim;
+            }
+          }
+        } else {
+          // Infer ouput shapes' rank in any case
+          auto* output_shape_0 = getOutputShape(ctx, 0);
+          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+            output_shape_0->add_dim();
+          }
+        }
+        return;
+      })
+      .SetDoc(R"DOC(
             Given `data` tensor, pads, mode, and value.
             Example:
             Insert 0 pads to the beginning of the second dimension.

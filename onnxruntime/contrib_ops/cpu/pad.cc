@@ -7,14 +7,14 @@
 #ifdef _MSC_VER
 #pragma warning(disable : 4996)
 #endif
-#include "dynamic_pad.h"
+#include "pad.h"
 #include <vector>
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_OPERATOR_KERNEL_EX(DynamicPad,
+ONNX_OPERATOR_KERNEL_EX(Pad,
                         kMSDomain,
                         1,
                         kCpuExecutionProvider,

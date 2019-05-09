@@ -6,10 +6,10 @@
 
 namespace onnxruntime {
 namespace test {
-// Disable TensorRT on some of the tests because only constant mode and value 0 is supported for "DynamicPad" node
+// Disable TensorRT on some of the tests because only constant mode and value 0 is supported for "Pad" node
 
-TEST(TensorOpTest, DynamicPad_Spec_Example) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Spec_Example) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {3, 2}, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f});
   test.AddInput<int64_t>("pads", {4}, std::vector<int64_t>{0, 2, 0, 0});
   // test.AddInput<float>("value", {1}, {0.0f});
@@ -17,8 +17,8 @@ TEST(TensorOpTest, DynamicPad_Spec_Example) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Constant_1D) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Constant_1D) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {2}, {1.0f, 2.0f});
   test.AddInput<int64_t>("pads", {2}, std::vector<int64_t>{1, 2});
   test.AddInput<float>("value", {1}, {1234.0f});
@@ -26,8 +26,8 @@ TEST(TensorOpTest, DynamicPad_Constant_1D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Constant_1D_Zero) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Constant_1D_Zero) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {2}, {1.0f, 2.0f});
   test.AddInput<int64_t>("pads", {2}, std::vector<int64_t>{0, 0});
   test.AddInput<float>("value", {1}, {1234.0f});
@@ -35,8 +35,8 @@ TEST(TensorOpTest, DynamicPad_Constant_1D_Zero) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Constant_2D) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Constant_2D) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {2, 2},
                        {11.0f, 21.0f,
                         12.0f, 22.0f});
@@ -50,8 +50,8 @@ TEST(TensorOpTest, DynamicPad_Constant_2D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Constant_2D_negative) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Constant_2D_negative) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {2, 3},
                        {11.0f, 21.0f, 31.0f,
                         12.0f, 22.0f, 32.0f});
@@ -65,8 +65,8 @@ TEST(TensorOpTest, DynamicPad_Constant_2D_negative) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_3D_complex) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_3D_complex) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {2, 2, 2},
                        {111.0f, 112.0f,
                         121.0f, 122.0f,
@@ -84,8 +84,8 @@ TEST(TensorOpTest, DynamicPad_3D_complex) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Edge_2D) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Edge_2D) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddAttribute("mode", "edge");
   test.AddInput<float>("data", {2, 3},
                        {11.0f, 21.0f, 31.0f,
@@ -101,8 +101,8 @@ TEST(TensorOpTest, DynamicPad_Edge_2D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Edge_3D) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Edge_3D) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddAttribute("mode", "edge");
   test.AddInput<float>("data", {1, 2, 3},
                        {11.0f, 21.0f, 31.0f,
@@ -133,8 +133,8 @@ TEST(TensorOpTest, DynamicPad_Edge_3D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, DynamicPad_Reflect_2D) {
-  OpTester test("DynamicPad", 1, onnxruntime::kMSDomain);
+TEST(TensorOpTest, Contrib_Pad_Reflect_2D) {
+  OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddAttribute("mode", "reflect");
   test.AddInput<float>("data", {3, 3},
                        {11.0f, 21.0f, 31.0f,
