@@ -21,6 +21,8 @@ class MklDnnRelu : public MklDnnKernel {
              std ::shared_ptr<MKLContext> mkl_context,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
+    ORT_UNUSED_PARAMETER(attributes);
+    ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
   Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
