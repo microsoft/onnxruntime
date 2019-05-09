@@ -231,8 +231,8 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
   auto new_registry_func = [&] (void* info) {
     auto node = reinterpret_cast<Node*>(info);
     if (node->OpType() == "PyOp") {
-      ONNX_ATTRS attrs;
-      ONNX_TYPES input_types, output_types;
+      OnnxAttrs attrs;
+      OnnxTypes input_types, output_types;
       std::string module, class_name, compute = "compute", domain = node->Domain();
 
       for (const auto& iter: node->GetAttributes()) {

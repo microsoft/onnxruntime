@@ -24,11 +24,9 @@
 #include <vector>
 #include <unordered_map>
 
-using ONNX_TYPES = std::vector<ONNXTensorElementDataType>;
-using ONNX_ATTRS = std::unordered_map<std::string, std::string>;
-using ORT_SHAPE  = OrtTensorTypeAndShapeInfo;
-using LOG_FUNC   = std::function<void(const char*)>;
-using ORT_API    = Ort::CustomOpApi;
+using OnnxTypes   = std::vector<ONNXTensorElementDataType>;
+using OnnxAttrs   = std::unordered_map<std::string, std::string>;
+using PyOpLogFunc = std::function<void(const char*)>;
 
 typedef bool INIT();
 typedef void RELEASE(void*);
@@ -42,7 +40,7 @@ typedef bool INVOKE(void*,
                     std::vector<std::vector<int64_t>>&,
                     std::function<void(const char*)>);
 typedef const char* LASTERR(std::string&);
-typedef void* NEWINST(const char*, const char*, const ONNX_ATTRS&);
+typedef void* NEWINST(const char*, const char*, const OnnxAttrs&);
 
 namespace onnxruntime {
 
@@ -93,12 +91,12 @@ private:
 
 struct PyCustomKernel {
 
-    PyCustomKernel(ORT_API             ort,
-                   const ONNX_ATTRS&   attrs,
-                   const std::string&  module,
-                   const std::string&  class_name,
-                   const std::string&  compute,
-                   LOG_FUNC            logging_func):
+    PyCustomKernel(Ort::CustomOpApi   ort,
+                   const OnnxAttrs&   attrs,
+                   const std::string& module,
+                   const std::string& class_name,
+                   const std::string& compute,
+                   PyOpLogFunc        logging_func):
                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                    compute_(compute), logging_func_(logging_func) {
         std::string err;
@@ -180,24 +178,24 @@ struct PyCustomKernel {
     }
 
 private:
-    ORT_API        ort_;
-    ONNX_ATTRS     attrs_;
-    std::string    module_;
-    std::string    class_name_;
-    std::string    compute_;
-    void*          instance_ = nullptr;
-    LOG_FUNC       logging_func_;
+    Ort::CustomOpApi ort_;
+    OnnxAttrs        attrs_;
+    std::string      module_;
+    std::string      class_name_;
+    std::string      compute_;
+    void*            instance_ = nullptr;
+    PyOpLogFunc      logging_func_;
 };
 
 struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
 
-    PyCustomOp(const ONNX_ATTRS&    attrs,
-               const ONNX_TYPES&    inputs_type,
-               const ONNX_TYPES&    outputs_type,
-               const std::string&   module,
-               const std::string&   class_name,
-               const std::string&   compute      = "compute",
-               LOG_FUNC             logging_func = [](const char*){}):
+    PyCustomOp(const OnnxAttrs&    attrs,
+               const OnnxTypes&    inputs_type,
+               const OnnxTypes&    outputs_type,
+               const std::string&  module,
+               const std::string&  class_name,
+               const std::string&  compute      = "compute",
+               PyOpLogFunc         logging_func = [](const char*){}):
                attrs_(attrs), inputs_type_(inputs_type),
                outputs_type_(outputs_type), module_(module),
                class_name_(class_name), compute_(compute),
@@ -218,13 +216,13 @@ struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
 
 private:
 
-    ONNX_ATTRS     attrs_;
-    ONNX_TYPES     inputs_type_;
-    ONNX_TYPES     outputs_type_;
+    OnnxAttrs      attrs_;
+    OnnxTypes      inputs_type_;
+    OnnxTypes      outputs_type_;
     std::string    module_;
     std::string    class_name_;
     std::string    compute_;
-    LOG_FUNC       logging_func_;
+    PyOpLogFunc    logging_func_;
 };//PyCusomOp
 
 }
