@@ -276,8 +276,7 @@ inline void CustomOpDomain::Add(OrtCustomOp* op) {
   ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(p_, op));
 }
 
-inline RunOptions::RunOptions() : Base<OrtRunOptions>{
-                                      OrtCreateRunOptions()} {}
+inline RunOptions::RunOptions() : Base<OrtRunOptions>{OrtCreateRunOptions()} {}
 
 inline RunOptions& RunOptions::SetRunLogVerbosityLevel(unsigned int level) {
   ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogVerbosityLevel(p_, level));
