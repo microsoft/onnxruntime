@@ -20,7 +20,7 @@ class MemBufferArray {
   uint8_t* AllocNewBuffer(size_t tensor_length) {
     auto* data = new uint8_t[tensor_length];
     memset(data, 0, tensor_length);
-    buffers.push_back(data);
+    buffers_.push_back(data);
     return data;
   }
 
@@ -29,10 +29,10 @@ class MemBufferArray {
   }
 
  private:
-  std::vector<uint8_t*> buffers;
+  std::vector<uint8_t*> buffers_;
 
   void FreeBuffers() {
-    for (auto* buf : buffers) {
+    for (auto* buf : buffers_) {
       delete[] buf;
     }
   }
