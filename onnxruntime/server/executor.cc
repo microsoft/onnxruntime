@@ -25,6 +25,7 @@ namespace server {
 namespace protobufutil = google::protobuf::util;
 
 protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
+                                          MemBufferArray& buffers,
                                           OrtAllocatorInfo* cpu_allocator_info,
                                           /* out */ MLValue& ml_value) {
   auto logger = env_->GetLogger(request_id_);
@@ -36,12 +37,10 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
     return GenerateProtobufStatus(status, "GetSizeInBytesFromTensorProto() failed: " + status.ToString());
   }
 
-  std::unique_ptr<uint8_t[]> data(new uint8_t[cpu_tensor_length]);
-  memset(data.get(), 0, cpu_tensor_length);
-
   OrtCallback deleter;
+  auto* buf = buffers.AllocNewBuffer(cpu_tensor_length);
   status = onnxruntime::utils::TensorProtoToMLValue(onnxruntime::Env::Default(), nullptr, input_tensor,
-                                                    onnxruntime::MemBuffer(data.release(), cpu_tensor_length, *cpu_allocator_info),
+                                                    onnxruntime::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
                                                     ml_value, deleter);
   if (!status.IsOK()) {
     LOGS(*logger, ERROR) << "TensorProtoToMLValue() failed. Message: " << status.ToString();
@@ -51,7 +50,9 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
   return protobufutil::Status::OK;
 }
 
-protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map, const onnxruntime::server::PredictRequest& request) {
+protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map,
+                                                 const onnxruntime::server::PredictRequest& request,
+                                                 MemBufferArray& buffers) {
   auto logger = env_->GetLogger(request_id_);
 
   OrtAllocatorInfo* allocator_info = nullptr;
@@ -67,7 +68,7 @@ protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name
     using_raw_data_ = using_raw_data_ && input.second.has_raw_data();
 
     MLValue ml_value;
-    auto status = SetMLValue(input.second, allocator_info, ml_value);
+    auto status = SetMLValue(input.second, buffers, allocator_info, ml_value);
     if (status != protobufutil::Status::OK) {
       OrtReleaseAllocatorInfo(allocator_info);
       LOGS(*logger, ERROR) << "SetMLValue() failed! Input name: " << input.first;
@@ -93,8 +94,9 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   auto logger = env_->GetLogger(request_id_);
 
   // Convert PredictRequest to NameMLValMap
+  MemBufferArray buffer_array;
   onnxruntime::NameMLValMap name_ml_value_map{};
-  auto conversion_status = SetNameMLValueMap(name_ml_value_map, request);
+  auto conversion_status = SetNameMLValueMap(name_ml_value_map, request, buffer_array);
   if (conversion_status != protobufutil::Status::OK) {
     return conversion_status;
   }
@@ -124,12 +126,6 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
     LOGS(*logger, ERROR) << "Run() failed."
                          << ". Error Message: " << status.ToString();
     return GenerateProtobufStatus(status, "Run() failed: " + status.ToString());
-  }
-
-  // Manually free all memory in NameMLValMap
-  for (auto& elem : name_ml_value_map) {
-      auto* buf = static_cast<uint8_t*>(elem.second.GetMutable<Tensor>()->MutableDataRaw());
-      delete[] buf;
   }
 
   // Build the response
