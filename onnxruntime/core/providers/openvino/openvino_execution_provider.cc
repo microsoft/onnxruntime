@@ -88,6 +88,21 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
 
     std::vector<std::unique_ptr<ComputeCapability>> result;
+    bool precision_fp32 = true;
+
+    #ifdef OPENVINO_CONFIG_GPU_FP16
+        precision_fp32 = false;
+    #endif
+
+    #ifdef OPENVINO_CONFIG_MYRIAD
+        precision_fp32 = false;
+    #endif
+
+    #ifdef OPENVINO_CONFIG_VAD_R
+        precision_fp32 = false;
+    #endif
+
+
 
     auto domain_map = graph_viewer.DomainToVersionMap();
     int opset_version = 0;
@@ -189,7 +204,13 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         pModule = PyImport_ImportModule("openvino_mo");
 
         if(pModule != NULL){
-            pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
+
+            if(precision_fp32){
+                pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
+            }
+            else{
+                pFunc = PyObject_GetAttrString(pModule,"convert_fp16");
+            }
 
             if(pFunc && PyCallable_Check(pFunc)){
                 pOutput = PyObject_CallFunction(pFunc, NULL);

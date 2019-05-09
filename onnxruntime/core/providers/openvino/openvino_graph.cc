@@ -265,6 +265,8 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
 		size_t num_outputs, onnxruntime::AllocateFunc& output_allocator_func,
 		onnxruntime::AllocatorHandle& output_allocator_handle) {
 
+        std::lock_guard<std::mutex> lock(compute_lock_);
+
   std::cout << "[OpenVINO-EP] Inference Started\n";
 	// Check I/O sizes
 	auto graph_input_info = cnn_network_->getInputsInfo();

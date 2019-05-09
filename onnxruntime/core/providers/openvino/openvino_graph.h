@@ -49,6 +49,7 @@ private:
   size_t num_inf_reqs_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
+  mutable std::mutex compute_lock_;
 
 };
 }

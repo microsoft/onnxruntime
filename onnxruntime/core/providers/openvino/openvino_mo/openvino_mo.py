@@ -408,10 +408,10 @@ def convert_fp16():
 
 
         return float_array, xml_string
-    except (FileNotFoundError, NotADirectoryError) as e:
-        log.error('File {} was not found'.format(str(e).split('No such file or directory:')[1]))
-        log.debug(traceback.format_exc())
-    return 1
+    except:
+        #log.error('File {} was not found'.format(str(e).split('No such file or directory:')[1]))
+        #log.debug(traceback.format_exc())
+        return 1
 
 def convert_fp32():
     try:
