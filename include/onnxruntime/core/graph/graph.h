@@ -704,8 +704,6 @@ class Graph {
     return domain_to_version_;
   }
 
-  std::unordered_map<std::string, int> GetAllDomains();
-
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 

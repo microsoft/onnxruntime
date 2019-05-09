@@ -1614,27 +1614,23 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-std::unordered_map<std::string, int> Graph::GetAllDomains()
-{
-    std::unordered_map<std::string, int> domains = domain_to_version_;
-    std::vector<Graph*> subgraphs;
-    FindAllSubgraphs(subgraphs);
-    for (auto& subgraph: subgraphs) {
-        auto sub_domains = subgraph->GetAllDomains();
-        for (auto& iter: sub_domains) {
-            if (domains.find(iter.first) == domains.end()) {
-                domains[iter.first] = iter.second;
-            }
-        }
-    }
-    return domains;
-}
-
 Status Graph::VerifyNodeAndOpMatch() {
+
+  std::vector<Graph*> subgraphs;
+  std::unordered_map<std::string, int> aggregated_d2v = domain_to_version_;
+  FindAllSubgraphs(subgraphs);
+  for (auto& subgraph: subgraphs) {
+      auto sub_domains = subgraph->DomainToVersionMap();
+      for (auto& iter: sub_domains) {
+          if (aggregated_d2v.find(iter.first) == aggregated_d2v.end()) {
+              aggregated_d2v[iter.first] = iter.second;
+          }
+      }
+  }
+
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
-  //ctx.set_opset_imports(DomainToVersionMap());
-  ctx.set_opset_imports(GetAllDomains());
+  ctx.set_opset_imports(aggregated_d2v);
   ctx.set_schema_registry(schema_registry_manager_.get());
 
   LexicalScopeContext lsc{resolve_context_.inputs_and_initializers};
