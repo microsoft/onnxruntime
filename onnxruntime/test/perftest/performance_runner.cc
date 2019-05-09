@@ -47,7 +47,7 @@ Status PerformanceRunner::Run() {
   }
 
   // warm up
-  RunOneIteration(true /*isWarmup*/);
+  RunOneIteration<true>();
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
@@ -73,20 +73,6 @@ Status PerformanceRunner::Run() {
   std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
             << "Total iterations:" << performance_result_.time_costs.size() << std::endl
             << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
-  return Status::OK();
-}
-
-Status PerformanceRunner::RunOneIteration(bool isWarmup) {
-  std::chrono::duration<double> duration_seconds = session_->Run(inputs_.Data());
-  if (!isWarmup) {
-    std::lock_guard<std::mutex> guard(results_mutex_);
-    performance_result_.time_costs.emplace_back(duration_seconds.count());
-    performance_result_.total_time_cost += duration_seconds.count();
-    if (performance_test_config_.run_config.f_verbose) {
-      std::cout << "iteration:" << performance_result_.time_costs.size() << ","
-                << "time_cost:" << performance_result_.time_costs.back() << std::endl;
-    }
-  }
   return Status::OK();
 }
 
@@ -120,11 +106,11 @@ Status PerformanceRunner::RunParallelDuration() {
   do {
     // We will queue work as deep as requested, ignoring the size of the threadpool itself
     int count = counter.load(std::memory_order_seq_cst);
-    while (count < performance_test_config_.run_config.concurrent_session_runs) {
+    while (count < static_cast<int>(performance_test_config_.run_config.concurrent_session_runs)) {
       count++;
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
-        RunOneIteration();
+        session_->ThreadSafeRun();
         // Simplified version of Eigen::Barrier
         std::lock_guard<std::mutex> lg(m);
         counter--;
@@ -157,7 +143,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
     for (size_t i = 0; i != performance_test_config_.run_config.concurrent_session_runs; ++i) {
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
-        RunOneIteration();
+        session_->ThreadSafeRun();
         // Simplified version of Eigen::Barrier
         std::lock_guard<std::mutex> lg(m);
         counter--;
@@ -182,23 +168,23 @@ static TestModelInfo* CreateModelInfo(const PerformanceTestConfig& performance_t
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
 
-static TestSession* CreateSession(OrtEnv* env, const PerformanceTestConfig& performance_test_config_,
+static TestSession* CreateSession(OrtEnv* env, std::random_device& rd,
+                                  const PerformanceTestConfig& performance_test_config_,
                                   TestModelInfo* test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return new OnnxRuntimeTestSession(env, performance_test_config_, test_model_info);
+    return new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info);
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    return new TensorflowTestSession(performance_test_config_, test_model_info);
+    return new TensorflowTestSession(rd, performance_test_config_, test_model_info);
   }
 #endif
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
-PerformanceRunner::PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config)
+PerformanceRunner::PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)),
-      session_(CreateSession(env, test_config, test_model_info_)),
-      inputs_(test_model_info_->GetInputCount()) {}
+      session_(CreateSession(env, rd, test_config, test_model_info_)) {}
 
 PerformanceRunner::~PerformanceRunner() = default;
 
@@ -220,22 +206,25 @@ bool PerformanceRunner::Initialize() {
   test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
 
   // TODO: Place input tensor on cpu memory if mkldnn provider type to avoid CopyTensor logic in CopyInputAcrossDevices
-  if (test_case_->GetDataCount() <= 0) {
+  size_t test_data_count = test_case_->GetDataCount();
+  if (test_data_count == 0) {
     std::cout << "there is no test data for model " << test_case_->GetTestCaseName() << std::endl;
     return false;
   }
-  std::unordered_map<std::string, OrtValue*> feeds;
-  test_case_->LoadTestData(0 /* id */, b_, feeds, true);
-  // Discard the names in feeds
-  int input_count = test_model_info_->GetInputCount();
-  for (int i = 0; i != input_count; ++i) {
-    auto iter = feeds.find(test_model_info_->GetInputName(i));
-    if (iter == feeds.end()) {
-      std::cout << "there is no test input data for input " << test_model_info_->GetInputName(i) << " and model "
-                << test_case_->GetTestCaseName() << std::endl;
-      return false;
+  for (size_t test_data_id = 0; test_data_id != test_data_count; ++test_data_id) {
+    std::unordered_map<std::string, OrtValue*> feeds;
+    test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
+    // Discard the names in feeds
+    int input_count = test_model_info_->GetInputCount();
+    for (int i = 0; i != input_count; ++i) {
+      auto iter = feeds.find(test_model_info_->GetInputName(i));
+      if (iter == feeds.end()) {
+        std::cout << "there is no test input data for input " << test_model_info_->GetInputName(i) << " and model "
+                  << test_case_->GetTestCaseName() << std::endl;
+        return false;
+      }
+      session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), iter->second);
     }
-    inputs_.Set(static_cast<size_t>(i), iter->second);
   }
   test_case_.reset(nullptr);
   test_model_info_ = nullptr;

@@ -3,10 +3,19 @@
 
 #pragma once
 
+#if defined(_MSC_VER)
+#pragma warning(disable:4244 4245)
+#elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <ngraph/ngraph.hpp>
+#if defined(_MSC_VER)
+#pragma warning(default:4244 4245)
+#elif __GNUC__
 #pragma GCC diagnostic pop
+#endif
+
 #include "core/framework/func_api.h"
 #include "core/graph/onnx_protobuf.h"
 

@@ -1,0 +1,40 @@
+jobs:
+- job: Windows_nGraph_CI_Dev
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'x64'
+        setVcvars: false
+    - task: CmdLine@1
+      displayName: 'Download test data and generate cmake config'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_pybind --use_openmp --use_ngraph --use_full_protobuf --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --update'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: VSBuild@1
+      displayName: 'Build Release'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
+        platform: 'x64'
+        configuration: 'Release'
+        msbuildArgs: '/m'
+        msbuildArchitecture: 'x64'
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\Release'
+    - task: BatchScript@1
+      displayName: 'Test Release'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --use_ngraph --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test'
+        workingFolder: "$(Build.BinariesDirectory)"
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
+    - template: templates/clean-agent-build-directory-step.yml

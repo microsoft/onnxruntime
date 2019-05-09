@@ -17,7 +17,7 @@ class GraphTransformerManager {
   explicit GraphTransformerManager(unsigned steps) : steps_(steps) {
   }
 
-  // Register a transformer with a level and compatible providers list
+  // Register a transformer with a level.
   common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
 
   // Apply all transformers registered for the given level on the given graph

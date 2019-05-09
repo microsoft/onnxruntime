@@ -70,6 +70,7 @@ option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stable on older GCCs" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
+option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
@@ -477,9 +478,6 @@ if (onnxruntime_USE_MKLDNN)
 endif()
 
 if (onnxruntime_USE_NGRAPH)
-  if (Win32)
-    message(FATAL_ERROR "nGraph is not currently supported on Windows.")
-  endif()
   #if (onnxruntime_USE_OPENMP)
   #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
   #endif()
@@ -607,6 +605,10 @@ if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
 endif()
 
+if (onnxruntime_BUILD_SERVER)
+  include(onnxruntime_server.cmake)
+endif()
+
 # some of the tests rely on the shared libs to be
 # built; hence the ordering
 if (onnxruntime_BUILD_UNIT_TESTS)
@@ -633,3 +635,4 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+
