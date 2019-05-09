@@ -27,6 +27,7 @@ class Graph;
 struct IndexedSubGraph;
 class Node;
 class OpSignature;
+class SchemaRegistryManager;
 
 /**
 @class Node
@@ -708,7 +709,7 @@ class Graph {
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
-  SchemaRegistryManagerPtr GetSchemaRegistryManager() const;
+  std::shared_ptr<SchemaRegistryManager> GetSchemaRegistryManager() const;
 
   /**
   Create a single Node that is the result of the a fusion of multiple nodes in this Graph.
@@ -771,14 +772,14 @@ class Graph {
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        SchemaRegistryManagerPtr schema_registry_manager,
+        std::shared_ptr<SchemaRegistryManager> schema_registry_manager,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // internal use by the Graph class only
   Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
-        SchemaRegistryManagerPtr schema_registry_manager,
+        std::shared_ptr<SchemaRegistryManager> schema_registry_manager,
         Graph* parent_graph,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
@@ -914,7 +915,7 @@ class Graph {
   InitializedTensorSet name_to_initial_tensor_;
   std::vector<int> removed_initializer_indexes_;
 
-  SchemaRegistryManagerPtr schema_registry_manager_;
+  std::shared_ptr<SchemaRegistryManager> schema_registry_manager_;
 
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
 

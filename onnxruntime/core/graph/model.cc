@@ -28,7 +28,7 @@ namespace onnxruntime {
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
-             SchemaRegistryManagerPtr schema_registry_manager,
+             std::shared_ptr<SchemaRegistryManager> schema_registry_manager,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions) {
   model_proto_ = std::make_unique<ModelProto>();
@@ -66,11 +66,11 @@ Model::Model(const std::string& graph_name,
   graph_.reset(new Graph(model_proto_->mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry_manager, model_functions_map));
 }
 
-Model::Model(const ModelProto& model_proto, SchemaRegistryManagerPtr schema_registry_manager)
+Model::Model(const ModelProto& model_proto, std::shared_ptr<SchemaRegistryManager> schema_registry_manager)
     : Model(std::make_unique<ModelProto>(model_proto), schema_registry_manager) {
 }
 
-Model::Model(std::unique_ptr<ModelProto> model_proto, SchemaRegistryManagerPtr schema_registry_manager) {
+Model::Model(std::unique_ptr<ModelProto> model_proto, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   if (!model_proto) {
     throw std::invalid_argument("ModelProto was null.");
   }
@@ -203,7 +203,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   return Status::OK();
 }
 
-Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model, SchemaRegistryManagerPtr schema_registry_manager) {
+Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   // we expect a graph to be present
   if (!model_proto.has_graph()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -222,7 +222,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
   return Status::OK();
 }
 
-Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model, SchemaRegistryManagerPtr schema_registry_manager) {
+Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   // we expect a graph to be present
   if (!p_model_proto->has_graph()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -242,7 +242,7 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
 }
 
 template <typename T>
-static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, SchemaRegistryManagerPtr schema_registry_manager) {
+static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -296,7 +296,7 @@ static Status SaveModel(Model& model, const T& file_path) {
 #ifdef _WIN32
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const std::wstring& file_path, std::shared_ptr<Model>& p_model, SchemaRegistryManagerPtr schema_registry_manager) {
+Status Model::Load(const std::wstring& file_path, std::shared_ptr<Model>& p_model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   return LoadModel(file_path, p_model, schema_registry_manager);
 }
 
@@ -308,7 +308,7 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const std::string& file_path, std::shared_ptr<Model>& p_model, SchemaRegistryManagerPtr schema_registry_manager) {
+Status Model::Load(const std::string& file_path, std::shared_ptr<Model>& p_model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   return LoadModel(file_path, p_model, schema_registry_manager);
 }
 
@@ -316,7 +316,7 @@ Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, SchemaRegistryManagerPtr schema_registry_manager) {
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   std::unique_ptr<ModelProto> modelProto = std::make_unique<ModelProto>();
   const bool result = modelProto->ParseFromArray(p_bytes, count);
   if (!result) {
@@ -334,7 +334,7 @@ using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
 
-Status Model::Load(int fd, std::shared_ptr<Model>& p_model, SchemaRegistryManagerPtr schema_registry_manager) {
+Status Model::Load(int fd, std::shared_ptr<Model>& p_model, std::shared_ptr<SchemaRegistryManager> schema_registry_manager) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }

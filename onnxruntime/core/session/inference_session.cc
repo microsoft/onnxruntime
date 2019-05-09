@@ -222,7 +222,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   return status;
 }
 
-SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
+std::shared_ptr<SchemaRegistryManager> InferenceSession::CreateSchemaRegistryManager()
 {
   auto schema_registry_manager = std::make_shared<SchemaRegistryManager>();
   for (auto schema_collection : custom_schema_registries_) {
@@ -283,7 +283,7 @@ SchemaRegistryManagerPtr InferenceSession::CreateSchemaRegistryManager()
       AddCustomOpDomains({pyop_domain});
       return custom_schema_registries_.back();
     } else {
-      return IOnnxRuntimeOpSchemaCollectionPtr();
+      return std::shared_ptr<IOnnxRuntimeOpSchemaCollection>();
     }
   };//new_registry_func
 

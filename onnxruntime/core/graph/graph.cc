@@ -597,13 +597,13 @@ using google::protobuf::RepeatedPtrField;
 Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
-             SchemaRegistryManagerPtr schema_registry_manager,
+             std::shared_ptr<SchemaRegistryManager> schema_registry_manager,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions) : Graph(graph_proto, domain_to_version, ir_version, schema_registry_manager, nullptr, model_functions) {}
 
 Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
-             SchemaRegistryManagerPtr schema_registry_manager,
+             std::shared_ptr<SchemaRegistryManager> schema_registry_manager,
              Graph* parent_graph,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : graph_proto_{graph_proto},
@@ -2435,7 +2435,7 @@ bool Graph::ReleaseNode(NodeIndex index) {
   return true;
 }
 
-SchemaRegistryManagerPtr Graph::GetSchemaRegistryManager() const {
+std::shared_ptr<SchemaRegistryManager> Graph::GetSchemaRegistryManager() const {
   return schema_registry_manager_;
 }
 

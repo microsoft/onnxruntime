@@ -150,7 +150,7 @@ void OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory(
   }
 }
 
-void SchemaRegistryManager::RegisterRegistry(IOnnxRuntimeOpSchemaCollectionPtr registry) {
+void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchemaCollection> registry) {
   registries.push_front(registry);
 }
 

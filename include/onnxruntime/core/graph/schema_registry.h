@@ -146,9 +146,9 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
     }
   }
 
-  void RegisterRegistry(IOnnxRuntimeOpSchemaCollectionPtr registry);
+  void RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchemaCollection> registry);
 
-  void SetNewRegistryFunc(std::function<IOnnxRuntimeOpSchemaCollectionPtr(void*)> new_registry_func) {
+  void SetNewRegistryFunc(std::function<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>(void*)> new_registry_func) {
       new_registry_func_ = new_registry_func;
   }
 
@@ -187,8 +187,8 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
       int* earliest_opset_where_unchanged) const override;
 
  private:
-  std::deque<IOnnxRuntimeOpSchemaCollectionPtr> registries;
-  std::function<IOnnxRuntimeOpSchemaCollectionPtr(void*)> new_registry_func_ =
+  std::deque<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> registries;
+  std::function<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>(void*)> new_registry_func_ =
       [] (void*) { return nullptr; };
 };
 

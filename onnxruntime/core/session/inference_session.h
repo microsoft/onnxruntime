@@ -298,7 +298,7 @@ class InferenceSession {
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
-  SchemaRegistryManagerPtr CreateSchemaRegistryManager();
+  std::shared_ptr<SchemaRegistryManager> CreateSchemaRegistryManager();
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
