@@ -211,7 +211,6 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != X);
   const TensorShape input_shape{X->Shape()};

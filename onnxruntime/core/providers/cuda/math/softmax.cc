@@ -10,7 +10,6 @@ namespace cuda {
 
 template <typename T>
 Status SoftMaxComputeHelper(
-    OpKernelContext* ctx,
     const T* X,
     const TensorShape& input_shape,
     T* Y,
@@ -56,7 +55,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   T* Y_data = ctx->Output(0, input_shape)->template MutableData<T>();
 
-  return SoftMaxComputeHelper<T>(ctx, X_data, input_shape, Y_data, CudnnHandle(), axis_);
+  return SoftMaxComputeHelper<T>(X_data, input_shape, Y_data, CudnnHandle(), axis_);
 }
 
 #define SPECIALIZED_COMPUTE(T) \

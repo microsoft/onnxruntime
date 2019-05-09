@@ -12,7 +12,6 @@ Status BinaryElementwiseInplace<ShouldBroadcastInplace>::Prepare(OpKernelContext
   auto lhs_tensor = context->Input<Tensor>(inout_index_);
   auto rhs_tensor = context->Input<Tensor>(input_index_);
   const auto& lhs_shape = lhs_tensor->Shape();
-  const auto& rhs_shape = rhs_tensor->Shape();
 
   TensorShape output_shape = lhs_shape;
   auto output_tensor = context->MutableInput<Tensor>(inout_index_);
@@ -32,7 +31,6 @@ ONNX_OPERATOR_KERNEL_EX(
 Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* weights_tensor = ctx->MutableInput<Tensor>(1);
   ORT_ENFORCE(weights_tensor);
-  size_t rank = weights_tensor->Shape().NumDimensions();
   auto& weight_dimensions = weights_tensor->Shape().GetDims();
 
   const Tensor* gradients_tensor = ctx->Input<Tensor>(2);

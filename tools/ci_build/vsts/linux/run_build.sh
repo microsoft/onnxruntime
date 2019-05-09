@@ -15,7 +15,7 @@ if [ $BUILD_DEVICE = "gpu" ]; then
     _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
     python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
         --config Debug Release \
-        --skip_submodule_sync --enable_onnx_tests\
+        --skip_submodule_sync \
         --parallel --build_shared_lib \
         --use_cuda \
         --cuda_home /usr/local/cuda \
@@ -47,7 +47,7 @@ elif [ $BUILD_DEVICE = "fpga" ]; then
 else
     python3 $SCRIPT_DIR/../../build.py --build_dir /home/onnxruntimedev \
         --config Debug Release --build_shared_lib \
-        --skip_submodule_sync --enable_onnx_tests \
+        --skip_submodule_sync  \
         --enable_pybind \
         --parallel --build_shared_lib --enable_msinternal $BUILD_EXTR_PAR
 fi

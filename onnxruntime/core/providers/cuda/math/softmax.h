@@ -11,7 +11,6 @@ namespace cuda {
 
 template <typename T>
 Status SoftMaxComputeHelper(
-    OpKernelContext* ctx,
     const T* input,
     const TensorShape& shape,
     T* Y,

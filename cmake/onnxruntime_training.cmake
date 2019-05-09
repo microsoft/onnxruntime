@@ -26,7 +26,7 @@ add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES
 onnxruntime_add_include_to_target(onnxruntime_training_runner  onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 
 if (onnxruntime_USE_CUDA)
-target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${onnxruntime_CUDNN_HOME}/include)
+target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
 target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
 endif()
@@ -47,7 +47,7 @@ target_include_directories(onnxruntime_training_poc PUBLIC ${ONNXRUNTIME_ROOT} $
 
 set(ONNXRUNTIME_LIBS onnxruntime_session ${onnxruntime_libs} ${PROVIDERS_CUDA} ${PROVIDERS_MKLDNN} onnxruntime_optimizer onnxruntime_providers onnxruntime_util onnxruntime_framework onnxruntime_util onnxruntime_graph onnxruntime_common onnxruntime_mlas)
 
-target_link_libraries(onnxruntime_training_poc PRIVATE ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} onnxruntime_training onnxruntime_training_runner)
+target_link_libraries(onnxruntime_training_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_poc PROPERTIES FOLDER "ONNXRuntimeTest")
 
 
@@ -60,5 +60,5 @@ add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
 onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_squeezenet PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
-target_link_libraries(onnxruntime_training_squeezenet PRIVATE ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} onnxruntime_training onnxruntime_training_runner)
+target_link_libraries(onnxruntime_training_squeezenet PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_squeezenet PROPERTIES FOLDER "ONNXRuntimeTest")

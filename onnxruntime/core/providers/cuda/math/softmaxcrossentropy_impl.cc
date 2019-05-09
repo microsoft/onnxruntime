@@ -11,8 +11,8 @@ namespace cuda {
       kMSDomain,                                                                    \
       version,                                                                      \
       kCudaExecutionProvider,                                                       \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
-      Class##<float>);
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Class<T>);
 
 template <typename T>
 Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -34,7 +34,6 @@ Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   T* d_logits_data = d_logits->template MutableData<T>();
 
   ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(
-      ctx,
       logits_data,
       logits_shape,
       d_logits_data,
@@ -59,8 +58,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   IAllocatorUniquePtr<T> temp_X = GetScratchBuffer<T>(/*input_count*/ input_shape.Size());
 
   // calculate softmax
-  ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(ctx,
-                                              X->template Data<T>(),
+  ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(X->template Data<T>(),
                                               input_shape,
                                               temp_X.get(),
                                               CudnnHandle(),
@@ -100,10 +98,11 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
 
 #define SPECIALIZED_COMPUTE(Class, T, version) \
   REGISTER_KERNEL_TYPED(Class, T, version)     \
-  template Status Class##<T>::ComputeInternal(OpKernelContext* ctx) const;
+  template Status Class<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_COMPUTE(SoftmaxCrossEntropy, float, 1)
 SPECIALIZED_COMPUTE(SoftmaxCrossEntropyGrad, float, 1)
+
 
 }  // namespace cuda
 }  // namespace onnxruntime

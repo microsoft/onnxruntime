@@ -111,7 +111,6 @@ int main(int argc, char* args[]) {
   params.post_evaluation_callback_ = [&true_count, &total_loss](size_t num_samples) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
-    printf("");
     printf("#examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
            static_cast<int>(num_samples),
            true_count,

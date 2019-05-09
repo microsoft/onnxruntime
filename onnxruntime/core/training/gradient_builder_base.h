@@ -36,22 +36,22 @@ class GradientBuilderBase {
 
  protected:
   ArgDef I(const size_t i) const {
-    ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
+    ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
   ArgDef O(const size_t i) const {
-    ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
+    ORT_ENFORCE(i < node_->OutputDefs().size());
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 
   ArgDef GI(const size_t i) const {
-    ORT_ENFORCE(i >= 0 && i < node_->InputDefs().size());
+    ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
   }
 
   ArgDef GO(const size_t i) const {
-    ORT_ENFORCE(i >= 0 && i < node_->OutputDefs().size());
+    ORT_ENFORCE(i < node_->OutputDefs().size());
     return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->OutputDefs()[i]->TypeAsProto());
   }
 
@@ -71,14 +71,12 @@ class GradientBuilderBase {
 
   // returns true if the input at index i of the node_ requires gradient
   bool IsGradientRequiredForSrcNodeInput(const size_t i) const {
-    ORT_ENFORCE(i >= 0);
     return i < node_->InputDefs().size() &&
            gradient_outputs_.find(node_->InputDefs()[i]->Name()) != gradient_outputs_.end();
   }
 
   // returns true if the output at index i of the node_ has a gradient
   bool IsGradientAvailableForSrcNodeOutput(const size_t i) const {
-    ORT_ENFORCE(i >= 0);
     return i < node_->OutputDefs().size() &&
            gradient_inputs_.find(node_->OutputDefs()[i]->Name()) != gradient_inputs_.end();
   }

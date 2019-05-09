@@ -192,6 +192,7 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
 endif()
 
 set(ONNXRUNTIME_TEST_LIBS
+    onnxruntime_training
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
