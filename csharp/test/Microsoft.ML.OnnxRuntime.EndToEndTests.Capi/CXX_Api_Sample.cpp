@@ -98,15 +98,15 @@ int main(int argc, char* argv[]) {
 
   // create input tensor object from data values
   Ort::AllocatorInfo allocator_info = Ort::AllocatorInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  Ort::Value input_tensors[1] = {Ort::Value::CreateTensor(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)};
-  assert(input_tensors[0].IsTensor());
+  Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  assert(input_tensor.IsTensor());
 
   // score model & input tensor, get back output tensor
-  Ort::Value output_tensor = session.Run(nullptr, input_node_names.data(), input_tensors, output_node_names.data(), 1);
-  assert(output_tensor.IsTensor());
+  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+  assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
 
   // Get pointer to output tensor float values
-  float* floatarr = output_tensor.GetTensorMutableData<float>();
+  float* floatarr = output_tensors.front().GetTensorMutableData<float>();
   assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes

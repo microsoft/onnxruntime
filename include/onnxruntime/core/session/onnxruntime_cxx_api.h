@@ -162,8 +162,8 @@ struct Session : Base<OrtSession> {
   Session(nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
 
-  Value Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
-            const char* const* output_names, size_t output_names_len);
+  std::vector<Value> Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+                         const char* const* output_names, size_t output_names_count);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
@@ -354,13 +354,13 @@ inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOpti
   ORT_THROW_ON_ERROR(OrtCreateSession(env, model_path, options, &p_));
 }
 
-inline Value Session::Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
-                          const char* const* output_names, size_t output_names_len) {
+inline std::vector<Value> Session::Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+                                       const char* const* output_names, size_t output_names_count) {
   std::vector<OrtValue*> ort_input_values(input_values, input_values + input_count);
-
-  OrtValue* out{};
-  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, output_names_len, &out));
-  return Value{out};
+  std::vector<OrtValue*> ort_out(output_names_count);
+  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, output_names_count, ort_out.data()));
+  std::vector<Value> out(ort_out.begin(), ort_out.end());
+  return out;
 }
 
 inline size_t Session::GetInputCount() const {
