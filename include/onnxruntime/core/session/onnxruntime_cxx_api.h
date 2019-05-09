@@ -118,8 +118,8 @@ struct Env : Base<OrtEnv> {
 };
 
 struct CustomOpDomain : Base<OrtCustomOpDomain> {
-  CustomOpDomain(nullptr_t) {}
-  CustomOpDomain(const char* domain);
+  explicit CustomOpDomain(nullptr_t) {}
+  explicit CustomOpDomain(const char* domain);
 
   void Add(OrtCustomOp* op);
 };
@@ -138,7 +138,7 @@ struct RunOptions : Base<OrtRunOptions> {
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
-  SessionOptions(nullptr_t) {}
+  explicit SessionOptions(nullptr_t) {}
   SessionOptions();
   explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {}
 
@@ -159,7 +159,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 };
 
 struct Session : Base<OrtSession> {
-  Session(nullptr_t) {}
+  explicit Session(nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
 
   std::vector<Value> Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
@@ -176,7 +176,7 @@ struct Session : Base<OrtSession> {
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
-  TensorTypeAndShapeInfo(nullptr_t) {}
+  explicit TensorTypeAndShapeInfo(nullptr_t) {}
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
 
   ONNXTensorElementDataType GetElementType() const;
@@ -187,7 +187,7 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
 };
 
 struct TypeInfo : Base<OrtTypeInfo> {
-  TypeInfo(nullptr_t) {}
+  explicit TypeInfo(nullptr_t) {}
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
@@ -199,7 +199,7 @@ struct Value : Base<OrtValue> {
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
-  Value(nullptr_t) {}
+  explicit Value(nullptr_t) {}
   explicit Value(OrtValue* p) : Base<OrtValue>{p} {}
 
   bool IsTensor() const;
@@ -215,7 +215,7 @@ struct Value : Base<OrtValue> {
 struct Allocator : Base<OrtAllocator> {
   static Allocator CreateDefault();
 
-  Allocator(nullptr_t) {}
+  explicit Allocator(nullptr_t) {}
   explicit Allocator(OrtAllocator* p) : Base<OrtAllocator>{p} {}
 
   void* Alloc(size_t size);
@@ -227,7 +227,7 @@ struct Allocator : Base<OrtAllocator> {
 struct AllocatorInfo : Base<OrtAllocatorInfo> {
   static AllocatorInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  AllocatorInfo(nullptr_t) {}
+  explicit AllocatorInfo(nullptr_t) {}
   AllocatorInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
   explicit AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
