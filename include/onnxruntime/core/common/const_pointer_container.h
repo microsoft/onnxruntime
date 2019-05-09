@@ -64,6 +64,10 @@ class ConstPointerContainer {
   explicit ConstPointerContainer(const Container& data) noexcept : data_(data) {}
 
   size_t size() const noexcept { return data_.size(); }
+  bool empty() const noexcept { return data_.empty(); }
+
+  ConstIterator cbegin() const noexcept { return ConstIterator(data_.cbegin()); }
+  ConstIterator cend() const noexcept { return ConstIterator(data_.cend()); }
 
   ConstIterator begin() const noexcept { return ConstIterator(data_.cbegin()); }
   ConstIterator end() const noexcept { return ConstIterator(data_.cend()); }

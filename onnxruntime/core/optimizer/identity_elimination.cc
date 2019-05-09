@@ -10,9 +10,9 @@
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  if (graph_utils::RemoveSingleInputNode(graph, node)) {
-    modified = deleted = true;
+Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+  if (graph_utils::RemoveNode(graph, node)) {
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
   return Status::OK();

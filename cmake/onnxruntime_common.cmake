@@ -32,7 +32,9 @@ else()
     )
 endif()
 
-file(GLOB onnxruntime_common_src ${onnxruntime_common_src_patterns})
+file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
+    ${onnxruntime_common_src_patterns}
+    )
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 

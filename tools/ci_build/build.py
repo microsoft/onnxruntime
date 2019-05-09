@@ -95,6 +95,10 @@ Use the individual flags to only run the specified stages.
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
 
+    # Build ONNX Runtime server
+    parser.add_argument("--build_server", action='store_true', help="Build server application for the ONNXRuntime.")
+    parser.add_argument("--enable_server_tests", action='store_true', help="Run server application tests.")
+
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
                         help="Extra definitions to pass to CMake during build system generation. " +
@@ -324,9 +328,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
+                 "-Donnxruntime_BUILD_SERVER=" + ("ON" if args.build_server else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt else "OFF"),
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
@@ -535,6 +540,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
+
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -564,6 +570,27 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         if enable_parallel_executor_test:
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
+
+def run_server_tests(build_dir, configs):
+    pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
+    installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
+    if not (('requests' in installed_packages) and ('protobuf' in installed_packages) and ('numpy' in installed_packages)):
+        if hasattr(sys, 'real_prefix'):
+            # In virtualenv
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+        else:
+            # Outside virtualenv
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    
+    for config in configs:
+        config_build_dir = get_config_build_dir(build_dir, config)
+        if is_windows():
+            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+        else:
+            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
     for config in configs:
@@ -624,7 +651,7 @@ def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     for config in configs:
         #copy the gen_doc.py
-        shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
+        shutil.copy(os.path.join(source_dir,'tools','python','gen_doc.py'),
                     os.path.join(build_dir,config, config))
         run_subprocess([
                         sys.executable,
@@ -632,10 +659,16 @@ def generate_documentation(source_dir, build_dir, configs):
                         '--output_path', operator_doc_path
                     ], 
                     cwd = os.path.join(build_dir,config, config))
-        
-    docdiff = run_subprocess(['git', 'diff', operator_doc_path], capture=True).stdout
+    docdiff = ''
+    try:    
+        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    
+
     if len(docdiff) > 0:
-        raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in")
+        raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
+
 
 def main():
     args = parse_arguments()
@@ -766,12 +799,15 @@ def main():
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
+    if args.build_server and args.enable_server_tests:
+        run_server_tests(build_dir, configs)
+
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
             build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, nightly_build)
 
-    if args.gen_doc:
+    if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
 
     log.info("Build complete")

@@ -63,13 +63,19 @@ system.
   * For Linux, the system must have the libgomp.so.1 which can be installed using ```apt-get install libgomp1```.
 * The official GPU builds require the CUDA 9.1 and cuDNN 7.1 runtime libraries being installed in the system.
 * Python binaries are compatible with Python 3.5-3.7.
+* Certain operators makes use of system locales. At the very least you will need to install English language package and configure en_US.UTF-8 locale.
+  * For Ubuntu install language-pack-en package
+  * Run the following commands:
+    * locale-gen en_US.UTF-8
+    * update-locale LANG=en_US.UTF-8
+  * Follow similar procedure to configure other locales on other platforms.
 
 ## APIs and Official Builds
 | API Documentation | CPU package | GPU package |
 |-----|-------------|-------------|
 | [Python](https://aka.ms/onnxruntime-python) | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/><br/> |
-| [C#](docs/CSharp_API.md) | Available on Nuget : [MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/), [MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)</br><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
-| [C](docs/C_API.md) | Available on Nuget : [MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/), [MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)</br><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64 (MLAS+Eigen only)</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Files (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
+| [C#](docs/CSharp_API.md) | **Available on Nuget :**<br/>[MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul><br/>[MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)<ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
+| [C](docs/C_API.md) | **Available on Nuget :**<br/>[MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul><br/>[MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><hr>[Binaries (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Binaries (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
 | [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
 
 For builds using other execution providers, see Build Details below.

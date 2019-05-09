@@ -3,6 +3,7 @@
 
 #include "upsample.h"
 #include "upsample_impl.h"
+#include "core/providers/cuda/tensor/resize_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 using namespace onnxruntime::common;
@@ -32,6 +33,7 @@ REGISTER_KERNEL_TYPED(uint8_t)
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const {
   const Tensor* X = context->Input<Tensor>(0);
+
   ORT_ENFORCE(nullptr != X);
   const std::vector<int64_t>& X_dims = X->Shape().GetDims();
   auto rank = X_dims.size();
@@ -58,34 +60,55 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   CudaAsyncBuffer<fast_divmod> output_div_pitches(this, device_id, rank);
   gsl::span<fast_divmod> div_strides_span = output_div_pitches.CpuSpan();
 
-  CudaAsyncBuffer<fast_divmod> scales_div(this, device_id, rank);
-  gsl::span<fast_divmod> scales_div_span = scales_div.CpuSpan();
-
   for (int i = 0; i < rank; ++i) {
     input_stride_span[i] = input_pitches[i];
     div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
-    scales_div_span[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
   }
   input_strides.CopyToGpu();
   output_div_pitches.CopyToGpu();
-  scales_div.CopyToGpu();
 
   size_t output_count = Y->Shape().Size();
 
   if (UpsampleMode::LINEAR == mode_) {
     if (rank != 4)
-      return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
+      if (is_resize) {
+        return Status(ONNXRUNTIME, FAIL, "Resize: linear mode only supports 4-D tensor with NCHW layout");
+      } else {
+        return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode only supports 4-D tensor with NCHW layout");
+      }
   }
 
-  UpampleImpl(mode_,
-              rank,
-              (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
-              input_strides.GpuPtr(),
-              output_div_pitches.GpuPtr(),
-              scales_div.GpuPtr(),
-              reinterpret_cast<const CudaT*>(X->template Data<T>()),
-              reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-              output_count);
+  if (is_resize) {
+    CudaAsyncBuffer<float> scales_vals(this, device_id, scales);
+    scales_vals.CopyToGpu();
+    ResizeImpl(mode_,
+               rank,
+               (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
+               input_strides.GpuPtr(),
+               output_div_pitches.GpuPtr(),
+               scales_vals.GpuPtr(),
+               reinterpret_cast<const CudaT*>(X->template Data<T>()),
+               reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+               output_count);
+  } else {
+    CudaAsyncBuffer<fast_divmod> scales_div(this, device_id, rank);
+    gsl::span<fast_divmod> scales_div_span = scales_div.CpuSpan();
+
+    for (int i = 0; i < rank; ++i) {
+      scales_div_span[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
+    }
+    scales_div.CopyToGpu();
+
+    UpampleImpl(mode_,
+                rank,
+                (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
+                input_strides.GpuPtr(),
+                output_div_pitches.GpuPtr(),
+                scales_div.GpuPtr(),
+                reinterpret_cast<const CudaT*>(X->template Data<T>()),
+                reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                output_count);
+  }
 
   return Status::OK();
 }

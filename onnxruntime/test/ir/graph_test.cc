@@ -443,12 +443,6 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 
   for (auto i = 0; i < 20; ++i) {
     map.insert({std::to_string(i), i});
-
-    std::cout << "Insert " << i << "\n";
-    for (auto pair : map) {
-      std::cout << pair.first << ":" << pair.second << " ";
-    }
-    std::cout << "\n";
   }
 
   //               |         |
@@ -458,10 +452,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   //                  |
   //                  d (Split)
   //                /   \
-            //              1  ..  10
-  std::unordered_map<std::string, std::pair<std::vector<NodeArg*>, std::vector<NodeArg*>>>
-      expected_node_name_to_input_output_args;
-
+  //              1  ..  10
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -475,37 +466,36 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   auto& output_arg_c = graph.GetOrCreateNodeArg("node_c_out_1", &tensor_int32);
 
   std::vector<NodeArg*> split_outputs;
+  std::vector<const NodeArg*> graph_outputs;
   for (int i = 0; i < 10; ++i) {
-    split_outputs.push_back(&graph.GetOrCreateNodeArg("node_d_out_" + std::to_string(i + 1), &tensor_int32));
+    auto arg = &graph.GetOrCreateNodeArg("node_d_out_" + std::to_string(i + 1), &tensor_int32);
+    split_outputs.push_back(arg);
+    graph_outputs.push_back(arg);
   }
-
+  std::reverse(graph_outputs.begin(), graph_outputs.end());
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
   inputs.push_back(&input_arg_a);
   outputs.push_back(&output_arg_a);
-  expected_node_name_to_input_output_args["a"] = {inputs, outputs};
   graph.AddNode("a", "Identity_Fake", "a", inputs, outputs);
 
   inputs.resize(2);
   inputs[0] = &output_arg_b;
   inputs[1] = &output_arg_a;
   outputs[0] = &output_arg_c;
-  expected_node_name_to_input_output_args["c"] = {inputs, outputs};
   graph.AddNode("c", "Merge_Fake", "c", inputs, outputs);
 
   // deliberately add 'b' after 'c' to mix up the inputs as well
   inputs.resize(1);
   inputs[0] = &input_arg_b;
   outputs[0] = &output_arg_b;
-  expected_node_name_to_input_output_args["b"] = {inputs, outputs};
   graph.AddNode("b", "Identity_Fake", "b", inputs, outputs);
 
   inputs[0] = &output_arg_c;
-  expected_node_name_to_input_output_args["d"] = {inputs, split_outputs};
   graph.AddNode("d", "Split_Fake", "d", inputs, split_outputs);
 
-  auto validate_inputs_outputs = [&split_outputs](const Graph& graph) {
+  auto validate_inputs_outputs = [&graph_outputs](const Graph& graph) {
     auto inputs = graph.GetInputs();
     auto outputs = graph.GetOutputs();
 
@@ -516,10 +506,11 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 
     ASSERT_TRUE(outputs.size() == 10);
     for (int i = 0; i < 10; ++i) {
-      EXPECT_TRUE(split_outputs[i]->Name() == outputs[i]->Name());
+      EXPECT_TRUE(graph_outputs[i]->Name() == outputs[i]->Name());
     }
   };
-
+  graph.SetInputs({&input_arg_a, &input_arg_b});
+  graph.SetOutputs(graph_outputs);
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 

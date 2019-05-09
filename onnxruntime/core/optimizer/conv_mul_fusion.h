@@ -2,16 +2,29 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
-class ConvMulFusion : public onnxruntime::GraphTransformer {
+/**
+@Class ConvMulFusion
+
+Rewrite rule that fuses two Conv+Mul nodes to a single Conv node.
+
+It is attempted to be triggered only on nodes with op type "Conv".
+*/
+class ConvMulFusion : public RewriteRule {
  public:
-  ConvMulFusion() noexcept : onnxruntime::GraphTransformer("ConvMulFusion") {}
+  ConvMulFusion() noexcept : RewriteRule("ConvMulFusion") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Conv"};
+  }
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) override;
 };
 
 }  // namespace onnxruntime
