@@ -31,15 +31,7 @@ using LOG_FUNC   = std::function<void(const char*)>;
 using ORT_API    = Ort::CustomOpApi;
 
 typedef bool INIT();
-typedef bool PYFUNC(const char*,
-                    const char*,
-                    const std::vector<const void*>&,
-                    const std::vector<int32_t>&,
-                    const std::vector<std::vector<int64_t>>&,
-                    std::vector<const void*>&,
-                    std::vector<int32_t>&,
-                    std::vector<std::vector<int64_t>>&);
-typedef void* NEWINST(const char*, const char*, const ONNX_ATTRS&);
+typedef void RELEASE(void*);
 typedef bool INVOKE(void*,
                     const char*,
                     const std::vector<const void*>&,
@@ -49,9 +41,8 @@ typedef bool INVOKE(void*,
                     std::vector<int32_t>&,
                     std::vector<std::vector<int64_t>>&,
                     std::function<void(const char*)>);
-typedef void RELEASE(void*);
 typedef const char* LASTERR(std::string&);
-typedef void SETPATH(const wchar_t*);
+typedef void* NEWINST(const char*, const char*, const ONNX_ATTRS&);
 
 namespace onnxruntime {
 
@@ -213,7 +204,7 @@ struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
                logging_func_(logging_func) {
                OrtCustomOp::version = ORT_API_VERSION; }
  
-    void* CreateKernel (Ort::CustomOpApi api, const OrtKernelInfo*) {
+    void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) {
         return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, logging_func_);
     }
 

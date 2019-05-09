@@ -91,7 +91,7 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
     return err.c_str();
 }
 
-PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
+PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim)
 {
     std::vector<npy_intp> np_dim;
     for (auto d: dim) {
@@ -106,10 +106,10 @@ PyObject* MakePyObj (const void* data, int32_t type, const vector<int64_t>& dim)
     return pyObj;
 }
 
-bool ExtractOutput (PyObject*                pyObj,
-                    vector<const void*>&     outputs,
-                    vector<int32_t>&         outputs_elem_size,
-                    vector<vector<int64_t>>& outputs_dim)
+bool ExtractOutput(PyObject*                pyObj,
+                   vector<const void*>&     outputs,
+                   vector<int32_t>&         outputs_elem_size,
+                   vector<vector<int64_t>>& outputs_dim)
 {
     if (!PyArray_Check(pyObj)) {
         return false;
@@ -133,7 +133,7 @@ bool ExtractOutput (PyObject*                pyObj,
     return true;
 }
 
-PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const unordered_map<string, string>& args)
+PYOP_EXPORT void* NewInstance(const char* module, const char* class_name, const unordered_map<string, string>& args)
 {
     Scope scope; 
     auto pyModule = PyImport_ImportModule(module);
@@ -159,20 +159,20 @@ PYOP_EXPORT void* NewInstance (const char* module, const char* class_name, const
     return PyObject_Call(pyClass, empty_args, named_args);
 }
 
-PYOP_EXPORT void ReleaseInstance (void* instance)
+PYOP_EXPORT void ReleaseInstance(void* instance)
 {
     Scope scope({static_cast<PyObject*>(instance)});
 }
 
-PYOP_EXPORT bool InvokePythonFunc (void*                            raw_inst,
-                                   const char*                      function,
-                                   const vector<const void*>&       inputs,
-                                   const vector<int32_t>&           inputs_type,
-                                   const vector<vector<int64_t>>&   inputs_dim,
-                                   vector<const void*>&             outputs,
-                                   vector<int32_t>&                 outputs_elem_size,
-                                   vector<vector<int64_t>>&         outputs_dim,
-                                   std::function<void(const char*)> logging_func = [](const char*){})
+PYOP_EXPORT bool InvokePythonFunc(void*                            raw_inst,
+                                  const char*                      function,
+                                  const vector<const void*>&       inputs,
+                                  const vector<int32_t>&           inputs_type,
+                                  const vector<vector<int64_t>>&   inputs_dim,
+                                  vector<const void*>&             outputs,
+                                  vector<int32_t>&                 outputs_elem_size,
+                                  vector<vector<int64_t>>&         outputs_dim,
+                                  std::function<void(const char*)> logging_func = [](const char*){})
 {
     Scope scope;
     auto instance = static_cast<PyObject*>(raw_inst);
