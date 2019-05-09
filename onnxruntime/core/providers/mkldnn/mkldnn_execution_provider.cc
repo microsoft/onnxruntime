@@ -113,7 +113,7 @@ std::shared_ptr<KernelRegistry> GetMklDnnKernelRegistry() {
 }
 }  // namespace mkl_dnn
 
-bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer, 
+bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
                                           const std::vector<const KernelRegistry*>& kernel_registries,
                                           std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
@@ -127,9 +127,67 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
 
   if (use_subgraph_env == 0) {
     use_subgraph = false;
-	result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   }
   return use_subgraph;
+}
+
+void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
+                                                      SubgraphVariables& sub_var,
+                                                      bool fused,
+                                                      std::map<std::string, int>& output_to_source_node_map,
+                                                      NodeAttributes& subgraph_attributes) const {
+  auto& node_inputs = node->InputDefs();
+  sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
+
+  if (!fused) {
+    MklDnnNode mklnode;
+    mklnode.name = node->OpType();
+    mklnode.num_inputs = static_cast<int>(node->InputDefs().size());
+    mklnode.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
+    mklnode.node_index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size()) + 1;
+    auto& node_outputs = node->OutputDefs();
+    mklnode.output_name = node_outputs[0]->Name();
+    if (node->OpType() == "Conv") {
+      mklnode.weight_name = node->InputDefs()[1]->Name();
+    }
+    for (int i = 0; i < node_inputs.size(); i++) {
+      auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
+      if (iter != output_to_source_node_map.end())
+        mklnode.parent_nodes.push_back(iter->second);
+    }
+    sub_var.subgraph_ptr->mklnodes.push_back(mklnode);
+    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
+  } else {
+    auto& node_outputs = node->OutputDefs();
+    output_to_source_node_map.erase(sub_var.subgraph_ptr->mklnodes.back().output_name);
+    sub_var.subgraph_ptr->mklnodes.back().output_name = node_outputs[0]->Name();
+    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
+  }
+
+  // Add inputs which are not in the outputs vector.
+  for (int i = 0; i < node_inputs.size(); i++) {
+    auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), node_inputs[i]->Name());
+    if (itr == sub_var.outputs.end()) {
+      sub_var.inputs.push_back(node_inputs[i]->Name());
+    } else {
+      // Vector of node outputs, which is input to other node
+      // if node output is not input to any other node, then it's the end node
+      // which we will find later
+      sub_var.outputs_as_input_other_node.push_back(node_inputs[i]->Name());
+    }
+  }
+
+  NodeAttributes attributes = node->GetAttributes();
+  if (attributes.size() > 0) {
+    int index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size());
+
+    for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
+      std::string key = node->OpType() + "-" + std::to_string(index) + "-" + att_it->first;
+      std::pair<std::string, ONNX_NAMESPACE::AttributeProto> att(key, att_it->second);
+      subgraph_attributes[key] = att_it->second;
+    }
+  }
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapability(
@@ -140,7 +198,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
   // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
   // ORT_MKLDNN_SUBGRAPH environment variable
-  if (UseSubgraph(graph_viewer, kernel_registries, result) == false){
+  if (UseSubgraph(graph_viewer, kernel_registries, result) == false) {
     return result;
   }
 
@@ -159,9 +217,6 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     if (op_it != mkldnn_ops_.end()) {
       sub_var.subgraph_node_indexes.push_back(node->Index());
 
-      auto& node_inputs = node->InputDefs();
-      sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
-
       // can we fuse (at mkldnn level) nodes?
       bool fused = false;
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
@@ -171,54 +226,10 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
         }
       }
 
-      if (!fused) {
-        MklDnnNode mklnode;
-        mklnode.name = node->OpType();
-        mklnode.num_inputs = static_cast<int>(node->InputDefs().size());
-        mklnode.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
-        mklnode.node_index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size()) + 1;
-        auto& node_outputs = node->OutputDefs();
-        mklnode.output_name = node_outputs[0]->Name();
-        if (node->OpType() == "Conv") {
-          mklnode.weight_name = node->InputDefs()[1]->Name();
-        }
-        for (int i = 0; i < node_inputs.size(); i++) {
-          auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
-          if (iter != output_to_source_node_map.end())
-            mklnode.parent_nodes.push_back(iter->second);
-        }
-        sub_var.subgraph_ptr->mklnodes.push_back(mklnode);
-        output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
-      } else {
-        auto& node_outputs = node->OutputDefs();
-        output_to_source_node_map.erase(sub_var.subgraph_ptr->mklnodes.back().output_name);
-        sub_var.subgraph_ptr->mklnodes.back().output_name = node_outputs[0]->Name();
-        output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
-      }
-
-      // Add inputs which are not in the outputs vector.
-      for (int i = 0; i < node_inputs.size(); i++) {
-        auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), node_inputs[i]->Name());
-        if (itr == sub_var.outputs.end()) {
-          sub_var.inputs.push_back(node_inputs[i]->Name());
-        } else {
-          // Vector of node outputs, which is input to other node
-          // if node output is not input to any other node, then it's the end node
-          // which we will find later
-          sub_var.outputs_as_input_other_node.push_back(node_inputs[i]->Name());
-        }
-      }
-
-      NodeAttributes attributes = node->GetAttributes();
-      if (attributes.size() > 0) {
-        int index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size());
-
-        for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
-          std::string key = node->OpType() + "-" + std::to_string(index) + "-" + att_it->first;
-          std::pair<std::string, ONNX_NAMESPACE::AttributeProto> att(key, att_it->second);
-          subgraph_attributes[key] = att_it->second;
-        }
-      }
+	  // Create MklDnn node:
+	  //   Update inputs, outputs and parent nodes
+	  //   Collect attributes and modify the key to make it unique
+      CreateOrUpdateMklDnnNode(node, sub_var, fused, output_to_source_node_map, subgraph_attributes);
 
       auto temp_index = node_index + 1;
       if (temp_index < graph_viewer.MaxNodeIndex()) {

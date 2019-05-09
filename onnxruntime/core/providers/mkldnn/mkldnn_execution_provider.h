@@ -95,6 +95,14 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   bool UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
                                             const std::vector<const KernelRegistry*>& kernel_registries,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const;
+  void CreateOrUpdateMklDnnNode(const Node* node,
+                          SubgraphVariables& sub_var,
+                          bool fused,
+                          std::map<std::string, int>& output_to_source_node_map,
+                          NodeAttributes& subgraph_attributes) const;
+
+  // Create MklDnn node, update inputs, outputs and parent nodes
+  // collect attribtes
   void CreateMetaDef(SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
                      std::vector<std::unique_ptr<ComputeCapability>>& result) const;
 
