@@ -422,14 +422,13 @@ common::Status InferenceSession::Initialize() {
                                                    std::make_unique<CPUExecutionProvider>(epi)));
     }
 
-    const auto first_provider = std::cbegin(execution_providers_);
     if (!session_options_.enable_sequential_execution &&
-        first_provider->get()->Type() != onnxruntime::kCpuExecutionProvider) {
-      LOGS(*session_logger_, ERROR) << "Parallel execution is only supported "
-                                       "for the CPU Execution Provider currently.";
+        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
+      LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
+                                       "for the registered CUDA Execution Provider.";
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Parallel execution is only supported "
-                            "for the CPU Execution Provider currently.");
+                            "Parallel execution is currently not supported "
+                            "for the registered CUDA Execution Provider.");
     }
 
     // add predefined transformers
