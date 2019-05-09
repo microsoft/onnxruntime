@@ -133,15 +133,15 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
 }
 
 void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
-                                                      SubgraphVariables& sub_var,
-                                                      bool fused,
-                                                      std::map<std::string, int>& output_to_source_node_map,
-                                                      NodeAttributes& subgraph_attributes) const {
+                                                       mkl_dnn::SubgraphVariables& sub_var,
+                                                       bool fused,
+                                                       std::map<std::string, int>& output_to_source_node_map,
+                                                       NodeAttributes& subgraph_attributes) const {
   auto& node_inputs = node->InputDefs();
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
   if (!fused) {
-    MklDnnNode mklnode;
+    mkl_dnn::MklDnnNode mklnode;
     mklnode.name = node->OpType();
     mklnode.num_inputs = static_cast<int>(node->InputDefs().size());
     mklnode.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
@@ -203,7 +203,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   }
 
   // use sub-graph implementation
-  SubgraphVariables sub_var;
+  mkl_dnn::SubgraphVariables sub_var;
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
   std::map<std::string, int> output_to_source_node_map;
@@ -226,9 +226,9 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
         }
       }
 
-	  // Create MklDnn node:
-	  //   Update inputs, outputs and parent nodes
-	  //   Collect attributes and modify the key to make it unique
+      // Create MklDnn node:
+      //   Update inputs, outputs and parent nodes
+      //   Collect attributes and modify the key to make it unique
       CreateOrUpdateMklDnnNode(node, sub_var, fused, output_to_source_node_map, subgraph_attributes);
 
       auto temp_index = node_index + 1;
@@ -311,7 +311,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   return result;
 }
 
-void MKLDNNExecutionProvider::CreateMetaDef(SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
+void MKLDNNExecutionProvider::CreateMetaDef(mkl_dnn::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;

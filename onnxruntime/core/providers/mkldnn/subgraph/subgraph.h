@@ -10,6 +10,7 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
+namespace mkl_dnn {
 
 struct MklDnnNode {
   std::string name;
@@ -66,5 +67,5 @@ struct SubgraphVariables {
     subgraph_ptr.reset(new Subgraph());
   }
 };
-
+}  // namespace mkl_dnn
 }  // namespace onnxruntime
