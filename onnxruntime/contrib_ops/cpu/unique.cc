@@ -38,7 +38,7 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
 
   // container to hold the unique elements (in the order it was first seen)
   std::vector<float> unique_elements;
-  // number of nique elements is atmost number of elements in the raw data
+  // number of unique elements is atmost number of elements in the raw data
   unique_elements.reserve(num_elements);
 
   // containers to store other metadata needed for other output tensors
@@ -67,20 +67,19 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
   Tensor* output_uniques = ctx->Output(0, output_shape);
   float* output_uniques_data = output_uniques->template MutableData<float>();
 
-  size_t iter = 0;
-  for (const float& e : unique_elements) {
-    output_uniques_data[iter] = e;
-    ++iter;
-  }
-
   // 'counts' output
   Tensor* output_counts = ctx->Output(2, output_shape);
   int64_t* output_counts_data = output_counts->template MutableData<int64_t>();
 
-  iter = 0;
+  size_t iter = 0;
   for (const float& e : unique_elements) {
+    // 'uniques' data
+    output_uniques_data[iter] = e;
+
+    // 'counts' data
     const auto iter_map = element_counts.find(e);
     output_counts_data[iter] = static_cast<int64_t>(iter_map->second);
+
     ++iter;
   }
 

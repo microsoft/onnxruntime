@@ -5,7 +5,6 @@
 
 * com.microsoft
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
-  * <a href="#com.microsoft.DenseIntersection">com.microsoft.DenseIntersection</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
@@ -227,51 +226,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(int32)</dt>
 <dd>Constrain seq_lens to integral tensors.</dd>
-</dl>
-
-
-### <a name="com.microsoft.DenseIntersection"></a><a name="com.microsoft.denseintersection">**com.microsoft.DenseIntersection**</a>
-
-  The DenseIntersection takes in two sequence calculate the intersection.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>set_operation</tt> : string (required)</dt>
-<dd>set operation.</dd>
-<dt><tt>validate_indices</tt> : int (required)</dt>
-<dd>validate_indices.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>Sequence_0</tt> : T</dt>
-<dd>Sequence 0 for intersection</dd>
-<dt><tt>Sequence_1</tt> : T</dt>
-<dd>Sequence 1 for intersection</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>Y</tt> : T</dt>
-<dd>output</dd>
-<dt><tt>Y1</tt> : T</dt>
-<dd>output_temp</dd>
-<dt><tt>Y2</tt> : T</dt>
-<dd>output_temp_2</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(int32), tensor(int64)</dt>
-<dd>Constrain to tensor(int32), tensor(int64).</dd>
 </dl>
 
 
