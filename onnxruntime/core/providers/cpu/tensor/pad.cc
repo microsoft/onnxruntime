@@ -89,26 +89,17 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
 
 template <>
 Status PadCpuImpl<float>(OpKernelContext* ctx,
-                      const std::vector<int64_t>& raw_pads,
-                      const Mode& mode,
-                      float value) {
+                         const std::vector<int64_t>& pads,
+                         const std::vector<int64_t>& slices,
+                         const Mode& mode,
+                         float value) {
   auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t dimension_count = output_dims.size();
 
   // make copy of raw_pads as it may be mutated below
-  std::vector<int64_t> pads = raw_pads;
   ORT_ENFORCE(dimension_count > 0, "Input tensor has no dimensions");
   ORT_ENFORCE(dimension_count * 2 == pads.size(), "'pads' attribute has wrong number of values");
-
-  // Separate out any negative pads into the slices array
-  std::vector<int64_t> slices(pads.size(), 0);
-  for (size_t index = 0; index < pads.size(); index++) {
-    if (pads[index] < 0) {
-      slices[index] = pads[index];
-      pads[index] = 0;
-    }
-  }
 
   // Reshape input dims
   std::vector<int64_t> reshaped_input_dims;
@@ -256,6 +247,6 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
 
 template <>
 Status Pad<float>::Compute(OpKernelContext* ctx) const {
-  return PadCpuImpl<float>(ctx, pads_, mode_, value_);
+  return PadCpuImpl<float>(ctx, pads_, slices_, mode_, value_);
 }
 };  // namespace onnxruntime

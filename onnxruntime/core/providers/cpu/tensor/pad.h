@@ -32,6 +32,15 @@ class PadBase {
       if (!info.GetAttrs("pads", pads_).IsOK())
         ORT_THROW("Invalid 'pads' attribute value");
 
+      // Separate out any negative pads_ into the slices_ array
+      slices_.resize(pads_.size(), 0);
+      for (size_t index = 0; index < pads_.size(); index++) {
+        if (pads_[index] < 0) {
+          slices_[index] = pads_[index];
+          pads_[index] = 0;
+        }
+      }
+
       ;  // Value is optional and initialized to 0 by default
     }
   }
@@ -39,7 +48,8 @@ class PadBase {
   ~PadBase() {}
 
   Mode mode_{Mode::Constant};
-  std::vector<int64_t> pads_;
+  std::vector<int64_t> pads_;    // After construction, only >=0 values are in here
+  std::vector<int64_t> slices_;  // All of the negative padding values are separated out into slices_
   const T value_;
 };
 
@@ -52,8 +62,9 @@ struct Pad final : public OpKernel, public PadBase<T> {
 
 template <typename T>
 Status PadCpuImpl(OpKernelContext* ctx,
-               const std::vector<int64_t>& raw_pads,
-               const Mode& mode,
-               T value);
+                  const std::vector<int64_t>& pads,
+                  const std::vector<int64_t>& slices,
+                  const Mode& mode,
+                  T value);
 
 }  // namespace onnxruntime

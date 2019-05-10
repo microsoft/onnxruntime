@@ -43,6 +43,15 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
     pads[i] = pads_tensor_raw_data[i];
   }
 
+  // Separate out any negative pads into the slices array
+  std::vector<int64_t> slices(pads.size(), 0);
+  for (size_t index = 0; index < pads.size(); index++) {
+    if (pads[index] < 0) {
+      slices[index] = pads[index];
+      pads[index] = 0;
+    }
+  }
+
   float value = 0;
   const Tensor* value_tensor = ctx->Input<Tensor>(2);
   if (nullptr != value_tensor) {
@@ -52,7 +61,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
     value = value_tensor->template Data<float>()[0];
   }
 
-  return PadCpuImpl<float>(ctx, pads, mode_, value);
+  return PadCpuImpl<float>(ctx, pads, slices, mode_, value);
 }
 
 }  // namespace contrib
