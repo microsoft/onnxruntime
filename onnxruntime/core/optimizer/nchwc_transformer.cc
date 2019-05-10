@@ -261,6 +261,7 @@ class NchwcMoveReorderOutputsLater : public onnxruntime::GraphTransformer {
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
+          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {6}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
 
         // BUGBUG: Concat should only do this if the input blocks are fully aligned...
