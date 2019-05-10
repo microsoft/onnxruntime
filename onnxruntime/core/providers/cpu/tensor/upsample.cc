@@ -158,47 +158,66 @@ void upsampleBilinear(
     float height_scale,
     float width_scale,
     const T* Xdata,
-    T* Ydata) {
+    T* Ydata,
+    AllocatorPtr& alloc) {
   int64_t output_width = static_cast<int64_t>(input_width * width_scale);
   int64_t output_height = static_cast<int64_t>(input_height * height_scale);
+
+  auto inx_data = alloc->Alloc(sizeof(int64_t) * (2 * (output_height + output_width)));
+  BufferUniquePtr inx_data_buffer(inx_data, BufferDeleter(alloc));
+  int64_t* input_width_mul_y1 = static_cast<int64_t*>(inx_data_buffer.get());
+  int64_t* input_width_mul_y2 = static_cast<int64_t*>(inx_data_buffer.get()) + output_height;
+  int64_t* in_x1 = static_cast<int64_t*>(inx_data_buffer.get()) + 2 * output_height;
+  int64_t* in_x2 = static_cast<int64_t*>(inx_data_buffer.get()) + 2 * output_height + output_width;
+
+  auto scale_data = alloc->Alloc(sizeof(float) * (2 * (output_height + output_width)));
+  BufferUniquePtr scale_data_buffer(scale_data, BufferDeleter(alloc));
+  float* dy1 = static_cast<float*>(scale_data_buffer.get());
+  float* dy2 = static_cast<float*>(scale_data_buffer.get()) + output_height;
+  float* dx1 = static_cast<float*>(scale_data_buffer.get()) + 2 * output_height;
+  float* dx2 = static_cast<float*>(scale_data_buffer.get()) + 2 * output_height + output_width;
+
+  for (int64_t y = 0; y < output_height; ++y) {
+    float in_y = std::min(y / height_scale, static_cast<float>(input_height - 1));
+    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
+    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
+    dy1[y] = fabs(in_y - in_y1);
+    dy2[y] = fabs(in_y - in_y2);
+    if (in_y1 == in_y2) {
+      dy1[y] = 0.5f;
+      dy2[y] = 0.5f;
+    }
+
+    input_width_mul_y1[y] = input_width * in_y1;
+    input_width_mul_y2[y] = input_width * in_y2;
+  }
+
+  for (int64_t x = 0; x < output_width; ++x) {
+    float in_x = std::min(x / width_scale, static_cast<float>(input_width - 1));
+    in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    in_x2[x] = std::min(in_x1[x] + 1, input_width - 1);
+
+    dx1[x] = std::abs(in_x - in_x1[x]);
+    dx2[x] = std::abs(in_x - in_x2[x]);
+    if (in_x1[x] == in_x2[x]) {
+      dx1[x] = 0.5f;
+      dx2[x] = 0.5f;
+    }
+  }
 
   for (int64_t n = 0; n < batch_size; ++n) {
     for (int64_t c = 0; c < num_channels; ++c) {
       for (int64_t y = 0; y < output_height; ++y) {
-        float in_y = std::min(y / height_scale, static_cast<float>(input_height - 1));
-        const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
-        const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-        float dy1 = fabs(in_y - in_y1);
-        float dy2 = fabs(in_y - in_y2);
-        if (in_y1 == in_y2) {
-          dy1 = 0.5f;
-          dy2 = 0.5f;
-        }
-
-        const int64_t input_width_mul_y1 = input_width * in_y1;
-        const int64_t input_width_mul_y2 = input_width * in_y2;
-
         for (int64_t x = 0; x < output_width; ++x) {
-          float in_x = std::min(x / width_scale, static_cast<float>(input_width - 1));
-          const int64_t in_x1 = std::min(static_cast<int64_t>(in_x), input_width - 1);
-          const int64_t in_x2 = std::min(in_x1 + 1, input_width - 1);
+          T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
+          T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
+          T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
+          T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
 
-          float dx1 = std::abs(in_x - in_x1);
-          float dx2 = std::abs(in_x - in_x2);
-          if (in_x1 == in_x2) {
-            dx1 = 0.5f;
-            dx2 = 0.5f;
-          }
-
-          T X11 = Xdata[input_width_mul_y1 + in_x1];
-          T X21 = Xdata[input_width_mul_y1 + in_x2];
-          T X12 = Xdata[input_width_mul_y2 + in_x1];
-          T X22 = Xdata[input_width_mul_y2 + in_x2];
-
-          Ydata[output_width * y + x] = static_cast<T>(dx2 * dy2 * X11 +
-                                                       dx1 * dy2 * X21 +
-                                                       dx2 * dy1 * X12 +
-                                                       dx1 * dy1 * X22);
+          Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                       dx1[x] * dy2[y] * X21 +
+                                                       dx2[x] * dy1[y] * X12 +
+                                                       dx1[x] * dy1[y] * X22);
         }
       }
       Xdata += input_height * input_width;
@@ -235,8 +254,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       const int64_t batch_size = dims[0], num_channels = dims[1];
       const int64_t input_height = dims[2], input_width = dims[3];
 
+      AllocatorPtr alloc;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
       upsampleBilinear(batch_size, num_channels, input_height, input_width,
-                       scales[2], scales[3], X->template Data<T>(), Y->template MutableData<T>());
+                       scales[2], scales[3], X->template Data<T>(), Y->template MutableData<T>(), alloc);
       return Status::OK();
     }
     default:
