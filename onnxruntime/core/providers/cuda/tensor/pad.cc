@@ -34,14 +34,17 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TensorPitches::Calculate(input_strides.CpuSpan(), input_shape.GetDims());
   std::vector<int64_t> output_dims(input_shape.GetDims());
 
+  // make copy of (const) pads_ as it may be mutated below
+  std::vector<int64_t> pads = pads_;
+  
   ORT_ENFORCE(dimension_count * 2 == pads_.size(), "'pads' attribute has wrong number of values");
 
   // Separate out any negative pads_ into the slices_ array
-  std::vector<int64_t> slices_(pads_.size(), 0);
-  for (size_t index = 0; index < pads_.size(); index++) {
-    if (pads_[index] < 0) {
-      slices_[index] = pads_[index];
-      pads_[index] = 0;
+  std::vector<int64_t> slices_(pads.size(), 0);
+  for (size_t index = 0; index < pads.size(); index++) {
+    if (pads[index] < 0) {
+      slices_[index] = pads[index];
+      pads[index] = 0;
     }
   }
 
@@ -49,8 +52,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto lower_pads_span = lower_pads.CpuSpan();
   auto upper_pads_span = upper_pads.CpuSpan();
   for (size_t i = 0; i < dimension_count; i++) {
-    lower_pads_span[i] = pads_[i] + slices_[i];
-    upper_pads_span[i] = pads_[i + dimension_count] + slices_[i + dimension_count];
+    lower_pads_span[i] = pads[i] + slices_[i];
+    upper_pads_span[i] = pads[i + dimension_count] + slices_[i + dimension_count];
     output_dims[i] += lower_pads_span[i] + upper_pads_span[i];
   }
   TensorShape output_shape(output_dims);
