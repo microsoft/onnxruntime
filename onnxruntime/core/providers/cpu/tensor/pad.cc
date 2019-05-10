@@ -99,7 +99,7 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
 
   // make copy of raw_pads as it may be mutated below
   ORT_ENFORCE(dimension_count > 0, "Input tensor has no dimensions");
-  ORT_ENFORCE(dimension_count * 2 == pads.size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == pads.size(), "'pads' has wrong number of values");
 
   // Reshape input dims
   std::vector<int64_t> reshaped_input_dims;
