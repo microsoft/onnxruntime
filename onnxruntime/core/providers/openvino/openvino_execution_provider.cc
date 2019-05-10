@@ -87,11 +87,18 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
 
+
     std::vector<std::unique_ptr<ComputeCapability>> result;
     bool precision_fp32 = true;
+    std::string device_id = "CPU";
+
+    #ifdef OPENVINO_CONFIG_GPU_FP32
+        device_id = "GPU";
+    #endif
 
     #ifdef OPENVINO_CONFIG_GPU_FP16
         precision_fp32 = false;
+        device_id = "GPU";
     #endif
 
     #ifdef OPENVINO_CONFIG_MYRIAD
@@ -101,7 +108,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     #ifdef OPENVINO_CONFIG_VAD_R
         precision_fp32 = false;
     #endif
-
 
 
     auto domain_map = graph_viewer.DomainToVersionMap();
@@ -118,13 +124,40 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
+
+    auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+
+    auto graph_proto = model_proto.mutable_graph();
+    int input_dims = 0;
+    int output_dims = 0;
+
+    if(graph_viewer.GetInputs().size() !=0)
+        input_dims = graph_proto->input(0).type().tensor_type().shape().dim_size();
+
+    if(graph_viewer.GetOutputs().size() !=0)
+        output_dims = graph_proto->output(0).type().tensor_type().shape().dim_size();
+
+
+
+    //GPU Plugin does not support single dimensional input
+    if(device_id == "GPU"){
+        if(input_dims == 1 || input_dims == 5 || output_dims == 5)
+            return result;
+    }
+
+
+
+
+
     // bool newSubGraph(true);
     bool isGraphSupported = true;
     for (auto index : node_indexes) {
 
         auto node = graph_viewer.GetNode(index);
 
+
         auto layer = openvino_ep::OpenVINOLayer(node->OpType());
+
 
         if (layer.getName() == "NotSupported" && layer.getOpsetVersion() < opset_version) {
 
@@ -133,6 +166,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         }
         //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
         if(node->OpType() == "Gemm" || node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape" || node->OpType() == "MatMul"){
+
 
             int count = 0;
             for(auto input : node->InputDefs()){
@@ -176,16 +210,35 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 return result;
             }
 
+
             const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
             if(type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING){
                 return result;
+            }
+
+            if(device_id == "GPU"){
+
+                auto graph_inputs = graph_viewer.GetInputs();
+                auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
+                if(it != graph_inputs.end()){
+                    if(input_dims == 3){
+                        return result;
+                    }
+                }
+                // else{
+                //     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+                //     graph_viewer.GetInitializedTensor(node->InputDefs()[0]->Name(), tensor_proto);
+                //     if(tensor_proto->dims_size() == 3){
+                //         return result;
+                //     }
+                // }
             }
         }
 
         if(node->OpType() == "Softmax"){
             auto attributes = node->GetAttributes();
             auto axis = attributes["axis"].i();
-            if(axis < 0)
+            if(axis != 1)
                 return result;
         }
 
@@ -195,7 +248,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
     if(isGraphSupported){
 
-        auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
         SaveModel(model_proto,"ov_model.onnx");
 
         PyObject *pModule, *pOutput,*pFunc;

@@ -51,6 +51,9 @@ if("OPENVINO" in c2.backend.get_device()):
     '|^test_transpose_all_permutations_0_cpu.*'
     '|^test_maxpool_1d_default_cpu.*'
     '|^test_add_bcast_cpu.*'
+    '|^test_maxpool_2d_same_upper_cpu.*'
+    '|^test_averagepool_2d_same_upper_cpu.*'
+    '|^test_PixelShuffle_cpu*'
     '|^test_averagepool_1d_default_cpu.*'
     ')')
 

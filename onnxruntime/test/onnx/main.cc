@@ -386,45 +386,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests["averagepool_1d_default"] = "disabled temporarily";
   broken_tests["averagepool_2d_ceil"] = "disabled temporarily";
   broken_tests["averagepool_2d_same_lower"] = "disabled temporarily";
-  broken_tests["cast_FLOAT_to_STRING"] = "disabled temporarily";
-  broken_tests["cast_STRING_to_FLOAT"] = "disabled temporarily";
   broken_tests["convtranspose_1d"] = "disabled temporarily";
   broken_tests["convtranspose_3d"] = "disabled temporarily";
   broken_tests["maxpool_1d_default"] = "disabled temporarily";
   broken_tests["maxpool_2d_ceil"] = "disabled temporarily";
   broken_tests["maxpool_2d_dilations"] = "disabled temporarily";
   broken_tests["maxpool_2d_same_lower"] = "disabled temporarily";
-  broken_tests["maxpool_with_argmax_2d_precomputed_strides"] = "disabled temporarily";
   broken_tests["mul_bcast"] = "disabled temporarily";
   broken_tests["mul_bcast"] = "disabled temporarily";
-  broken_tests["shrink"] = "disabled temporarily";
   broken_tests["transpose_all_permutations_0"] = "disabled temporarily";
-  broken_tests["squeezenet"] = "disabled temporarily";
-  broken_tests["zfnet512"] = "disabled temporarily";
-  broken_tests["bvlc_alexnet"] = "disabled temporarily";
-  broken_tests["squeezenet1.1"] = "disabled temporarily";
-  broken_tests["resnet50v2"] = "disabled temporarily";
-  broken_tests["resnet50"] = "disabled temporarily";
   broken_tests["fp16_shufflenet"] = "disabled temporarily";
-  broken_tests["resnet18v2"] = "disabled temporarily";
-  broken_tests["shufflenet"] = "disabled temporarily";
-  broken_tests["bvlc_reference_caffenet"] = "disabled temporarily";
-  broken_tests["bvlc_reference_rcnn_ilsvrc13"] = "disabled temporarily";
-  broken_tests["densenet121"] = "disabled temporarily";
-  broken_tests["bvlc_googlenet"] = "disabled temporarily";
-  broken_tests["resnet152v2"] = "disabled temporarily";
-  broken_tests["resnet34v2"] = "disabled temporarily";
-  broken_tests["resnet101v2"] = "disabled temporarily";
-  broken_tests["inception_v2"] = "disabled temporarily";
-  broken_tests["vgg19"] = "disabled temporarily";
-  broken_tests["mnist"] = "disabled temporarily";
-  broken_tests["fp16_tiny_yolov2"] = "disabled temporarily";
-  broken_tests["tf_resnet_v2_152"] = "disabled temporarily";
-  broken_tests["fp16_inception_v1"] = "disabled temporarily";
-  broken_tests["tiny_yolov2"] = "disabled temporarily";
-  broken_tests["tf_inception_v1"] = "disabled temporarily";
-  broken_tests["inception_v1"] = "disabled temporarily";
-  broken_tests["tf_resnet_v1_50"] = "disabled temporarily";
+  broken_tests["maxpool_2d_same_upper"] = "disabled temporarily";
 #endif
 
 
