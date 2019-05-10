@@ -30,7 +30,7 @@ jobs:
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r -a x86 $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --x86"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--use_mklml --use_tvm --x86"'
       displayName: 'Command Line Script'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
