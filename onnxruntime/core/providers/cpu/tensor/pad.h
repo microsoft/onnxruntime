@@ -44,8 +44,8 @@ class PadBase {
 };
 
 template <typename T>
-struct Pad final : public OpKernel, public PadBase<float> {
-  Pad(const OpKernelInfo& info) : OpKernel(info), PadBase<float>(info) {}
+struct Pad final : public OpKernel, public PadBase<T> {
+  Pad(const OpKernelInfo& info) : OpKernel(info), PadBase<T>(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };

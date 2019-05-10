@@ -9,8 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-struct Pad final : public OpKernel, public PadBase<float> {
-  Pad(const OpKernelInfo& info) : OpKernel(info), PadBase<float>(info, true) {}
+struct Pad final : public OpKernel, public PadBase<T> {
+  Pad(const OpKernelInfo& info) : OpKernel(info), PadBase<T>(info, true) {}
 
   Status Compute(OpKernelContext* context) const override;
 };
