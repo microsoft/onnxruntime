@@ -88,25 +88,39 @@ static void ReshapePads(const std::vector<int64_t>& src_pad, size_t src_dim_coun
 }
 
 template <>
-Status Pad<float>::Compute(OpKernelContext* ctx) const {
+Status PadImpl<float>(OpKernelContext* ctx,
+                      const std::vector<int64_t>& raw_pads,
+                      const Mode& mode,
+                      float value) {
   auto& input_tensor = *ctx->Input<Tensor>(0);
   std::vector<int64_t> output_dims(input_tensor.Shape().GetDims());
   size_t dimension_count = output_dims.size();
 
+  // make copy of raw_pads as it may be mutated below
+  std::vector<int64_t> pads = raw_pads;
   ORT_ENFORCE(dimension_count > 0, "Input tensor has no dimensions");
-  ORT_ENFORCE(dimension_count * 2 == pads_.size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == pads.size(), "'pads' attribute has wrong number of values");
+
+  // Separate out any negative pads_ into the slices_ array
+  std::vector<int64_t> slices(pads.size(), 0);
+  for (size_t index = 0; index < pads.size(); index++) {
+    if (pads[index] < 0) {
+      slices[index] = pads[index];
+      pads[index] = 0;
+    }
+  }
 
   // Reshape input dims
   std::vector<int64_t> reshaped_input_dims;
-  FlattenInnerShape(output_dims, pads_, slices_, reshaped_input_dims);
+  FlattenInnerShape(output_dims, pads, slices, reshaped_input_dims);
 
   // Reshape padding
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
   size_t inner_no_pad_size = reshaped_input_dims[inner_axis] / output_dims[inner_axis];
   std::vector<int64_t> reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
-  ReshapePads(pads_, dimension_count, new_dims_count, inner_no_pad_size, reshaped_pad);
-  ReshapePads(slices_, dimension_count, new_dims_count, inner_no_pad_size, reshaped_slice);
+  ReshapePads(pads, dimension_count, new_dims_count, inner_no_pad_size, reshaped_pad);
+  ReshapePads(slices, dimension_count, new_dims_count, inner_no_pad_size, reshaped_slice);
 
   std::vector<int64_t> reshaped_output_dims = reshaped_input_dims;
   std::vector<int64_t> input_starts;
@@ -122,7 +136,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
   }
 
   for (size_t i = 0; i < dimension_count; i++) {
-    output_dims[i] += pads_[i] + pads_[i + dimension_count] + slices_[i] + slices_[i + dimension_count];
+    output_dims[i] += pads[i] + pads[i + dimension_count] + slices[i] + slices[i + dimension_count];
   }
   TensorShape output_shape(output_dims);
 
@@ -142,7 +156,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
 
   ExtentAxisCounters input_counters(input_extents);
 
-  switch (mode_) {
+  switch (mode) {
     case Mode::Constant:
       // Loop over the output tensor, writing out padding between the blocks of copied data
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
@@ -155,8 +169,8 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
 
           int64_t prePad = reshaped_pad[inner_axis];
           int64_t postPad = reshaped_pad[inner_axis + new_dims_count];
-          PadAxisConstant(axisStart - prePad, value_, prePad);
-          PadAxisConstant(output, value_, postPad);
+          PadAxisConstant(axisStart - prePad, value, prePad);
+          PadAxisConstant(output, value, postPad);
           output += postPad;
           alignSkip = prePad;
         }
@@ -166,8 +180,8 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
           float* axisStart = output - inner_pitch * input_extents[input_counters.Axis()];
           int64_t prePad = reshaped_pad[input_counters.Axis()];
           int64_t postPad = reshaped_pad[input_counters.Axis() + new_dims_count];
-          PadAxisConstant(axisStart - prePad * inner_pitch, value_, prePad * inner_pitch);
-          PadAxisConstant(output, value_, postPad * inner_pitch);
+          PadAxisConstant(axisStart - prePad * inner_pitch, value, prePad * inner_pitch);
+          PadAxisConstant(output, value, postPad * inner_pitch);
           output += inner_pitch * postPad;
           alignSkip += inner_pitch * prePad;
         }
@@ -238,5 +252,10 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
   }
 
   return Status::OK();
+}
+
+template <>
+Status Pad<float>::Compute(OpKernelContext* ctx) const {
+  return PadImpl<float>(ctx, pads_, mode_, value_);
 }
 };  // namespace onnxruntime
