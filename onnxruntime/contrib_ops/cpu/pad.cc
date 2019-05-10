@@ -52,7 +52,7 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
     value = value_tensor->template Data<float>()[0];
   }
 
-  return PadImpl<float>(ctx, pads, mode_, value);
+  return PadCpuImpl<float>(ctx, pads, mode_, value);
 }
 
 }  // namespace contrib

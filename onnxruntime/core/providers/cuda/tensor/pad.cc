@@ -36,6 +36,15 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_ENFORCE(dimension_count * 2 == pads_.size(), "'pads' attribute has wrong number of values");
 
+  // Separate out any negative pads_ into the slices_ array
+  std::vector<int64_t> slices_(pads_.size(), 0);
+  for (size_t index = 0; index < pads_.size(); index++) {
+    if (pads_[index] < 0) {
+      slices_[index] = pads_[index];
+      pads_[index] = 0;
+    }
+  }
+
   // Calculate output dimensions, and handle any negative padding
   auto lower_pads_span = lower_pads.CpuSpan();
   auto upper_pads_span = upper_pads.CpuSpan();

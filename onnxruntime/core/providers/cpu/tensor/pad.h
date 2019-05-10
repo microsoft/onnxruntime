@@ -51,7 +51,7 @@ struct Pad final : public OpKernel, public PadBase<T> {
 };
 
 template <typename T>
-Status PadImpl(OpKernelContext* ctx,
+Status PadCpuImpl(OpKernelContext* ctx,
                const std::vector<int64_t>& raw_pads,
                const Mode& mode,
                T value);
