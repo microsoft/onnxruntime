@@ -21,7 +21,7 @@ __global__ void _PadKernel(
     const int64_t* input_strides,
     const int64_t* lower_pads,
     const int64_t* upper_pads,
-    const T pad_value,
+    const float pad_value,
     const T* input_data,
     const fast_divmod* fdm_output_strides,
     T* output_data,
@@ -64,7 +64,7 @@ __global__ void _PadKernel(
     }
     input_index += input_strides[dim] * in_coord;
   }
-  output_data[id] = use_pad_value ? pad_value : input_data[input_index];
+  output_data[id] = use_pad_value ? (T)pad_value : input_data[input_index];
 }
 
 template <typename T>
@@ -74,7 +74,7 @@ void PadImpl(
     const int64_t* input_strides,
     const int64_t* lower_pads,
     const int64_t* upper_pads,
-    const T pad_value,
+    const float pad_value,
     const int pad_mode,
     const T* input_data,
     const fast_divmod* fdm_output_strides,
@@ -101,7 +101,7 @@ void PadImpl(
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void PadImpl<T>(const size_t shape_rank, const int64_t* input_dims, const int64_t* input_strides, const int64_t* lower_pads, const int64_t* upper_pads, const T pad_value, const int pad_mode, const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, const size_t N);
+  template void PadImpl<T>(const size_t shape_rank, const int64_t* input_dims, const int64_t* input_strides, const int64_t* lower_pads, const int64_t* upper_pads, const float pad_value, const int pad_mode, const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

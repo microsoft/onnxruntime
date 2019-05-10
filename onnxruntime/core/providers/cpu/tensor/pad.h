@@ -12,10 +12,9 @@ enum class Mode : int {
   Edge
 };
 
-template <class T>
 class PadBase {
  protected:
-  PadBase(const OpKernelInfo& info, bool dynamic = false) : value_(info.GetAttrOrDefault("value", static_cast<T>(0))) {
+  PadBase(const OpKernelInfo& info, bool dynamic = false) : value_(info.GetAttrOrDefault("value", 0.f)) {
     std::string mode;
     if (info.GetAttr("mode", &mode).IsOK()) {
       if (mode == "constant")
@@ -50,12 +49,12 @@ class PadBase {
   Mode mode_{Mode::Constant};
   std::vector<int64_t> pads_;    // After construction, only >=0 values are in here
   std::vector<int64_t> slices_;  // All of the negative padding values are separated out into slices_
-  const T value_;
+  const float value_;            // will always be float (when 'value' parsed from attribute - opset 10 and below)
 };
 
 template <typename T>
-struct Pad final : public OpKernel, public PadBase<T> {
-  Pad(const OpKernelInfo& info) : OpKernel(info), PadBase<T>(info) {}
+struct Pad final : public OpKernel, public PadBase {
+  Pad(const OpKernelInfo& info) : OpKernel(info), PadBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };

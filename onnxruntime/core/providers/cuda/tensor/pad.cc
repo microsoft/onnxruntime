@@ -40,8 +40,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto lower_pads_span = lower_pads.CpuSpan();
   auto upper_pads_span = upper_pads.CpuSpan();
   for (size_t i = 0; i < dimension_count; i++) {
-    lower_pads_span[i] = pads[i] + slices_[i];
-    upper_pads_span[i] = pads[i + dimension_count] + slices_[i + dimension_count];
+    lower_pads_span[i] = pads_[i] + slices_[i];
+    upper_pads_span[i] = pads_[i + dimension_count] + slices_[i + dimension_count];
     output_dims[i] += lower_pads_span[i] + upper_pads_span[i];
   }
   TensorShape output_shape(output_dims);
