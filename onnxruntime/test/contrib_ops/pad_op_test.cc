@@ -12,7 +12,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Spec_Example) {
   test.AddInput<float>("data", {3, 2}, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f});
   test.AddInput<int64_t>("pads", {4}, std::vector<int64_t>{0, 2, 0, 0});
   test.AddOutput<float>("output", {3, 4}, {0.0f, 0.0f, 1.0f, 1.2f, 0.0f, 0.0f, 2.3f, 3.4f, 0.0f, 0.0f, 4.5f, 5.7f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Constant_1D) {
@@ -21,7 +21,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Constant_1D) {
   test.AddInput<int64_t>("pads", {2}, std::vector<int64_t>{1, 2});
   test.AddInput<float>("value", {1}, {1234.0f});
   test.AddOutput<float>("output", {5}, {1234.0f, 1.0f, 2.0f, 1234.0f, 1234.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Constant_1D_Zero) {
@@ -30,7 +30,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Constant_1D_Zero) {
   test.AddInput<int64_t>("pads", {2}, std::vector<int64_t>{0, 0});
   test.AddInput<float>("value", {1}, {1234.0f});
   test.AddOutput<float>("output", {2}, {1.0f, 2.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Constant_2D) {
@@ -45,7 +45,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Constant_2D) {
                          1234.0f, 1234.0f, 11.0f, 21.0f, 1234.0f, 1234.0f,
                          1234.0f, 1234.0f, 12.0f, 22.0f, 1234.0f, 1234.0f,
                          1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Constant_2D_negative) {
@@ -60,7 +60,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Constant_2D_negative) {
                          1234.0f, 1234.0f, 11.0f, 21.0f,
                          1234.0f, 1234.0f, 12.0f, 22.0f,
                          1234.0f, 1234.0f, 1234.0f, 1234.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_3D_complex) {
@@ -78,7 +78,7 @@ TEST(ContribPadOpTest, Contrib_Pad_3D_complex) {
 
                          111.0f, 112.0f,
                          121.0f, 122.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Edge_2D) {
@@ -95,7 +95,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Edge_2D) {
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f,
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f,
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Edge_3D) {
@@ -127,7 +127,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Edge_3D) {
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f,
                          12.0f, 12.0f, 12.0f, 22.0f, 32.0f, 32.0f, 32.0f});
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(ContribPadOpTest, Contrib_Pad_Reflect_2D) {
@@ -146,7 +146,7 @@ TEST(ContribPadOpTest, Contrib_Pad_Reflect_2D) {
                          33.0f, 23.0f, 13.0f, 23.0f, 33.0f, 23.0f, 13.0f,
                          32.0f, 22.0f, 12.0f, 22.0f, 32.0f, 22.0f, 12.0f,
                          31.0f, 21.0f, 11.0f, 21.0f, 31.0f, 21.0f, 11.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

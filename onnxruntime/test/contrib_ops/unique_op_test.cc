@@ -13,7 +13,7 @@ TEST(UniqueOpTest, Unique_Spec_Example) {
   test.AddOutput<float>("uniques", {4}, {2.0f, 1.0f, 3.0f, 4.0f});
   test.AddOutput<int64_t>("idx", {6}, {0, 1, 1, 2, 3, 2});
   test.AddOutput<int64_t>("counts", {4}, {1, 2, 2, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(UniqueOpTest, Unique_Complicated_Example) {
@@ -22,7 +22,7 @@ TEST(UniqueOpTest, Unique_Complicated_Example) {
   test.AddOutput<float>("uniques", {4}, {2.0f, 1.0f, 3.0f, 4.0f});
   test.AddOutput<int64_t>("idx", {12}, {0, 1, 1, 2, 3, 2, 0, 1, 1, 2, 3, 2});
   test.AddOutput<int64_t>("counts", {4}, {2, 4, 4, 2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(UniqueOpTest, Unique_Example_SingleElement) {
@@ -31,7 +31,7 @@ TEST(UniqueOpTest, Unique_Example_SingleElement) {
   test.AddOutput<float>("uniques", {1}, {2.0});
   test.AddOutput<int64_t>("idx", {1}, {0});
   test.AddOutput<int64_t>("counts", {1}, {1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(UniqueOpTest, Unique_AllUniqueElements) {
@@ -40,7 +40,7 @@ TEST(UniqueOpTest, Unique_AllUniqueElements) {
   test.AddOutput<float>("uniques", {2}, {2.0, 3.0});
   test.AddOutput<int64_t>("idx", {2}, {0, 1});
   test.AddOutput<int64_t>("counts", {2}, {1, 1});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
