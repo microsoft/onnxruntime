@@ -415,8 +415,7 @@ inline void TensorTypeAndShapeInfo::GetDimensions(int64_t* values, size_t values
 }
 
 inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
-  std::vector<int64_t> out;
-  out.resize(GetDimensionsCount());
+  std::vector<int64_t> out(GetDimensionsCount(), 0);
   GetDimensions(out.data(), out.size());
   return out;
 }
