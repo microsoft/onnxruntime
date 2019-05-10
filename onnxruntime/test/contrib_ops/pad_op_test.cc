@@ -12,7 +12,6 @@ TEST(TensorOpTest, Contrib_Pad_Spec_Example) {
   OpTester test("Pad", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("data", {3, 2}, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f});
   test.AddInput<int64_t>("pads", {4}, std::vector<int64_t>{0, 2, 0, 0});
-  // test.AddInput<float>("value", {1}, {0.0f});
   test.AddOutput<float>("output", {3, 4}, {0.0f, 0.0f, 1.0f, 1.2f, 0.0f, 0.0f, 2.3f, 3.4f, 0.0f, 0.0f, 4.5f, 5.7f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -72,8 +71,7 @@ TEST(TensorOpTest, Contrib_Pad_3D_complex) {
                         121.0f, 122.0f,
                         211.0f, 212.0f,
                         221.0f, 222.0f});
-  test.AddInput<int64_t>("pads", {5}, std::vector<int64_t>{
-                          1, 0, 0, -1, 0});
+  test.AddInput<int64_t>("pads", {5}, std::vector<int64_t>{1, 0, 0, -1, 0});
   test.AddInput<float>("value", {1}, {0.0f});
   test.AddOutput<float>("output", {2, 2, 2},
                         {0.0f, 0.0f,

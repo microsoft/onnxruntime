@@ -1035,22 +1035,6 @@ Example 4:
           "Constrain to tensor(int32), tensor(int64).")
       .SetDoc(R"DOC(The DenseIntersection takes in two sequence calculate the intersection.)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Unique)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr(
-          "out_idx",
-          "out idx.",
-          AttributeProto::INT)
-      .Input(0, "Sequence", "Sequence 0 for unique", "T")
-      .Output(0, "Y", "output", "T")
-      .Output(1, "Y1", "output_temp", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(int32)"},
-          "Constrain to tensor(int32).")
-      .SetDoc(R"DOC(The Unique.)DOC");
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(Pad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1160,6 +1144,71 @@ Example 4:
                     ],
                     ]
             )DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Unique)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "x", "A 1-D input tensor that is to be processed.", "T")
+      .Output(0, "y",
+              "A 1-D tensor of the same type as 'x' "
+              "containing all the unique values in 'x' sorted "
+              "in the same order that they occur in the input 'x'",
+              "T")
+      .Output(1, "idx",
+              "A 1-D INT64 tensor of the same size as 'x' "
+              "containing the indices for each value in 'x' "
+              "in the output 'uniques'",
+              "tensor(int64)")
+      .Output(2, "counts",
+              "A 1-D INT64 tensor containing the "
+              "the count of each element "
+              "of 'uniques' in the input 'x'",
+              "tensor(int64)")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::INT64);
+        ONNX_NAMESPACE::updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto::INT64);
+
+        // Shape inference
+
+        // shape of output 'uniques' and 'counts'
+        // depends on actual input data, but the rank is always 1
+        ctx.getOutputType(0)
+            ->mutable_tensor_type()
+            ->mutable_shape()
+            ->add_dim();
+
+        ctx.getOutputType(2)
+            ->mutable_tensor_type()
+            ->mutable_shape()
+            ->add_dim();
+
+        // if the input shape doesn't exist, further shape inference is not possible
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // 'idx' output has same shape as input
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 1);
+
+        return;
+      })
+      .SetDoc(R"DOC(
+              Finds all the unique values (deduped list) present in the given input tensor. 
+              This operator returns 3 outputs. 
+              The first output tensor 'uniques' contains all of the unique elements of the input, 
+              sorted in the same order that they occur in the input.
+              The second output tensor 'idx' is the same size as the input and it contains the index 
+              of each value of the input in 'uniques'.
+              The third output tensor 'counts' contains the count of each element of 'uniques' in the input.
+              Example:
+                input_x = [2, 1, 1, 3, 4, 3]
+                output_uniques = [2, 1, 3, 4]
+                output_idx = [0, 1, 1, 2, 3, 2]
+                output_counts = [1, 2, 2, 1]
+              )DOC");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops

@@ -8,7 +8,6 @@
 #pragma warning(disable : 4996)
 #endif
 #include "pad.h"
-#include <vector>
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
