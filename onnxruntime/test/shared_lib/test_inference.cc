@@ -247,11 +247,10 @@ TEST_F(CApiTest, custom_op_handler) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   MyCustomOp custom_op;
-  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("");
-  ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
 
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
-  OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS

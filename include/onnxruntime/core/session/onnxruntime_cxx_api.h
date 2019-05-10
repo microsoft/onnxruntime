@@ -206,6 +206,9 @@ struct Value : Base<OrtValue> {
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
   Value GetValue(int index, OrtAllocator* allocator) const;
 
+  size_t GetStringTensorDataLength() const;
+  void GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const;
+
   template <typename T>
   T* GetTensorMutableData();
 
@@ -232,6 +235,7 @@ struct AllocatorInfo : Base<OrtAllocatorInfo> {
 
   explicit AllocatorInfo(OrtAllocatorInfo* p) : Base<OrtAllocatorInfo>{p} {}
 };
+
 }  // namespace Ort
 
 namespace Ort {
@@ -456,6 +460,16 @@ inline Value Value::GetValue(int index, OrtAllocator* allocator) const {
   OrtValue* out;
   ORT_THROW_ON_ERROR(OrtGetValue(p_, index, allocator, &out));
   return Value{out};
+}
+
+inline size_t Value::GetStringTensorDataLength() const {
+  size_t out;
+  ORT_THROW_ON_ERROR(OrtGetStringTensorDataLength(p_, &out));
+  return out;
+}
+
+inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
+  ORT_THROW_ON_ERROR(OrtGetStringTensorContent(p_, buffer, buffer_length, offsets, offsets_count));
 }
 
 template <typename T>
