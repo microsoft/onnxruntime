@@ -36,8 +36,8 @@ Status Pad<float>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> pads(2 * dimension_count, 0);
   const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
   size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
-  ORT_ENFORCE(pads_size <= 2 * dimension_count,
-              "Pads tensor size should be less than or equal to twice the input dimension count ");
+  ORT_ENFORCE(pads_size == 2 * dimension_count,
+              "Pads tensor size should be equal to twice the input dimension count ");
 
   for (size_t i = 0; i < pads_size; ++i) {
     pads[i] = pads_tensor_raw_data[i];
