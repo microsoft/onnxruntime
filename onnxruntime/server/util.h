@@ -10,6 +10,34 @@
 namespace onnxruntime {
 namespace server {
 
+/**
+ * A RAII container for MLValue buffers
+ */
+class MemBufferArray {
+ public:
+  MemBufferArray() = default;
+
+  uint8_t* AllocNewBuffer(size_t tensor_length) {
+    auto* data = new uint8_t[tensor_length];
+    memset(data, 0, tensor_length);
+    buffers_.push_back(data);
+    return data;
+  }
+
+  ~MemBufferArray() {
+    FreeBuffers();
+  }
+
+ private:
+  std::vector<uint8_t*> buffers_;
+
+  void FreeBuffers() {
+    for (auto* buf : buffers_) {
+      delete[] buf;
+    }
+  }
+};
+
 // Generate protobuf status from ONNX Runtime status
 google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message);
 
