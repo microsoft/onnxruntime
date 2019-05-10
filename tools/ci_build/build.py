@@ -572,7 +572,16 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
 
 
 def run_server_tests(build_dir, configs):
-    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
+    installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
+    if not (('requests' in installed_packages) and ('protobuf' in installed_packages) and ('numpy' in installed_packages)):
+        if hasattr(sys, 'real_prefix'):
+            # In virtualenv
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+        else:
+            # Outside virtualenv
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -658,7 +667,7 @@ def generate_documentation(source_dir, build_dir, configs):
     
 
     if len(docdiff) > 0:
-        raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in.\n diff:\n"+docdiff)
+        raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
 
 def main():

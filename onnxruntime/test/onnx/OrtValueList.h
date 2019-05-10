@@ -12,6 +12,7 @@ class OrtValueArray {
   std::vector<OrtValue*> values;
 
  public:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueArray);
   //n must be non-negative
   OrtValueArray(int n) : values(static_cast<size_t>(n), nullptr){};
   ~OrtValueArray() {

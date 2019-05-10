@@ -7,6 +7,7 @@
 
 #include "environment.h"
 #include "predict.pb.h"
+#include "util.h"
 
 namespace onnxruntime {
 namespace server {
@@ -14,8 +15,8 @@ namespace server {
 class Executor {
  public:
   Executor(ServerEnvironment* server_env, std::string request_id) : env_(server_env),
-                                                                                      request_id_(std::move(request_id)),
-                                                                                      using_raw_data_(true) {}
+                                                                    request_id_(std::move(request_id)),
+                                                                    using_raw_data_(true) {}
 
   // Prediction method
   google::protobuf::util::Status Predict(const std::string& model_name,
@@ -29,10 +30,13 @@ class Executor {
   bool using_raw_data_;
 
   google::protobuf::util::Status SetMLValue(const onnx::TensorProto& input_tensor,
+                                            MemBufferArray& buffers,
                                             OrtAllocatorInfo* cpu_allocator_info,
                                             /* out */ MLValue& ml_value);
 
-  google::protobuf::util::Status SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map, const onnxruntime::server::PredictRequest& request);
+  google::protobuf::util::Status SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map,
+                                                   const onnxruntime::server::PredictRequest& request,
+                                                   MemBufferArray& buffers);
 };
 
 }  // namespace server

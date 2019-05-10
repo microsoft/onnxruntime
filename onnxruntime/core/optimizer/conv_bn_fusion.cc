@@ -143,13 +143,13 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 }
 
 bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", 1) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", 7) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
       next_node.GetInputEdgesCount() != 1 ||
       graph.IsNodeOutputsInGraphOutputs(next_node) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
