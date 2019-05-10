@@ -103,7 +103,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   // Beyond this, we will create a global thread pool to share across sessions.
   {
     int pool_size = session_options_.session_thread_pool_size <= 0
-                        ? std::thread::hardware_concurrency() / 2
+                        ? std::thread::hardware_concurrency() - 1
                         : session_options_.session_thread_pool_size;
 
     thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("SESSION", pool_size);

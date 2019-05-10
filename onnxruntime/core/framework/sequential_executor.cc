@@ -15,6 +15,12 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 
+#define CV_MARKERS 1
+#ifdef CV_MARKERS
+#include <cvmarkersobj.h>
+using namespace Concurrency;
+#endif
+
 namespace onnxruntime {
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
@@ -47,6 +53,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
   // uncomment the line below to dump execution plan
   //std::cout << std::make_pair(p_seq_exec_plan, &session_state) << "\n";
+
+#ifdef CV_MARKERS
+  diagnostic::marker_series series(session_state.GetGraphViewer()->Name().c_str());
+  // diagnostic::marker_series series;
+#endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
@@ -114,16 +125,21 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
-    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
-    if (!compute_status.IsOK()) {
-      std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " <<
-            p_op_kernel->Node().Name() <<
-            " Status Message: " <<
-            compute_status.ErrorMessage();
-      const auto msg_string = ss.str();
-      LOGS(logger, ERROR) << msg_string;
-      return Status(compute_status.Category(), compute_status.Code(), msg_string);
+    {
+#ifdef CV_MARKERS
+      // TODO Span needs to be more unique to work with subgraphs
+      diagnostic::span span(series, "%s.%d", p_op_kernel->Node().OpType().c_str(), p_op_kernel->Node().Index());
+      series.write_flag("%s", p_op_kernel->Node().Name().c_str());
+#endif
+      const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
+
+      if (!compute_status.IsOK()) {
+        std::ostringstream ss;
+        ss << "Non-zero status code returned while running Node: " << p_op_kernel->Node().Name() << " Status Message: " << compute_status.ErrorMessage();
+        const auto msg_string = ss.str();
+        LOGS(logger, ERROR) << msg_string;
+        return Status(compute_status.Category(), compute_status.Code(), msg_string);
+      }
     }
 
     if (f_profiler_enabled) {
