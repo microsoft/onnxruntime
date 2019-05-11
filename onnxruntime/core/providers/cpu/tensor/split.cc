@@ -16,8 +16,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<double>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<std::string>()
                                       }),
     Split);
 
@@ -73,12 +73,10 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<float>(*context, input);
   else if (data_type == DataTypeImpl::GetType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<double>()) {
-    /* Need to update CopyMatrix to support double...
-    status = ComputeImpl<double>(*context, input); */
-    ORT_NOT_IMPLEMENTED("Split operator does not support double yet");
-  } else
-    ORT_THROW("Invalid data type for Split operator of ", data_type);
+  else if (data_type == DataTypeImpl::GetType<std::string>())
+    status = ComputeImpl<std::string>(*context, input);
+  else
+    ORT_THROW("Split operator does not support ", data_type, " yet");
 
   return status;
 }
@@ -128,6 +126,46 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
         });
 
     input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+  }
+
+  return Status::OK();
+}
+
+template <>
+Status Split::ComputeImpl<std::string>(OpKernelContext& context, const Tensor& input) const {
+  auto& input_shape = input.Shape();
+  auto num_outputs = context.OutputCount();
+  int64_t axis = axis_;
+  int before_dims = 0;
+  int after_dims_including_split_axis = 0;
+  int after_dims_excluding_split = 0;
+  std::vector<int64_t> split_sizes;
+
+  ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
+                                        num_outputs,
+                                        axis,
+                                        before_dims,
+                                        after_dims_including_split_axis,
+                                        after_dims_excluding_split,
+                                        split_sizes));
+
+  // copy dimensions so we can update the selected axis in place
+  auto& input_dims = input_shape.GetDims();
+  std::vector<int64_t> output_dimensions{input_dims};
+
+  int64_t input_offset = 0;
+  const std::string* input_data = input.template Data<std::string>();
+
+  for (int i = 0; i < num_outputs; ++i) {
+    // update size of dimension for axis we're splitting on
+    auto split_size = gsl::narrow<int>(split_sizes[i]);
+    output_dimensions[axis] = split_size;
+
+	// TODO: Core logic here
+
+    Tensor* output = context.Output(i, TensorShape{output_dimensions});
+    std::string* output_data = output->template MutableData<std::string>();
+
   }
 
   return Status::OK();
