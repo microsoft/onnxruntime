@@ -354,13 +354,24 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
 }
 
 bool RemoveNode(Graph& graph, Node& node) {
-  // Cannot remove a node with implicit inputs, with multiple output NodeArgs (multiple output edges is fine),
-  // or whose output is also a graph output.
+  // Cannot remove a node with implicit inputs or whose output is also a graph output.
   if (node.ImplicitInputDefs().size() > 0 ||
-      node.OutputDefs().size() != 1 ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
+
+  // Exactly one output is used by a downstream Operator.
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  if (output_edges.size() > 1) {
+    std::set<int> uniqueOutputs;
+    for (auto& output_edge : output_edges) {
+      uniqueOutputs.insert(output_edge.src_arg_index);
+      if (uniqueOutputs.size() > 1) {
+        return false;
+      }
+    }
+  }
+  
 
   if (node.GetInputEdgesCount() == 1) {
     // If there is a single input edge from another node (initializers are not connected with edges to nodes).
