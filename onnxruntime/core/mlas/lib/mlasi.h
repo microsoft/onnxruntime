@@ -217,7 +217,7 @@ void
     float* Output,
     size_t StrideWidth,
     size_t InputChannels,
-    size_t OutputChannels,
+    size_t FilterCount,
     size_t InputStride,
     size_t FilterStride,
     size_t OutputStride,

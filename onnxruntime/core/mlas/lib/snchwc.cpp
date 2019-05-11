@@ -1052,7 +1052,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 //
 // Implementation of the depthwise separable convolution algorithm.
 //
-// Depthwise seperable convolutions are a form of grouped convolution where
+// Depthwise separable convolutions are a form of grouped convolution where
 // the number of input and output channels per group are one.
 //
 
