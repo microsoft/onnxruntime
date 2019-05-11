@@ -20,7 +20,7 @@ struct MklDnnNode {
   int output_index = -1;       // index in output()
   std::string weight_name;
   std::string output_name;
-  std::vector<int> parent_nodes;
+  std::vector<int> parent_nodes; // index to parents in vector mklnodes
 
   std::string ToString() const {  // For Debug purpose only
     std::string key;
@@ -43,29 +43,29 @@ struct MklDnnNode {
 };
 
 struct Subgraph {
+  struct SubgraphVariables {
+    std::vector<std::string> inputs;
+    std::vector<std::string> outputs;
+    std::vector<std::string> outputs_as_input_other_node;
+    std::vector<onnxruntime::NodeIndex> subgraph_node_indexes;
+    std::shared_ptr<Subgraph> subgraph_ptr;
+    int subgraph_index = 0;
+
+    SubgraphVariables() {
+      subgraph_index = 0;
+      subgraph_ptr.reset(new Subgraph());
+    }
+    void Reset() {
+      subgraph_node_indexes.clear();
+      inputs.clear();
+      outputs.clear();
+      outputs_as_input_other_node.clear();
+      subgraph_ptr.reset(new Subgraph());
+    }
+  };
+
   std::string subgraph_id;
   std::vector<MklDnnNode> mklnodes;
-};
-
-struct SubgraphVariables {
-  std::vector<std::string> inputs;
-  std::vector<std::string> outputs;
-  std::vector<std::string> outputs_as_input_other_node;
-  std::vector<onnxruntime::NodeIndex> subgraph_node_indexes;
-  std::shared_ptr<Subgraph> subgraph_ptr;
-  int subgraph_index = 0;
-
-  SubgraphVariables() {
-    subgraph_index = 0;
-    subgraph_ptr.reset(new Subgraph());
-  }
-  void Reset() {
-    subgraph_node_indexes.clear();
-    inputs.clear();
-    outputs.clear();
-    outputs_as_input_other_node.clear();
-    subgraph_ptr.reset(new Subgraph());
-  }
 };
 }  // namespace mkl_dnn
 }  // namespace onnxruntime

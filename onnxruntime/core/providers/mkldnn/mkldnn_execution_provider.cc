@@ -133,7 +133,7 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
 }
 
 void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
-                                                       mkl_dnn::SubgraphVariables& sub_var,
+                                                       mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                                        bool fused,
                                                        std::map<std::string, int>& output_to_source_node_map,
                                                        NodeAttributes& subgraph_attributes) const {
@@ -203,7 +203,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   }
 
   // use sub-graph implementation
-  mkl_dnn::SubgraphVariables sub_var;
+  mkl_dnn::Subgraph::SubgraphVariables sub_var;
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
   std::map<std::string, int> output_to_source_node_map;
@@ -311,7 +311,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   return result;
 }
 
-void MKLDNNExecutionProvider::CreateMetaDef(mkl_dnn::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
+void MKLDNNExecutionProvider::CreateMetaDef(mkl_dnn::Subgraph::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
