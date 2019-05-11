@@ -195,11 +195,11 @@ Arguments:
 
 Implicit Arguments:
 
-    rbp - Supplies the address of the input buffer.
+    rdi - Supplies the address of the input buffer.
 
     rsi - Supplies the FilterStride parameter (see function description).
 
-    rdi - Supplies the InputStride parameter (see function description).
+    rbp - Supplies the InputStride parameter (see function description).
 
     r8 - Supplies the address of the output buffer.
 
