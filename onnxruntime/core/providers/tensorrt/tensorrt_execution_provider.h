@@ -12,25 +12,22 @@
 namespace onnxruntime {
 
 class TensorrtLogger : public nvinfer1::ILogger {
-    nvinfer1::ILogger::Severity verbosity_;
-public:
-    TensorrtLogger(Severity verbosity=Severity::kWARNING)
-        : verbosity_(verbosity) {}
-    void log(Severity severity, const char* msg) override {
-        if( severity <= verbosity_ ) {
-            time_t rawtime = std::time(0);
-            char buf[256];
-            strftime(&buf[0], 256,
-                     "%Y-%m-%d %H:%M:%S",
-                     std::gmtime(&rawtime));
-            const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" :
-                                  severity == Severity::kERROR          ? "  ERROR" :
-                                  severity == Severity::kWARNING        ? "WARNING" :
-                                  severity == Severity::kINFO           ? "   INFO" :
-                                  "UNKNOWN");
-            LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
-        }
+  nvinfer1::ILogger::Severity verbosity_;
+
+ public:
+  TensorrtLogger(Severity verbosity = Severity::kWARNING)
+      : verbosity_(verbosity) {}
+  void log(Severity severity, const char* msg) override {
+    if (severity <= verbosity_) {
+      time_t rawtime = std::time(0);
+      char buf[256];
+      strftime(&buf[0], 256,
+               "%Y-%m-%d %H:%M:%S",
+               std::gmtime(&rawtime));
+      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR" : severity == Severity::kWARNING ? "WARNING" : severity == Severity::kINFO ? "   INFO" : "UNKNOWN");
+      LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
     }
+  }
 };
 
 // Information needed to construct trt execution providers.
@@ -74,16 +71,23 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   void SetMaxBatchSize(const int batch_size) {
-      max_batch_size_ = batch_size;
+    max_batch_size_ = batch_size;
   }
 
   void SetMaxWorkspaceSize(const size_t workspace_size) {
-      max_workspace_size_ = workspace_size;
+    max_workspace_size_ = workspace_size;
   }
-    
+
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,
+                                               const onnxruntime::GraphViewer& graph) const;
+
+  SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int& max_iterations,
+                                        bool& early_termination, const onnxruntime::GraphViewer& graph) const;
+
  private:
- int max_batch_size_ = 1;
- size_t max_workspace_size_ = 1 << 30; // 1GB
+  int max_batch_size_ = 1;
+  size_t max_workspace_size_ = 1 << 30;  // 1GB
+  int max_parser_iterations_ = 6;
 
   struct InferDeleter {
     template <typename T>
@@ -108,4 +112,3 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 };
 
 }  // namespace onnxruntime
-
