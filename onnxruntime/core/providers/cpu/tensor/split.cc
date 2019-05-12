@@ -17,8 +17,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()
-                                      }),
+                                          DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
@@ -36,8 +35,8 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
   before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
   after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
-                                       ? 1  // we multiply by this value so must be 1 not 0
-                                       : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   ? 1  // we multiply by this value so must be 1 not 0
+                                   : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
 
   if (split_sizes_.empty()) {
     // equal split based on number of outputs
@@ -82,6 +81,17 @@ Status Split::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
+inline void copy_data(const T* src, T* dest, size_t num_elements) {
+  memcpy(dst, src, count * sizeof(T));
+}
+
+template<>
+inline void copy_data<std::string>(const std::string* src, std::string* dst, size_t num_elements) {
+  const std::string* end = src + num_elements;
+  std::copy(src, end, dst);
+}
+
+template <typename T>
 Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
   auto& input_shape = input.Shape();
   auto num_outputs = context.OutputCount();
@@ -122,50 +132,10 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
         static_cast<T*>(output_data),                      // B
         split_size * after_dims_excluding_split,           // ldb
         [](const T* src, T* dst, size_t count) {
-          memcpy(dst, src, count * sizeof(T));
+          copy_data<T>(src, dst, count);
         });
 
     input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
-  }
-
-  return Status::OK();
-}
-
-template <>
-Status Split::ComputeImpl<std::string>(OpKernelContext& context, const Tensor& input) const {
-  auto& input_shape = input.Shape();
-  auto num_outputs = context.OutputCount();
-  int64_t axis = axis_;
-  int before_dims = 0;
-  int after_dims_including_split_axis = 0;
-  int after_dims_excluding_split = 0;
-  std::vector<int64_t> split_sizes;
-
-  ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
-                                        num_outputs,
-                                        axis,
-                                        before_dims,
-                                        after_dims_including_split_axis,
-                                        after_dims_excluding_split,
-                                        split_sizes));
-
-  // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
-
-  int64_t input_offset = 0;
-  const std::string* input_data = input.template Data<std::string>();
-
-  for (int i = 0; i < num_outputs; ++i) {
-    // update size of dimension for axis we're splitting on
-    auto split_size = gsl::narrow<int>(split_sizes[i]);
-    output_dimensions[axis] = split_size;
-
-	// TODO: Core logic here
-
-    Tensor* output = context.Output(i, TensorShape{output_dimensions});
-    std::string* output_data = output->template MutableData<std::string>();
-
   }
 
   return Status::OK();
