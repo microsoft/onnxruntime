@@ -166,8 +166,8 @@ void upsampleBilinear(
   size_t inx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
   size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
   auto inx_scale_data_buffer = alloc->Alloc(inx_buffer_size + scale_buffer_size);
-  BufferUniquePtr inx_scale_data__buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
-  int64_t* inx_data = static_cast<int64_t*>(inx_scale_data__buffer_holder.get());
+  BufferUniquePtr inx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+  int64_t* inx_data = static_cast<int64_t*>(inx_scale_data_buffer_holder.get());
   int64_t* input_width_mul_y1 = inx_data;
   int64_t* input_width_mul_y2 = inx_data + output_height;
   int64_t* in_x1 = inx_data + 2 * output_height;
