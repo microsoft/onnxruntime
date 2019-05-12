@@ -81,13 +81,13 @@ Status Split::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
-inline void copy_data(const T* src, T* dest, size_t num_elements) {
+inline void copy_data(const T* src, T* dst, size_t count) {
   memcpy(dst, src, count * sizeof(T));
 }
 
 template<>
-inline void copy_data<std::string>(const std::string* src, std::string* dst, size_t num_elements) {
-  const std::string* end = src + num_elements;
+inline void copy_data<std::string>(const std::string* src, std::string* dst, size_t count) {
+  const std::string* end = src + count;
   std::copy(src, end, dst);
 }
 
