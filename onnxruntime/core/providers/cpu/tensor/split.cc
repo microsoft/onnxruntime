@@ -17,7 +17,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()}),
+                                          DataTypeImpl::GetTensorType<std::string>()})
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
