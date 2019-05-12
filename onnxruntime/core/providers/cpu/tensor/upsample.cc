@@ -163,19 +163,21 @@ void upsampleBilinear(
   int64_t output_width = static_cast<int64_t>(input_width * width_scale);
   int64_t output_height = static_cast<int64_t>(input_height * height_scale);
 
-  auto inx_data = alloc->Alloc(sizeof(int64_t) * (2 * (output_height + output_width)));
-  BufferUniquePtr inx_data_buffer(inx_data, BufferDeleter(alloc));
-  int64_t* input_width_mul_y1 = static_cast<int64_t*>(inx_data_buffer.get());
-  int64_t* input_width_mul_y2 = static_cast<int64_t*>(inx_data_buffer.get()) + output_height;
-  int64_t* in_x1 = static_cast<int64_t*>(inx_data_buffer.get()) + 2 * output_height;
-  int64_t* in_x2 = static_cast<int64_t*>(inx_data_buffer.get()) + 2 * output_height + output_width;
+  size_t inx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
+  size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
+  auto inx_scale_data_buffer = alloc->Alloc(inx_buffer_size + scale_buffer_size);
+  BufferUniquePtr inx_scale_data__buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+  int64_t* inx_data = static_cast<int64_t*>(inx_scale_data__buffer_holder.get());
+  int64_t* input_width_mul_y1 = inx_data;
+  int64_t* input_width_mul_y2 = inx_data + output_height;
+  int64_t* in_x1 = inx_data + 2 * output_height;
+  int64_t* in_x2 = inx_data + 2 * output_height + output_width;
 
-  auto scale_data = alloc->Alloc(sizeof(float) * (2 * (output_height + output_width)));
-  BufferUniquePtr scale_data_buffer(scale_data, BufferDeleter(alloc));
-  float* dy1 = static_cast<float*>(scale_data_buffer.get());
-  float* dy2 = static_cast<float*>(scale_data_buffer.get()) + output_height;
-  float* dx1 = static_cast<float*>(scale_data_buffer.get()) + 2 * output_height;
-  float* dx2 = static_cast<float*>(scale_data_buffer.get()) + 2 * output_height + output_width;
+  float* scale_data = reinterpret_cast<float*>( in_x2 + output_width );
+  float* dy1 = scale_data;
+  float* dy2 = scale_data + output_height;
+  float* dx1 = scale_data + 2 * output_height;
+  float* dx2 = scale_data + 2 * output_height + output_width;
 
   for (int64_t y = 0; y < output_height; ++y) {
     float in_y = std::min(y / height_scale, static_cast<float>(input_height - 1));
