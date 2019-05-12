@@ -17,7 +17,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
-                                          DataTypeImpl::GetTensorType<std::string>()})
+                                          DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
@@ -85,7 +85,7 @@ inline void copy_data(const T* src, T* dst, size_t count) {
   memcpy(dst, src, count * sizeof(T));
 }
 
-template <>
+template<>
 inline void copy_data<std::string>(const std::string* src, std::string* dst, size_t count) {
   const std::string* end = src + count;
   std::copy(src, end, dst);
