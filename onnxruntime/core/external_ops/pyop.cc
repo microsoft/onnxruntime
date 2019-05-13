@@ -15,12 +15,13 @@
 #include <sstream>
 #include <numeric>
 #include <vector>
+#include <memory>
 #include <mutex>
 #include <functional>
 #include <unordered_map>
 
 using namespace std;
-namespace PythonFuncionWrapper {
+namespace onnxruntime {
 
 #ifdef _WIN32
 #define PYOP_EXPORT extern "C" __declspec(dllexport)
@@ -106,10 +107,10 @@ PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim)
     return pyObj;
 }
 
-bool ExtractOutput(PyObject*                pyObj,
-                   vector<const void*>&     outputs,
-                   vector<int32_t>&         outputs_elem_size,
-                   vector<vector<int64_t>>& outputs_dim)
+bool ExtractOutput(PyObject*                   pyObj,
+                   vector<unique_ptr<char[]>>& outputs,
+                   vector<int32_t>&            outputs_elem_size,
+                   vector<vector<int64_t>>&    outputs_dim)
 {
     if (!PyArray_Check(pyObj)) {
         return false;
@@ -128,8 +129,8 @@ bool ExtractOutput(PyObject*                pyObj,
                                     static_cast<int64_t>(outputs_elem_size.back()),
                                     std::multiplies<int64_t>());
 
-    outputs.push_back(new char[data_len]);
-    memcpy(const_cast<void*>(outputs.back()), PyArray_DATA(np_array), data_len);
+    outputs.push_back(unique_ptr<char[]>(new char[data_len]));
+    memcpy(static_cast<void*>(outputs.back().get()), PyArray_DATA(np_array), data_len);
     return true;
 }
 
@@ -169,7 +170,7 @@ PYOP_EXPORT bool InvokePythonFunc(void*                            raw_inst,
                                   const vector<const void*>&       inputs,
                                   const vector<int32_t>&           inputs_type,
                                   const vector<vector<int64_t>>&   inputs_dim,
-                                  vector<const void*>&             outputs,
+                                  vector<unique_ptr<char[]>>&      outputs,
                                   vector<int32_t>&                 outputs_elem_size,
                                   vector<vector<int64_t>>&         outputs_dim,
                                   std::function<void(const char*)> logging_func = [](const char*){})

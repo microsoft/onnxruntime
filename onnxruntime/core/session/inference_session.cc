@@ -225,7 +225,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 std::shared_ptr<SchemaRegistryManager> InferenceSession::CreateSchemaRegistryManager()
 {
   auto schema_registry_manager = std::make_shared<SchemaRegistryManager>();
-  for (auto schema_collection : custom_schema_registries_) {
+  for (const auto& schema_collection : custom_schema_registries_) {
     schema_registry_manager->RegisterRegistry(schema_collection);
   }
   auto new_registry_func = [&] (void* info) {
@@ -266,21 +266,20 @@ std::shared_ptr<SchemaRegistryManager> InferenceSession::CreateSchemaRegistryMan
       ORT_ENFORCE ( input_types.size() == node->InputDefs().size() , "PyOp node input types mismatch with inputs");
       ORT_ENFORCE (output_types.size() == node->OutputDefs().size(), "PyOp node output types mismatch with outputs");
 
-      auto pyop = new PyCustomOp(attrs, input_types, output_types, module.c_str(),
-                                 class_name.c_str(), compute.c_str(),
-                                 [this] (const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+      auto& warning_logger = *session_logger_;
+      auto pyop = std::make_unique<PyCustomOp>(attrs, input_types, output_types, module, class_name, compute,
+                                               [warning_logger] (const char* msg) { LOGS(warning_logger, WARNING) << msg; });
       auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
+      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop.get()));
+      AddCustomOpDomains({pyop_domain});
 
       static std::mutex mtx;
       static std::vector<std::unique_ptr<PyCustomOp>> pyops;
       static std::vector<std::unique_ptr<OrtCustomOpDomain>> pyop_domains;
       mtx.lock();
-      pyops.push_back(std::unique_ptr<PyCustomOp>(pyop));
+      pyops.push_back(std::move(pyop));
       pyop_domains.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
       mtx.unlock();
-
-      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop));
-      AddCustomOpDomains({pyop_domain});
       return custom_schema_registries_.back();
     } else {
       return std::shared_ptr<IOnnxRuntimeOpSchemaCollection>();

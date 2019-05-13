@@ -35,7 +35,7 @@ typedef bool INVOKE(void*,
                     const std::vector<const void*>&,
                     const std::vector<int32_t>&,
                     const std::vector<std::vector<int64_t>>&,
-                    std::vector<const void*>&,
+                    std::vector<std::unique_ptr<char[]>>&,
                     std::vector<int32_t>&,
                     std::vector<std::vector<int64_t>>&,
                     std::function<void(const char*)>);
@@ -44,11 +44,11 @@ typedef void* NEWINST(const char*, const char*, const OnnxAttrs&);
 
 namespace onnxruntime {
 
-class PythonWrapper {
+class PyOpLibProxy {
 
 public:
-    static const PythonWrapper& GetInstance() {
-        static PythonWrapper wrapper;
+    static const PyOpLibProxy& GetInstance() {
+        static PyOpLibProxy wrapper;
         return wrapper;
     }
 
@@ -60,31 +60,31 @@ public:
     LASTERR*    lastErr = nullptr;
 
 private:
-    PythonWrapper() {
+    PyOpLibProxy() {
 
         handle = LOAD_PYOP_LIB(LIB_PYOP);
         ORT_ENFORCE(nullptr != handle, "Failed to load pyop library");
 
-        init = (INIT*)LOAD_PYOP_SYM(handle, "Initialize");
+        init = reinterpret_cast<INIT*>(LOAD_PYOP_SYM(handle, "Initialize"));
         ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
 
-        newInst = (NEWINST*)LOAD_PYOP_SYM(handle, "NewInstance");
+        newInst = reinterpret_cast<NEWINST*>(LOAD_PYOP_SYM(handle, "NewInstance"));
         ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
 
-        invoke = (INVOKE*)LOAD_PYOP_SYM(handle, "InvokePythonFunc");
+        invoke = reinterpret_cast<INVOKE*>(LOAD_PYOP_SYM(handle, "InvokePythonFunc"));
         ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
 
-        release = (RELEASE*)LOAD_PYOP_SYM(handle, "ReleaseInstance");
+        release = reinterpret_cast<RELEASE*>(LOAD_PYOP_SYM(handle, "ReleaseInstance"));
         ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
 
-        lastErr = (LASTERR*)LOAD_PYOP_SYM(handle, "GetLastErrorMessage"); 
+        lastErr = reinterpret_cast<LASTERR*>(LOAD_PYOP_SYM(handle, "GetLastErrorMessage")); 
         ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
 
         std::string err;
         ORT_ENFORCE(init(), lastErr(err));
     }
 
-    ~PythonWrapper() {
+    ~PyOpLibProxy() {
         UNLD_PYOP_LIB(handle);
     }
 };
@@ -100,13 +100,13 @@ struct PyCustomKernel {
                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                    compute_(compute), logging_func_(logging_func) {
         std::string err;
-        instance_ = PythonWrapper::GetInstance().newInst(module.c_str(), class_name_.c_str(), attrs_);
-        ORT_ENFORCE(nullptr != instance_, PythonWrapper::GetInstance().lastErr(err));
+        instance_ = PyOpLibProxy::GetInstance().newInst(module.c_str(), class_name_.c_str(), attrs_);
+        ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().lastErr(err));
     }
 
     ~PyCustomKernel() {
         if (nullptr != instance_) {
-            PythonWrapper::GetInstance().release(instance_);
+            PyOpLibProxy::GetInstance().release(instance_);
             instance_ = nullptr;
         }
     }
@@ -118,9 +118,10 @@ struct PyCustomKernel {
 
         ORT_ENFORCE (nullptr != context);
         auto inputs_count = (size_t)reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
-        std::vector<const void*>            inputs,      outputs;
-        std::vector<int32_t>                inputs_type, outputs_elem_size;
-        std::vector<std::vector<int64_t>>   inputs_dim,  outputs_dim;
+        std::vector<const void*>             inputs;
+        std::vector<std::unique_ptr<char[]>> outputs;
+        std::vector<int32_t>                 inputs_type, outputs_elem_size;
+        std::vector<std::vector<int64_t>>    inputs_dim,  outputs_dim;
 
         for (size_t i = 0; i < inputs_count; ++i) {
             auto ort_value = ort_.KernelContext_GetInput(context, i);
@@ -130,13 +131,12 @@ struct PyCustomKernel {
         }
 
         std::string err;
-        ORT_ENFORCE (PythonWrapper::GetInstance().invoke(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), PythonWrapper::GetInstance().lastErr(err));
+        ORT_ENFORCE (PyOpLibProxy::GetInstance().invoke(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), PyOpLibProxy::GetInstance().lastErr(err));
         for (size_t i = 0; i < outputs.size(); ++i) {
             auto ort_output  = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
             auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
             auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
-            memcpy(output_mem_addr, outputs[i], output_len);
-            free(const_cast<void*>(outputs[i]));
+            memcpy(output_mem_addr, outputs[i].get(), output_len);
         }
     }
 
