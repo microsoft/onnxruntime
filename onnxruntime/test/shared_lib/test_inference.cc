@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorShapeAndType(value);
+    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
     auto dimensionCount = ort.GetDimensionCount(info);
     resize(dimensionCount);
     ort.GetDimensions(info, data(), dimensionCount);
@@ -190,12 +190,6 @@ struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
 
-  void GetOutputShape(OrtKernelContext* context, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    OrtTensorDimensions dimensions(ort_, input_X);
-    ort_.SetDimensions(info, dimensions.data(), dimensions.size());
-  }
-
   void Compute(OrtKernelContext* context) {
     // Setup inputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
@@ -208,7 +202,7 @@ struct MyCustomKernel {
     OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
     float* out = ort_.GetTensorMutableData<float>(output);
 
-    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorShapeAndType(output);
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 

@@ -53,10 +53,11 @@ constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtGetTensorTypeAndShape,
 
     &OrtGetTensorShapeElementCount,
+    &OrtGetTensorElementType,
+
     &OrtGetDimensionsCount,
     &OrtGetDimensions,
     &OrtSetDimensions,
-
     &OrtGetTensorMutableData,
 
     &OrtReleaseTensorTypeAndShapeInfo,
