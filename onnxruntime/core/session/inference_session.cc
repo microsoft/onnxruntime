@@ -360,7 +360,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
                     "Failed to load model because protobuf parsing failed.");
     }
 
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, CreateSchemaRegistryManager());
   };
 
   return Load(loader, "model_loading_array");
