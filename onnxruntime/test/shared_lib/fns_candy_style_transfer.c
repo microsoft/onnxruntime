@@ -97,7 +97,7 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
 static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   struct OrtTensorTypeAndShapeInfo* shape_info;
   ORT_ABORT_ON_ERROR(OrtGetTensorShapeAndType(tensor, &shape_info));
-  size_t dim_count = OrtGetNumOfDimensions(shape_info);
+  size_t dim_count = OrtGetDimensionsCount(shape_info);
   if (dim_count != 4) {
     printf("output tensor must have 4 dimensions");
     return -1;

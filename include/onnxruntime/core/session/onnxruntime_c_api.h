@@ -387,10 +387,10 @@ ORT_API_STATUS(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo*, enum ON
  * \param dim_values An array with length of `dim_count`. Its elements can contain negative values.
  * \param dim_count length of dim_values
  */
-ORT_API_STATUS(OrtSetDims, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
+ORT_API_STATUS(OrtSetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
 ORT_API(enum ONNXTensorElementDataType, OrtGetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*);
-ORT_API(size_t, OrtGetNumOfDimensions, _In_ const OrtTensorTypeAndShapeInfo* info);
+ORT_API(size_t, OrtGetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info);
 ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
 
 /**
@@ -525,7 +525,7 @@ ORT_API_STATUS(OrtGetValueCount, const OrtValue* value, size_t* out);
    * sequence. 'in' should be an arrary of N OrtValues.
    * \value_type should be either map or sequence.
    */
-ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
+ORT_API_STATUS(OrtCreateValue, OrtValue** const in, size_t num_values, enum ONNXType value_type,
                OrtValue** out);
 
 /*
