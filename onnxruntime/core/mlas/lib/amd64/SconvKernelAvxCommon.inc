@@ -18,7 +18,7 @@
 INCLUDE SconvKernelCommon.inc
 
 ;
-; ClearBlock
+; Macro Description:
 ;
 ;   This macro generates code to clear the block accumulators.
 ;
@@ -51,7 +51,7 @@ ClearBlock MACRO FilterCount, OutputCount
         ENDM
 
 ;
-; PostProcessBlock
+; Macro Description:
 ;
 ; Arguments:
 ;

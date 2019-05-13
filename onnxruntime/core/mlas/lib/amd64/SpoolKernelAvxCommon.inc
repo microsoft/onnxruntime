@@ -18,7 +18,7 @@
 INCLUDE SpoolKernelCommon.inc
 
 ;
-; SpoolKernelFunction
+; Macro Description:
 ;
 ;   This macro generates code for the inner pooling kernel.
 ;

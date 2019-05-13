@@ -23,7 +23,7 @@ INCLUDE SpoolKernelCommon.inc
         .list
 
 ;
-; InitializeKernel
+; Macro Description:
 ;
 ;   This macro generates code to initialize registers used across the kernel.
 ;
@@ -48,7 +48,7 @@ ENDIF
         ENDM
 
 ;
-; ClearBlock
+; Macro Description:
 ;
 ;   This macro generates code to clear the pooling intermediates.
 ;
@@ -89,7 +89,7 @@ ENDIF
         ENDM
 
 ;
-; ComputeBlock
+; Macro Description:
 ;
 ;   This macro generates code to sample the input buffer and update the pooling
 ;   intermediates as appropriate.
@@ -129,7 +129,7 @@ ENDIF
         ENDM
 
 ;
-; PostProcessBlock
+; Macro Description:
 ;
 ;   This macro generates code to process and store the pooling intermediates.
 ;
@@ -188,7 +188,7 @@ ENDIF
         ENDM
 
 ;
-; SpoolKernelFunction
+; Macro Description:
 ;
 ;   This macro generates code for the inner pooling kernel.
 ;

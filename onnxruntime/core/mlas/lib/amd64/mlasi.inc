@@ -20,8 +20,6 @@ INCLUDE macamd64.inc
         .list
 
 ;
-; save_xmm128_avx
-;
 ; Macro Description:
 ;
 ;   This macro uses AVX instructions to save a vector register as part of a
@@ -42,8 +40,6 @@ save_xmm128_avx MACRO Register, Offset
 
         ENDM
 
-;
-; add_immed
 ;
 ; Macro Description:
 ;
@@ -69,8 +65,6 @@ ENDIF
         ENDM
 
 ;
-; EmitIfCountGE
-;
 ; Macro Description:
 ;
 ;   This macro conditionally emits the statement if Count is greater than or
@@ -93,8 +87,6 @@ ENDIF
 
         ENDM
 
-;
-; EmitifCount2GE
 ;
 ; Macro Description:
 ;

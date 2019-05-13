@@ -154,7 +154,7 @@ SconvKernelPointwiseFrame STRUCT
 SconvKernelPointwiseFrame ENDS
 
 ;
-; ProcessOutputCountN
+; Macro Description:
 ;
 ;   This macro generates code to compute the convolution for a vector of input
 ;   blocks and a vector of filter blocks to produce a matrix of output blocks.
@@ -273,7 +273,7 @@ HandlePostProcessing:
         ENDM
 
 ;
-; SconvKernelFunction
+; Macro Description:
 ;
 ;   This macro generates code for the inner convolution kernel.
 ;
@@ -483,7 +483,7 @@ ENDIF
         ENDM
 
 ;
-; SconvKernelDepthwiseFunction
+; Macro Description:
 ;
 ;   This macro generates code for the inner convolution kernel for the special
 ;   case of a depthwise separable convolution.
@@ -657,7 +657,7 @@ ENDIF
         ENDM
 
 ;
-; ProcessPointwiseOutputCountN
+; Macro Description:
 ;
 ;   This macro generates code to compute the convolution for a vector of input
 ;   blocks and a vector of filter blocks to produce a matrix of output blocks
@@ -730,7 +730,7 @@ ENDIF
 
 ;++
 ;
-; SconvKernelPointwiseFunction
+; Macro Description:
 ;
 ;   This macro generates code for the inner convolution kernel for the special
 ;   case where the kernel dimensions are 1.

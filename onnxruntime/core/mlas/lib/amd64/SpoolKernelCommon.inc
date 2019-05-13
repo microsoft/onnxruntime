@@ -54,8 +54,6 @@ SpoolKernelSingleFrame STRUCT
 SpoolKernelSingleFrame ENDS
 
 ;
-; SpoolKernelEntry
-;
 ; Macro Description:
 ;
 ;   This macro generates the common prologue code for the pooling kernels.
@@ -84,8 +82,6 @@ SpoolKernelEntry MACRO PoolingType
         ENDM
 
 ;
-; SpoolKernelExit
-;
 ; Macro Description:
 ;
 ;   This macro generates the common epilogue code for the pooling kernels.
@@ -111,7 +107,7 @@ SpoolKernelExit MACRO
         ENDM
 
 ;
-; ProcessOutputCountN
+; Macro Description:
 ;
 ;   This macro generates code to compute pooling for a vector of input blocks
 ;   to produce a matrix of output blocks.

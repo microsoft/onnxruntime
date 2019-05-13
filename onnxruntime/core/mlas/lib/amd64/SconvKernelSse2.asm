@@ -23,7 +23,7 @@ INCLUDE SconvKernelCommon.inc
         .list
 
 ;
-; ClearBlock
+; Macro Description:
 ;
 ;   This macro generates code to clear the block accumulators.
 ;
@@ -52,7 +52,7 @@ ClearBlock MACRO FilterCount, OutputCount
         ENDM
 
 ;
-; ComputeBlock
+; Macro Description:
 ;
 ;   This macro multiplies and accumulates for FilterCount by OutputCount block
 ;   of the output buffer.
@@ -129,7 +129,7 @@ ENDIF
         ENDM
 
 ;
-; PostProcessBlock
+; Macro Description:
 ;
 ; Arguments:
 ;
@@ -242,7 +242,7 @@ SkipReluActivation:
         ENDM
 
 ;
-; ProcessFilterCountN
+; Macro Description:
 ;
 ;   This macro generates code to compute the convolution for a specified number
 ;   of filter rows.

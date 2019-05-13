@@ -23,7 +23,7 @@ INCLUDE SconvKernelAvxCommon.inc
         .list
 
 ;
-; ComputeBlock
+; Macro Description:
 ;
 ;   This macro multiplies and accumulates for FilterCount by OutputCount block
 ;   of the output buffer.
@@ -96,7 +96,7 @@ ENDIF
         ENDM
 
 ;
-; ProcessFilterCountN
+; Macro Description:
 ;
 ;   This macro generates code to compute the convolution for a specified number
 ;   of filter rows.
@@ -183,7 +183,7 @@ ProcessOutputCountRightPadAndRemaining:
         ENDM
 
 ;
-; ProcessPointwiseFilterCountN
+; Macro Description:
 ;
 ;   This macro generates code to compute the convolution for a specified number
 ;   of filter rows for a pointwise convolution.
