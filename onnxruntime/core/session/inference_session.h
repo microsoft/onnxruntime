@@ -73,7 +73,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
   // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level1;
+  TransformerLevel graph_optimization_level = TransformerLevel::Level3;
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
@@ -415,8 +415,7 @@ class InferenceSession {
   InsertCastTransformer insert_cast_transformer_;
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
-  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner. 
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
-
 };
 }  // namespace onnxruntime
