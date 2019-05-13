@@ -141,11 +141,12 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   return sub_graph;
 }
 
-SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int& max_iterations,
-                                                                 bool& early_termination, const onnxruntime::GraphViewer& graph) const {
+SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
+                                                                 const onnxruntime::GraphViewer& graph, bool* early_termination) const {
+  // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
-    early_termination = true;
+    *early_termination = true;
     return nodes_list_output;
   }
 
@@ -191,7 +192,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         string string_buf;
         model_proto.SerializeToString(&string_buf);
 
-        // Get supported node list
+        // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
         auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
@@ -201,7 +202,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const onnxruntime::GraphViewer graph_viewer(graph_build);
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, early_termination, graph_viewer);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph_viewer, early_termination);
         for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (int j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[next_nodes_list[i].first[j]];
@@ -259,7 +260,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   const char* batch_env = getenv("ORT_TENSORRT_MAX_PARSER_ITERATIONS");
   const int max_iterations = batch_env ? atoi(batch_env) : max_parser_iterations_;
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_iterations, early_termination, graph);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_iterations, graph, &early_termination);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -537,6 +538,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         output_tensors[output_index].shape = new int64_t[shape_size];
         memcpy(output_tensors[output_index].shape, &output_shapes[i][0], sizeof(int64_t) * shape_size);
 
+        // TensorRT can partially support INT64 tensor type. Internally the data is processed as INT32
+        // and outputs can be safely converted to INT64
         int output_size = batch_size * output_dim_sizes[i];
         if (output_types[i] == TensorProto::FLOAT) {
           output_tensors[output_index].dtype = DType::TFloat32;
@@ -547,7 +550,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           output_tensors[output_index].data = (*(trt_state->test_allocate_func))(trt_state->allocator, 64, output_size * sizeof(int64_t));
           CHECK_CUDA(cudaMemcpy(output_tensors[output_index].data, buffers[i + num_binding_inputs], output_size * sizeof(int), cudaMemcpyDeviceToHost));
         } else {
-          ORT_THROW("Output type (%i) is not supported by TensorRT", output_types[i]);
+          Status(common::ONNXRUNTIME, common::FAIL, "Output type is not supported by TensorRT");
         }
       }
 
