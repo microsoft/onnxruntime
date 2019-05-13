@@ -243,7 +243,7 @@ Arguments:
         EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+16],xmm5"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+rax],xmm6"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+rax+16],xmm7"
-        add     r8,\OutputCount\()*8*4      # advance output by N nchw8c blocks
+        add_immed r8,\OutputCount\()*8*4    # advance output by N nchw8c blocks
 
         .endm
 

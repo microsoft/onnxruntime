@@ -99,6 +99,8 @@ ClearBlock MACRO FilterCount, OutputCount
 ;
 ;   r9 - Supplies the StrideWidth parameter (see function description).
 ;
+;   r14 - Supplies the address of the input buffer plus 3 * StrideWidth.
+;
 ;   zmm0-zmm23 - Supplies the block accumulators.
 ;
 
@@ -336,7 +338,7 @@ SkipReluActivation:
         EmitIfCount2GE FilterCount, 4, OutputCount, 4, <vmovups ZMMWORD PTR [rbx+rax+48*4],zmm15>
         EmitIfCount2GE FilterCount, 4, OutputCount, 5, <vmovups ZMMWORD PTR [rbx+rax+64*4],zmm19>
         EmitIfCount2GE FilterCount, 4, OutputCount, 6, <vmovups ZMMWORD PTR [rbx+rax+80*4],zmm23>
-        add     r8,OutputCount*16*4         ; advance output by N nchw16c blocks
+        add_immed r8,OutputCount*16*4       ; advance output by N nchw16c blocks
 
         ENDM
 
@@ -357,11 +359,13 @@ SkipReluActivation:
 ;
 ; Implicit Arguments:
 ;
-;   rbp - Supplies the address of the input buffer.
+;   rdi - Supplies the address of the input buffer.
 ;
-;   rsi - Supplies the FilterStride parameter (see function description).
+;   rsi - Supplies the FilterStride parameter (see function description) when
+;       KernelType!=Depthwise. Supplies the address of the filter buffer when
+;       KernelType=Depthwise.
 ;
-;   rdi - Supplies the DilationWidth parameter (see function description).
+;   rbp - Supplies the DilationWidth parameter (see function description).
 ;
 ;   r8 - Supplies the address of the output buffer.
 ;
@@ -400,7 +404,7 @@ ProcessOutputCount:
 ProcessNextOutputCountBy6:
         ProcessOutputCountN KernelFrame, KernelType, 16, FilterCount, 6
         lea     rax,[r9*2+r9]
-        lea     rbp,[rbp+rax*2]             ; advance input by 6 elements
+        lea     rdi,[rdi+rax*2]             ; advance input by 6 elements
         sub     r10,6
         jae     ProcessNextOutputCountBy6
 
@@ -411,7 +415,7 @@ ProcessRemainingOutputCount:
         jb      ProcessRemainingOutputCountLessThan3
         ProcessOutputCountN KernelFrame, KernelType, 16, FilterCount, 3
         lea     rax,[r9*2+r9]
-        add     rbp,rax                     ; advance input by 3 elements
+        add     rdi,rax                     ; advance input by 3 elements
         sub     r10,3
         jz      ProcessOutputCountRightPadAndRemaining
 
@@ -419,7 +423,7 @@ ProcessRemainingOutputCountLessThan3:
         cmp     r10,1
         je      ProcessOutputCountRightPadAndRemaining
         ProcessOutputCountN KernelFrame, KernelType, 16, FilterCount, 2
-        lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
+        lea     rdi,[rdi+r9*2]              ; advance input by 2 elements
         sub     r10,2
 
 ;
@@ -444,6 +448,22 @@ ProcessOutputCountRightPadAndRemaining:
 ;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description).
+;
+;   rbp - Supplies the InputStride parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r10 - Supplies the OutputCount parameter (see function description).
+;
+;   r12 - Supplies the address of the filter buffer.
+;
 
 ProcessPointwiseFilterCountN MACRO FilterCount
 
@@ -458,7 +478,7 @@ ProcessPointwiseFilterCountN MACRO FilterCount
 ProcessNextOutputCountBy6:
         ProcessPointwiseOutputCountN 16, FilterCount, 6
         lea     rax,[r9*2+r9]
-        lea     rbp,[rbp+rax*2]             ; advance input by 6 elements
+        lea     rdi,[rdi+rax*2]             ; advance input by 6 elements
         sub     r10,6
         jae     ProcessNextOutputCountBy6
 
@@ -469,7 +489,7 @@ ProcessRemainingOutputCount:
         jb      ProcessRemainingOutputCountLessThan3
         ProcessPointwiseOutputCountN 16, FilterCount, 3
         lea     rax,[r9*2+r9]
-        add     rbp,rax                     ; advance input by 3 elements
+        add     rdi,rax                     ; advance input by 3 elements
         sub     r10,3
         jz      ExitKernel
 

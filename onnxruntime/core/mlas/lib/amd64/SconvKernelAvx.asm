@@ -120,11 +120,13 @@ ENDIF
 ;
 ; Implicit Arguments:
 ;
-;   rbp - Supplies the address of the input buffer.
+;   rdi - Supplies the address of the input buffer.
 ;
-;   rsi - Supplies the FilterStride parameter (see function description).
+;   rsi - Supplies the FilterStride parameter (see function description) when
+;       KernelType!=Depthwise. Supplies the address of the filter buffer when
+;       KernelType=Depthwise.
 ;
-;   rdi - Supplies the DilationWidth parameter (see function description).
+;   rbp - Supplies the DilationWidth parameter (see function description).
 ;
 ;   r8 - Supplies the address of the output buffer.
 ;
@@ -160,7 +162,7 @@ ProcessOutputCount:
 
 ProcessNextOutputCountBy2:
         ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 2
-        lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
+        lea     rdi,[rdi+r9*2]              ; advance input by 2 elements
         sub     r10,2
         jae     ProcessNextOutputCountBy2
 
@@ -189,6 +191,22 @@ ProcessOutputCountRightPadAndRemaining:
 ;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description).
+;
+;   rbp - Supplies the InputStride parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r10 - Supplies the OutputCount parameter (see function description).
+;
+;   r12 - Supplies the address of the filter buffer.
+;
 
 ProcessPointwiseFilterCountN MACRO FilterCount
 
@@ -200,7 +218,7 @@ ProcessPointwiseFilterCountN MACRO FilterCount
 
 ProcessNextOutputCountBy2:
         ProcessPointwiseOutputCountN 8, FilterCount, 2
-        lea     rbp,[rbp+r9*2]              ; advance input by 2 elements
+        lea     rdi,[rdi+r9*2]              ; advance input by 2 elements
         sub     r10,2
         jae     ProcessNextOutputCountBy2
 

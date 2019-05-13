@@ -177,13 +177,13 @@ SconvKernelPointwiseFrame ENDS
 ;
 ; Implicit Arguments:
 ;
-;   rbp - Supplies the address of the input buffer.
+;   rdi - Supplies the address of the input buffer.
 ;
 ;   rsi - Supplies the FilterStride parameter (see function description) when
 ;       KernelType!=Depthwise. Supplies the address of the filter buffer when
 ;       KernelType=Depthwise.
 ;
-;   rdi - Supplies the DilationWidth parameter (see function description).
+;   rbp - Supplies the DilationWidth parameter (see function description).
 ;
 ;   r8 - Supplies the address of the output buffer.
 ;
@@ -199,7 +199,7 @@ ProcessOutputCountN MACRO KernelFrame, KernelType, BlockSize, FilterCount, Outpu
         LOCAL   HandlePostProcessing
         LOCAL   SkipOverPadding
 
-        mov     rcx,rbp
+        mov     rcx,rdi
 IFIDNI <KernelType>, <Depthwise>
         mov     rdx,rsi
 ELSE
@@ -247,7 +247,7 @@ ELSE
 ENDIF
 
 SkipOverPadding:
-        add     rcx,rdi                     ; advance input by dilation width
+        add     rcx,rbp                     ; advance input by dilation width
 IFIDNI <KernelType>, <Nchwc>
         add     rdx,BlockSize*BlockSize*4   ; advance filter by 8i8o/16i16o block
 ELSE
@@ -390,13 +390,13 @@ SconvKernelFunction MACRO KernelType, BlockSize, Isa, BiasFilter
 
         END_PROLOGUE
 
-        mov     rbp,rcx
+        mov     rdi,rcx
 IFNB <BiasFilter>
-        add     rdx,4*8*4
+        add_immed rdx,4*8*4
 ENDIF
         mov     SconvKernelFrame.PreviousP2Home[rsp],rdx
         mov     rsi,SconvKernelFrame.FilterStride[rsp]
-        mov     rdi,SconvKernelFrame.DilationWidth[rsp]
+        mov     rbp,SconvKernelFrame.DilationWidth[rsp]
         mov     r11,SconvKernelFrame.FilterCount[rsp]
         mov     r15,SconvKernelFrame.InputStride[rsp]
 
@@ -469,7 +469,7 @@ IFDIFI <Isa>, <Sse>
 
 ProcessNextOutputCount:
         ProcessOutputCountN SconvKernelSingleFrame.KernelFrame, KernelType, BlockSize, FilterCount, 1
-        add     rbp,r9                      ; advance input by 1 element
+        add     rdi,r9                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
         jnz     ProcessNextOutputCount
         ret
@@ -503,6 +503,9 @@ SconvKernelDepthwiseFunction MACRO BlockSize, Isa
 ;
 ;   This routine is the inner kernel to compute a convolution for the elements
 ;   of an output row for a set of filter rows.
+;
+;   Depthwise seperable convolutions are a form of grouped convolution where
+;   the number of input and output channels per group are one.
 ;
 ; Arguments:
 ;
@@ -587,10 +590,14 @@ SconvKernelDepthwiseFunction MACRO BlockSize, Isa
 
         END_PROLOGUE
 
-        mov     rbp,rcx
+        mov     rdi,rcx
         mov     rsi,rdx
-        mov     rdi,SconvKernelDepthwiseFrame.DilationWidth[rsp]
+        mov     rbp,SconvKernelDepthwiseFrame.DilationWidth[rsp]
         mov     r15,SconvKernelDepthwiseFrame.InputStride[rsp]
+
+;
+; Process the specified number of filter rows.
+;
 
         ProcessFilterCountN SconvKernelDepthwiseFrame, Depthwise, 1
 
@@ -638,7 +645,7 @@ IFDIFI <Isa>, <Sse>
 
 ProcessNextOutputCount:
         ProcessOutputCountN SconvKernelDepthwiseSingleFrame.KernelFrame, Depthwise, BlockSize, 1, 1
-        add     rbp,r9                      ; advance input by 1 element
+        add     rdi,r9                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
         jnz     ProcessNextOutputCount
         ret
@@ -650,7 +657,33 @@ ENDIF
         ENDM
 
 ;
+; ProcessPointwiseOutputCountN
 ;
+;   This macro generates code to compute the convolution for a vector of input
+;   blocks and a vector of filter blocks to produce a matrix of output blocks
+;   for a pointwise convolution.
+;
+; Arguments:
+;
+;   BlockSize - Supplies the number of elements per block.
+;
+;   FilterCount - Supplies the number of rows from the filter to process.
+;
+;   OutputCount - Supplies the number of output blocks to produce.
+;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description).
+;
+;   rbp - Supplies the InputStride parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r12 - Supplies the address of the filter buffer.
 ;
 
 ProcessPointwiseOutputCountN MACRO BlockSize, FilterCount, OutputCount
@@ -660,7 +693,7 @@ ProcessPointwiseOutputCountN MACRO BlockSize, FilterCount, OutputCount
         LOCAL   SkipBiasAddition
         LOCAL   SkipReluActivation
 
-        mov     rcx,rbp
+        mov     rcx,rdi
         mov     rdx,r12
         mov     r11,SconvKernelPointwiseFrame.InputChannels[rsp]
         ClearBlock FilterCount, OutputCount
@@ -682,7 +715,7 @@ ELSE
             ComputeBlock Pointwise, FilterCount, OutputCount, (Index-4)*8*4, Index*4
         ENDM
 ENDIF
-        add     rcx,rdi                     ; advance input to next channel block
+        add     rcx,rbp                     ; advance input to next channel block
         add     rdx,BlockSize*BlockSize*4   ; advance filter by 8i8o/16i16o block
         dec     r11                         ; decrement input blocks remaining
         jnz     ProcessNextInputBlock
@@ -718,7 +751,42 @@ SconvKernelPointwiseFunction MACRO Isa, BiasFilter
 ;
 ; Routine Description:
 ;
+;   This routine is the inner kernel to compute a convolution for the elements
+;   of an output row for a set of filter rows.
+;
+;   Pointwise convolutions have a kernel size of one. To simplify this
+;   implementation, no input padding is allowed, which matches typical usage in
+;   models.
+;
 ; Arguments:
+;
+;   Input (rcx) - Supplies the address of the input buffer.
+;
+;   Filter (rdx) - Supplies the address of the filter buffer.
+;
+;   Output (r8) - Supplies the address of the output buffer.
+;
+;   StrideWidth (r9) - Supplies the length in bytes of the blocked stride width.
+;
+;   InputChannels - Supplies the number of input channels to process.
+;
+;   FilterCount - Supplies the number of rows from the filter to process.
+;
+;   InputStride - Supplies the length in bytes to advance the input buffer to
+;       the next input channel of the same input row.
+;
+;   FilterStride - Supplies the length in bytes to advance the filter buffer
+;       to the next set of filters.
+;
+;   OutputStride - Supplies the length in bytes to advance the output buffer
+;       to the next output address associated with the next set of filters.
+;
+;   OutputCount - Supplies the number of output elements.
+;
+;   Bias - Supplies the address of the bias buffer.
+;
+;   Flags - Supplies additional flags controlling the convolution operation,
+;       especially post calculation options.
 ;
 ; Return Value:
 ;
@@ -749,7 +817,7 @@ SconvKernelPointwiseFunction MACRO Isa, BiasFilter
 
         END_PROLOGUE
 
-        mov     rbp,rcx
+        mov     rdi,rcx
 IFNB <BiasFilter>
         lea     r12,[rdx+4*8*4]
 ELSE
@@ -758,7 +826,7 @@ ENDIF
         mov     r10,SconvKernelPointwiseFrame.OutputCount[rsp]
         mov     r11,SconvKernelPointwiseFrame.FilterCount[rsp]
         mov     rsi,SconvKernelPointwiseFrame.FilterStride[rsp]
-        mov     rdi,SconvKernelPointwiseFrame.InputStride[rsp]
+        mov     rbp,SconvKernelPointwiseFrame.InputStride[rsp]
 
 ;
 ; Process the specified number of filter rows.
@@ -788,7 +856,9 @@ ProcessFilterCount1:
 ;
 
 ExitKernel:
+IFDIFI <Isa>, <Sse>
         vzeroupper
+ENDIF
         movaps  xmm6,SconvKernelPointwiseFrame.SavedXmm6[rsp]
         movaps  xmm7,SconvKernelPointwiseFrame.SavedXmm7[rsp]
         movaps  xmm8,SconvKernelPointwiseFrame.SavedXmm8[rsp]

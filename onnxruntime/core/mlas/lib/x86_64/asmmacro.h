@@ -24,6 +24,32 @@ Abstract:
 
 Macro Description:
 
+    This macro generates an optimization for "add reg,128" which can instead
+    be encoded as "sub reg,-128" to reduce code size by using a signed 8-bit
+    value.
+
+Arguments:
+
+    Register - Supplies the register to be added to.
+
+    Immediate - Supplies the immediate to add to the register.
+
+--*/
+
+        .macro add_immed Register, Immediate
+
+.if (\Immediate\() != 128)
+        add     \Register\(),\Immediate\()
+.else
+        sub     \Register\(),-\Immediate\() # smaller encoding
+.endif
+
+        .endm
+
+/*++
+
+Macro Description:
+
     This macro conditionally emits the statement if Count is greater than or
     equal to Value.
 

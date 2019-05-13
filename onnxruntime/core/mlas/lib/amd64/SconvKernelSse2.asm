@@ -237,7 +237,7 @@ SkipReluActivation:
         EmitIfCount2GE FilterCount, 3, OutputCount, 1, <movups XMMWORD PTR [rbx+16],xmm5>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <movups XMMWORD PTR [rbx+rax],xmm6>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <movups XMMWORD PTR [rbx+rax+16],xmm7>
-        add     r8,OutputCount*8*4          ; advance output by N nchw8c blocks
+        add_immed r8,OutputCount*8*4        ; advance output by N nchw8c blocks
 
         ENDM
 
@@ -258,11 +258,11 @@ SkipReluActivation:
 ;
 ; Implicit Arguments:
 ;
-;   rbp - Supplies the address of the input buffer.
+;   rdi - Supplies the address of the input buffer.
 ;
 ;   rsi - Supplies the FilterStride parameter (see function description).
 ;
-;   rdi - Supplies the DilationWidth parameter (see function description).
+;   rbp - Supplies the DilationWidth parameter (see function description).
 ;
 ;   r8 - Supplies the address of the output buffer.
 ;
@@ -281,7 +281,7 @@ ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
 
 ProcessNextOutputCount:
         ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 1
-        add     rbp,r9                      ; advance input by 1 element
+        add     rdi,r9                      ; advance input by 1 element
         dec     r10
         jnz     ProcessNextOutputCount
 

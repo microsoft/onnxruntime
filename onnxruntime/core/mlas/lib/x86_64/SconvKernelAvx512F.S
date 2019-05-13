@@ -344,7 +344,7 @@ Arguments:
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vmovups ZMMWORD PTR [rbx+rax+48*4],zmm15"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vmovups ZMMWORD PTR [rbx+rax+64*4],zmm19"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vmovups ZMMWORD PTR [rbx+rax+80*4],zmm23"
-        add     r8,\OutputCount\()*16*4     # advance output by N nchw16c blocks
+        add_immed r8,\OutputCount\()*16*4   # advance output by N nchw16c blocks
 
         .endm
 

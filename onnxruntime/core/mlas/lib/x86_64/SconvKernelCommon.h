@@ -338,7 +338,7 @@ C_UNDERSCORE(MlasConv\KernelType\()FloatKernel\Isa\()):
         push    r13
         push    r12
 .ifeqs "\BiasFilter\()","BiasFilter"
-        add     rsi,4*8*4
+        add_immed rsi,4*8*4
 .endif
         push    rsi
         mov     rsi,.LSconvKernelFrame_FilterStride[rsp]
@@ -548,9 +548,37 @@ MlasConvDepthwiseFloatSingle\Isa\()FilterCount1:
 
         .endm
 
-//
-//
-//
+/*++
+
+Macro Description:
+
+    This macro generates code to compute the convolution for a vector of input
+    blocks and a vector of filter blocks to produce a matrix of output blocks
+    for a pointwise convolution.
+
+Arguments:
+
+    BlockSize - Supplies the number of elements per block.
+
+    FilterCount - Supplies the number of rows from the filter to process.
+
+    OutputCount - Supplies the number of output blocks to produce.
+
+Implicit Arguments:
+
+    rdi - Supplies the address of the input buffer.
+
+    rsi - Supplies the FilterStride parameter (see function description).
+
+    rbp - Supplies the InputStride parameter (see function description).
+
+    r8 - Supplies the address of the output buffer.
+
+    r9 - Supplies the StrideWidth parameter (see function description).
+
+    r12 - Supplies the address of the filter buffer.
+
+--*/
 
         .macro ProcessPointwiseOutputCountN BlockSize, FilterCount, OutputCount
 

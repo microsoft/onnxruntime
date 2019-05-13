@@ -170,6 +170,6 @@ SkipReluActivation:
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <vmovups YMMWORD PTR [rbx+rax],ymm3>
         EmitIfCount2GE FilterCount, 4, OutputCount, 2, <vmovups YMMWORD PTR [rbx+rax+32],ymm7>
         EmitIfCount2GE FilterCount, 4, OutputCount, 3, <vmovups YMMWORD PTR [rbx+rax+64],ymm11>
-        add     r8,OutputCount*8*4          ; advance output by N nchw8c blocks
+        add_immed r8,OutputCount*8*4        ; advance output by N nchw8c blocks
 
         ENDM
