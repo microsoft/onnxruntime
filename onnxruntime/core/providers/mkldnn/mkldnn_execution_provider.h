@@ -96,14 +96,14 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
                    const std::vector<const KernelRegistry*>& kernel_registries,
                    std::vector<std::unique_ptr<ComputeCapability>>& result) const;
   void CreateOrUpdateMklDnnNode(const Node* node,
-                                mkl_dnn::SubgraphVariables& sub_var,
+                                mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                 bool fused,
                                 std::map<std::string, int>& output_to_source_node_map,
                                 NodeAttributes& subgraph_attributes) const;
 
   // Create MklDnn node, update inputs, outputs and parent nodes
   // collect attribtes
-  void CreateMetaDef(mkl_dnn::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
+  void CreateMetaDef(mkl_dnn::Subgraph::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
                      std::vector<std::unique_ptr<ComputeCapability>>& result) const;
 
  public:
