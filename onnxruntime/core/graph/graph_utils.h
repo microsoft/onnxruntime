@@ -32,6 +32,12 @@ bool IsSupportedProvider(const Node& node,
     fed to multiple downstream operators, i.e., it can have multiple output edges. */
 bool IsSingleInSingleOutNode(const Node& node);
 
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. */
+bool IsSingleOutputUsed(const Node& node);
+
+/** Checks if the output `outputName` is input to downstream Operators. */
+bool IsOutputUsed(const Node& node, const std::string& outputName);
+
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
 

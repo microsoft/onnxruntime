@@ -81,7 +81,6 @@ TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 5);
   ASSERT_TRUE(op_to_count["Dropout"] == 2);
-  
 }
 
 

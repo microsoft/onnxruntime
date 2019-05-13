@@ -22,20 +22,14 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) {
   if (graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
+
+  // Check that the mask output is not an input to downstream nodes.
   if (graph_utils::IsSingleInSingleOutNode(node)) {
     return true;
+  } else {
+    const std::string& maskName = node.OutputDefs()[1]->Name();
+    return !graph_utils::IsOutputUsed(node, maskName);
   }
-	// Check that the mask output is not an input to downstream nodes.
-  const std::string& maskName = node.OutputDefs()[1]->Name();
-  for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-    auto output_node = graph.GetNode((*it).Index());
-    for (auto input : output_node->InputDefs()) {
-      if (input->Name() == (maskName)) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 }  // namespace onnxruntime

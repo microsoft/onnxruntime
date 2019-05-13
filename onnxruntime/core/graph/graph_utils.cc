@@ -353,14 +353,8 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-bool RemoveNode(Graph& graph, Node& node) {
-  // Cannot remove a node with implicit inputs or whose output is also a graph output.
-  if (node.ImplicitInputDefs().size() > 0 ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
-    return false;
-  }
-
-  // Exactly one output is used by a downstream Operator.
+bool IsSingleOutputUsed(const Node& node) {
+  // TODO: check subgraphs.
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
   if (output_edges.size() > 1) {
     std::set<int> uniqueOutputs;
@@ -371,7 +365,27 @@ bool RemoveNode(Graph& graph, Node& node) {
       }
     }
   }
-  
+  return true;
+}
+
+bool IsOutputUsed(const Node& node, const std::string& outputName) {
+  // TODO: check subgraphs.
+  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  for (auto& output_edge : output_edges) {
+    if (output_edge.arg_name == outputName) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool RemoveNode(Graph& graph, Node& node) {
+  // Cannot remove a node with implicit inputs, whose output is also a graph output,
+  // or with more than one of its outputs as input to downstream Operators.
+  if (node.ImplicitInputDefs().size() > 0 ||
+      graph.IsNodeOutputsInGraphOutputs(node) || !IsSingleOutputUsed(node)) {
+    return false;
+  }
 
   if (node.GetInputEdgesCount() == 1) {
     // If there is a single input edge from another node (initializers are not connected with edges to nodes).
