@@ -1394,5 +1394,28 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
+#ifdef USE_CUDA
+
+TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.enable_sequential_execution = false;
+  so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
+  InferenceSession session_object{so};
+  
+  CUDAExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  auto status = session_object.Initialize();
+
+  ASSERT_TRUE(!status.IsOK());
+}
+
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -186,6 +186,14 @@ class InferenceSession {
   common::Status Load(std::istream& model_istream);
 
   /**
+    * Load an ONNX model.
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    */
+  common::Status Load(const void* model_data, int model_data_len);
+
+  /**
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.

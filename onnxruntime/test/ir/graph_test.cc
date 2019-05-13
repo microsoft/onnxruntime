@@ -229,7 +229,7 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNoDuplicateName) {
   auto& node_with_dup_name = graph.AddNode("node_1", "Variable", "node 2", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ("Error: two nodes with same node name (node_1).", status.ErrorMessage());
+  EXPECT_EQ("This is an invalid model. Error: two nodes with same node name (node_1).", status.ErrorMessage());
   graph.RemoveNode(node_with_dup_name.Index());
 
   // Case 2: Adding two nodes with same output arg name should fail.
@@ -258,7 +258,7 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
   graph.AddNode("node_1", "OpNotExist", "node 1", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ(0, status.ErrorMessage().find_first_of("No Schema registered for OpNotExist"));
+  EXPECT_EQ(0, status.ErrorMessage().find_first_of("This is an invalid model. No Schema registered for OpNotExist"));
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
@@ -626,7 +626,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
 
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ("Error: the graph is not acyclic.", status.ErrorMessage());
+  EXPECT_EQ("This is an invalid model. Error: the graph is not acyclic.", status.ErrorMessage());
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {

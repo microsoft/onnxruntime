@@ -238,14 +238,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests](ITestCase* l) {
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
       std::unique_ptr<ITestCase> test_case_ptr(l);
       if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
         return;
       }
       TestResultStat per_case_stat;
       std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, sf);
+      TestEnv per_case_args(per_case_tests, per_case_stat, env ,sf);
       RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
       stat += per_case_stat;
     });
@@ -354,8 +354,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_mobilenet_v2_1.4_224", "result mismatch"},
       {"tf_mobilenet_v1_1.0_224", "result mismatch"},
       {"mobilenetv2-1.0", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"},
-      {"mod_float_mixed_sign_example", "faulty test"}
+      {"mxnet_arcface", "result mismatch"}
   };
 
 #ifdef USE_NGRAPH

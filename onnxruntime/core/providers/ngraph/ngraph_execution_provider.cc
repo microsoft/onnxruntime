@@ -11,13 +11,21 @@
 #include "ngraph_execution_provider.h"
 #include "ngraph_custom_op.h"
 
+#if defined(_MSC_VER)
+#pragma warning(disable:4244 4245)
+#elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <ngraph/ngraph.hpp>
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+#if defined(_MSC_VER)
+#pragma warning(default:4244 4245)
+#elif __GNUC__
 #pragma GCC diagnostic pop
+#endif
 
-#define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, MIN(destsz, srcsz))
+#define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
 namespace onnxruntime {
 
