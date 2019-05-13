@@ -302,7 +302,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern TensorElementType OrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ulong /*TODO: port for size_t */OrtGetNumOfDimensions(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern ulong /*TODO: port for size_t */OrtGetDimensionsCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void OrtGetDimensions(

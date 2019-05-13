@@ -364,34 +364,55 @@ ORT_API_STATUS_IMPL(OrtAddCustomOpDomain, _In_ OrtSessionOptions* options, OrtCu
   API_IMPL_END
 }
 
+namespace {
+  template <typename Loader>
+  OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+                               Loader loader, _Out_ OrtSession** out) {
+    auto sess = std::make_unique<::onnxruntime::InferenceSession>(
+        options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
+    Status status;
+    if (options != nullptr) {
+      if (!options->custom_op_domains_.empty()) {
+        status = sess->AddCustomOpDomains(options->custom_op_domains_);
+        if (!status.IsOK())
+          return ToOrtStatus(status);
+      }
+    }
+
+    if (options != nullptr)
+      for (auto& factory : options->provider_factories) {
+        auto provider = factory->CreateProvider();
+        if (provider)
+          sess->RegisterExecutionProvider(std::move(provider));
+      }
+    status = loader(*sess);
+    if (!status.IsOK())
+      return ToOrtStatus(status);
+    status = sess->Initialize();
+    if (!status.IsOK())
+      return ToOrtStatus(status);
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+    return nullptr;
+  }
+}
+
 ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  auto sess = std::make_unique<::onnxruntime::InferenceSession>(
-      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
-  Status status;
-  if (options != nullptr) {
-    if (!options->custom_op_domains_.empty()) {
-      status = sess->AddCustomOpDomains(options->custom_op_domains_);
-      if (!status.IsOK())
-        return ToOrtStatus(status);
-    }
-  }
+  const auto loader = [model_path](InferenceSession& sess) {
+    return sess.Load(model_path);
+  };
+  return CreateSessionImpl(env, options, loader, out);
+  API_IMPL_END
+}
 
-  if (options != nullptr)
-    for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider();
-      if (provider)
-        sess->RegisterExecutionProvider(std::move(provider));
-    }
-  status = sess->Load(model_path);
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-  status = sess->Initialize();
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-  *out = reinterpret_cast<OrtSession*>(sess.release());
-  return nullptr;
+ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
+                    _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
+  API_IMPL_BEGIN
+  const auto loader = [model_data, model_data_len](InferenceSession& sess) {
+    return sess.Load(model_data, model_data_len);
+  };
+  return CreateSessionImpl(env, options, loader, out);
   API_IMPL_END
 }
 
@@ -907,7 +928,7 @@ ORT_API_STATUS_IMPL(OrtGetValue, const OrtValue* value, int index, OrtAllocator*
 ///////////////////
 // OrtCreateValue
 template <typename T>
-static OrtStatus* OrtCreateValueImplSeqHelperMap(OrtValue** const in, int num_values, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeqHelperMap(OrtValue** const in, size_t num_values, OrtValue** out) {
   using SeqType = std::vector<T>;
   auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
@@ -925,7 +946,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(OrtValue** const in, int num_va
 }
 
 template <typename T>
-static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, int num_values, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, size_t num_values, OrtValue** out) {
   using SeqType = std::vector<T>;
   auto vec_ptr = std::make_unique<SeqType>();
   vec_ptr->reserve(num_values);
@@ -946,7 +967,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** const in, int num_value
   return nullptr;
 }
 
-static OrtStatus* OrtCreateValueImplSeq(OrtValue** const in, int num_values, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplSeq(OrtValue** const in, size_t num_values, OrtValue** out) {
   // We only support limited sequence types. For the sake of simplicity the type of the first
   // OrtValue* in OrtValue** will determine the type of the vector used to create the output OrtValue
   // this type should be either a tensor of limited types or map of limited types
@@ -1036,7 +1057,7 @@ static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Te
   }
 }
 
-static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, int num_values, OrtValue** out) {
+static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, size_t num_values, OrtValue** out) {
   if (num_values != NUM_MAP_INDICES) {
     return OrtCreateStatus(ORT_FAIL, "For map type num_values MUST be 2");
   }
@@ -1069,7 +1090,7 @@ static OrtStatus* OrtCreateValueImplMap(OrtValue** const in, int num_values, Ort
   return OrtCreateStatus(ORT_FAIL, "Key type is not supported yet.");
 }
 
-static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum ONNXType value_type,
+static OrtStatus* OrtCreateValueImpl(OrtValue** const in, size_t num_values, enum ONNXType value_type,
                                      OrtValue** out) {
   if (num_values <= 0) {
     return OrtCreateStatus(ORT_FAIL, "Number of values should be at least 1.");
@@ -1083,7 +1104,7 @@ static OrtStatus* OrtCreateValueImpl(OrtValue** const in, int num_values, enum O
   return OrtCreateStatus(ORT_FAIL, "Input is not of type sequence or map.");
 }
 
-ORT_API_STATUS_IMPL(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
+ORT_API_STATUS_IMPL(OrtCreateValue, OrtValue** const in, size_t num_values, enum ONNXType value_type,
                     OrtValue** out) {
   API_IMPL_BEGIN
   return OrtCreateValueImpl(in, num_values, value_type, out);

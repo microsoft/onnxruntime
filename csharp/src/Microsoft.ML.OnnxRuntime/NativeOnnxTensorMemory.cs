@@ -41,7 +41,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 _elementWidth = width;
 
-                ulong dimension = NativeMethods.OrtGetNumOfDimensions(typeAndShape);
+                ulong dimension = NativeMethods.OrtGetDimensionsCount(typeAndShape);
                 long count = NativeMethods.OrtGetTensorShapeElementCount(typeAndShape);  // count can be negative. 
                 if (count < 0)
                 {
