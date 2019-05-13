@@ -1,7 +1,5 @@
 // Copyright(C) 2018 Intel Corporation
 // Licensed under the MIT License
-#pragma once
-
 #ifdef _MSC_VER
 #pragma warning(disable : 4505)  //Unreferenced local function has been removed
 #endif
