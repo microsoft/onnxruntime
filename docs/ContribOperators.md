@@ -11,10 +11,12 @@
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
+  * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
+  * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
 
 ## com.microsoft
@@ -506,6 +508,63 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Pad"></a><a name="com.microsoft.pad">**com.microsoft.Pad**</a>
+
+  Given `data` tensor, pads, mode, and value.
+              Example:
+              Insert 0 pads to the beginning of the second dimension.
+              data = [
+                      [1.0, 1.2],
+                      [2.3, 3.4],
+                      [4.5, 5.7],
+                      ]
+              pads = [0, 2, 0, 0]
+              output = [
+                      [
+                      [0.0, 0.0, 1.0, 1.2],
+                      [0.0, 0.0, 2.3, 3.4],
+                      [0.0, 0.0, 4.5, 5.7],
+                      ],
+                      ]
+              
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>mode</tt> : string</dt>
+<dd>Three modes: `constant`(default) - pads with a given constant value, `reflect` - pads with the reflection of the vector mirrored on the first and last values of the vector along each axis, `edge` - pads with the edge values of array</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>data</tt> : T</dt>
+<dd>Input tensor.</dd>
+<dt><tt>pads</tt> : tensor(int64)</dt>
+<dd>Tensor of integers indicating the number of padding elements to add or remove (if negative) at the beginning and end of each axis. For 2D input tensor, it is the number of pixels. `pads` should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]. `pads` format (1D example) should be as follow [x1_begin, x2_begin,...,x1_end, x2_end,...], where xi_begin is the number of pixels added at the beginning of axis `i` and xi_end, the number of pixels added at the end of axis `i`.</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>(Optional) A scalar or rank 1 tensor containing a single value to be filled if the mode chosen is `constant` (by default it is 0.0).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Tensor after padding.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Range"></a><a name="com.microsoft.range">**com.microsoft.Range**</a>
 
   Creates a sequence of numbers that begins at `start` and extends by increments of `delta`
@@ -697,6 +756,52 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(string)</dt>
 <dd>Input/Output is a string tensor</dd>
+</dl>
+
+
+### <a name="com.microsoft.Unique"></a><a name="com.microsoft.unique">**com.microsoft.Unique**</a>
+
+  Finds all the unique values (deduped list) present in the given input tensor. 
+                This operator returns 3 outputs. 
+                The first output tensor 'uniques' contains all of the unique elements of the input, 
+                sorted in the same order that they occur in the input.
+                The second output tensor 'idx' is the same size as the input and it contains the index 
+                of each value of the input in 'uniques'.
+                The third output tensor 'counts' contains the count of each element of 'uniques' in the input.
+                Example:
+                  input_x = [2, 1, 1, 3, 4, 3]
+                  output_uniques = [2, 1, 3, 4]
+                  output_idx = [0, 1, 1, 2, 3, 2]
+                  output_counts = [1, 2, 2, 1]
+                
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T</dt>
+<dd>A 1-D input tensor that is to be processed.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y</tt> : T</dt>
+<dd>A 1-D tensor of the same type as 'x' containing all the unique values in 'x' sorted in the same order that they occur in the input 'x'</dd>
+<dt><tt>idx</tt> : tensor(int64)</dt>
+<dd>A 1-D INT64 tensor of the same size as 'x' containing the indices for each value in 'x' in the output 'uniques'</dd>
+<dt><tt>counts</tt> : tensor(int64)</dt>
+<dd>A 1-D INT64 tensor containing the the count of each element of 'uniques' in the input 'x'</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
+<dd>Input can be of any tensor type.</dd>
 </dl>
 
 
