@@ -489,7 +489,7 @@ Arguments:
     Flags - Supplies additional flags controlling the convolution operation,
         especially post calculation options.
 
-  Return Value:
+Return Value:
 
     None.
 

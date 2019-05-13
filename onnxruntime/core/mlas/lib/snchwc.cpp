@@ -1268,7 +1268,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 
             Kernel(Input + NCHWC * (ih * InputWidth - PaddingLeftX), Output,
                 StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
-                EffectiveKernelHeight, KernelWidth, KernelSize,
+                KernelSize, EffectiveKernelHeight, KernelWidth,
                 Input + NCHWC * (ih * InputWidth), InputWidthBytes,
                 DilatedInputWidthBytes, OutputCountLeftPadX, OutputCountX,
                 OutputCountRightPadX);

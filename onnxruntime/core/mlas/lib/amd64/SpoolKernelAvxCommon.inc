@@ -56,14 +56,14 @@ SpoolKernelFunction MACRO PoolingType, Isa
 ;   InputStride - Supplies the length in bytes to advance the input buffer to
 ;       the next input row.
 ;
+;   ActualKernelSize - Supplies the size of the kernel based on the original
+;       kernel dimensions, used for PoolingType=AverageIncludePad.
+;
 ;   KernelHeight - Supplies the height of the kernel to apply. This height may
 ;       be less than the original kernel height after removing any padding
 ;       rows.
 ;
 ;   KernelWidth - Supplies the width of the kernel to apply.
-;
-;   ActualKernelSize - Supplies the size of the kernel based on the original
-;       kernel dimensions, used for PoolingType=AverageIncludePad.
 ;
 ;   InputBase - Supplies the address of the valid input buffer.
 ;
@@ -111,7 +111,7 @@ ProcessOutputCount:
 ProcessNextOutputCountBy3:
         ProcessOutputCountN SpoolKernelFrame, PoolingType, 3
         lea     rax,[r8*2+r8]
-        add     rbp,rax                     ; advance input by 3 elements
+        add     rdi,rax                     ; advance input by 3 elements
         sub     r10,3
         jae     ProcessNextOutputCountBy3
 
@@ -137,7 +137,7 @@ ExitKernel:
 
 ProcessNextOutputCount:
         ProcessOutputCountN SpoolKernelSingleFrame.KernelFrame, PoolingType, 1
-        add     rbp,r8                      ; advance input by 1 element
+        add     rdi,r8                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
         jnz     ProcessNextOutputCount
         ret

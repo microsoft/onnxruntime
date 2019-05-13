@@ -34,9 +34,9 @@ SpoolKernelFrame STRUCT
         PreviousP3Home QWORD ?              ; StrideWidth
         PreviousP4Home QWORD ?              ; DilationWidth
         InputStride QWORD ?
+        ActualKernelSize QWORD ?
         KernelHeight QWORD ?
         KernelWidth QWORD ?
-        ActualKernelSize QWORD ?
         InputBase QWORD ?
         InputWidth QWORD ?
         DilatedInputWidth QWORD ?
@@ -75,8 +75,8 @@ SpoolKernelEntry MACRO PoolingType
 
         END_PROLOGUE
 
-        mov     rbp,rcx
-        mov     rdi,SpoolKernelFrame.InputStride[rsp]
+        mov     rdi,rcx
+        mov     rbp,SpoolKernelFrame.InputStride[rsp]
         InitializeKernel PoolingType
 
         ENDM
@@ -124,7 +124,7 @@ SpoolKernelExit MACRO
 ;
 ; Implicit Arguments:
 ;
-;   rbp - Supplies the address of the input buffer.
+;   rdi - Supplies the address of the input buffer.
 ;
 ;   rdx - Supplies the address of the output buffer.
 ;
@@ -132,7 +132,7 @@ SpoolKernelExit MACRO
 ;
 ;   r9 - Supplies the DilationWidth parameter (see function description).
 ;
-;   rdi - Supplies the InputStride parameter (see function description).
+;   rbp - Supplies the InputStride parameter (see function description).
 ;
 
 ProcessOutputCountN MACRO KernelFrame, PoolingType, OutputCount
@@ -142,7 +142,7 @@ ProcessOutputCountN MACRO KernelFrame, PoolingType, OutputCount
         LOCAL   SkipOverPadding
         LOCAL   HandlePostProcessing
 
-        mov     rcx,rbp
+        mov     rcx,rdi
         mov     r11,KernelFrame.KernelHeight[rsp]
         mov     r12,KernelFrame.KernelWidth[rsp]
 IF OutputCount EQ 1
@@ -169,7 +169,7 @@ SkipOverPadding:
         add     rcx,r9                      ; advance input by dilation width
         dec     rax                         ; decrement columns remaining
         jnz     ProcessNextColumn
-        add     rcx,rdi                     ; advance input to next row
+        add     rcx,rbp                     ; advance input to next row
 IF OutputCount EQ 1
         sub     r13,KernelFrame.DilatedInputWidth[rsp]
                                             ; advance input base to next row
