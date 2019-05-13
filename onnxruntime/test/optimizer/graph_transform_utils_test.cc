@@ -34,25 +34,6 @@ TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
 }
 
 TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
-  auto transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2);
-  ASSERT_TRUE(transformers.size() != 0);
-
-  // Transformer name match test
-  std::vector<std::string> custom_list = {"EliminateIdentity", "GemmActivationFusion", "MatMulAddFusion", "abc", "def"};
-  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
-  ASSERT_TRUE(transformers.size() == 2);
-  // validate each rule returned is present in the custom list
-  for (const auto& transformer : transformers) {
-    ASSERT_TRUE(std::find(custom_list.begin(), custom_list.end(), transformer->Name()) != custom_list.end());
-  }
-
-  // Transformer name no-match test. When there is no match, empty list is expected.
-  custom_list = {"EliminateIdentity"};
-  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
-  ASSERT_TRUE(transformers.size() == 0);
-}
-
-TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers_CustomList) {
   // custom list of rules and transformers
   std::string l1_rule1 = "EliminateIdentity";
   std::string l1_transformer = "ConstantFolding";
