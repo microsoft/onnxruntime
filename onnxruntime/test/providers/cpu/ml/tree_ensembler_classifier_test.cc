@@ -151,5 +151,107 @@ TEST(MLOpTest, TreeEnsembleClassifierBinary) {
   test.Run();
 }
 
+TEST(MLOpTest, TreeEnsembleClassifierBinaryBaseValue) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> base_values = {0.631f, 0.632f};
+  std::vector<int64_t> class_ids = {0, 0, 0};
+  std::vector<int64_t> class_nodeids = {2, 3, 4};
+  std::vector<int64_t> class_treeids = {0, 0, 0};
+  std::vector<float> class_weights = {-0.2f, -0.06f, 0.2f};
+  std::vector<int64_t> classlabels_int64s = {0, 1};
+  std::vector<int64_t> nodes_falsenodeids = {4, 3, 0, 0, 0};
+  std::vector<int64_t> nodes_featureids = {0, 0, 0, 0, 0};
+  std::vector<float> nodes_hitrates = {1, 1, 1, 1, 1};
+  std::vector<int64_t> nodes_missing_value_tracks_true = {0, 0, 0, 0, 0};
+  std::vector<std::string> nodes_modes = {"BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF"};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4};
+  std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0};
+  std::vector<int64_t> nodes_truenodeids = {1, 2, 0, 0, 0};
+  std::vector<float> nodes_values = {0.21111594140529633f, -0.8440752029418945f, 0, 0, 0};
+  std::string post_transform = "LOGISTIC";
+
+  std::vector<float> X = {-0.92533575f, -1.14021544f, -0.46171143f, -0.58723065f};
+  std::vector<int64_t> results = {1, 1};
+  std::vector<float> probs = {};
+  std::vector<float> log_probs = {};
+  std::vector<float> scores{58334232f, 61534649f};
+
+  //define the context of the operator call
+  const int N = 2;
+  test.AddAttribute("base_values", base_values);
+  test.AddAttribute("class_ids", class_ids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classlabels_int64s);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_hitrates", nodes_hitrates);
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("nodes_nodeids", nodes_nodeids);
+  test.AddAttribute("nodes_treeids", nodes_treeids);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_values", nodes_values);
+  test.AddAttribute("post_transform", post_transform);
+
+  test.AddInput<float>("X", {N, 2}, X);
+  test.AddOutput<int64_t>("Y", {N}, results);
+  test.AddOutput<float>("Z", {N, 1}, scores);
+
+  test.Run();
+}
+
+TEST(MLOpTest, TreeEnsembleClassifierBinaryNoBaseValue) {
+  OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+
+  //std::vector<float> base_values = {0.631f, 0.632f};
+  std::vector<int64_t> class_ids = {0, 0, 0};
+  std::vector<int64_t> class_nodeids = {2, 3, 4};
+  std::vector<int64_t> class_treeids = {0, 0, 0};
+  std::vector<float> class_weights = {-0.2f, -0.06f, 0.2f};
+  std::vector<int64_t> classlabels_int64s = {0, 1};
+  std::vector<int64_t> nodes_falsenodeids = {4, 3, 0, 0, 0};
+  std::vector<int64_t> nodes_featureids = {0, 0, 0, 0, 0};
+  std::vector<float> nodes_hitrates = {1, 1, 1, 1, 1};
+  std::vector<int64_t> nodes_missing_value_tracks_true = {0, 0, 0, 0, 0};
+  std::vector<std::string> nodes_modes = {"BRANCH_LEQ", "BRANCH_LEQ", "LEAF", "LEAF", "LEAF"};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4};
+  std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0};
+  std::vector<int64_t> nodes_truenodeids = {1, 2, 0, 0, 0};
+  std::vector<float> nodes_values = {0.21111594140529633f, -0.8440752029418945f, 0, 0, 0};
+  std::string post_transform = "LOGISTIC";
+
+  std::vector<float> X = {-0.92533575f, -1.14021544f, -0.46171143f, -0.58723065f};
+  std::vector<int64_t> results = {1, 1};
+  std::vector<float> probs = {};
+  std::vector<float> log_probs = {};
+  std::vector<float> scores{1.f, 1.f};
+
+  //define the context of the operator call
+  const int N = 2;
+  //test.AddAttribute("base_values", base_values);
+  test.AddAttribute("class_ids", class_ids);
+  test.AddAttribute("class_nodeids", class_nodeids);
+  test.AddAttribute("class_treeids", class_treeids);
+  test.AddAttribute("class_weights", class_weights);
+  test.AddAttribute("classlabels_int64s", classlabels_int64s);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_hitrates", nodes_hitrates);
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("nodes_nodeids", nodes_nodeids);
+  test.AddAttribute("nodes_treeids", nodes_treeids);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_values", nodes_values);
+  test.AddAttribute("post_transform", post_transform);
+
+  test.AddInput<float>("X", {N, 2}, X);
+  test.AddOutput<int64_t>("Y", {N}, results);
+  test.AddOutput<float>("Z", {N, 1}, scores);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
