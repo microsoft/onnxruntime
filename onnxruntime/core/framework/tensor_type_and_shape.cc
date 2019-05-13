@@ -123,7 +123,7 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGetTensorShapeAndType, _In_ const OrtValue* value,
+ORT_API_STATUS_IMPL(OrtGetTensorTypeAndShape, _In_ const OrtValue* value,
                     _Out_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);

@@ -44,7 +44,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
   {
     OrtTensorTypeAndShapeInfo* shape_info_ptr;
-    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(output_tensor, &shape_info_ptr));
+    ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(output_tensor, &shape_info_ptr));
     shape_info.reset(shape_info_ptr);
   }
   size_t rtensor_dims = OrtGetNumOfDimensions(shape_info.get());
@@ -276,7 +276,7 @@ TEST_F(CApiTest, create_tensor) {
     std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
     {
       OrtTensorTypeAndShapeInfo* shape_info_ptr;
-      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(tensor.get(), &shape_info_ptr));
+      ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(tensor.get(), &shape_info_ptr));
       shape_info.reset(shape_info_ptr);
     }
     int64_t len = OrtGetTensorShapeElementCount(shape_info.get());

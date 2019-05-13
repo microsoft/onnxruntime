@@ -405,7 +405,7 @@ ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShape
 /**
  * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
  */
-ORT_API_STATUS(OrtGetTensorShapeAndType, _In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
+ORT_API_STATUS(OrtGetTensorTypeAndShape, _In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
 /**
  * Get the type information of an OrtValue
@@ -548,9 +548,11 @@ struct OrtCustomOpApi {
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_float)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_int64)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
 
-  OrtStatus*(ORT_API_CALL* GetTensorShapeAndType)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
+  OrtStatus*(ORT_API_CALL* GetTensorTypeAndShape)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
   int64_t(ORT_API_CALL* GetTensorShapeElementCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
+  enum ONNXTensorElementDataType(ORT_API_CALL* GetTensorElementType)(_In_ const OrtTensorTypeAndShapeInfo*);
+
   size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
   void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
@@ -558,7 +560,9 @@ struct OrtCustomOpApi {
 
   void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
 
+  size_t(ORT_API_CALL* KernelContext_GetInputCount)(const OrtKernelContext* context);
   const OrtValue*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index);
+  size_t(ORT_API_CALL* KernelContext_GetOutputCount)(const OrtKernelContext* context);
   OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;

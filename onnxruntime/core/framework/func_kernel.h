@@ -1,7 +1,11 @@
 #pragma once
 #include "core/framework/op_kernel.h"
 #include "core/framework/func_api.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/graph/function.h"
+
+const OrtCustomOpApi& GetCustomOpApi();
+
 namespace onnxruntime {
 
 void* allocate_helper_func(void* allocator, size_t alignment, size_t size);
@@ -37,6 +41,13 @@ class FunctionKernel : public OpKernel {
   }
 
   virtual Status Compute(OpKernelContext* context) const override {
+    auto* context_internal = static_cast<OpKernelContextInternal*>(context);
+    int ret = func_(func_state_, &GetCustomOpApi(), reinterpret_cast<OrtKernelContext*>(context_internal));
+    if (ret != 0)
+      return Status(common::ONNXRUNTIME, common::FAIL, "FuncKernel call failed with error code: " + std::to_string(ret));
+    return Status::OK();
+
+#if 0
     std::vector<ONNXRunTimeTensor> input_tensors;
     for (int i = 0; i < num_inputs_; i++) {
       const Tensor* input = context->Input<Tensor>(i);
@@ -71,6 +82,7 @@ class FunctionKernel : public OpKernel {
     }
 
     return Status::OK();
+#endif
   }
 
  private:

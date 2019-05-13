@@ -29,7 +29,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 //using ComputeFunc = std::function<int(FunctionState, ONNXRunTimeTensor*, size_t, ONNXRunTimeTensor*, size_t)>;
-using ComputeFunc = std::function<int(FunctionState, OrtKernelContext*)>;
+using ComputeFunc = std::function<int(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {

@@ -430,7 +430,7 @@ T* Value::GetTensorMutableData() {
 
 inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
   OrtTensorTypeAndShapeInfo* output;
-  ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(p_, &output));
+  ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(p_, &output));
   return TensorTypeAndShapeInfo{output};
 }
 
@@ -516,14 +516,18 @@ struct CustomOpApi {
   template <typename T>
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
-  OrtTensorTypeAndShapeInfo* GetTensorShapeAndType(_In_ const OrtValue* value) {
+  OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* out;
-    ORT_THROW_ON_ERROR(api_.GetTensorShapeAndType(value, &out));
+    ORT_THROW_ON_ERROR(api_.GetTensorTypeAndShape(value, &out));
     return out;
   }
 
   int64_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
     return api_.GetTensorShapeElementCount(info);
+  }
+
+  ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info) {
+    return api_.GetTensorElementType(info);
   }
 
   size_t GetDimensionCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
@@ -550,13 +554,28 @@ struct CustomOpApi {
     return GetTensorMutableData<T>(const_cast<OrtValue*>(value));
   }
 
+  std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {
+    std::vector<int64_t> output(GetDimensionCount(info));
+    GetDimensions(info, output.data(), output.size());
+    return output;
+  }
+
   void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input) {
     api_.ReleaseTensorTypeAndShapeInfo(input);
+  }
+
+  size_t KernelContext_GetInputCount(const OrtKernelContext* context) {
+    return api_.KernelContext_GetInputCount(context);
   }
 
   const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index) {
     return api_.KernelContext_GetInput(context, index);
   }
+
+  size_t KernelContext_GetOutputCount(const OrtKernelContext* context) {
+    return api_.KernelContext_GetOutputCount(context);
+  }
+
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
     return api_.KernelContext_GetOutput(context, index, dim_values, dim_count);
   }
