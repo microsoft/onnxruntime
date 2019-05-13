@@ -280,6 +280,22 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   return Load(loader, "model_loading_istream");
 }
 
+common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
+    ModelProto model_proto;
+
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    if (!result) {
+      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                    "Failed to load model because protobuf parsing failed.");
+    }
+
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+  };
+
+  return Load(loader, "model_loading_array");
+}
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                                 const ExecutionProviders& providers,
@@ -420,6 +436,15 @@ common::Status InferenceSession::Initialize() {
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
       ORT_RETURN_IF_ERROR(execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
                                                    std::make_unique<CPUExecutionProvider>(epi)));
+    }
+
+    if (!session_options_.enable_sequential_execution &&
+        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
+      LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
+                                       "for the registered CUDA Execution Provider.";
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "Parallel execution is currently not supported "
+                            "for the registered CUDA Execution Provider.");
     }
 
     // add predefined transformers

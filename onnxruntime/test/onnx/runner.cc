@@ -465,7 +465,7 @@ void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions
   try {
     DataRunner* r = nullptr;
     std::string node_name = info->GetNodeName();
-    auto sf2 = sf.clone();
+    auto sf2 = sf.Clone();
     sf2.SetLogId(info->GetTestCaseName().c_str());
     Ort::Session session_object{env, info->GetModelUrl(), sf2};
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
