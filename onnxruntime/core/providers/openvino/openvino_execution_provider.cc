@@ -248,8 +248,11 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
     if(isGraphSupported){
 
+
         SaveModel(model_proto,"ov_model.onnx");
 
+        (void) precision_fp32;
+        /*
         PyObject *pModule, *pOutput,*pFunc;
 
         Py_Initialize();
@@ -275,6 +278,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 }
             }
         }
+        */
 
 
         for(auto index : node_indexes){
