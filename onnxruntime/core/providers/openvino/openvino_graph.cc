@@ -90,57 +90,102 @@ std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
 
 std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithMO() {
 
-    PyObject *pModule, *pOutput;
-    PyObject *pArg1, *pArg2;
-    PyObject *pFunc = nullptr;
+//    PyObject *pModule, *pOutput;
+//    PyObject *pArg1, *pArg2;
+//    PyObject *pFunc = nullptr;
 
     Py_Initialize();
+    if(!Py_IsInitialized()) {
+      std::cout << "Python Interpreter initialization failed \n";
+      throw "Python Interpreter initialization failed";
+    }
 
-    pModule = PyImport_ImportModule("openvino_mo");
+    // Load the MO python module
+    PyObject* pModule = PyImport_ImportModule("openvino_mo");
+    if(pModule == NULL) {
+       std::cout << "Python module not found " << std::endl;
+       Py_FinalizeEx();
+       throw "Python module not found";
+    }
 
+
+    // Load the relevant function
+    PyObject* pFunc;
+    if(precision_ == InferenceEngine::Precision::FP32) {
+      pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
+    } else if (precision_ == InferenceEngine::Precision::FP16) {
+      pFunc = PyObject_GetAttrString(pModule,"convert_fp16");
+    }
+
+    if((pFunc == NULL) || (PyCallable_Check(pFunc) == 0)) {
+       std::cout << "Python Function not found"<< std::endl;
+       Py_DECREF(pModule);
+       Py_FinalizeEx();
+       throw "Python Function not found";
+    }
+
+    // Prepare python input
+    const char* onnx_file = "ov_model.onnx";
+    PyObject* pFileName = PyByteArray_FromStringAndSize(onnx_file, 13);
+    PyObject* pArgs = PyTuple_New(1);
+    PyTuple_SetItem(pArgs, 0, pFileName);
+
+    // Call the Python function
+    PyObject* pOutputTuple = PyObject_CallObject(pFunc, pArgs);
+
+    if(pOutputTuple == NULL){
+     std::cout << "Model Optimizer call Failed\n";
+     throw "Model Optimizer Failed";
+    }
+
+    // Retrieve the weights byte array
+    PyObject* pArg1 = PyTuple_GetItem(pOutputTuple, 0);
+    PyObject* pWeights = PyByteArray_FromObject(pArg1);
+    const char* weights_bytes = PyByteArray_AsString(pWeights);
+    unsigned long weights_size =  PyByteArray_Size(pWeights);
+
+    // Retreive the xml string
+    PyObject* pArg2 = PyTuple_GetItem(pOutputTuple, 1);
+    PyObject* pXML = PyObject_Repr(pArg2);
+    std::string xml_string = PyUnicode_AsUTF8(pXML);
+
+    // TODO: Clean up python resources after use.
+
+
+    /*
     std::string  xml_string;
     const char* weights_bytes = "test";
     unsigned long weights_size;
 
-    if(pModule != NULL){
-        if(precision_ == InferenceEngine::Precision::FP32) {
-          pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
-        } else if (precision_ == InferenceEngine::Precision::FP16) {
-          pFunc = PyObject_GetAttrString(pModule,"convert_fp16");
-        }
-        if(pFunc && PyCallable_Check(pFunc)){
-            pOutput = PyObject_CallFunction(pFunc, NULL);
+      if(pFunc && PyCallable_Check(pFunc)){
+          pOutput = PyObject_CallFunction(pFunc, NULL);
 
-            if(pOutput == NULL){
+          if(pOutput == NULL){
 
-                throw "Model Optimizer Failed";
-            }
+              throw "Model Optimizer Failed";
+          }
 
-            pArg1 = PyTuple_GetItem(pOutput, 0);
-            pArg2 = PyTuple_GetItem(pOutput, 1);
-            // PyObject* pResultStr = PyObject_Repr(pOutput);
+          pArg1 = PyTuple_GetItem(pOutput, 0);
+          pArg2 = PyTuple_GetItem(pOutput, 1);
+          // PyObject* pResultStr = PyObject_Repr(pOutput);
 
-            PyObject* pResultStr1 = PyByteArray_FromObject(pArg1);
-            PyObject* pResultStr2 = PyObject_Repr(pArg2);
+          PyObject* pResultStr1 = PyByteArray_FromObject(pArg1);
+          PyObject* pResultStr2 = PyObject_Repr(pArg2);
 
-            weights_size = PyByteArray_Size(pResultStr1);
+          weights_size = PyByteArray_Size(pResultStr1);
 
 
-            weights_bytes = PyByteArray_AsString(pResultStr1);
+          weights_bytes = PyByteArray_AsString(pResultStr1);
 
-            xml_string = PyUnicode_AsUTF8(pResultStr2);
-            Py_DECREF(pOutput);
-            //Py_DECREF(pResultStr1);
-            Py_DECREF(pResultStr2);
+          xml_string = PyUnicode_AsUTF8(pResultStr2);
+          Py_DECREF(pOutput);
+          //Py_DECREF(pResultStr1);
+          Py_DECREF(pResultStr2);
 
-        } else {
-          std::cout << "Python module call failed" << std::endl;
-        }
-
-    }else {
-        std::cout << "Python module not found " << std::endl;
-    }
-
+      } else {
+        std::cout << "Python module call failed" << std::endl;
+      }
+*/
 
   InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
       new InferenceEngine::TBlob<uint8_t>(InferenceEngine::Precision::U8,

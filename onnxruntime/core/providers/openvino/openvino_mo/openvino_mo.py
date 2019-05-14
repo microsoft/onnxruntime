@@ -378,7 +378,7 @@ def driver(model_file_name: str, precision : str, output_model_name: str, output
     return weights, xml_string
 
 
-def driver_entry(precision : str):
+def driver_entry(onnx_file_name : str, precision : str):
     start_time = datetime.datetime.now()
 
 
@@ -391,18 +391,20 @@ def driver_entry(precision : str):
 
     from mo.front.onnx.register_custom_ops import update_registration
     import_extensions.load_dirs('onnx', [mo_extensions], update_registration)
-    weights , xml_string = driver('ov_model.onnx', precision, model_name, outputs, ".", None,
+    weights , xml_string = driver(onnx_file_name, precision, model_name, outputs, ".", None,
                              user_shapes=placeholder_shapes,
                              mean_scale_values=mean_scale)
 
     return weights, xml_string
 
-def convert_fp16():
+def convert_fp16(onnx_file_name_bytes):
     try:
+        onnx_file_name = onnx_file_name_bytes.decode("utf=8")
+        print("[OpenVINO-MO]: Got file name", onnx_file_name)
         init_logger('ERROR', False)
         framework = 'onnx'
 
-        weights, xml_string = driver_entry(precision='FP16')
+        weights, xml_string = driver_entry(onnx_file_name, precision='FP16')
 
         float_array = np.asarray(weights, dtype=np.float16)
 
@@ -413,12 +415,14 @@ def convert_fp16():
         #log.debug(traceback.format_exc())
         return 1
 
-def convert_fp32():
+def convert_fp32(onnx_file_name_bytes):
     try:
+        onnx_file_name = onnx_file_name_bytes.decode("utf=8")
+        print("[OpenVINO-MO]: Got file name", onnx_file_name)
         init_logger('ERROR', False)
         framework = 'onnx'
 
-        weights, xml_string = driver_entry(precision='FP32')
+        weights, xml_string = driver_entry(onnx_file_name, precision='FP32')
         #weights_string = np.array2string(weights, precision=10, separator="")
 
         float_array = np.asarray(weights, dtype=np.float32)
