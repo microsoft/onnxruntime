@@ -1,18 +1,19 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
-#define LIB_PYOP         "onnxruntime_pyop.dll"
-#define LOAD_PYOP_LIB(n) LoadLibraryA(n)
+#define LIB_PYOP "onnxruntime_pyop.dll"
+#define LOAD_PYOP_LIB(n,v,m) ORT_ENFORCE((v=LoadLibraryA(n))!=nullptr,m)
 #else
 #ifdef __APPLE__
-#define LIB_PYOP         "./libonnxruntime_pyop.dylib"
+#define LIB_PYOP "./libonnxruntime_pyop.dylib"
 #else
-#define LIB_PYOP         "./libonnxruntime_pyop.so"
+#define LIB_PYOP "./libonnxruntime_pyop.so"
 #endif
-#define LOAD_PYOP_LIB(n) dlopen(n,RTLD_NOW|RTLD_GLOBAL)
-#define HMODULE          void*
+#define LOAD_PYOP_LIB(n,v,m) ORT_ENFORCE((v=dlopen(n,RTLD_NOW|RTLD_GLOBAL))!=nullptr,m)
+#define HMODULE void*
 #include "dlfcn.h"
 #endif
+#define LOAD_PYOP_SYM(n,v,m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_,n,reinterpret_cast<void**>(&v))==Status::OK(),m)
 #include "core/framework/ml_value.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -48,28 +49,28 @@ public:
         return proxy;
     }
 
-    HMODULE              handle              = nullptr;
-    Initialize*          initialize          = nullptr;
-    NewInstance*         newInstance         = nullptr;
-    InvokePythonFunc*    invokePythonFunc    = nullptr;
-    ReleaseInstance*     releaseInstance     = nullptr;
-    GetLastErrorMessage* getLastErrorMessage = nullptr;
+    HMODULE              handle_                 = nullptr;
+    Initialize*          initialize_             = nullptr;
+    NewInstance*         new_instance_           = nullptr;
+    InvokePythonFunc*    invoke_python_func_     = nullptr;
+    ReleaseInstance*     release_instance_       = nullptr;
+    GetLastErrorMessage* get_last_error_message_ = nullptr;
 
 private:
     PyOpLibProxy() {
 
         std::string err;
-        ORT_ENFORCE((handle=LOAD_PYOP_LIB(LIB_PYOP))!= nullptr, "Failed to load pyop library"); // Env::load allows no loading attrs, will cause numpy import error on Linux
-        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "Initialize",          reinterpret_cast<void**>(&initialize))          == Status::OK(), "Failed to import function: Initialize");
-        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "NewInstance",         reinterpret_cast<void**>(&newInstance))         == Status::OK(), "Failed to import function: NewInstance");
-        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "InvokePythonFunc",    reinterpret_cast<void**>(&invokePythonFunc))    == Status::OK(), "Failed to import function: InvokePythonFunc");
-        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "ReleaseInstance",     reinterpret_cast<void**>(&releaseInstance))     == Status::OK(), "Failed to import function: ReleaseInstance");
-        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "GetLastErrorMessage", reinterpret_cast<void**>(&getLastErrorMessage)) == Status::OK(), "Failed to import function: GetLastErrorMessage");
-        ORT_ENFORCE(initialize(), getLastErrorMessage(err));
+        LOAD_PYOP_LIB(LIB_PYOP,              handle_,                 "Failed to load pyop library");
+        LOAD_PYOP_SYM("Initialize",          initialize_,             "Failed to import function: Initialize");
+        LOAD_PYOP_SYM("NewInstance",         new_instance_,           "Failed to import function: NewInstance");
+        LOAD_PYOP_SYM("InvokePythonFunc",    invoke_python_func_,     "Failed to import function: InvokePythonFunc");
+        LOAD_PYOP_SYM("ReleaseInstance",     release_instance_,       "Failed to import function: ReleaseInstance");
+        LOAD_PYOP_SYM("GetLastErrorMessage", get_last_error_message_, "Failed to import function: GetLastErrorMessage");
+        ORT_ENFORCE  (initialize_(),         get_last_error_message_(err));
     }
 
     ~PyOpLibProxy() {
-        Env::Default().UnloadDynamicLibrary(handle);
+        Env::Default().UnloadDynamicLibrary(handle_);
     }
 };
 
@@ -84,13 +85,13 @@ struct PyCustomKernel {
                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                    compute_(compute), logging_func_(logging_func) {
         std::string err;
-        instance_ = PyOpLibProxy::GetInstance().newInstance(module.c_str(), class_name_.c_str(), attrs_);
-        ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().getLastErrorMessage(err));
+        instance_ = PyOpLibProxy::GetInstance().new_instance_(module.c_str(), class_name_.c_str(), attrs_);
+        ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().get_last_error_message_(err));
     }
 
     ~PyCustomKernel() {
         if (nullptr != instance_) {
-            PyOpLibProxy::GetInstance().releaseInstance(instance_);
+            PyOpLibProxy::GetInstance().release_instance_(instance_);
             instance_ = nullptr;
         }
     }
@@ -115,8 +116,11 @@ struct PyCustomKernel {
         }
 
         std::string err;
-        ORT_ENFORCE (PyOpLibProxy::GetInstance().invokePythonFunc(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size,
-                                                                  outputs_dim, logging_func_), PyOpLibProxy::GetInstance().getLastErrorMessage(err));
+        ORT_ENFORCE(PyOpLibProxy::GetInstance().invoke_python_func_(instance_, compute_.c_str(), inputs, inputs_type,
+                                                                    inputs_dim, outputs, outputs_elem_size,
+                                                                    outputs_dim, logging_func_),
+                    PyOpLibProxy::GetInstance().get_last_error_message_(err));//ORT_ENFORCE
+
         for (size_t i = 0; i < outputs.size(); ++i) {
             auto ort_output  = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
             auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
@@ -208,6 +212,6 @@ private:
     std::string    class_name_;
     std::string    compute_;
     PyOpLogFunc    logging_func_;
-};//PyCusomOp
+};//PyCustomOp
 
 }
