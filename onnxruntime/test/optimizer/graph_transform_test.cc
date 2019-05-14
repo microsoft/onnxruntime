@@ -79,10 +79,13 @@ TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
+  // Of the 6 Dropout nodes in the graph, all but the ones named `d1` and `d6` should have been removed.
+  // A Dropout node can be removed if its second, optional output `mask` is either missing or unused downstream.
+  // `d1` cannot be removed because an Identity node has its `mask` output as an input;
+  // `d6` cannot be removed because its `mask` output is marked as a graph output.
   ASSERT_TRUE(op_to_count["Identity"] == 5);
   ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
-
 
 TEST(GraphTransformationTests, SliceElimination) {
   string model_uri = MODEL_FOLDER + "slice-elim.onnx";

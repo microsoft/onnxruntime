@@ -26,6 +26,6 @@ class EliminateDropout : public RewriteRule {
   bool SatisfyCondition(const Graph& graph, const Node& node) override;
 
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) override;
-};  // namespace onnxruntime
+};
 
 }  // namespace onnxruntime
