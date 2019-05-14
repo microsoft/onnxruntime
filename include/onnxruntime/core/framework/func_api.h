@@ -1,6 +1,7 @@
 #pragma once
 #include "core/common/common.h"
 namespace onnxruntime {
+#if 0
 //TODO: Should use the lotus cpi element type definition.
 enum DType {
   TFloat32 = 0,
@@ -16,16 +17,7 @@ enum DType {
   TUint64 = 10
   //TODO: more types
 };
-
-typedef struct {
-  void* data;
-  /*! \brief Number of dimensions */
-  size_t ndim;
-  /*! \brief The data type of the pointer*/
-  DType dtype;
-  /*! \brief The shape of the tensor */
-  int64_t* shape;
-} ONNXRunTimeTensor;
+#endif
 
 // AllocateFunc(void* handle, size_t alignment, size_t size)
 using AllocateFunc = void* (*)(void*, size_t, size_t);

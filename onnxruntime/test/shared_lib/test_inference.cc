@@ -168,17 +168,8 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
-    auto dimensionCount = ort.GetDimensionCount(info);
-    resize(dimensionCount);
-    ort.GetDimensions(info, data(), dimensionCount);
+    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
     ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-
-  size_t ElementCount() const {
-    int64_t count = 1;
-    for (size_t i = 0; i < size(); i++)
-      count *= (*this)[i];
-    return count;
   }
 };
 
