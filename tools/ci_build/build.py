@@ -597,16 +597,18 @@ def run_server_tests(build_dir, configs):
 def run_server_model_tests(build_dir, configs):
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
+
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
             test_raw_data_folder = os.path.join(config_build_dir, 'models')
+            run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, os.path.join(config_build_dir, config)], cwd=server_test_folder, dll_path=None)
         else:
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             test_raw_data_folder = os.path.join(build_dir, 'models')
+            run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, config_build_dir], cwd=server_test_folder, dll_path=None)            
 
-        server_test_folder = os.path.join(config_build_dir, 'server_test')
-        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
-        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
 
@@ -706,7 +708,7 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.build_wheel:
+    if args.build_wheel or args.enable_server_model_tests:
         args.enable_pybind = True
 
     if args.build_csharp:

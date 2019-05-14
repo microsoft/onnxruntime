@@ -6,7 +6,6 @@ import sys
 import shutil
 
 import onnx
-import onnxruntime
 import json
 
 from google.protobuf.json_format import MessageToJson
@@ -139,6 +138,8 @@ def gen_req_resp(model_zoo, test_data, copy_model=False):
 if __name__ == '__main__':
   model_zoo = os.path.realpath(sys.argv[1])
   test_data = os.path.realpath(sys.argv[2])
+  sys.path.append(sys.argv[3])
+  import onnxruntime
 
   os.makedirs(test_data, exist_ok=True)
   gen_req_resp(model_zoo, test_data)
