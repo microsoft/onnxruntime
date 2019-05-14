@@ -23,10 +23,10 @@ RUN pip3 install numpy
 
 # Build the latest cmake
 WORKDIR /code
-RUN wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
-RUN tar zxf cmake-3.12.3.tar.gz
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3.tar.gz
+RUN tar zxf cmake-3.14.3.tar.gz
 
-WORKDIR /code/cmake-3.12.3
+WORKDIR /code/cmake-3.14.3
 RUN ./configure --system-curl
 RUN make
 RUN sudo make install
