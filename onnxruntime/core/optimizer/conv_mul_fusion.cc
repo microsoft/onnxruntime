@@ -31,10 +31,10 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   if (mul_B_tensor_proto->dims_size() != 0) {
     int axis;
     if (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size()) {
-      // Test for elementwise multiply (such as 1xCx1x1 for a 2D convolution).
+      // Test for broadcast multiply such as 1xCx1x1 for a 2D convolution.
       axis = 1;
     } else if (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1) {
-      // Test for broadcast multiply (such as Cx1x1 for a 2D convolution).
+      // Test for broadcast multiply such as Cx1x1 for a 2D convolution.
       axis = 0;
     } else {
       return Status::OK();

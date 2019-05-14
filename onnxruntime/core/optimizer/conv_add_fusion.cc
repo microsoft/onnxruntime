@@ -29,10 +29,10 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 
   int axis;
   if (add_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size()) {
-    // Test for elementwise add (such as 1xCx1x1 for a 2D convolution).
+    // Test for broadcast add such as 1xCx1x1 for a 2D convolution.
     axis = 1;
   } else if (add_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1) {
-    // Test for broadcast add (such as Cx1x1 for a 2D convolution).
+    // Test for broadcast add such as Cx1x1 for a 2D convolution.
     axis = 0;
   } else {
     return Status::OK();
