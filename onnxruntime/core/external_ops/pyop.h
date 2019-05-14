@@ -1,20 +1,16 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
-#define LIB_PYOP           "onnxruntime_pyop.dll"
-#define LOAD_PYOP_LIB(n)   LoadLibraryA(n)
-#define LOAD_PYOP_SYM(h,n) GetProcAddress(h,n)
-#define UNLD_PYOP_LIB(h)   FreeLibrary(h)
+#define LIB_PYOP         "onnxruntime_pyop.dll"
+#define LOAD_PYOP_LIB(n) LoadLibraryA(n)
 #else
 #ifdef __APPLE__
-#define LIB_PYOP           "./libonnxruntime_pyop.dylib"
+#define LIB_PYOP         "./libonnxruntime_pyop.dylib"
 #else
-#define LIB_PYOP           "./libonnxruntime_pyop.so"
+#define LIB_PYOP         "./libonnxruntime_pyop.so"
 #endif
-#define LOAD_PYOP_LIB(n)   dlopen(n,RTLD_NOW|RTLD_GLOBAL)
-#define LOAD_PYOP_SYM(h,n) dlsym(h,n)
-#define UNLD_PYOP_LIB(h)   dlclose(h)
-#define HMODULE            void*
+#define LOAD_PYOP_LIB(n) dlopen(n,RTLD_NOW|RTLD_GLOBAL)
+#define HMODULE          void*
 #include "dlfcn.h"
 #endif
 #include "core/framework/ml_value.h"
@@ -24,68 +20,56 @@
 #include <vector>
 #include <unordered_map>
 
+namespace onnxruntime {
+
 using OnnxTypes   = std::vector<ONNXTensorElementDataType>;
 using OnnxAttrs   = std::unordered_map<std::string, std::string>;
 using PyOpLogFunc = std::function<void(const char*)>;
 
-typedef bool INIT();
-typedef void RELEASE(void*);
-typedef bool INVOKE(void*,
-                    const char*,
-                    const std::vector<const void*>&,
-                    const std::vector<int32_t>&,
-                    const std::vector<std::vector<int64_t>>&,
-                    std::vector<std::unique_ptr<char[]>>&,
-                    std::vector<int32_t>&,
-                    std::vector<std::vector<int64_t>>&,
-                    std::function<void(const char*)>);
-typedef const char* LASTERR(std::string&);
-typedef void* NEWINST(const char*, const char*, const OnnxAttrs&);
-
-namespace onnxruntime {
+typedef bool Initialize();
+typedef void ReleaseInstance(void*);
+typedef bool InvokePythonFunc(void*,
+                              const char*,
+                              const std::vector<const void*>&,
+                              const std::vector<int32_t>&,
+                              const std::vector<std::vector<int64_t>>&,
+                              std::vector<std::unique_ptr<char[]>>&,
+                              std::vector<int32_t>&,
+                              std::vector<std::vector<int64_t>>&,
+                              std::function<void(const char*)>);
+typedef const char* GetLastErrorMessage(std::string&);
+typedef void* NewInstance(const char*, const char*, const OnnxAttrs&);
 
 class PyOpLibProxy {
 
 public:
     static const PyOpLibProxy& GetInstance() {
-        static PyOpLibProxy wrapper;
-        return wrapper;
+        static PyOpLibProxy proxy;
+        return proxy;
     }
 
-    HMODULE     handle  = nullptr;
-    INIT*       init    = nullptr;
-    NEWINST*    newInst = nullptr;
-    INVOKE*     invoke  = nullptr;
-    RELEASE*    release = nullptr;
-    LASTERR*    lastErr = nullptr;
+    HMODULE              handle              = nullptr;
+    Initialize*          initialize          = nullptr;
+    NewInstance*         newInstance         = nullptr;
+    InvokePythonFunc*    invokePythonFunc    = nullptr;
+    ReleaseInstance*     releaseInstance     = nullptr;
+    GetLastErrorMessage* getLastErrorMessage = nullptr;
 
 private:
     PyOpLibProxy() {
 
-        handle = LOAD_PYOP_LIB(LIB_PYOP);
-        ORT_ENFORCE(nullptr != handle, "Failed to load pyop library");
-
-        init = reinterpret_cast<INIT*>(LOAD_PYOP_SYM(handle, "Initialize"));
-        ORT_ENFORCE(nullptr != init, "Failed to import function: Initialize");
-
-        newInst = reinterpret_cast<NEWINST*>(LOAD_PYOP_SYM(handle, "NewInstance"));
-        ORT_ENFORCE(nullptr != newInst, "Failed to import function: NewInstance");
-
-        invoke = reinterpret_cast<INVOKE*>(LOAD_PYOP_SYM(handle, "InvokePythonFunc"));
-        ORT_ENFORCE(nullptr != invoke, "Failed to import function: InvokePythonFunc");
-
-        release = reinterpret_cast<RELEASE*>(LOAD_PYOP_SYM(handle, "ReleaseInstance"));
-        ORT_ENFORCE(nullptr != release, "Failed to import function: ReleaseInstance");
-
-        lastErr = reinterpret_cast<LASTERR*>(LOAD_PYOP_SYM(handle, "GetLastErrorMessage")); 
-        ORT_ENFORCE(nullptr != lastErr, "Failed to import function: GetLastErrorMessage");
-
         std::string err;
-        ORT_ENFORCE(init(), lastErr(err));
+        ORT_ENFORCE((handle=LOAD_PYOP_LIB(LIB_PYOP))!= nullptr, "Failed to load pyop library"); // Env::load allows no loading attrs, will cause numpy import error on Linux
+        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "Initialize",          reinterpret_cast<void**>(&initialize))          == Status::OK(), "Failed to import function: Initialize");
+        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "NewInstance",         reinterpret_cast<void**>(&newInstance))         == Status::OK(), "Failed to import function: NewInstance");
+        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "InvokePythonFunc",    reinterpret_cast<void**>(&invokePythonFunc))    == Status::OK(), "Failed to import function: InvokePythonFunc");
+        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "ReleaseInstance",     reinterpret_cast<void**>(&releaseInstance))     == Status::OK(), "Failed to import function: ReleaseInstance");
+        ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle, "GetLastErrorMessage", reinterpret_cast<void**>(&getLastErrorMessage)) == Status::OK(), "Failed to import function: GetLastErrorMessage");
+        ORT_ENFORCE(initialize(), getLastErrorMessage(err));
     }
 
     ~PyOpLibProxy() {
-        UNLD_PYOP_LIB(handle);
+        Env::Default().UnloadDynamicLibrary(handle);
     }
 };
 
@@ -100,13 +84,13 @@ struct PyCustomKernel {
                    ort_(ort), attrs_(attrs), module_(module), class_name_(class_name),
                    compute_(compute), logging_func_(logging_func) {
         std::string err;
-        instance_ = PyOpLibProxy::GetInstance().newInst(module.c_str(), class_name_.c_str(), attrs_);
-        ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().lastErr(err));
+        instance_ = PyOpLibProxy::GetInstance().newInstance(module.c_str(), class_name_.c_str(), attrs_);
+        ORT_ENFORCE(nullptr != instance_, PyOpLibProxy::GetInstance().getLastErrorMessage(err));
     }
 
     ~PyCustomKernel() {
         if (nullptr != instance_) {
-            PyOpLibProxy::GetInstance().release(instance_);
+            PyOpLibProxy::GetInstance().releaseInstance(instance_);
             instance_ = nullptr;
         }
     }
@@ -131,7 +115,8 @@ struct PyCustomKernel {
         }
 
         std::string err;
-        ORT_ENFORCE (PyOpLibProxy::GetInstance().invoke(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size, outputs_dim, logging_func_), PyOpLibProxy::GetInstance().lastErr(err));
+        ORT_ENFORCE (PyOpLibProxy::GetInstance().invokePythonFunc(instance_, compute_.c_str(), inputs, inputs_type, inputs_dim, outputs, outputs_elem_size,
+                                                                  outputs_dim, logging_func_), PyOpLibProxy::GetInstance().getLastErrorMessage(err));
         for (size_t i = 0; i < outputs.size(); ++i) {
             auto ort_output  = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
             auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);

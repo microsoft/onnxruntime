@@ -272,14 +272,8 @@ std::shared_ptr<SchemaRegistryManager> InferenceSession::CreateSchemaRegistryMan
       auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
       ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop.get()));
       AddCustomOpDomains({pyop_domain});
-
-      static std::mutex mtx;
-      static std::vector<std::unique_ptr<PyCustomOp>> pyops;
-      static std::vector<std::unique_ptr<OrtCustomOpDomain>> pyop_domains;
-      mtx.lock();
-      pyops.push_back(std::move(pyop));
-      pyop_domains.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
-      mtx.unlock();
+      pyops_.push_back(std::move(pyop));
+      pyop_domains_.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
       return custom_schema_registries_.back();
     } else {
       return std::shared_ptr<IOnnxRuntimeOpSchemaCollection>();

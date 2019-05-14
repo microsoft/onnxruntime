@@ -38,6 +38,7 @@ class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
 class Notification;
+class PyCustomOp;
 
 namespace logging {
 class LoggingManager;
@@ -427,6 +428,8 @@ class InferenceSession {
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner. 
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
-
+  
+  std::vector<std::unique_ptr<PyCustomOp>> pyops_;
+  std::vector<std::unique_ptr<OrtCustomOpDomain>> pyop_domains_;
 };
 }  // namespace onnxruntime

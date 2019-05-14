@@ -141,7 +141,7 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
   SchemaRegistryManager() {}
 
   SchemaRegistryManager(const std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>& registry_list) {
-    for (auto registry : registry_list) {
+    for (const auto& registry : registry_list) {
       RegisterRegistry(registry);
     }
   }
