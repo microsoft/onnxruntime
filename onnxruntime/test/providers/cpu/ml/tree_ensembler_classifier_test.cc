@@ -154,7 +154,7 @@ TEST(MLOpTest, TreeEnsembleClassifierBinary) {
 TEST(MLOpTest, TreeEnsembleClassifierBinaryBaseValue) {
   OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
 
-  std::vector<float> base_values = {0.631f, 0.632f};
+  std::vector<float> base_values = {-1.202673316001892f, -1.202673316001892f};
   std::vector<int64_t> class_ids = {0, 0, 0};
   std::vector<int64_t> class_nodeids = {2, 3, 4};
   std::vector<int64_t> class_treeids = {0, 0, 0};
@@ -171,14 +171,14 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryBaseValue) {
   std::vector<float> nodes_values = {0.21111594140529633f, -0.8440752029418945f, 0, 0, 0};
   std::string post_transform = "LOGISTIC";
 
-  std::vector<float> X = {-0.92533575f, -1.14021544f, -0.46171143f, -0.58723065f};
-  std::vector<int64_t> results = {1, 1};
+  std::vector<float> X = {-0.92533575f, -1.14021544f, -0.46171143f, -0.58723065f, 1.44044386f, 1.77736657f};
+  std::vector<int64_t> results = {0, 0, 0};
   std::vector<float> probs = {};
   std::vector<float> log_probs = {};
-  std::vector<float> scores{58334232f, 61534649f};
+  std::vector<float> scores{0.802607834f, 0.197392166f, 0.779485941f, 0.220514059f, 0.731583834f, 0.268416166f};
 
   //define the context of the operator call
-  const int N = 2;
+  const int N = 3;
   test.AddAttribute("base_values", base_values);
   test.AddAttribute("class_ids", class_ids);
   test.AddAttribute("class_nodeids", class_nodeids);
@@ -197,19 +197,19 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryBaseValue) {
 
   test.AddInput<float>("X", {N, 2}, X);
   test.AddOutput<int64_t>("Y", {N}, results);
-  test.AddOutput<float>("Z", {N, 1}, scores);
+  test.AddOutput<float>("Z", {N, 2}, scores);
 
   test.Run();
 }
 
-TEST(MLOpTest, TreeEnsembleClassifierBinaryNoBaseValue) {
+TEST(MLOpTest, TreeEnsembleClassifierBinaryBaseValueNull) {
   OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
 
-  //std::vector<float> base_values = {0.631f, 0.632f};
+  std::vector<float> base_values = {0, 0};
   std::vector<int64_t> class_ids = {0, 0, 0};
   std::vector<int64_t> class_nodeids = {2, 3, 4};
   std::vector<int64_t> class_treeids = {0, 0, 0};
-  std::vector<float> class_weights = {-0.2f, -0.06f, 0.2f};
+  std::vector<float> class_weights = {-0.2f, -0.0666f, 0.2f};
   std::vector<int64_t> classlabels_int64s = {0, 1};
   std::vector<int64_t> nodes_falsenodeids = {4, 3, 0, 0, 0};
   std::vector<int64_t> nodes_featureids = {0, 0, 0, 0, 0};
@@ -219,18 +219,18 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryNoBaseValue) {
   std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4};
   std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0};
   std::vector<int64_t> nodes_truenodeids = {1, 2, 0, 0, 0};
-  std::vector<float> nodes_values = {0.21111594140529633f, -0.8440752029418945f, 0, 0, 0};
+  std::vector<float> nodes_values = {0.24055418372154236f, -0.8440752029418945f, 0, 0, 0};
   std::string post_transform = "LOGISTIC";
 
-  std::vector<float> X = {-0.92533575f, -1.14021544f, -0.46171143f, -0.58723065f};
-  std::vector<int64_t> results = {1, 1};
+  std::vector<float> X = {-0.92533575f, -1.14021544f, -0.46171143f, -0.58723065f, 1.44044386f, 1.77736657f};
+  std::vector<int64_t> results = {0, 0, 1};
   std::vector<float> probs = {};
   std::vector<float> log_probs = {};
-  std::vector<float> scores{1.f, 1.f};
+  std::vector<float> scores{0.549834f, 0.450166f, 0.5166605f, 0.4833395f, 0.450166f, 0.549834f};
 
   //define the context of the operator call
-  const int N = 2;
-  //test.AddAttribute("base_values", base_values);
+  const int N = 3;
+  test.AddAttribute("base_values", base_values);
   test.AddAttribute("class_ids", class_ids);
   test.AddAttribute("class_nodeids", class_nodeids);
   test.AddAttribute("class_treeids", class_treeids);
@@ -248,7 +248,7 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryNoBaseValue) {
 
   test.AddInput<float>("X", {N, 2}, X);
   test.AddOutput<int64_t>("Y", {N}, results);
-  test.AddOutput<float>("Z", {N, 1}, scores);
+  test.AddOutput<float>("Z", {N, 2}, scores);
 
   test.Run();
 }
