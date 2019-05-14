@@ -287,39 +287,56 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
 template <typename T>
 void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                   int add_second_class) {
-  if (post_transform == POST_EVAL_TRANSFORM::PROBIT && scores.size() == 1) {
-    scores[0] = ComputeProbit(scores[0]);
-  } else if (scores.size() >= 2) {  //multiclass
-    if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-      for (float& score : scores) {
-        score = ComputeLogistic(score);
-      }
-    } else if (post_transform == POST_EVAL_TRANSFORM::SOFTMAX) {
-      ComputeSoftmax(scores);
-    } else if (post_transform == POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      ComputeSoftmaxZero(scores);
+  if (scores.size() >= 2) {
+    switch (post_transform) {
+      case POST_EVAL_TRANSFORM::PROBIT:
+        for (float& score : scores)
+          score = ComputeProbit(score);
+        break;
+      case POST_EVAL_TRANSFORM::LOGISTIC:
+        for (float& score : scores)
+          score = ComputeLogistic(score);
+        break;
+      case POST_EVAL_TRANSFORM::SOFTMAX:
+        ComputeSoftmax(scores);
+        break;
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
+        ComputeSoftmaxZero(scores);
+        break;
+      default:
+      case POST_EVAL_TRANSFORM::NONE:
+        break;
     }
-  } else {                                              //binary case
-    if (add_second_class == 0 && scores.size() == 1) {  //0=all positive weights, winning class is positive
-      scores.push_back(scores[0]);
-      scores[0] = 1.f - scores[0];                             //put opposite score in positive slot
-    } else if (add_second_class == 1 && scores.size() == 1) {  //1 = all positive weights, winning class is negative
-      scores.push_back(scores[0]);
-      scores[0] = 1.f - scores[0];                             //put opposite score in positive slot
-    } else if (add_second_class == 2 && scores.size() == 1) {  //2 = mixed weights, winning class is positive
-      if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-        scores.push_back(ComputeLogistic(scores[0]));
-        scores[0] = ComputeLogistic(-scores[0]);
-      } else {
-        scores.push_back(scores[0]);
-        scores[0] = -scores[0];
-      }
-    } else if (add_second_class == 3 && scores.size() == 1) {  //3 = mixed weights, winning class is negative
-      if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-        scores.push_back(ComputeLogistic(scores[0]));
-        scores[0] = ComputeLogistic(-scores[0]);
-      } else {
-        scores.push_back(-scores[0]);
+  } else if (scores.size() == 1) {  //binary case
+    if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
+      scores[0] = ComputeProbit(scores[0]);
+    } else {
+      switch (add_second_class) {
+        case 0:  //0=all positive weights, winning class is positive
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          break;
+        case 1:  //1 = all positive weights, winning class is negative
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          break;
+        case 2:  //2 = mixed weights, winning class is positive
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
+            scores[0] = ComputeLogistic(-scores[0]);
+          } else {
+            scores.push_back(scores[0]);
+            scores[0] = -scores[0];
+          }
+          break;
+        case 3:  //3 = mixed weights, winning class is negative
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
+            scores[0] = ComputeLogistic(-scores[0]);
+          } else {
+            scores.push_back(-scores[0]);
+          }
+          break;
       }
     }
   }
