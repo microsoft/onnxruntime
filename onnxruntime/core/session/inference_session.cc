@@ -267,12 +267,11 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
   return Load(loader, "model_loading_proto");
 }
 
-common::Status InferenceSession::Load(std::istream& model_istream) {
-  auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
+common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
 
-    google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
@@ -281,8 +280,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
-  return Load(loader, "model_loading_istream");
-}
+  return Load(loader, "model_loading_array");
 
 common::Status InferenceSession::Save(std::ostream& model_ostream) {
   if (session_options_.clean_initializers) {

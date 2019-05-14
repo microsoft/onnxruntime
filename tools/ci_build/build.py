@@ -98,6 +98,7 @@ Use the individual flags to only run the specified stages.
     # Build ONNX Runtime server
     parser.add_argument("--build_server", action='store_true', help="Build server application for the ONNXRuntime.")
     parser.add_argument("--enable_server_tests", action='store_true', help="Run server application tests.")
+    parser.add_argument("--enable_server_model_tests", action='store_true', help="Run server model tests.")
 
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
@@ -592,6 +593,23 @@ def run_server_tests(build_dir, configs):
         server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
         run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
+
+def run_server_model_tests(build_dir, configs):
+    for config in configs:
+        config_build_dir = get_config_build_dir(build_dir, config)
+        if is_windows():
+            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+            test_raw_data_folder = os.path.join(config_build_dir, 'models')
+        else:
+            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+            test_raw_data_folder = os.path.join(build_dir, 'models')
+
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
+        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+
+
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -801,6 +819,9 @@ def main():
 
     if args.build_server and args.enable_server_tests:
         run_server_tests(build_dir, configs)
+
+    if args.build_server and args.enable_server_model_tests:
+        run_server_model_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:

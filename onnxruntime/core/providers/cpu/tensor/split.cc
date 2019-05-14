@@ -16,9 +16,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<double>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
-                                      }),
+                                          DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
@@ -36,8 +35,8 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
   before_dims = gsl::narrow<int>(input_shape.SizeToDimension(axis));
   after_dims_including_split_axis = gsl::narrow<int>(input_shape.SizeFromDimension(axis));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
-                                       ? 1  // we multiply by this value so must be 1 not 0
-                                       : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   ? 1  // we multiply by this value so must be 1 not 0
+                                   : gsl::narrow<int>(input_shape.SizeFromDimension(axis + 1));
 
   if (split_sizes_.empty()) {
     // equal split based on number of outputs
@@ -73,14 +72,23 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<float>(*context, input);
   else if (data_type == DataTypeImpl::GetType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<double>()) {
-    /* Need to update CopyMatrix to support double...
-    status = ComputeImpl<double>(*context, input); */
-    ORT_NOT_IMPLEMENTED("Split operator does not support double yet");
-  } else
-    ORT_THROW("Invalid data type for Split operator of ", data_type);
+  else if (data_type == DataTypeImpl::GetType<std::string>())
+    status = ComputeImpl<std::string>(*context, input);
+  else
+    ORT_THROW("Split operator does not support ", data_type, " yet");
 
   return status;
+}
+
+template <typename T>
+inline void copy_data(const T* src, T* dst, size_t count) {
+  memcpy(dst, src, count * sizeof(T));
+}
+
+template<>
+inline void copy_data<std::string>(const std::string* src, std::string* dst, size_t count) {
+  const std::string* end = src + count;
+  std::copy(src, end, dst);
 }
 
 template <typename T>
@@ -124,7 +132,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
         static_cast<T*>(output_data),                      // B
         split_size * after_dims_excluding_split,           // ldb
         [](const T* src, T* dst, size_t count) {
-          memcpy(dst, src, count * sizeof(T));
+          copy_data<T>(src, dst, count);
         });
 
     input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration

@@ -6,9 +6,15 @@
 
 namespace onnxruntime {
 
+enum class Mode : int {
+  Constant = 0,
+  Reflect,
+  Edge
+};
+
 class PadBase {
  protected:
-  PadBase(const OpKernelInfo& info) : value_(info.GetAttrOrDefault("value", 0.f)) {
+  PadBase(const OpKernelInfo& info, bool dynamic = false) : value_(info.GetAttrOrDefault("value", 0.f)) {
     std::string mode;
     if (info.GetAttr("mode", &mode).IsOK()) {
       if (mode == "constant")
@@ -20,32 +26,30 @@ class PadBase {
       else
         ORT_THROW("Invalid 'mode' attribute value");
     }
-    if (!info.GetAttrs("pads", pads_).IsOK())
-      ORT_THROW("Invalid 'pads' attribute value");
 
-    // Separate out any negative pads_ into the slices_ array
-    slices_.resize(pads_.size(), 0);
-    for (size_t index = 0; index < pads_.size(); index++) {
-      if (pads_[index] < 0) {
-        slices_[index] = pads_[index];
-        pads_[index] = 0;
+    if (!dynamic) {
+      if (!info.GetAttrs("pads", pads_).IsOK())
+        ORT_THROW("Invalid 'pads' attribute value");
+
+      // Separate out any negative pads_ into the slices_ array
+      slices_.resize(pads_.size(), 0);
+      for (size_t index = 0; index < pads_.size(); index++) {
+        if (pads_[index] < 0) {
+          slices_[index] = pads_[index];
+          pads_[index] = 0;
+        }
       }
-    }
 
-    ;  // Value is optional and initialized to 0 by default
+      ;  // Value is optional and initialized to 0 by default
+    }
   }
 
   ~PadBase() {}
 
-  enum class Mode : int {
-    Constant = 0,
-    Reflect,
-    Edge
-  };
   Mode mode_{Mode::Constant};
   std::vector<int64_t> pads_;    // After construction, only >=0 values are in here
   std::vector<int64_t> slices_;  // All of the negative padding values are separated out into slices_
-  const float value_;
+  const float value_;            // will always be float (when 'value' parsed from attribute - opset 10 and below)
 };
 
 template <typename T>
@@ -54,5 +58,12 @@ struct Pad final : public OpKernel, public PadBase {
 
   Status Compute(OpKernelContext* context) const override;
 };
+
+template <typename T>
+Status PadCpuImpl(OpKernelContext* ctx,
+                  const std::vector<int64_t>& pads,
+                  const std::vector<int64_t>& slices,
+                  const Mode& mode,
+                  T value);
 
 }  // namespace onnxruntime

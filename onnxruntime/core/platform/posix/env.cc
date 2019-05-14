@@ -180,10 +180,9 @@ class PosixEnv : public Env {
     char buf[1024];
     const char* msg = "";
     if (e > 0) {
-#if defined(_GNU_SOURCE) && !defined(__APPLE__)
+#if defined(__GLIBC__) && defined(_GNU_SOURCE)
       msg = strerror_r(e, buf, sizeof(buf));
 #else
-      // for Mac OS X
       if (strerror_r(e, buf, sizeof(buf)) != 0) {
         buf[0] = '\0';
       }
