@@ -255,7 +255,7 @@ TEST_F(CApiTest, custom_op_handler) {
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
 }
 
-#ifndef _WIN32
+#ifdef TEST_PYOP
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
