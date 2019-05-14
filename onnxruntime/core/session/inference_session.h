@@ -179,6 +179,22 @@ class InferenceSession {
 
   /**
     * Load an ONNX model.
+    * @param model_uri absolute path of the model file.
+    * @return OK if success.
+    */
+  common::Status Load(const std::string& model_uri);
+#ifdef _WIN32
+  common::Status Load(const std::wstring& model_uri);
+#endif
+  /**
+    * Load an ONNX model.
+    * @param istream object of the model.
+    * @return OK if success.
+    */
+  common::Status Load(std::istream& model_istream);
+
+  /**
+    * Load an ONNX model.
     * @param model_data Model data buffer
     * @param model_data_len Model data buffer size
     * @return OK if success.
@@ -200,7 +216,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status SerializeToString(std::string& output);
-  
+
   /**
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
