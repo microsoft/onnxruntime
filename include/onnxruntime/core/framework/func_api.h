@@ -1,23 +1,6 @@
 #pragma once
 #include "core/common/common.h"
 namespace onnxruntime {
-#if 0
-//TODO: Should use the lotus cpi element type definition.
-enum DType {
-  TFloat32 = 0,
-  TInt32 = 1,
-  TDouble = 2,
-  TInt64 = 3,
-  TBool = 4,
-  TUint8 = 5,
-  TInt8 = 6,
-  TUint16 = 7,
-  TInt16 = 8,
-  TUint32 = 9,
-  TUint64 = 10
-  //TODO: more types
-};
-#endif
 
 // AllocateFunc(void* handle, size_t alignment, size_t size)
 using AllocateFunc = void* (*)(void*, size_t, size_t);
