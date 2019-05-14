@@ -286,7 +286,19 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         for(auto output : graph_viewer.GetOutputs()){
             fused_outputs.insert(output);
         }
+
+        ONNX_NAMESPACE::AttributeProto model_proto_str_attr;
+        model_proto_str_attr.set_name("model_proto_str");
+        model_proto_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+
+
+        std::string string_buf;
+        model_proto.SerializeToString(&string_buf);
+
+        model_proto_str_attr.set_s(string_buf);
+
         auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+        meta_def->attributes["model_proto_str"] = model_proto_str_attr;
         meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
         meta_def->domain = "OpenVINO";
         meta_def->since_version = 1;

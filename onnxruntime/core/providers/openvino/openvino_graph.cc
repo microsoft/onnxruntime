@@ -90,6 +90,13 @@ std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
 
 std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithMO() {
 
+    const auto& attributes = fused_node_->GetAttributes();
+    std::string modelProtoStr = attributes.at("model_proto_str").s();
+
+    // for(int i = 0; i < modelProtoStr.size(); i++){
+        std::cout << "Got String is  " << modelProtoStr[0] << std::endl;
+    // }
+
     PyObject *pModule, *pOutput;
     PyObject *pArg1, *pArg2;
     PyObject *pFunc = nullptr;
