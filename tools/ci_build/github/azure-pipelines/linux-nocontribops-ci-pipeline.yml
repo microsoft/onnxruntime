@@ -1,3 +1,6 @@
+variables:
+  DisableContribOps: ON
+
 jobs:
 - job: Linux_CI_Dev
   pool: Linux-CPU

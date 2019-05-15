@@ -1,3 +1,6 @@
+variables:
+  PlatformTarget: x86
+
 jobs:
 - job: Windows_CI_Dev
   variables:

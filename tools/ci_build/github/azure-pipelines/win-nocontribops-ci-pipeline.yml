@@ -1,3 +1,6 @@
+variables:
+  DisableContribOps: ON
+
 jobs:
 - job: Windows_CI_Dev
   variables:
