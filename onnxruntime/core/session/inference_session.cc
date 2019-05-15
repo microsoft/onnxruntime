@@ -808,9 +808,6 @@ void InferenceSession::LoadPyOp(const ONNX_NAMESPACE::GraphProto& graph_proto) {
       std::string module, class_name, compute = "compute", domain = node_proto.domain();
       for (int j = 0; j < node_proto.attribute_size(); ++j) {
         const auto& attr = node_proto.attribute(j);
-        if (attr.has_g()) {
-          LoadPyOp(attr.g()); //load pyop in subgraph
-        }
         if (attr.has_s()) {
           if      (attr.name() == "module")     module                  = attr.s();
           else if (attr.name() == "class_name") class_name              = attr.s();
@@ -849,10 +846,10 @@ void InferenceSession::LoadPyOp(const ONNX_NAMESPACE::GraphProto& graph_proto) {
       for (int j = 0; j < node_proto.attribute_size(); ++j) {
         const auto& attr = node_proto.attribute(j);
         if (attr.has_g()) {
-          LoadPyOp(attr.g());
+          LoadPyOp(attr.g()); //load pyop in subgraph
         }
       }//for
-    }
+    }//else
   }//for
   AddCustomOpDomains(domains);
 }
