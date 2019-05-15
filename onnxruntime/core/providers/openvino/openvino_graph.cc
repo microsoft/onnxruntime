@@ -103,13 +103,13 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
     PyObject* pModule = PyImport_ImportModule("openvino_mo");
     if(pModule == NULL) {
        std::cout << "Python module not found " << std::endl;
-       Py_FinalizeEx();
+       Py_Finalize();
        throw "Python module not found";
     }
 
 
     // Load the relevant function
-    PyObject* pFunc;
+    PyObject* pFunc = NULL;
     if(precision_ == InferenceEngine::Precision::FP32) {
       pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
     } else if (precision_ == InferenceEngine::Precision::FP16) {
@@ -119,7 +119,7 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
     if((pFunc == NULL) || (PyCallable_Check(pFunc) == 0)) {
        std::cout << "Python Function not found"<< std::endl;
        Py_DECREF(pModule);
-       Py_FinalizeEx();
+       Py_Finalize();
        throw "Python Function not found";
     }
 
