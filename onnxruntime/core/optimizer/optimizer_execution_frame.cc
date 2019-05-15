@@ -34,7 +34,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       size_t cpu_tensor_length;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       MLValue mlvalue;
-      OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+      OrtAllocatorInfo info = cpu_execution_provider_->GetAllocator(0, OrtMemTypeDefault)->Info();
       std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
       std::unique_ptr<Tensor> p_tensor;
       OrtCallback d;
