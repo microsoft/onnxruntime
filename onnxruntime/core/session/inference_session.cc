@@ -223,8 +223,8 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 
 template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
-    model_location_ = ToWideString(model_uri);
-    auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
+  model_location_ = ToWideString(model_uri);
+  auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_PYOP
     LoadPyOp(model_location_);
 #endif
@@ -785,78 +785,76 @@ std::string InferenceSession::EndProfiling() {
 
 template <typename T>
 void InferenceSession::LoadPyOp(const std::basic_string<T>& model_uri) {
-    int fd;
-    ORT_ENFORCE(Env::Default().FileOpenRd(model_uri, fd).IsOK(), "Failed to read model file to load pyop");
-    google::protobuf::io::FileInputStream f(fd);
-    f.SetCloseOnDelete(true);
-    ONNX_NAMESPACE::ModelProto model_proto;
-    ORT_ENFORCE(model_proto.ParseFromZeroCopyStream(&f), "Failed to parse model proto to load pyop");
-    LoadPyOp(model_proto);
+  int fd;
+  ORT_ENFORCE(Env::Default().FileOpenRd(model_uri, fd).IsOK(), "Failed to read model file to load pyop");
+  google::protobuf::io::FileInputStream f(fd);
+  f.SetCloseOnDelete(true);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ORT_ENFORCE(model_proto.ParseFromZeroCopyStream(&f), "Failed to parse model proto to load pyop");
+  LoadPyOp(model_proto);
 }
 
 void InferenceSession::LoadPyOp(const ONNX_NAMESPACE::ModelProto& model_proto) {
-    LoadPyOp(model_proto.graph());
+  LoadPyOp(model_proto.graph());
 }
 
 void InferenceSession::LoadPyOp(const ONNX_NAMESPACE::GraphProto& graph_proto) {
-    std::vector<OrtCustomOpDomain*> domains; 
-    for (int i = 0; i < graph_proto.node_size(); ++i) {
-        const auto& node_proto = graph_proto.node(i);
-        if (node_proto.op_type() == "PyOp") {
-
-            OnnxAttrs onnx_attrs;
-            OnnxTypes input_types, output_types;
-            std::string module, class_name, compute = "compute", domain = node_proto.domain();
-
-            for (int j = 0; j < node_proto.attribute_size(); ++j) {
-                const auto& attr = node_proto.attribute(j);
-                if (attr.has_g()) {
-                    LoadPyOp(attr.g()); //load pyop in subgraph
-                }
-                if (attr.has_s()) {
-                    if      (attr.name() == "module")     module                  = attr.s();
-                    else if (attr.name() == "class_name") class_name              = attr.s();
-                    else if (attr.name() == "compute")    compute                 = attr.s();
-                    else                                  onnx_attrs[attr.name()] = attr.s();
-                } else if (attr.ints_size() > 0) {
-                    if (attr.name() == "input_types") {
-                        for (int k = 0; k < attr.ints_size(); ++k) {
-                            input_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
-                        }
-                    } else if (attr.name() == "output_types") {
-                        for (int k = 0; k < attr.ints_size(); ++k) {
-                            output_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
-                        }
-                    }
-                } else {
-                    LOGS(*session_logger_, WARNING) << "PyOp only accept string or tensorproto attribute";
-                }
-            }//for
-
-            ORT_ENFORCE (module     != "",      "PyOp module not specified");
-            ORT_ENFORCE (domain     != "",      "PyOp domain not specified");
-            ORT_ENFORCE (class_name != "",      "PyOp class name not specified");
-            ORT_ENFORCE (!input_types.empty(),  "PyOp node inputs not specified");
-            ORT_ENFORCE (!output_types.empty(), "PyOp node outputs not specified");
-
-            auto& warning_logger = *session_logger_;
-            auto pyop = std::make_unique<PyCustomOp>(onnx_attrs, input_types, output_types, module, class_name, compute,
-                                                     [warning_logger] (const char* msg) { LOGS(warning_logger, WARNING) << msg; });
-            auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
-            ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop.get()));
-            pyops_.push_back(std::move(pyop));
-            pyop_domains_.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
-            domains.push_back(pyop_domain);
-        } else {
-            for (int j = 0; j < node_proto.attribute_size(); ++j) {
-                const auto& attr = node_proto.attribute(j);
-                if (attr.has_g()) {
-                    LoadPyOp(attr.g());
-                }
-            }//for
+  std::vector<OrtCustomOpDomain*> domains; 
+  for (int i = 0; i < graph_proto.node_size(); ++i) {
+    const auto& node_proto = graph_proto.node(i);
+    if (node_proto.op_type() == "PyOp") {
+      OnnxAttrs onnx_attrs;
+      OnnxTypes input_types, output_types;
+      std::string module, class_name, compute = "compute", domain = node_proto.domain();
+      for (int j = 0; j < node_proto.attribute_size(); ++j) {
+        const auto& attr = node_proto.attribute(j);
+        if (attr.has_g()) {
+          LoadPyOp(attr.g()); //load pyop in subgraph
         }
-    }//for
-    AddCustomOpDomains(domains);
+        if (attr.has_s()) {
+          if      (attr.name() == "module")     module                  = attr.s();
+          else if (attr.name() == "class_name") class_name              = attr.s();
+          else if (attr.name() == "compute")    compute                 = attr.s();
+          else                                  onnx_attrs[attr.name()] = attr.s();
+        } else if (attr.ints_size() > 0) {
+          if (attr.name() == "input_types") {
+            for (int k = 0; k < attr.ints_size(); ++k) {
+              input_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
+            }
+          } else if (attr.name() == "output_types") {
+            for (int k = 0; k < attr.ints_size(); ++k) {
+              output_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
+            }
+          }
+        } else {
+          LOGS(*session_logger_, WARNING) << "PyOp only accept string or tensorproto attribute";
+        }
+      }//for
+
+      ORT_ENFORCE (module     != "",      "PyOp module not specified");
+      ORT_ENFORCE (domain     != "",      "PyOp domain not specified");
+      ORT_ENFORCE (class_name != "",      "PyOp class name not specified");
+      ORT_ENFORCE (!input_types.empty(),  "PyOp node inputs not specified");
+      ORT_ENFORCE (!output_types.empty(), "PyOp node outputs not specified");
+
+      auto& warning_logger = *session_logger_;
+      auto pyop = std::make_unique<PyCustomOp>(onnx_attrs, input_types, output_types, module, class_name, compute,
+                                               [warning_logger] (const char* msg) { LOGS(warning_logger, WARNING) << msg; });
+      auto pyop_domain = OrtCreateCustomOpDomain(domain.c_str());
+      ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(pyop_domain, pyop.get()));
+      pyops_.push_back(std::move(pyop));
+      pyop_domains_.push_back(std::unique_ptr<OrtCustomOpDomain>(pyop_domain));
+      domains.push_back(pyop_domain);
+    } else {
+      for (int j = 0; j < node_proto.attribute_size(); ++j) {
+        const auto& attr = node_proto.attribute(j);
+        if (attr.has_g()) {
+          LoadPyOp(attr.g());
+        }
+      }//for
+    }
+  }//for
+  AddCustomOpDomains(domains);
 }
 
 // assumes model has already been loaded before
