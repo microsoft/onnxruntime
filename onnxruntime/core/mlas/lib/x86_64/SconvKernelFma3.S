@@ -142,7 +142,7 @@ Implicit Arguments:
         mov     r10,\KernelFrame\()_OutputCountLeftPad[rsp]
         test    r10,r10
         jz      .L\KernelType\().\FilterCount\().ProcessOutputCount
-        call    MlasConv\KernelType\()FloatSingleFma3FilterCount\FilterCount\()
+        call    MlasConv\KernelType\()FloatSingleFma3Filter\FilterCount\()
 
 //
 // Process the output blocks that do not include any padding.
@@ -154,7 +154,7 @@ Implicit Arguments:
         jb      .L\KernelType\().\FilterCount\().ProcessRemainingOutputCount
 
 .L\KernelType\().\FilterCount\().ProcessNextOutputCountBy3:
-        ProcessOutputCountN \KernelFrame\(), \KernelType\(), 8, \FilterCount\(), 3
+        ProcessOutputCountN Fma3, \KernelFrame\(), \KernelType\(), 8, \FilterCount\(), 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     # advance input by 3 elements
         sub     r10,3
@@ -165,7 +165,7 @@ Implicit Arguments:
         jz      .L\KernelType\().\FilterCount\().ProcessOutputCountRightPadAndRemaining
         cmp     r10,2
         jb      .L\KernelType\().\FilterCount\().ProcessOutputCountRightPadAndRemaining
-        ProcessOutputCountN \KernelFrame\(), \KernelType\(), 8, \FilterCount\(), 2
+        ProcessOutputCountN Fma3, \KernelFrame\(), \KernelType\(), 8, \FilterCount\(), 2
         lea     rdi,[rdi+r9*2]              # advance input by 2 elements
         sub     r10,2
 
@@ -177,7 +177,7 @@ Implicit Arguments:
 .L\KernelType\().\FilterCount\().ProcessOutputCountRightPadAndRemaining:
         add     r10,\KernelFrame\()_OutputCountRightPad[rsp]
         jz      .L\KernelType\().ExitKernel
-        call    MlasConv\KernelType\()FloatSingleFma3FilterCount\FilterCount\()
+        call    MlasConv\KernelType\()FloatSingleFma3Filter\FilterCount\()
 
         .endm
 
@@ -216,7 +216,7 @@ Implicit Arguments:
         jb      .LPointwise.\FilterCount\().ProcessRemainingOutputCount
 
 .LPointwise.\FilterCount\().ProcessNextOutputCountBy3:
-        ProcessPointwiseOutputCountN 8, \FilterCount\(), 3
+        ProcessPointwiseOutputCountN Fma3, 8, \FilterCount\(), 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     # advance input by 3 elements
         sub     r10,3
@@ -227,11 +227,11 @@ Implicit Arguments:
         jz      .LPointwise.ExitKernel
         cmp     r10,2
         jb      .LPointwise.\FilterCount\().ProcessRemainingOutputCount1
-        ProcessPointwiseOutputCountN 8, \FilterCount\(), 2
+        ProcessPointwiseOutputCountN Fma3, 8, \FilterCount\(), 2
         jmp     .LPointwise.ExitKernel
 
 .LPointwise.\FilterCount\().ProcessRemainingOutputCount1:
-        ProcessPointwiseOutputCountN 8, \FilterCount\(), 1
+        ProcessPointwiseOutputCountN Fma3, 8, \FilterCount\(), 1
 
         .endm
 

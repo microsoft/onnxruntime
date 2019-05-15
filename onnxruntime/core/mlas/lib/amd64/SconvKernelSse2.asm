@@ -131,26 +131,72 @@ ENDIF
 ;
 ; Macro Description:
 ;
+;   This macro generates code to compute the convolution for a specified number
+;   of filter rows.
+;
 ; Arguments:
 ;
 ;   KernelFrame - Supplies the symbol name to access the convolution kernel
 ;       stack.
+;
+;   KernelType - Supplies the type of kernel to be generated.
+;
+;   FilterCount - Supplies the number of rows from the filter to process.
+;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description).
+;
+;   rbp - Supplies the DilationWidth parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r15 - Supplies the InputStride parameter (see function description).
+;
+
+ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
+
+        LOCAL   ProcessNextOutputCount
+
+        mov     r10,KernelFrame.OutputCountLeftPad[rsp]
+        add     r10,KernelFrame.OutputCount[rsp]
+        add     r10,KernelFrame.OutputCountRightPad[rsp]
+
+ProcessNextOutputCount:
+        ProcessOutputCountN Sse, KernelFrame, KernelType, 8, FilterCount, 1
+        add     rdi,r9                      ; advance input by 1 element
+        dec     r10
+        jnz     ProcessNextOutputCount
+
+        ENDM
+
+;
+; Generate the convolution kernels.
+;
+
+SconvKernelFunction Nchw, 8, Sse
+SconvKernelFunction Nchwc, 8, Sse, BiasFilter
+SconvKernelDepthwiseFunction 8, Sse
+
+;
+; Macro Description:
+;
+; Arguments:
 ;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
 ;   OutputCount - Supplies the number of output blocks to produce.
 ;
 
-PostProcessBlock MACRO KernelFrame, FilterCount, OutputCount
+        IRP     FilterCount, <1, 2, 3, 4>
+        IRP     OutputCount, <1>
 
-        LOCAL   SkipAccumulateOutput
-        LOCAL   SkipBiasAddition
-        LOCAL   SkipReluActivation
+        LEAF_ENTRY MlasConvPostProcessFloatSseFilter&FilterCount&Output&OutputCount, _TEXT
 
-        mov     edx,DWORD PTR KernelFrame.Flags[rsp]
-IF FilterCount GT 1
-        mov     rax,KernelFrame.OutputStride[rsp]
-ENDIF
 IF FilterCount GT 2
         lea     rbx,[r8+rax*2]              ; compute output plus 2 rows
 ENDIF
@@ -187,7 +233,6 @@ SkipAccumulateOutput:
 
         test    dl,2
         jz      SkipBiasAddition
-        mov     rcx,KernelFrame.Bias[rsp]
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm8,XMMWORD PTR [rcx]>
         EmitIfCount2GE FilterCount, 1, OutputCount, 1, <movups xmm9,XMMWORD PTR [rcx+16]>
         EmitIfCount2GE FilterCount, 2, OutputCount, 1, <movups xmm10,XMMWORD PTR [rcx+32]>
@@ -238,61 +283,11 @@ SkipReluActivation:
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <movups XMMWORD PTR [rbx+rax],xmm6>
         EmitIfCount2GE FilterCount, 4, OutputCount, 1, <movups XMMWORD PTR [rbx+rax+16],xmm7>
         add_immed r8,OutputCount*8*4        ; advance output by N nchw8c blocks
+        ret
+
+        LEAF_END MlasConvPostProcessFloatSseFilter&FilterCount&Output&OutputCount, _TEXT
 
         ENDM
-
-;
-; Macro Description:
-;
-;   This macro generates code to compute the convolution for a specified number
-;   of filter rows.
-;
-; Arguments:
-;
-;   KernelFrame - Supplies the symbol name to access the convolution kernel
-;       stack.
-;
-;   KernelType - Supplies the type of kernel to be generated.
-;
-;   FilterCount - Supplies the number of rows from the filter to process.
-;
-; Implicit Arguments:
-;
-;   rdi - Supplies the address of the input buffer.
-;
-;   rsi - Supplies the FilterStride parameter (see function description).
-;
-;   rbp - Supplies the DilationWidth parameter (see function description).
-;
-;   r8 - Supplies the address of the output buffer.
-;
-;   r9 - Supplies the StrideWidth parameter (see function description).
-;
-;   r15 - Supplies the InputStride parameter (see function description).
-;
-
-ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
-
-        LOCAL   ProcessNextOutputCount
-
-        mov     r10,KernelFrame.OutputCountLeftPad[rsp]
-        add     r10,KernelFrame.OutputCount[rsp]
-        add     r10,KernelFrame.OutputCountRightPad[rsp]
-
-ProcessNextOutputCount:
-        ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 1
-        add     rdi,r9                      ; advance input by 1 element
-        dec     r10
-        jnz     ProcessNextOutputCount
-
         ENDM
-
-;
-; Generate the convolution kernels.
-;
-
-SconvKernelFunction Nchw, 8, Sse
-SconvKernelFunction Nchwc, 8, Sse, BiasFilter
-SconvKernelDepthwiseFunction 8, Sse
 
         END

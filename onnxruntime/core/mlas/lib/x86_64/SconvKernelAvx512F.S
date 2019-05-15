@@ -180,178 +180,6 @@ Implicit Arguments:
 
 Macro Description:
 
-Arguments:
-
-    KernelFrame - Supplies the symbol name to access the convolution kernel
-        stack.
-
-    KernelType - Supplies the type of kernel to be generated.
-
-    FilterCount - Supplies the number of rows from the filter to process.
-
-    OutputCount - Supplies the number of output blocks to produce.
-
---*/
-
-        .macro PostProcessBlock KernelFrame, KernelType, FilterCount, OutputCount
-
-        mov     edx,DWORD PTR \KernelFrame\()_Flags[rsp]
-.if \FilterCount\() > 1
-        mov     rax,\KernelFrame\()_OutputStride[rsp]
-.endif
-.if \FilterCount\() > 2
-        lea     rbx,[r8+rax*2]              # compute output plus 2 rows
-.endif
-
-//
-// Test if the existing contents of the output buffer should be accumulated
-// with the output block.
-//
-
-        test    dl,1
-        jz      .L\KernelType\().\FilterCount\().\OutputCount\().SkipAccumulateOutput
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vaddps zmm0,zmm0,ZMMWORD PTR [r8]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vaddps zmm4,zmm4,ZMMWORD PTR [r8+16*4]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vaddps zmm8,zmm8,ZMMWORD PTR [r8+32*4]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vaddps zmm12,zmm12,ZMMWORD PTR [r8+48*4]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vaddps zmm16,zmm16,ZMMWORD PTR [r8+64*4]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vaddps zmm20,zmm20,ZMMWORD PTR [r8+80*4]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vaddps zmm1,zmm1,ZMMWORD PTR [r8+rax]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vaddps zmm5,zmm5,ZMMWORD PTR [r8+rax+16*4]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vaddps zmm9,zmm9,ZMMWORD PTR [r8+rax+32*4]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vaddps zmm13,zmm13,ZMMWORD PTR [r8+rax+48*4]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vaddps zmm17,zmm17,ZMMWORD PTR [r8+rax+64*4]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vaddps zmm21,zmm21,ZMMWORD PTR [r8+rax+80*4]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vaddps zmm2,zmm2,ZMMWORD PTR [rbx]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vaddps zmm6,zmm6,ZMMWORD PTR [rbx+16*4]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vaddps zmm10,zmm10,ZMMWORD PTR [rbx+32*4]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vaddps zmm14,zmm14,ZMMWORD PTR [rbx+48*4]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vaddps zmm18,zmm18,ZMMWORD PTR [rbx+64*4]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vaddps zmm22,zmm22,ZMMWORD PTR [rbx+80*4]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vaddps zmm3,zmm3,ZMMWORD PTR [rbx+rax]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vaddps zmm7,zmm7,ZMMWORD PTR [rbx+rax+16*4]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vaddps zmm11,zmm11,ZMMWORD PTR [rbx+rax+32*4]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vaddps zmm15,zmm15,ZMMWORD PTR [rbx+rax+48*4]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vaddps zmm19,zmm19,ZMMWORD PTR [rbx+rax+64*4]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vaddps zmm23,zmm23,ZMMWORD PTR [rbx+rax+80*4]"
-
-.L\KernelType\().\FilterCount\().\OutputCount\().SkipAccumulateOutput:
-
-//
-// Test if the bias buffer should be accumulated with the output block.
-//
-
-        test    dl,2
-        jz      .L\KernelType\().\FilterCount\().\OutputCount\().SkipBiasAddition
-        mov     rcx,\KernelFrame\()_Bias[rsp]
-.if \OutputCount\() == 1
-        EmitIfCountGE \FilterCount\(), 1, "vaddps zmm0,zmm0,ZMMWORD PTR [rcx]"
-        EmitIfCountGE \FilterCount\(), 2, "vaddps zmm1,zmm1,ZMMWORD PTR [rcx+16*4]"
-        EmitIfCountGE \FilterCount\(), 3, "vaddps zmm2,zmm2,ZMMWORD PTR [rcx+32*4]"
-        EmitIfCountGE \FilterCount\(), 4, "vaddps zmm3,zmm3,ZMMWORD PTR [rcx+48*4]"
-.else
-        EmitIfCountGE \FilterCount\(), 1, "vmovups zmm28,ZMMWORD PTR [rcx]"
-        EmitIfCountGE \FilterCount\(), 2, "vmovups zmm29,ZMMWORD PTR [rcx+16*4]"
-        EmitIfCountGE \FilterCount\(), 3, "vmovups zmm30,ZMMWORD PTR [rcx+32*4]"
-        EmitIfCountGE \FilterCount\(), 4, "vmovups zmm31,ZMMWORD PTR [rcx+48*4]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vaddps zmm0,zmm0,zmm28"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vaddps zmm4,zmm4,zmm28"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vaddps zmm8,zmm8,zmm28"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vaddps zmm12,zmm12,zmm28"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vaddps zmm16,zmm16,zmm28"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vaddps zmm20,zmm20,zmm28"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vaddps zmm1,zmm1,zmm29"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vaddps zmm5,zmm5,zmm29"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vaddps zmm9,zmm9,zmm29"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vaddps zmm13,zmm13,zmm29"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vaddps zmm17,zmm17,zmm29"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vaddps zmm21,zmm21,zmm29"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vaddps zmm2,zmm2,zmm30"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vaddps zmm6,zmm6,zmm30"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vaddps zmm10,zmm10,zmm30"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vaddps zmm14,zmm14,zmm30"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vaddps zmm18,zmm18,zmm30"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vaddps zmm22,zmm22,zmm30"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vaddps zmm3,zmm3,zmm31"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vaddps zmm7,zmm7,zmm31"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vaddps zmm11,zmm11,zmm31"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vaddps zmm15,zmm15,zmm31"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vaddps zmm19,zmm19,zmm31"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vaddps zmm23,zmm23,zmm31"
-.endif
-
-.L\KernelType\().\FilterCount\().\OutputCount\().SkipBiasAddition:
-
-//
-// Test for fused ReLU activation.
-//
-
-        test    dl,4
-        jz      .L\KernelType\().\FilterCount\().\OutputCount\().SkipReluActivation
-        vpxord  zmm24,zmm24,zmm24
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vmaxps zmm0,zmm24,zmm0"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vmaxps zmm4,zmm24,zmm4"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vmaxps zmm8,zmm24,zmm8"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vmaxps zmm12,zmm24,zmm12"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vmaxps zmm16,zmm24,zmm16"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vmaxps zmm20,zmm24,zmm20"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vmaxps zmm1,zmm24,zmm1"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vmaxps zmm5,zmm24,zmm5"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vmaxps zmm9,zmm24,zmm9"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm13,zmm24,zmm13"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm17,zmm24,zmm17"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm21,zmm24,zmm21"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vmaxps zmm2,zmm24,zmm2"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vmaxps zmm6,zmm24,zmm6"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vmaxps zmm10,zmm24,zmm10"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm14,zmm24,zmm14"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm18,zmm24,zmm18"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm22,zmm24,zmm22"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vmaxps zmm3,zmm24,zmm3"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vmaxps zmm7,zmm24,zmm7"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vmaxps zmm11,zmm24,zmm11"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm15,zmm24,zmm15"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm19,zmm24,zmm19"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm23,zmm24,zmm23"
-
-.L\KernelType\().\FilterCount\().\OutputCount\().SkipReluActivation:
-
-//
-// Store the output block in the output buffer.
-//
-
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vmovups ZMMWORD PTR [r8],zmm0"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vmovups ZMMWORD PTR [r8+16*4],zmm4"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vmovups ZMMWORD PTR [r8+32*4],zmm8"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vmovups ZMMWORD PTR [r8+48*4],zmm12"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vmovups ZMMWORD PTR [r8+64*4],zmm16"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vmovups ZMMWORD PTR [r8+80*4],zmm20"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vmovups ZMMWORD PTR [r8+rax],zmm1"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vmovups ZMMWORD PTR [r8+rax+16*4],zmm5"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vmovups ZMMWORD PTR [r8+rax+32*4],zmm9"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmovups ZMMWORD PTR [r8+rax+48*4],zmm13"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmovups ZMMWORD PTR [r8+rax+64*4],zmm17"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmovups ZMMWORD PTR [r8+rax+80*4],zmm21"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vmovups ZMMWORD PTR [rbx],zmm2"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vmovups ZMMWORD PTR [rbx+16*4],zmm6"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vmovups ZMMWORD PTR [rbx+32*4],zmm10"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vmovups ZMMWORD PTR [rbx+48*4],zmm14"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vmovups ZMMWORD PTR [rbx+64*4],zmm18"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vmovups ZMMWORD PTR [rbx+80*4],zmm22"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vmovups ZMMWORD PTR [rbx+rax],zmm3"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vmovups ZMMWORD PTR [rbx+rax+16*4],zmm7"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vmovups ZMMWORD PTR [rbx+rax+32*4],zmm11"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vmovups ZMMWORD PTR [rbx+rax+48*4],zmm15"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vmovups ZMMWORD PTR [rbx+rax+64*4],zmm19"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vmovups ZMMWORD PTR [rbx+rax+80*4],zmm23"
-        add_immed r8,\OutputCount\()*16*4   # advance output by N nchw16c blocks
-
-        .endm
-
-/*++
-
-Macro Description:
-
     This macro generates code to compute the convolution for a specified number
     of filter rows.
 
@@ -391,7 +219,7 @@ Implicit Arguments:
         mov     r10,\KernelFrame\()_OutputCountLeftPad[rsp]
         test    r10,r10
         jz      .L\KernelType\().\FilterCount\().ProcessOutputCount
-        call    MlasConv\KernelType\()FloatSingleAvx512FFilterCount\FilterCount\()
+        call    MlasConv\KernelType\()FloatSingleAvx512FFilter\FilterCount\()
 
 //
 // Process the output blocks that do not include any padding.
@@ -403,7 +231,7 @@ Implicit Arguments:
         jb      .L\KernelType\().\FilterCount\().ProcessRemainingOutputCount
 
 .L\KernelType\().\FilterCount\().ProcessNextOutputCountBy6:
-        ProcessOutputCountN \KernelFrame\(), \KernelType\(), 16, \FilterCount\(), 6
+        ProcessOutputCountN Avx512F, \KernelFrame\(), \KernelType\(), 16, \FilterCount\(), 6
         lea     rax,[r9*2+r9]
         lea     rdi,[rdi+rax*2]             # advance input by 6 elements
         sub     r10,6
@@ -414,7 +242,7 @@ Implicit Arguments:
         jz      .L\KernelType\().\FilterCount\().ProcessOutputCountRightPadAndRemaining
         cmp     r10,3
         jb      .L\KernelType\().\FilterCount\().ProcessRemainingOutputCountLessThan3
-        ProcessOutputCountN \KernelFrame\(), \KernelType\(), 16, \FilterCount\(), 3
+        ProcessOutputCountN Avx512F, \KernelFrame\(), \KernelType\(), 16, \FilterCount\(), 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     # advance input by 3 elements
         sub     r10,3
@@ -423,7 +251,7 @@ Implicit Arguments:
 .L\KernelType\().\FilterCount\().ProcessRemainingOutputCountLessThan3:
         cmp     r10,1
         je      .L\KernelType\().\FilterCount\().ProcessOutputCountRightPadAndRemaining
-        ProcessOutputCountN \KernelFrame\(), \KernelType\(), 16, \FilterCount\(), 2
+        ProcessOutputCountN Avx512F, \KernelFrame\(), \KernelType\(), 16, \FilterCount\(), 2
         lea     rdi,[rdi+r9*2]              # advance input by 2 elements
         sub     r10,2
 
@@ -435,7 +263,7 @@ Implicit Arguments:
 .L\KernelType\().\FilterCount\().ProcessOutputCountRightPadAndRemaining:
         add     r10,\KernelFrame\()_OutputCountRightPad[rsp]
         jz      .L\KernelType\().ExitKernel
-        call    MlasConv\KernelType\()FloatSingleAvx512FFilterCount\FilterCount\()
+        call    MlasConv\KernelType\()FloatSingleAvx512FFilter\FilterCount\()
 
         .endm
 
@@ -474,7 +302,7 @@ Implicit Arguments:
         jb      .LPointwise.\FilterCount\().ProcessRemainingOutputCount
 
 .LPointwise.\FilterCount\().ProcessNextOutputCountBy6:
-        ProcessPointwiseOutputCountN 16, \FilterCount\(), 6
+        ProcessPointwiseOutputCountN Avx512F, 16, \FilterCount\(), 6
         lea     rax,[r9*2+r9]
         lea     rdi,[rdi+rax*2]             # advance input by 6 elements
         sub     r10,6
@@ -485,7 +313,7 @@ Implicit Arguments:
         jz      .LPointwise.ExitKernel
         cmp     r10,3
         jb      .LPointwise.\FilterCount\().ProcessRemainingOutputCountLessThan3
-        ProcessPointwiseOutputCountN 16, \FilterCount\(), 3
+        ProcessPointwiseOutputCountN Avx512F, 16, \FilterCount\(), 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     # advance input by 3 elements
         sub     r10,3
@@ -494,11 +322,11 @@ Implicit Arguments:
 .LPointwise.\FilterCount\().ProcessRemainingOutputCountLessThan3:
         cmp     r10,2
         jb      .LPointwise.\FilterCount\().ProcessRemainingOutputCount1
-        ProcessPointwiseOutputCountN 16, \FilterCount\(), 2
+        ProcessPointwiseOutputCountN Avx512F, 16, \FilterCount\(), 2
         jmp     .LPointwise.ExitKernel
 
 .LPointwise.\FilterCount\().ProcessRemainingOutputCount1:
-        ProcessPointwiseOutputCountN 16, \FilterCount\(), 1
+        ProcessPointwiseOutputCountN Avx512F, 16, \FilterCount\(), 1
 
         .endm
 
@@ -513,5 +341,177 @@ Implicit Arguments:
         SconvKernelFunction Nchwc, 16, Avx512F
         SconvKernelDepthwiseFunction 16, Avx512F
         SconvKernelPointwiseFunction Avx512F
+
+/*++
+
+Macro Description:
+
+Arguments:
+
+    FilterCount - Supplies the number of rows from the filter to process.
+
+    OutputCount - Supplies the number of output blocks to produce.
+
+--*/
+
+        .macro PostProcessBlock FilterCount, OutputCount
+
+        .globl  MlasConvPostProcessFloatAvx512FFilter\FilterCount\()Output\OutputCount\()
+MlasConvPostProcessFloatAvx512FFilter\FilterCount\()Output\OutputCount\():
+
+.if \FilterCount\() > 2
+        lea     rbx,[r8+rax*2]              # compute output plus 2 rows
+.endif
+
+//
+// Test if the existing contents of the output buffer should be accumulated
+// with the output block.
+//
+
+        test    dl,1
+        jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipAccumulateOutput
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vaddps zmm0,zmm0,ZMMWORD PTR [r8]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vaddps zmm4,zmm4,ZMMWORD PTR [r8+16*4]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vaddps zmm8,zmm8,ZMMWORD PTR [r8+32*4]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vaddps zmm12,zmm12,ZMMWORD PTR [r8+48*4]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vaddps zmm16,zmm16,ZMMWORD PTR [r8+64*4]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vaddps zmm20,zmm20,ZMMWORD PTR [r8+80*4]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vaddps zmm1,zmm1,ZMMWORD PTR [r8+rax]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vaddps zmm5,zmm5,ZMMWORD PTR [r8+rax+16*4]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vaddps zmm9,zmm9,ZMMWORD PTR [r8+rax+32*4]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vaddps zmm13,zmm13,ZMMWORD PTR [r8+rax+48*4]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vaddps zmm17,zmm17,ZMMWORD PTR [r8+rax+64*4]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vaddps zmm21,zmm21,ZMMWORD PTR [r8+rax+80*4]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vaddps zmm2,zmm2,ZMMWORD PTR [rbx]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vaddps zmm6,zmm6,ZMMWORD PTR [rbx+16*4]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vaddps zmm10,zmm10,ZMMWORD PTR [rbx+32*4]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vaddps zmm14,zmm14,ZMMWORD PTR [rbx+48*4]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vaddps zmm18,zmm18,ZMMWORD PTR [rbx+64*4]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vaddps zmm22,zmm22,ZMMWORD PTR [rbx+80*4]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vaddps zmm3,zmm3,ZMMWORD PTR [rbx+rax]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vaddps zmm7,zmm7,ZMMWORD PTR [rbx+rax+16*4]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vaddps zmm11,zmm11,ZMMWORD PTR [rbx+rax+32*4]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vaddps zmm15,zmm15,ZMMWORD PTR [rbx+rax+48*4]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vaddps zmm19,zmm19,ZMMWORD PTR [rbx+rax+64*4]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vaddps zmm23,zmm23,ZMMWORD PTR [rbx+rax+80*4]"
+
+.LPostProcessBlock.\FilterCount\().\OutputCount\().SkipAccumulateOutput:
+
+//
+// Test if the bias buffer should be accumulated with the output block.
+//
+
+        test    dl,2
+        jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipBiasAddition
+.if \OutputCount\() == 1
+        EmitIfCountGE \FilterCount\(), 1, "vaddps zmm0,zmm0,ZMMWORD PTR [rcx]"
+        EmitIfCountGE \FilterCount\(), 2, "vaddps zmm1,zmm1,ZMMWORD PTR [rcx+16*4]"
+        EmitIfCountGE \FilterCount\(), 3, "vaddps zmm2,zmm2,ZMMWORD PTR [rcx+32*4]"
+        EmitIfCountGE \FilterCount\(), 4, "vaddps zmm3,zmm3,ZMMWORD PTR [rcx+48*4]"
+.else
+        EmitIfCountGE \FilterCount\(), 1, "vmovups zmm28,ZMMWORD PTR [rcx]"
+        EmitIfCountGE \FilterCount\(), 2, "vmovups zmm29,ZMMWORD PTR [rcx+16*4]"
+        EmitIfCountGE \FilterCount\(), 3, "vmovups zmm30,ZMMWORD PTR [rcx+32*4]"
+        EmitIfCountGE \FilterCount\(), 4, "vmovups zmm31,ZMMWORD PTR [rcx+48*4]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vaddps zmm0,zmm0,zmm28"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vaddps zmm4,zmm4,zmm28"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vaddps zmm8,zmm8,zmm28"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vaddps zmm12,zmm12,zmm28"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vaddps zmm16,zmm16,zmm28"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vaddps zmm20,zmm20,zmm28"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vaddps zmm1,zmm1,zmm29"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vaddps zmm5,zmm5,zmm29"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vaddps zmm9,zmm9,zmm29"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vaddps zmm13,zmm13,zmm29"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vaddps zmm17,zmm17,zmm29"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vaddps zmm21,zmm21,zmm29"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vaddps zmm2,zmm2,zmm30"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vaddps zmm6,zmm6,zmm30"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vaddps zmm10,zmm10,zmm30"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vaddps zmm14,zmm14,zmm30"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vaddps zmm18,zmm18,zmm30"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vaddps zmm22,zmm22,zmm30"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vaddps zmm3,zmm3,zmm31"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vaddps zmm7,zmm7,zmm31"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vaddps zmm11,zmm11,zmm31"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vaddps zmm15,zmm15,zmm31"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vaddps zmm19,zmm19,zmm31"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vaddps zmm23,zmm23,zmm31"
+.endif
+
+.LPostProcessBlock.\FilterCount\().\OutputCount\().SkipBiasAddition:
+
+//
+// Test for fused ReLU activation.
+//
+
+        test    dl,4
+        jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipReluActivation
+        vpxord  zmm24,zmm24,zmm24
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vmaxps zmm0,zmm24,zmm0"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vmaxps zmm4,zmm24,zmm4"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vmaxps zmm8,zmm24,zmm8"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vmaxps zmm12,zmm24,zmm12"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vmaxps zmm16,zmm24,zmm16"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vmaxps zmm20,zmm24,zmm20"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vmaxps zmm1,zmm24,zmm1"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vmaxps zmm5,zmm24,zmm5"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vmaxps zmm9,zmm24,zmm9"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm13,zmm24,zmm13"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm17,zmm24,zmm17"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm21,zmm24,zmm21"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vmaxps zmm2,zmm24,zmm2"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vmaxps zmm6,zmm24,zmm6"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vmaxps zmm10,zmm24,zmm10"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm14,zmm24,zmm14"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm18,zmm24,zmm18"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm22,zmm24,zmm22"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vmaxps zmm3,zmm24,zmm3"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vmaxps zmm7,zmm24,zmm7"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vmaxps zmm11,zmm24,zmm11"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm15,zmm24,zmm15"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm19,zmm24,zmm19"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm23,zmm24,zmm23"
+
+.LPostProcessBlock.\FilterCount\().\OutputCount\().SkipReluActivation:
+
+//
+// Store the output block in the output buffer.
+//
+
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "vmovups ZMMWORD PTR [r8],zmm0"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 2, "vmovups ZMMWORD PTR [r8+16*4],zmm4"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 3, "vmovups ZMMWORD PTR [r8+32*4],zmm8"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 4, "vmovups ZMMWORD PTR [r8+48*4],zmm12"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 5, "vmovups ZMMWORD PTR [r8+64*4],zmm16"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 6, "vmovups ZMMWORD PTR [r8+80*4],zmm20"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "vmovups ZMMWORD PTR [r8+rax],zmm1"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 2, "vmovups ZMMWORD PTR [r8+rax+16*4],zmm5"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 3, "vmovups ZMMWORD PTR [r8+rax+32*4],zmm9"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmovups ZMMWORD PTR [r8+rax+48*4],zmm13"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmovups ZMMWORD PTR [r8+rax+64*4],zmm17"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmovups ZMMWORD PTR [r8+rax+80*4],zmm21"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vmovups ZMMWORD PTR [rbx],zmm2"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vmovups ZMMWORD PTR [rbx+16*4],zmm6"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vmovups ZMMWORD PTR [rbx+32*4],zmm10"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vmovups ZMMWORD PTR [rbx+48*4],zmm14"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vmovups ZMMWORD PTR [rbx+64*4],zmm18"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vmovups ZMMWORD PTR [rbx+80*4],zmm22"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vmovups ZMMWORD PTR [rbx+rax],zmm3"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vmovups ZMMWORD PTR [rbx+rax+16*4],zmm7"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vmovups ZMMWORD PTR [rbx+rax+32*4],zmm11"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vmovups ZMMWORD PTR [rbx+rax+48*4],zmm15"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vmovups ZMMWORD PTR [rbx+rax+64*4],zmm19"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vmovups ZMMWORD PTR [rbx+rax+80*4],zmm23"
+        add_immed r8,\OutputCount\()*16*4   # advance output by N nchw16c blocks
+        ret
+
+        .endm
+
+        .irp    FilterCount, 1, 2, 3, 4
+        .irp    OutputCount, 1, 2, 3, 6
+            PostProcessBlock \FilterCount\(), \OutputCount\()
+        .endr
+        .endr
 
         .end

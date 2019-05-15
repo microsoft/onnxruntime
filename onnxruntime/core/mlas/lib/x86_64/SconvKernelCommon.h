@@ -126,6 +126,8 @@ Macro Description:
 
 Arguments:
 
+    Isa - Supplies the instruction set architecture string for function tags.
+
     KernelFrame - Supplies the symbol name to access the convolution kernel
         stack.
 
@@ -155,7 +157,7 @@ Implicit Arguments:
 
 --*/
 
-        .macro ProcessOutputCountN KernelFrame, KernelType, BlockSize, FilterCount, OutputCount
+        .macro ProcessOutputCountN Isa, KernelFrame, KernelType, BlockSize, FilterCount, OutputCount
 
         mov     rcx,rdi
 .ifeqs "\KernelType\()","Depthwise"
@@ -227,7 +229,12 @@ Implicit Arguments:
 //
 
 .L\KernelType\().\FilterCount\().\OutputCount\().HandlePostProcessing:
-        PostProcessBlock \KernelFrame\(), \KernelType\(), \FilterCount\(), \OutputCount\()
+        mov     edx,DWORD PTR \KernelFrame\()_Flags[rsp]
+.if \FilterCount\() > 1
+        mov     rax,\KernelFrame\()_OutputStride[rsp]
+.endif
+        mov     rcx,\KernelFrame\()_Bias[rsp]
+        call    MlasConvPostProcessFloat\Isa\()Filter\FilterCount\()Output\OutputCount\()
 
         .endm
 
@@ -396,11 +403,11 @@ C_UNDERSCORE(MlasConv\KernelType\()FloatKernel\Isa\()):
 
         .irp FilterCount, 1, 2, 3, 4
 
-MlasConv\KernelType\()FloatSingle\Isa\()FilterCount\FilterCount\():
-        ProcessOutputCountN .LSconvKernelSingleFrame, \KernelType\(), \BlockSize\(), \FilterCount\(), 1
+MlasConv\KernelType\()FloatSingle\Isa\()Filter\FilterCount\():
+        ProcessOutputCountN \Isa\(), .LSconvKernelSingleFrame, \KernelType\(), \BlockSize\(), \FilterCount\(), 1
         add     rdi,r9                      # advance input by 1 element
         dec     r10                         # decrement output count remaining
-        jnz     MlasConv\KernelType\()FloatSingle\Isa\()FilterCount\FilterCount\()
+        jnz     MlasConv\KernelType\()FloatSingle\Isa\()Filter\FilterCount\()
         ret
 
         .endr
@@ -537,11 +544,11 @@ C_UNDERSCORE(MlasConvDepthwiseFloatKernel\Isa\()):
 // Generate out-of-band helpers for handling output blocks involving padding.
 //
 
-MlasConvDepthwiseFloatSingle\Isa\()FilterCount1:
-        ProcessOutputCountN .LSconvKernelDepthwiseSingleFrame, Depthwise, \BlockSize\(), 1, 1
+MlasConvDepthwiseFloatSingle\Isa\()Filter1:
+        ProcessOutputCountN \Isa\(), .LSconvKernelDepthwiseSingleFrame, Depthwise, \BlockSize\(), 1, 1
         add     rdi,r9                      # advance input by 1 element
         dec     r10                         # decrement output count remaining
-        jnz     MlasConvDepthwiseFloatSingle\Isa\()FilterCount1
+        jnz     MlasConvDepthwiseFloatSingle\Isa\()Filter1
         ret
 
 .endif
@@ -557,6 +564,8 @@ Macro Description:
     for a pointwise convolution.
 
 Arguments:
+
+    Isa - Supplies the instruction set architecture string for function tags.
 
     BlockSize - Supplies the number of elements per block.
 
@@ -580,7 +589,7 @@ Implicit Arguments:
 
 --*/
 
-        .macro ProcessPointwiseOutputCountN BlockSize, FilterCount, OutputCount
+        .macro ProcessPointwiseOutputCountN Isa, BlockSize, FilterCount, OutputCount
 
         mov     rcx,rdi
         mov     rdx,r12
@@ -614,7 +623,12 @@ Implicit Arguments:
 // Handle post processing of the output block.
 //
 
-        PostProcessBlock .LSconvKernelPointwiseFrame, Pointwise, \FilterCount\(), \OutputCount\()
+        mov     edx,DWORD PTR .LSconvKernelPointwiseFrame_Flags[rsp]
+.if \FilterCount\() > 1
+        mov     rax,.LSconvKernelPointwiseFrame_OutputStride[rsp]
+.endif
+        mov     rcx,.LSconvKernelPointwiseFrame_Bias[rsp]
+        call    MlasConvPostProcessFloat\Isa\()Filter\FilterCount\()Output\OutputCount\()
 
         .endm
 

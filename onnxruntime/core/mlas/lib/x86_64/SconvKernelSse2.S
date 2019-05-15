@@ -138,119 +138,6 @@ Implicit Arguments:
 
 Macro Description:
 
-Arguments:
-
-    KernelFrame - Supplies the symbol name to access the convolution kernel
-        stack.
-
-    KernelType - Supplies the type of kernel to be generated.
-
-    FilterCount - Supplies the number of rows from the filter to process.
-
-    OutputCount - Supplies the number of output blocks to produce.
-
---*/
-
-        .macro PostProcessBlock KernelFrame, KernelType, FilterCount, OutputCount
-
-        mov     edx,DWORD PTR \KernelFrame\()_Flags[rsp]
-.if \FilterCount\() > 1
-        mov     rax,\KernelFrame\()_OutputStride[rsp]
-.endif
-.if \FilterCount\() > 2
-        lea     rbx,[r8+rax*2]              # compute output plus 2 rows
-.endif
-
-//
-// Test if the existing contents of the output buffer should be accumulated
-// with the output block.
-//
-
-        test    dl,1
-        jz      .L\KernelType\().\FilterCount\().\OutputCount\().SkipAccumulateOutput
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm8,XMMWORD PTR [r8]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm9,XMMWORD PTR [r8+16]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm10,XMMWORD PTR [r8+rax]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm11,XMMWORD PTR [r8+rax+16]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm12,XMMWORD PTR [rbx]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm13,XMMWORD PTR [rbx+16]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm14,XMMWORD PTR [rbx+rax]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm15,XMMWORD PTR [rbx+rax+16]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm0,xmm8"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm1,xmm9"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm2,xmm10"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm3,xmm11"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm4,xmm12"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm5,xmm13"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm6,xmm14"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm7,xmm15"
-
-.L\KernelType\().\FilterCount\().\OutputCount\().SkipAccumulateOutput:
-
-//
-// Test if the bias buffer should be accumulated with the output block.
-//
-
-        test    dl,2
-        jz      .L\KernelType\().\FilterCount\().\OutputCount\().SkipBiasAddition
-        mov     rcx,\KernelFrame\()_Bias[rsp]
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm8,XMMWORD PTR [rcx]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm9,XMMWORD PTR [rcx+16]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm10,XMMWORD PTR [rcx+32]"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm11,XMMWORD PTR [rcx+48]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm12,XMMWORD PTR [rcx+64]"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm13,XMMWORD PTR [rcx+80]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm14,XMMWORD PTR [rcx+96]"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm15,XMMWORD PTR [rcx+112]"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm0,xmm8"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm1,xmm9"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm2,xmm10"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm3,xmm11"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm4,xmm12"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm5,xmm13"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm6,xmm14"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm7,xmm15"
-
-.L\KernelType\().\FilterCount\().\OutputCount\().SkipBiasAddition:
-
-//
-// Test for fused ReLU activation.
-//
-
-        test    dl,4
-        jz      .L\KernelType\().\FilterCount\().\OutputCount\().SkipReluActivation
-        xorps   xmm15,xmm15
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "maxps xmm0,xmm15"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "maxps xmm1,xmm15"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "maxps xmm2,xmm15"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "maxps xmm3,xmm15"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "maxps xmm4,xmm15"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "maxps xmm5,xmm15"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "maxps xmm6,xmm15"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "maxps xmm7,xmm15"
-
-.L\KernelType\().\FilterCount\().\OutputCount\().SkipReluActivation:
-
-//
-// Store the output block in the output buffer.
-//
-
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups XMMWORD PTR [r8],xmm0"
-        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups XMMWORD PTR [r8+16],xmm1"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups XMMWORD PTR [r8+rax],xmm2"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups XMMWORD PTR [r8+rax+16],xmm3"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups XMMWORD PTR [rbx],xmm4"
-        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+16],xmm5"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+rax],xmm6"
-        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+rax+16],xmm7"
-        add_immed r8,\OutputCount\()*8*4    # advance output by N nchw8c blocks
-
-        .endm
-
-/*++
-
-Macro Description:
-
     This macro generates code to compute the convolution for a specified number
     of filter rows.
 
@@ -288,7 +175,7 @@ Implicit Arguments:
         add     r10,\KernelFrame\()_OutputCountRightPad[rsp]
 
 .L\KernelType\().\FilterCount\().ProcessNextOutputCount:
-        ProcessOutputCountN \KernelFrame\(), \KernelType\(), 8, \FilterCount\(), 1
+        ProcessOutputCountN Sse, \KernelFrame\(), \KernelType\(), 8, \FilterCount\(), 1
         add     rdi,r9                      # advance input by 1 element
         dec     r10
         jnz     .L\KernelType\().\FilterCount\().ProcessNextOutputCount
@@ -302,5 +189,118 @@ Implicit Arguments:
         SconvKernelFunction Nchw, 8, Sse
         SconvKernelFunction Nchwc, 8, Sse, BiasFilter
         SconvKernelDepthwiseFunction 8, Sse
+
+/*++
+
+Macro Description:
+
+Arguments:
+
+    FilterCount - Supplies the number of rows from the filter to process.
+
+    OutputCount - Supplies the number of output blocks to produce.
+
+--*/
+
+        .macro PostProcessBlock FilterCount, OutputCount
+
+        .globl  MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\()
+MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\():
+
+.if \FilterCount\() > 2
+        lea     rbx,[r8+rax*2]              # compute output plus 2 rows
+.endif
+
+//
+// Test if the existing contents of the output buffer should be accumulated
+// with the output block.
+//
+
+        test    dl,1
+        jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipAccumulateOutput
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm8,XMMWORD PTR [r8]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm9,XMMWORD PTR [r8+16]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm10,XMMWORD PTR [r8+rax]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm11,XMMWORD PTR [r8+rax+16]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm12,XMMWORD PTR [rbx]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm13,XMMWORD PTR [rbx+16]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm14,XMMWORD PTR [rbx+rax]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm15,XMMWORD PTR [rbx+rax+16]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm0,xmm8"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm1,xmm9"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm2,xmm10"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm3,xmm11"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm4,xmm12"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm5,xmm13"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm6,xmm14"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm7,xmm15"
+
+.LPostProcessBlock.\FilterCount\().\OutputCount\().SkipAccumulateOutput:
+
+//
+// Test if the bias buffer should be accumulated with the output block.
+//
+
+        test    dl,2
+        jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipBiasAddition
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm8,XMMWORD PTR [rcx]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm9,XMMWORD PTR [rcx+16]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm10,XMMWORD PTR [rcx+32]"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups xmm11,XMMWORD PTR [rcx+48]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm12,XMMWORD PTR [rcx+64]"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups xmm13,XMMWORD PTR [rcx+80]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm14,XMMWORD PTR [rcx+96]"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups xmm15,XMMWORD PTR [rcx+112]"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm0,xmm8"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "addps xmm1,xmm9"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm2,xmm10"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "addps xmm3,xmm11"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm4,xmm12"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "addps xmm5,xmm13"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm6,xmm14"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "addps xmm7,xmm15"
+
+.LPostProcessBlock.\FilterCount\().\OutputCount\().SkipBiasAddition:
+
+//
+// Test for fused ReLU activation.
+//
+
+        test    dl,4
+        jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipReluActivation
+        xorps   xmm15,xmm15
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "maxps xmm0,xmm15"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "maxps xmm1,xmm15"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "maxps xmm2,xmm15"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "maxps xmm3,xmm15"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "maxps xmm4,xmm15"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "maxps xmm5,xmm15"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "maxps xmm6,xmm15"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "maxps xmm7,xmm15"
+
+.LPostProcessBlock.\FilterCount\().\OutputCount\().SkipReluActivation:
+
+//
+// Store the output block in the output buffer.
+//
+
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups XMMWORD PTR [r8],xmm0"
+        EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups XMMWORD PTR [r8+16],xmm1"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups XMMWORD PTR [r8+rax],xmm2"
+        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 1, "movups XMMWORD PTR [r8+rax+16],xmm3"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups XMMWORD PTR [rbx],xmm4"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+16],xmm5"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+rax],xmm6"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "movups XMMWORD PTR [rbx+rax+16],xmm7"
+        add_immed r8,\OutputCount\()*8*4    # advance output by N nchw8c blocks
+        ret
+
+        .endm
+
+        .irp    FilterCount, 1, 2, 3, 4
+        .irp    OutputCount, 1
+            PostProcessBlock \FilterCount\(), \OutputCount\()
+        .endr
+        .endr
 
         .end

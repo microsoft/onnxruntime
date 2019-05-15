@@ -164,6 +164,8 @@ SconvKernelPointwiseFrame ENDS
 ;
 ; Arguments:
 ;
+;   Isa - Supplies the instruction set architecture string for function tags.
+;
 ;   KernelFrame - Supplies the symbol name to access the convolution kernel
 ;       stack.
 ;
@@ -192,7 +194,7 @@ SconvKernelPointwiseFrame ENDS
 ;   r15 - Supplies the InputStride parameter (see function description).
 ;
 
-ProcessOutputCountN MACRO KernelFrame, KernelType, BlockSize, FilterCount, OutputCount
+ProcessOutputCountN MACRO Isa, KernelFrame, KernelType, BlockSize, FilterCount, OutputCount
 
         LOCAL   ProcessNextRow
         LOCAL   ProcessNextColumn
@@ -268,7 +270,12 @@ ENDIF
 ;
 
 HandlePostProcessing:
-        PostProcessBlock KernelFrame, FilterCount, OutputCount
+        mov     edx,DWORD PTR KernelFrame.Flags[rsp]
+IF FilterCount GT 1
+        mov     rax,KernelFrame.OutputStride[rsp]
+ENDIF
+        mov     rcx,KernelFrame.Bias[rsp]
+        call    MlasConvPostProcessFloat&Isa&Filter&FilterCount&Output&OutputCount
 
         ENDM
 
@@ -463,18 +470,18 @@ IFDIFI <Isa>, <Sse>
 ; Generate out-of-band helpers for handling output blocks involving padding.
 ;
 
-        IRP FilterCount, <1, 2, 3, 4>
+        IRP     FilterCount, <1, 2, 3, 4>
 
-        LEAF_ENTRY MlasConv&KernelType&FloatSingle&Isa&FilterCount&FilterCount, _TEXT
+        LEAF_ENTRY MlasConv&KernelType&FloatSingle&Isa&Filter&FilterCount, _TEXT
 
 ProcessNextOutputCount:
-        ProcessOutputCountN SconvKernelSingleFrame.KernelFrame, KernelType, BlockSize, FilterCount, 1
+        ProcessOutputCountN Isa, SconvKernelSingleFrame.KernelFrame, KernelType, BlockSize, FilterCount, 1
         add     rdi,r9                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
         jnz     ProcessNextOutputCount
         ret
 
-        LEAF_END MlasConv&KernelType&FloatSingle&Isa&FilterCount&FilterCount, _TEXT
+        LEAF_END MlasConv&KernelType&FloatSingle&Isa&Filter&FilterCount, _TEXT
 
         ENDM
 
@@ -641,16 +648,16 @@ IFDIFI <Isa>, <Sse>
 ; Generate out-of-band helpers for handling output blocks involving padding.
 ;
 
-        LEAF_ENTRY MlasConvDepthwiseFloatSingle&Isa&FilterCount1, _TEXT
+        LEAF_ENTRY MlasConvDepthwiseFloatSingle&Isa&Filter1, _TEXT
 
 ProcessNextOutputCount:
-        ProcessOutputCountN SconvKernelDepthwiseSingleFrame.KernelFrame, Depthwise, BlockSize, 1, 1
+        ProcessOutputCountN Isa, SconvKernelDepthwiseSingleFrame.KernelFrame, Depthwise, BlockSize, 1, 1
         add     rdi,r9                      ; advance input by 1 element
         dec     r10                         ; decrement output count remaining
         jnz     ProcessNextOutputCount
         ret
 
-        LEAF_END MlasConvDepthwiseFloatSingle&Isa&FilterCount1, _TEXT
+        LEAF_END MlasConvDepthwiseFloatSingle&Isa&Filter1, _TEXT
 
 ENDIF
 
@@ -664,6 +671,8 @@ ENDIF
 ;   for a pointwise convolution.
 ;
 ; Arguments:
+;
+;   Isa - Supplies the instruction set architecture string for function tags.
 ;
 ;   BlockSize - Supplies the number of elements per block.
 ;
@@ -686,7 +695,7 @@ ENDIF
 ;   r12 - Supplies the address of the filter buffer.
 ;
 
-ProcessPointwiseOutputCountN MACRO BlockSize, FilterCount, OutputCount
+ProcessPointwiseOutputCountN MACRO Isa, BlockSize, FilterCount, OutputCount
 
         LOCAL   ProcessNextInputBlock
         LOCAL   SkipAccumulateOutput
@@ -724,7 +733,12 @@ ENDIF
 ; Handle post processing of the output block.
 ;
 
-        PostProcessBlock SconvKernelPointwiseFrame, FilterCount, OutputCount
+        mov     edx,DWORD PTR SconvKernelPointwiseFrame.Flags[rsp]
+IF FilterCount GT 1
+        mov     rax,SconvKernelPointwiseFrame.OutputStride[rsp]
+ENDIF
+        mov     rcx,SconvKernelPointwiseFrame.Bias[rsp]
+        call    MlasConvPostProcessFloat&Isa&Filter&FilterCount&Output&OutputCount
 
         ENDM
 

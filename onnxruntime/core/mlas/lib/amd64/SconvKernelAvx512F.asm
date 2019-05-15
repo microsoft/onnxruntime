@@ -173,26 +173,192 @@ ENDIF
 ;
 ; Macro Description:
 ;
+;   This macro generates code to compute the convolution for a specified number
+;   of filter rows.
+;
 ; Arguments:
 ;
 ;   KernelFrame - Supplies the symbol name to access the convolution kernel
 ;       stack.
+;
+;   KernelType - Supplies the type of kernel to be generated.
+;
+;   FilterCount - Supplies the number of rows from the filter to process.
+;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description) when
+;       KernelType!=Depthwise. Supplies the address of the filter buffer when
+;       KernelType=Depthwise.
+;
+;   rbp - Supplies the DilationWidth parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r15 - Supplies the InputStride parameter (see function description).
+;
+
+ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
+
+        LOCAL   ProcessOutputCount
+        LOCAL   ProcessNextOutputCountBy6
+        LOCAL   ProcessRemainingOutputCount
+        LOCAL   ProcessRemainingOutputCountLessThan3
+        LOCAL   ProcessRemainingOutputCount1
+        LOCAL   ProcessOutputCountRightPadAndRemaining
+
+;
+; Process the output blocks that include left padding.
+;
+
+        mov     r10,KernelFrame.OutputCountLeftPad[rsp]
+        test    r10,r10
+        jz      ProcessOutputCount
+        call    MlasConv&KernelType&FloatSingleAvx512FFilter&FilterCount
+
+;
+; Process the output blocks that do not include any padding.
+;
+
+ProcessOutputCount:
+        mov     r10,KernelFrame.OutputCount[rsp]
+        sub     r10,6
+        jb      ProcessRemainingOutputCount
+
+ProcessNextOutputCountBy6:
+        ProcessOutputCountN Avx512F, KernelFrame, KernelType, 16, FilterCount, 6
+        lea     rax,[r9*2+r9]
+        lea     rdi,[rdi+rax*2]             ; advance input by 6 elements
+        sub     r10,6
+        jae     ProcessNextOutputCountBy6
+
+ProcessRemainingOutputCount:
+        add     r10,6                       ; correct for over-subtract above
+        jz      ProcessOutputCountRightPadAndRemaining
+        cmp     r10,3
+        jb      ProcessRemainingOutputCountLessThan3
+        ProcessOutputCountN Avx512F, KernelFrame, KernelType, 16, FilterCount, 3
+        lea     rax,[r9*2+r9]
+        add     rdi,rax                     ; advance input by 3 elements
+        sub     r10,3
+        jz      ProcessOutputCountRightPadAndRemaining
+
+ProcessRemainingOutputCountLessThan3:
+        cmp     r10,1
+        je      ProcessOutputCountRightPadAndRemaining
+        ProcessOutputCountN Avx512F, KernelFrame, KernelType, 16, FilterCount, 2
+        lea     rdi,[rdi+r9*2]              ; advance input by 2 elements
+        sub     r10,2
+
+;
+; Process the output blocks that include right padding plus any remaining output
+; blocks from above.
+;
+
+ProcessOutputCountRightPadAndRemaining:
+        add     r10,KernelFrame.OutputCountRightPad[rsp]
+        jz      ExitKernel
+        call    MlasConv&KernelType&FloatSingleAvx512FFilter&FilterCount
+
+        ENDM
+
+;
+; Macro Description:
+;
+;   This macro generates code to compute the convolution for a specified number
+;   of filter rows for a pointwise convolution.
+;
+; Arguments:
+;
+;   FilterCount - Supplies the number of rows from the filter to process.
+;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description).
+;
+;   rbp - Supplies the InputStride parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r10 - Supplies the OutputCount parameter (see function description).
+;
+;   r12 - Supplies the address of the filter buffer.
+;
+
+ProcessPointwiseFilterCountN MACRO FilterCount
+
+        LOCAL   ProcessNextOutputCountBy6
+        LOCAL   ProcessRemainingOutputCount
+        LOCAL   ProcessRemainingOutputCountLessThan3
+        LOCAL   ProcessRemainingOutputCount1
+
+        sub     r10,6
+        jb      ProcessRemainingOutputCount
+
+ProcessNextOutputCountBy6:
+        ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 6
+        lea     rax,[r9*2+r9]
+        lea     rdi,[rdi+rax*2]             ; advance input by 6 elements
+        sub     r10,6
+        jae     ProcessNextOutputCountBy6
+
+ProcessRemainingOutputCount:
+        add     r10,6                       ; correct for over-subtract above
+        jz      ExitKernel
+        cmp     r10,3
+        jb      ProcessRemainingOutputCountLessThan3
+        ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 3
+        lea     rax,[r9*2+r9]
+        add     rdi,rax                     ; advance input by 3 elements
+        sub     r10,3
+        jz      ExitKernel
+
+ProcessRemainingOutputCountLessThan3:
+        cmp     r10,2
+        jb      ProcessRemainingOutputCount1
+        ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 2
+        jmp     ExitKernel
+
+ProcessRemainingOutputCount1:
+        ProcessPointwiseOutputCountN Avx512F, 16, FilterCount, 1
+
+        ENDM
+
+;
+; Generate the convolution kernels.
+;
+; N.B. BiasFilter is not used here as the AVX-512 EVEX instruction encoding
+; efficiently compresses aligned relative byte offsets.
+;
+
+SconvKernelFunction Nchw, 16, Avx512F
+SconvKernelFunction Nchwc, 16, Avx512F
+SconvKernelDepthwiseFunction 16, Avx512F
+SconvKernelPointwiseFunction Avx512F
+
+;
+; Macro Description:
+;
+; Arguments:
 ;
 ;   FilterCount - Supplies the number of rows from the filter to process.
 ;
 ;   OutputCount - Supplies the number of output blocks to produce.
 ;
 
-PostProcessBlock MACRO KernelFrame, FilterCount, OutputCount
+        IRP     FilterCount, <1, 2, 3, 4>
+        IRP     OutputCount, <1, 2, 3, 6>
 
-        LOCAL   SkipAccumulateOutput
-        LOCAL   SkipBiasAddition
-        LOCAL   SkipReluActivation
+        LEAF_ENTRY MlasConvPostProcessFloatAvx512FFilter&FilterCount&Output&OutputCount, _TEXT
 
-        mov     edx,DWORD PTR KernelFrame.Flags[rsp]
-IF FilterCount GT 1
-        mov     rax,KernelFrame.OutputStride[rsp]
-ENDIF
 IF FilterCount GT 2
         lea     rbx,[r8+rax*2]              ; compute output plus 2 rows
 ENDIF
@@ -237,7 +403,6 @@ SkipAccumulateOutput:
 
         test    dl,2
         jz      SkipBiasAddition
-        mov     rcx,KernelFrame.Bias[rsp]
 IF OutputCount EQ 1
         EmitIfCountGE FilterCount, 1, <vaddps zmm0,zmm0,ZMMWORD PTR [rcx]>
         EmitIfCountGE FilterCount, 2, <vaddps zmm1,zmm1,ZMMWORD PTR [rcx+16*4]>
@@ -339,181 +504,11 @@ SkipReluActivation:
         EmitIfCount2GE FilterCount, 4, OutputCount, 5, <vmovups ZMMWORD PTR [rbx+rax+64*4],zmm19>
         EmitIfCount2GE FilterCount, 4, OutputCount, 6, <vmovups ZMMWORD PTR [rbx+rax+80*4],zmm23>
         add_immed r8,OutputCount*16*4       ; advance output by N nchw16c blocks
+        ret
+
+        LEAF_END MlasConvPostProcessFloatAvx512FFilter&FilterCount&Output&OutputCount, _TEXT
 
         ENDM
-
-;
-; Macro Description:
-;
-;   This macro generates code to compute the convolution for a specified number
-;   of filter rows.
-;
-; Arguments:
-;
-;   KernelFrame - Supplies the symbol name to access the convolution kernel
-;       stack.
-;
-;   KernelType - Supplies the type of kernel to be generated.
-;
-;   FilterCount - Supplies the number of rows from the filter to process.
-;
-; Implicit Arguments:
-;
-;   rdi - Supplies the address of the input buffer.
-;
-;   rsi - Supplies the FilterStride parameter (see function description) when
-;       KernelType!=Depthwise. Supplies the address of the filter buffer when
-;       KernelType=Depthwise.
-;
-;   rbp - Supplies the DilationWidth parameter (see function description).
-;
-;   r8 - Supplies the address of the output buffer.
-;
-;   r9 - Supplies the StrideWidth parameter (see function description).
-;
-;   r15 - Supplies the InputStride parameter (see function description).
-;
-
-ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
-
-        LOCAL   ProcessOutputCount
-        LOCAL   ProcessNextOutputCountBy6
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessRemainingOutputCountLessThan3
-        LOCAL   ProcessRemainingOutputCount1
-        LOCAL   ProcessOutputCountRightPadAndRemaining
-
-;
-; Process the output blocks that include left padding.
-;
-
-        mov     r10,KernelFrame.OutputCountLeftPad[rsp]
-        test    r10,r10
-        jz      ProcessOutputCount
-        call    MlasConv&KernelType&FloatSingleAvx512FFilterCount&FilterCount
-
-;
-; Process the output blocks that do not include any padding.
-;
-
-ProcessOutputCount:
-        mov     r10,KernelFrame.OutputCount[rsp]
-        sub     r10,6
-        jb      ProcessRemainingOutputCount
-
-ProcessNextOutputCountBy6:
-        ProcessOutputCountN KernelFrame, KernelType, 16, FilterCount, 6
-        lea     rax,[r9*2+r9]
-        lea     rdi,[rdi+rax*2]             ; advance input by 6 elements
-        sub     r10,6
-        jae     ProcessNextOutputCountBy6
-
-ProcessRemainingOutputCount:
-        add     r10,6                       ; correct for over-subtract above
-        jz      ProcessOutputCountRightPadAndRemaining
-        cmp     r10,3
-        jb      ProcessRemainingOutputCountLessThan3
-        ProcessOutputCountN KernelFrame, KernelType, 16, FilterCount, 3
-        lea     rax,[r9*2+r9]
-        add     rdi,rax                     ; advance input by 3 elements
-        sub     r10,3
-        jz      ProcessOutputCountRightPadAndRemaining
-
-ProcessRemainingOutputCountLessThan3:
-        cmp     r10,1
-        je      ProcessOutputCountRightPadAndRemaining
-        ProcessOutputCountN KernelFrame, KernelType, 16, FilterCount, 2
-        lea     rdi,[rdi+r9*2]              ; advance input by 2 elements
-        sub     r10,2
-
-;
-; Process the output blocks that include right padding plus any remaining output
-; blocks from above.
-;
-
-ProcessOutputCountRightPadAndRemaining:
-        add     r10,KernelFrame.OutputCountRightPad[rsp]
-        jz      ExitKernel
-        call    MlasConv&KernelType&FloatSingleAvx512FFilterCount&FilterCount
-
         ENDM
-
-;
-; Macro Description:
-;
-;   This macro generates code to compute the convolution for a specified number
-;   of filter rows for a pointwise convolution.
-;
-; Arguments:
-;
-;   FilterCount - Supplies the number of rows from the filter to process.
-;
-; Implicit Arguments:
-;
-;   rdi - Supplies the address of the input buffer.
-;
-;   rsi - Supplies the FilterStride parameter (see function description).
-;
-;   rbp - Supplies the InputStride parameter (see function description).
-;
-;   r8 - Supplies the address of the output buffer.
-;
-;   r9 - Supplies the StrideWidth parameter (see function description).
-;
-;   r10 - Supplies the OutputCount parameter (see function description).
-;
-;   r12 - Supplies the address of the filter buffer.
-;
-
-ProcessPointwiseFilterCountN MACRO FilterCount
-
-        LOCAL   ProcessNextOutputCountBy6
-        LOCAL   ProcessRemainingOutputCount
-        LOCAL   ProcessRemainingOutputCountLessThan3
-        LOCAL   ProcessRemainingOutputCount1
-
-        sub     r10,6
-        jb      ProcessRemainingOutputCount
-
-ProcessNextOutputCountBy6:
-        ProcessPointwiseOutputCountN 16, FilterCount, 6
-        lea     rax,[r9*2+r9]
-        lea     rdi,[rdi+rax*2]             ; advance input by 6 elements
-        sub     r10,6
-        jae     ProcessNextOutputCountBy6
-
-ProcessRemainingOutputCount:
-        add     r10,6                       ; correct for over-subtract above
-        jz      ExitKernel
-        cmp     r10,3
-        jb      ProcessRemainingOutputCountLessThan3
-        ProcessPointwiseOutputCountN 16, FilterCount, 3
-        lea     rax,[r9*2+r9]
-        add     rdi,rax                     ; advance input by 3 elements
-        sub     r10,3
-        jz      ExitKernel
-
-ProcessRemainingOutputCountLessThan3:
-        cmp     r10,2
-        jb      ProcessRemainingOutputCount1
-        ProcessPointwiseOutputCountN 16, FilterCount, 2
-        jmp     ExitKernel
-
-ProcessRemainingOutputCount1:
-        ProcessPointwiseOutputCountN 16, FilterCount, 1
-
-        ENDM
-
-;
-; Generate the convolution kernels.
-;
-; N.B. BiasFilter is not used here as the AVX-512 EVEX instruction encoding
-; efficiently compresses aligned relative byte offsets.
-;
-
-SconvKernelFunction Nchw, 16, Avx512F
-SconvKernelFunction Nchwc, 16, Avx512F
-SconvKernelDepthwiseFunction 16, Avx512F
-SconvKernelPointwiseFunction Avx512F
 
         END

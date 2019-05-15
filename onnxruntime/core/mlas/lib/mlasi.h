@@ -53,7 +53,7 @@ Abstract:
 #if defined(_MSC_VER)
 #define MLAS_FORCEINLINE __forceinline
 #else
-#define MLAS_FORCEINLINE __attribute__ ((always_inline))
+#define MLAS_FORCEINLINE __attribute__ ((always_inline)) inline
 #endif
 
 //

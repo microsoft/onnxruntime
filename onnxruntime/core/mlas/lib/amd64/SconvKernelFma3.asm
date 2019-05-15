@@ -23,6 +23,18 @@ INCLUDE SconvKernelAvxCommon.inc
         .list
 
 ;
+; Share the post process functions with the AVX implementation.
+;
+
+        IRP     FilterCount, <1, 2, 3, 4>
+        IRP     OutputCount, <1, 2, 3>
+
+        EXTERN  MlasConvPostProcessFloatFma3Filter&FilterCount&Output&OutputCount:NEAR
+
+        ENDM
+        ENDM
+
+;
 ; Macro Description:
 ;
 ;   This macro multiplies and accumulates for FilterCount by OutputCount block
@@ -143,7 +155,7 @@ ProcessFilterCountN MACRO KernelFrame, KernelType, FilterCount
         mov     r10,KernelFrame.OutputCountLeftPad[rsp]
         test    r10,r10
         jz      ProcessOutputCount
-        call    MlasConv&KernelType&FloatSingleFma3FilterCount&FilterCount
+        call    MlasConv&KernelType&FloatSingleFma3Filter&FilterCount
 
 ;
 ; Process the output blocks that do not include any padding.
@@ -155,7 +167,7 @@ ProcessOutputCount:
         jb      ProcessRemainingOutputCount
 
 ProcessNextOutputCountBy3:
-        ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 3
+        ProcessOutputCountN Fma3, KernelFrame, KernelType, 8, FilterCount, 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     ; advance input by 3 elements
         sub     r10,3
@@ -166,7 +178,7 @@ ProcessRemainingOutputCount:
         jz      ProcessOutputCountRightPadAndRemaining
         cmp     r10,2
         jb      ProcessOutputCountRightPadAndRemaining
-        ProcessOutputCountN KernelFrame, KernelType, 8, FilterCount, 2
+        ProcessOutputCountN Fma3, KernelFrame, KernelType, 8, FilterCount, 2
         lea     rdi,[rdi+r9*2]              ; advance input by 2 elements
         sub     r10,2
 
@@ -178,7 +190,7 @@ ProcessRemainingOutputCount:
 ProcessOutputCountRightPadAndRemaining:
         add     r10,KernelFrame.OutputCountRightPad[rsp]
         jz      ExitKernel
-        call    MlasConv&KernelType&FloatSingleFma3FilterCount&FilterCount
+        call    MlasConv&KernelType&FloatSingleFma3Filter&FilterCount
 
         ENDM
 
@@ -219,7 +231,7 @@ ProcessPointwiseFilterCountN MACRO FilterCount
         jb      ProcessRemainingOutputCount
 
 ProcessNextOutputCountBy3:
-        ProcessPointwiseOutputCountN 8, FilterCount, 3
+        ProcessPointwiseOutputCountN Fma3, 8, FilterCount, 3
         lea     rax,[r9*2+r9]
         add     rdi,rax                     ; advance input by 3 elements
         sub     r10,3
@@ -230,11 +242,11 @@ ProcessRemainingOutputCount:
         jz      ExitKernel
         cmp     r10,2
         jb      ProcessRemainingOutputCount1
-        ProcessPointwiseOutputCountN 8, FilterCount, 2
+        ProcessPointwiseOutputCountN Fma3, 8, FilterCount, 2
         jmp     ExitKernel
 
 ProcessRemainingOutputCount1:
-        ProcessPointwiseOutputCountN 8, FilterCount, 1
+        ProcessPointwiseOutputCountN Fma3, 8, FilterCount, 1
 
         ENDM
 
