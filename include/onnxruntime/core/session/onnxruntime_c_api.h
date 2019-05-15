@@ -465,6 +465,7 @@ ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
 ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator);
 
 /**
+ * \param code  Can't be ORT_OK
  * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
  */
 ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg)

@@ -13,12 +13,20 @@ struct OrtStatus {
 };
 
 ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg) {
-  assert(!(code == 0 && msg != nullptr));
+#ifndef NDEBUG
+  assert(code != ORT_OK);
+  //Don't check if msg is NULL at here, because it will generate a useless compiler warning
+  //assert(msg != nullptr);
   size_t clen = strlen(msg);
+#else
+  //@snnn: after the discussion with Ryan and Scott, we decide to treat the last arugment(msg)
+  // of this function as optional even we mark it as required.
+  size_t clen = msg == nullptr ? 0 : strlen(msg);
+#endif
   OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
   if (p == nullptr) return nullptr;  // OOM
   p->code = code;
-  memcpy(p->msg, msg, clen);
+  if (clen != 0) memcpy(p->msg, msg, clen);
   p->msg[clen] = '\0';
   return p;
 }
