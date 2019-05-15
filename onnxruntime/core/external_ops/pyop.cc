@@ -209,5 +209,5 @@ PYOP_EXPORT bool InvokePythonFunc(void*                            raw_inst,
         return false;
     }
     return true;
-}
+}//bool InvokePythonFunc
 }//namespace onnxruntime

@@ -205,5 +205,5 @@ private:
     std::string    class_name_;
     std::string    compute_;
     PyOpLogFunc    logging_func_;
-};//PyCustomOp
-}
+};//struct PyCustomOp
+}//namespace onnxruntime
