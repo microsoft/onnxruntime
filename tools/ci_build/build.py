@@ -603,12 +603,13 @@ def run_server_model_tests(build_dir, configs):
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
             test_raw_data_folder = os.path.join(config_build_dir, 'models')
-            run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, os.path.join(config_build_dir, config)], cwd=server_test_folder, dll_path=None)
+            shutil.copytree('../onnxruntime/', './onnxruntime/')
         else:
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             test_raw_data_folder = os.path.join(build_dir, 'models')
-            run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, config_build_dir], cwd=server_test_folder, dll_path=None)            
-
+            run_subprocess(['ln', '-s', '../onnxruntime', 'onnxruntime'], cwd=server_test_folder, dll_path=None)
+        
+        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
 
