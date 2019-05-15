@@ -111,10 +111,10 @@ static const SessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 template <typename T>
-void AddNonTensor(onnxruntime::MLValue& val, vector<py::object>& pyobjs) {
+void AddNonTensor(OrtValue& val, vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
-void AddNonTensorAsPyObj(onnxruntime::MLValue& val, vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
@@ -149,7 +149,7 @@ void AddNonTensorAsPyObj(onnxruntime::MLValue& val, vector<py::object>& pyobjs) 
   }
 }
 
-void AddTensorAsPyObj(onnxruntime::MLValue& val, vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();

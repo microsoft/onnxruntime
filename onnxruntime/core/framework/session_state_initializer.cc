@@ -28,7 +28,7 @@ static common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewe
                                                   MLValueNameIdxMap& mlvalue_name_idx_map,
                                                   const logging::Logger& logger);
 
-// T should have signature of '(int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status'
+// T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                              const onnxruntime::Graph& graph,
@@ -121,7 +121,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
       SaveInitializedTensors(
           env, graph_loc_, graph_, exec_plan, execution_providers_, mlvalue_name_idx_map,
           session_state_.GetMutableWeightsBuffers(),
-          [this](int idx, const onnxruntime::MLValue& value, const OrtCallback& d) -> Status {
+          [this](int idx, const OrtValue& value, const OrtCallback& d) -> Status {
             return session_state_.AddInitializedTensor(idx, value, &d);
           },
           logger_));
