@@ -206,5 +206,4 @@ private:
     std::string    compute_;
     PyOpLogFunc    logging_func_;
 };//PyCustomOp
-
 }

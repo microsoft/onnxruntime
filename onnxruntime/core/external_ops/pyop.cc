@@ -64,7 +64,7 @@ PYOP_EXPORT bool Initialize() {
     if (_import_array() < 0) {
         return false;
     }
-    auto path_list = PySys_GetObject("path");// do not release it
+    auto path_list = PySys_GetObject("path");//do not release it
     if (nullptr == path_list || !PyList_Check(path_list) ||
         PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
         return false; 
@@ -167,7 +167,7 @@ PYOP_EXPORT bool InvokePythonFunc(void*                            raw_inst,
                                   vector<unique_ptr<char[]>>&      outputs,
                                   vector<int32_t>&                 outputs_elem_size,
                                   vector<vector<int64_t>>&         outputs_dim,
-                                  std::function<void(const char*)> logging_func = [](const char*){}) {
+                                  std::function<void(const char*)> logging_func) {
     Scope scope;
     auto instance = static_cast<PyObject*>(raw_inst);
     if (nullptr == instance || nullptr == function) {
