@@ -71,18 +71,19 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   return model_proto;
 }
 
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
-    int fd;
-    Status status = Env::Default().FileOpenWr(file_path,fd);
+//static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
+//    int fd;
+//    Status status = Env::Default().FileOpenWr(file_path,fd);
+//
+//    google::protobuf::io::FileOutputStream output(fd);
+//    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+//    if(result)
+//        return Status::OK();
+//    else
+//        return Status::OK();
+//
+//}
 
-    google::protobuf::io::FileOutputStream output(fd);
-    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-    if(result)
-        return Status::OK();
-    else
-        return Status::OK();
-
-}
 std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
@@ -246,13 +247,13 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
 
+
     if(isGraphSupported){
 
+        std::string model_proto_strbuf;
+        model_proto.SerializeToString(&model_proto_strbuf);
 
-        SaveModel(model_proto,"ov_model.onnx");
 
-        (void) precision_fp32;
-        /*
         PyObject *pModule, *pOutput,*pFunc;
 
         Py_Initialize();
@@ -267,8 +268,16 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 pFunc = PyObject_GetAttrString(pModule,"convert_fp16");
             }
 
+            // Prepare ModelProto Input to Python
+            PyObject* pFileName = PyByteArray_FromStringAndSize(model_proto_strbuf.c_str(), model_proto_strbuf.size());
+            PyObject* pArgs = PyTuple_New(1);
+            PyTuple_SetItem(pArgs, 0, pFileName);
+
+
             if(pFunc && PyCallable_Check(pFunc)){
-                pOutput = PyObject_CallFunction(pFunc, NULL);
+
+                // Call the Python function
+                pOutput = PyObject_CallObject(pFunc, pArgs);
 
                 if(!PyTuple_CheckExact(pOutput)){
                     return result;
@@ -278,7 +287,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 }
             }
         }
-        */
 
 
         for(auto index : node_indexes){
@@ -294,12 +302,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         ONNX_NAMESPACE::AttributeProto model_proto_str_attr;
         model_proto_str_attr.set_name("model_proto_str");
         model_proto_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-
-
-        std::string string_buf;
-        model_proto.SerializeToString(&string_buf);
-
-        model_proto_str_attr.set_s(string_buf);
+        model_proto_str_attr.set_s(model_proto_strbuf);
 
         auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
         meta_def->attributes["model_proto_str"] = model_proto_str_attr;

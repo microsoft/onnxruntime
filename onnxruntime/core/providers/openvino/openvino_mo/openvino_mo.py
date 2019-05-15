@@ -26,6 +26,7 @@ import traceback
 from collections import OrderedDict
 
 import numpy as np
+import onnx
 
 
 from mo.utils.versions_checker import check_python_version
@@ -259,13 +260,16 @@ def prepare_emit_ir(graph: nx.MultiDiGraph, data_type: str, output_dir: str, out
     return weights, xml_string
 
 #argv: argparse.Namespace
-def driver(model_file_name: str, precision : str, output_model_name: str, outputs: list, output_dir: str,
+def driver(onnx_modelproto_bytes, precision : str, output_model_name: str, outputs: list, output_dir: str,
            scale: float,
            user_shapes: [None, list, np.array] = None,
            mean_scale_values: [dict, list] = ()):
 
+    try:
+        model_proto = onnx.load_from_string(bytes(onnx_modelproto_bytes))
+    except Exception as e:
+        print("[python] onnx exception: ", str(e))
 
-    model_proto = load_onnx_model(model_file_name)
     model_graph = model_proto.graph  # pylint: disable=no-member
     log.debug("Number of nodes in graph_def: {}".format(len(model_graph.node)))
     log.debug("Number of all input ports (not true inputs) in graph_def: {}".format(len(model_graph.input)))
@@ -378,7 +382,7 @@ def driver(model_file_name: str, precision : str, output_model_name: str, output
     return weights, xml_string
 
 
-def driver_entry(onnx_file_name : str, precision : str):
+def driver_entry(onnx_modelproto_bytes, precision : str):
     start_time = datetime.datetime.now()
 
 
@@ -391,23 +395,20 @@ def driver_entry(onnx_file_name : str, precision : str):
 
     from mo.front.onnx.register_custom_ops import update_registration
     import_extensions.load_dirs('onnx', [mo_extensions], update_registration)
-    weights , xml_string = driver(onnx_file_name, precision, model_name, outputs, ".", None,
+    weights , xml_string = driver(onnx_modelproto_bytes, precision, model_name, outputs, ".", None,
                              user_shapes=placeholder_shapes,
                              mean_scale_values=mean_scale)
 
     return weights, xml_string
 
-def convert_fp16(onnx_file_name_bytes):
+def convert_fp16(onnx_modelproto_bytes):
     try:
-        onnx_file_name = onnx_file_name_bytes.decode("utf=8")
-        print("[OpenVINO-MO]: Got file name", onnx_file_name)
         init_logger('ERROR', False)
         framework = 'onnx'
 
-        weights, xml_string = driver_entry(onnx_file_name, precision='FP16')
+        weights, xml_string = driver_entry(onnx_modelproto_bytes, precision='FP16')
 
         float_array = np.asarray(weights, dtype=np.float16)
-
 
         return float_array, xml_string
     except:
@@ -415,19 +416,14 @@ def convert_fp16(onnx_file_name_bytes):
         #log.debug(traceback.format_exc())
         return 1
 
-def convert_fp32(onnx_file_name_bytes):
+def convert_fp32(onnx_modelproto_bytes):
     try:
-        onnx_file_name = onnx_file_name_bytes.decode("utf=8")
-        print("[OpenVINO-MO]: Got file name", onnx_file_name)
         init_logger('ERROR', False)
         framework = 'onnx'
 
-        weights, xml_string = driver_entry(onnx_file_name, precision='FP32')
-        #weights_string = np.array2string(weights, precision=10, separator="")
+        weights, xml_string = driver_entry(onnx_modelproto_bytes, precision='FP32')
 
         float_array = np.asarray(weights, dtype=np.float32)
-
-        # size = weights.size
 
         return float_array, xml_string
     except:

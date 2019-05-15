@@ -93,14 +93,6 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
     const auto& attributes = fused_node_->GetAttributes();
     std::string modelProtoStr = attributes.at("model_proto_str").s();
 
-    // for(int i = 0; i < modelProtoStr.size(); i++){
-        std::cout << "Got String is  " << modelProtoStr[0] << std::endl;
-    // }
-
-//    PyObject *pModule, *pOutput;
-//    PyObject *pArg1, *pArg2;
-//    PyObject *pFunc = nullptr;
-
     Py_Initialize();
     if(!Py_IsInitialized()) {
       std::cout << "Python Interpreter initialization failed \n";
@@ -131,9 +123,8 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
        throw "Python Function not found";
     }
 
-    // Prepare python input
-    const char* onnx_file = "ov_model.onnx";
-    PyObject* pFileName = PyByteArray_FromStringAndSize(onnx_file, 13);
+    // Prepare ModelProto Input to Python
+    PyObject* pFileName = PyByteArray_FromStringAndSize(modelProtoStr.c_str(), modelProtoStr.size());
     PyObject* pArgs = PyTuple_New(1);
     PyTuple_SetItem(pArgs, 0, pFileName);
 
@@ -151,62 +142,33 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
     const char* weights_bytes = PyByteArray_AsString(pWeights);
     unsigned long weights_size =  PyByteArray_Size(pWeights);
 
-    // Retreive the xml string
+    // Retrieve the xml string
     PyObject* pArg2 = PyTuple_GetItem(pOutputTuple, 1);
     PyObject* pXML = PyObject_Repr(pArg2);
     std::string xml_string = PyUnicode_AsUTF8(pXML);
 
-    // TODO: Clean up python resources after use.
-
-
-    /*
-    std::string  xml_string;
-    const char* weights_bytes = "test";
-    unsigned long weights_size;
-
-      if(pFunc && PyCallable_Check(pFunc)){
-          pOutput = PyObject_CallFunction(pFunc, NULL);
-
-          if(pOutput == NULL){
-
-              throw "Model Optimizer Failed";
-          }
-
-          pArg1 = PyTuple_GetItem(pOutput, 0);
-          pArg2 = PyTuple_GetItem(pOutput, 1);
-          // PyObject* pResultStr = PyObject_Repr(pOutput);
-
-          PyObject* pResultStr1 = PyByteArray_FromObject(pArg1);
-          PyObject* pResultStr2 = PyObject_Repr(pArg2);
-
-          weights_size = PyByteArray_Size(pResultStr1);
-
-
-          weights_bytes = PyByteArray_AsString(pResultStr1);
-
-          xml_string = PyUnicode_AsUTF8(pResultStr2);
-          Py_DECREF(pOutput);
-          //Py_DECREF(pResultStr1);
-          Py_DECREF(pResultStr2);
-
-      } else {
-        std::cout << "Python module call failed" << std::endl;
-      }
-*/
 
   InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
       new InferenceEngine::TBlob<uint8_t>(InferenceEngine::Precision::U8,
           InferenceEngine::Layout::C, {weights_size}));
     weightsPtr->allocate();
 
-
-
     std::memcpy(weightsPtr->buffer(), (void*)weights_bytes, weights_size);
-
 
     InferenceEngine::CNNNetReader networkReader;
     networkReader.ReadNetwork((const char*)xml_string.c_str(), xml_string.size());
     networkReader.SetWeights(weightsPtr);
+
+    // TODO: Cleanup Python interpreter resources
+//    Py_DECREF(pXML);
+//    Py_DECREF(pArg2);
+//    Py_DECREF(pWeights);
+//    Py_DECREF(pArg1);
+//    Py_DECREF(pOutputTuple);
+//    Py_DECREF(pArgs);
+//    Py_DECREF(pFunc);
+//    Py_DECREF(pModule);
+    //Py_FinalizeEx();
 
     return std::make_shared<InferenceEngine::CNNNetwork>(networkReader.getNetwork());
 }
