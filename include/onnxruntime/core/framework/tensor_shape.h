@@ -127,7 +127,8 @@ class TensorShape : private std::vector<int64_t> {
      empty shape or 1D shape (1) is regarded as scalar tensor
   */
   bool IsScalar() const {
-    return size() == 0 || (size() == 1 && at(0) == 1);
+    size_t len = size();
+    return len == 0 || (len == 1 && operator[](0) == 1);
   }
 
   static const TensorShape& ReinterpretBaseType(const std::vector<int64_t>& dimensions) {

@@ -169,11 +169,10 @@ int FileInputStream::CopyingFileInputStream::Read(void* buffer, int size) {
 int FileInputStream::CopyingFileInputStream::Skip(int count) {
   GOOGLE_CHECK(!is_closed_);
 
-  if (!previous_seek_failed_ &&
-      lseek(file_, count, SEEK_CUR) != (off_t)-1) {
+  if (!previous_seek_failed_ && lseek(file_, count, SEEK_CUR) != static_cast<off_t>(-1)) {
     // Seek succeeded.
     return count;
-  } else {
+  }
     // Failed to seek.
 
     // Note to self:  Don't seek again.  This file descriptor doesn't
@@ -182,7 +181,6 @@ int FileInputStream::CopyingFileInputStream::Skip(int count) {
 
     // Use the default implementation.
     return CopyingInputStream::Skip(count);
-  }
 }
 
 // ===================================================================
@@ -317,7 +315,7 @@ IstreamInputStream::CopyingIstreamInputStream::CopyingIstreamInputStream(
     std::istream* input)
     : input_(input) {}
 
-IstreamInputStream::CopyingIstreamInputStream::~CopyingIstreamInputStream() {}
+IstreamInputStream::CopyingIstreamInputStream::~CopyingIstreamInputStream() = default;
 
 int IstreamInputStream::CopyingIstreamInputStream::Read(
     void* buffer, int size) {
@@ -354,8 +352,7 @@ OstreamOutputStream::CopyingOstreamOutputStream::CopyingOstreamOutputStream(
     std::ostream* output)
     : output_(output) {}
 
-OstreamOutputStream::CopyingOstreamOutputStream::~CopyingOstreamOutputStream() {
-}
+OstreamOutputStream::CopyingOstreamOutputStream::~CopyingOstreamOutputStream() = default;
 
 bool OstreamOutputStream::CopyingOstreamOutputStream::Write(
     const void* buffer, int size) {
@@ -417,9 +414,8 @@ bool ConcatenatingInputStream::Skip(int count) {
 int64 ConcatenatingInputStream::ByteCount() const {
   if (stream_count_ == 0) {
     return bytes_retired_;
-  } else {
-    return bytes_retired_ + streams_[0]->ByteCount();
   }
+  return bytes_retired_ + streams_[0]->ByteCount();
 }
 
 // ===================================================================
@@ -463,19 +459,17 @@ bool LimitingInputStream::Skip(int count) {
     input_->Skip(static_cast<int>(limit_));
     limit_ = 0;
     return false;
-  } else {
+  }
     if (!input_->Skip(count)) return false;
     limit_ -= count;
     return true;
-  }
 }
 
 int64 LimitingInputStream::ByteCount() const {
   if (limit_ < 0) {
     return input_->ByteCount() + limit_ - prior_bytes_read_;
-  } else {
-    return input_->ByteCount() - prior_bytes_read_;
   }
+  return input_->ByteCount() - prior_bytes_read_;
 }
 
 // ===================================================================

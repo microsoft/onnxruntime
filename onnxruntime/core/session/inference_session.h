@@ -57,6 +57,7 @@ struct SessionOptions {
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
   // with a big chunk for all the internal memory allocation.
+  // See class 'MLValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
   // enable the memory arena on CPU

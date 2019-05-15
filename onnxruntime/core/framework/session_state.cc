@@ -93,10 +93,6 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape
   return Status::OK();
 }
 
-void SessionState::SetEnableMemoryPattern(bool flag) {
-  enable_mem_pattern_ = flag;
-}
-
 bool SessionState::GetEnableMemoryPattern() const {
   return enable_mem_pattern_;
 }

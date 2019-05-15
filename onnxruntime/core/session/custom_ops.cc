@@ -65,9 +65,7 @@ struct CustomOpKernel : OpKernel {
     op_kernel_ = op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
-  ~CustomOpKernel() {
-    op_.KernelDestroy(op_kernel_);
-  }
+  ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
 
   Status Compute(OpKernelContext* ctx) const override {
     auto* ictx = static_cast<OpKernelContextInternal*>(ctx);

@@ -19,7 +19,7 @@ class SVMCommon {
     std::vector<float> kernel_params;
     ORT_ENFORCE(info.GetAttrs<float>("kernel_params", kernel_params).IsOK());
 
-    if (kernel_params.size() > 0) {
+    if (!kernel_params.empty()) {
       gamma_ = kernel_params[0];
       coef0_ = kernel_params[1];
       degree_ = kernel_params[2];

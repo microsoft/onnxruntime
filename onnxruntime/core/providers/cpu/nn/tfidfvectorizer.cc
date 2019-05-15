@@ -378,8 +378,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   }
 }
 
-TfIdfVectorizer::~TfIdfVectorizer() {
-}
+TfIdfVectorizer::~TfIdfVectorizer() = default;
 
 void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::vector<uint32_t>& frequences) const {
   const Impl& impl = *impl_;

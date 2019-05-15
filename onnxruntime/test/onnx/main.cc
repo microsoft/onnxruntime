@@ -64,7 +64,7 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
 #endif
 }  // namespace
 

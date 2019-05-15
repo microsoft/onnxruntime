@@ -28,7 +28,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(1);
-  int32_t input_offset = 0, filter_offset = 0;
+  int32_t input_offset = 0;
+  int32_t filter_offset = 0;
   if (num_inputs >= 3) {
     const Tensor* X_Zero_Point = context->Input<Tensor>(2);
     if (X_Zero_Point->Shape().NumDimensions() == 0 ||

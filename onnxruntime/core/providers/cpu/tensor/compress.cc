@@ -63,13 +63,17 @@ Status Compress::Compute(OpKernelContext* ctx) const {
       axes_left_stride *= input_dimensions[i];
     }
 
-    for (int i = static_cast<int>(axis_ + 1); i < rank; ++i) {
+    for (size_t i = static_cast<size_t>(axis_ + 1); i < rank; ++i) {
       axes_right_stride *= input_dimensions[i];
     }
     int64_t axes_included_right_stride = axes_right_stride * input_dimensions[axis_];
     int64_t axes_included_right_stride_bytes = axes_included_right_stride * element_bytes;
-    int64_t axes_right_stride_bytes = axes_right_stride * element_bytes;
-
+    ORT_ENFORCE(axes_right_stride >= 0 &&
+                static_cast<uint64_t>(axes_right_stride) < std::numeric_limits<size_t>::max());
+    size_t axes_right_stride_bytes = 0;
+    if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(axes_right_stride), element_bytes,
+                                         &axes_right_stride_bytes))
+      return Status(ONNXRUNTIME, FAIL, "size overflow");
     for (int i = 0; i < axes_left_stride; ++i) {
       for (int j = 0; j < valid_condition_length; ++j) {
         if (!condition_data[j]) {

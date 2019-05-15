@@ -393,9 +393,9 @@ struct Broadcaster {
     // Scalars are a special case, as it's always a broadcast
     size_t index = 0;
     if (dimension_count_min == 0) {
-      if (shape1.size() == 0)  // Shape1 is a scalar
+      if (shape1.empty())  // Shape1 is a scalar
       {
-        if (shape2.size() == 0)  // Two scalars?
+        if (shape2.empty())  // Two scalars?
         {
           iterator1_.Init(1, 1);
           iterator2_.Init(1, 1);
