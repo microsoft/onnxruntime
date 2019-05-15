@@ -157,11 +157,6 @@ struct PyCustomKernel {
             numpy_type = 11;
         } else if (data_type == DataTypeImpl::GetType<double>()) {
             numpy_type = 12;
-        } else if (data_type == DataTypeImpl::GetType<std::string>()) {
-            numpy_type = 18;
-        } else if (data_type == DataTypeImpl::GetType<MLFloat16>() ||
-                   data_type == DataTypeImpl::GetType<BFloat16>()) {
-            numpy_type = 23;
         } else ORT_ENFORCE(false, "Input type not supported");
         return numpy_type;
     }
