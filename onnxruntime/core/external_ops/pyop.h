@@ -57,8 +57,8 @@ public:
     GetLastErrorMessage* get_last_error_message_ = nullptr;
 
 private:
-    PyOpLibProxy() {
 
+    PyOpLibProxy() {
         std::string err;
         LOAD_PYOP_LIB(LIB_PYOP,              handle_,                 "Failed to load pyop library");
         LOAD_PYOP_SYM("Initialize",          initialize_,             "Failed to import function: Initialize");
@@ -129,8 +129,7 @@ struct PyCustomKernel {
         }
     }
 
-    int32_t GetType(const OrtValue* input) const
-    {
+    int32_t GetType(const OrtValue* input) const {
         int32_t numpy_type;
         ORT_ENFORCE (nullptr != input);
         ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input must be a tensor");

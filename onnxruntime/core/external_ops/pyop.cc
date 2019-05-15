@@ -58,8 +58,7 @@ private:
 
 std::mutex Scope::mtx_;
 
-PYOP_EXPORT bool Initialize() 
-{
+PYOP_EXPORT bool Initialize() {
     Scope scope;
     Py_Initialize();
     if (_import_array() < 0) {
@@ -74,8 +73,7 @@ PYOP_EXPORT bool Initialize()
     return true;
 }
 
-PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
-{
+PYOP_EXPORT const char* GetLastErrorMessage(std::string& err) {
     Scope scope;
     if (PyErr_Occurred()) {
         PyObject *type, *value, *trace;
@@ -92,8 +90,7 @@ PYOP_EXPORT const char* GetLastErrorMessage(std::string& err)
     return err.c_str();
 }
 
-PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim)
-{
+PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim) {
     std::vector<npy_intp> np_dim;
     for (auto d: dim) {
         np_dim.push_back(static_cast<npy_intp>(d));
@@ -110,8 +107,7 @@ PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim)
 bool ExtractOutput(PyObject*                   pyObj,
                    vector<unique_ptr<char[]>>& outputs,
                    vector<int32_t>&            outputs_elem_size,
-                   vector<vector<int64_t>>&    outputs_dim)
-{
+                   vector<vector<int64_t>>&    outputs_dim) {
     if (!PyArray_Check(pyObj)) {
         return false;
     }
@@ -134,8 +130,7 @@ bool ExtractOutput(PyObject*                   pyObj,
     return true;
 }
 
-PYOP_EXPORT void* NewInstance(const char* module, const char* class_name, const unordered_map<string, string>& args)
-{
+PYOP_EXPORT void* NewInstance(const char* module, const char* class_name, const unordered_map<string, string>& args) {
     Scope scope; 
     auto pyModule = PyImport_ImportModule(module);
     if (nullptr == pyModule) {
@@ -160,8 +155,7 @@ PYOP_EXPORT void* NewInstance(const char* module, const char* class_name, const 
     return PyObject_Call(pyClass, empty_args, named_args);
 }
 
-PYOP_EXPORT void ReleaseInstance(void* instance)
-{
+PYOP_EXPORT void ReleaseInstance(void* instance) {
     Scope scope({static_cast<PyObject*>(instance)});
 }
 
@@ -173,8 +167,7 @@ PYOP_EXPORT bool InvokePythonFunc(void*                            raw_inst,
                                   vector<unique_ptr<char[]>>&      outputs,
                                   vector<int32_t>&                 outputs_elem_size,
                                   vector<vector<int64_t>>&         outputs_dim,
-                                  std::function<void(const char*)> logging_func = [](const char*){})
-{
+                                  std::function<void(const char*)> logging_func = [](const char*){}) {
     Scope scope;
     auto instance = static_cast<PyObject*>(raw_inst);
     if (nullptr == instance || nullptr == function) {
