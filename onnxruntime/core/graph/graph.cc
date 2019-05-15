@@ -301,13 +301,14 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-const Function* Node::GetFunctionBody() const noexcept {
+Function* Node::GetFunctionBody() noexcept {
   return func_body_;
 }
 
-void Node::SetFunctionBody(const Function& func) {
-  func_body_ = &func;
-  op_ = &func.OpSchema();
+void Node::SetFunctionBody(Function* func) {
+  ORT_ENFORCE(nullptr != func);
+  func_body_ = func;
+  op_ = &func->OpSchema();
 }
 
 const std::string& Node::GetExecutionProviderType() const noexcept {
@@ -1568,7 +1569,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   // Check that the type of every input is specified:
   for (auto* graph_input : GetInputs()) {
     if (nullptr == graph_input->Type()) {
-      Status status(ONNXRUNTIME, FAIL, "This is an invalid model. " 
+      Status status(ONNXRUNTIME, FAIL, "This is an invalid model. "
                                        "Model input (" + graph_input->Name() + ") does not have type information.");
       return status;
     }
@@ -1653,7 +1654,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
       auto model_func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), model_function_proto);
       function_container_.emplace_back(std::move(model_func_ptr));
-      node.SetFunctionBody(*function_container_.back());
+      node.SetFunctionBody(function_container_.back().get());
     }
 
     if (!node.Op()) {
@@ -1674,7 +1675,7 @@ Status Graph::VerifyNodeAndOpMatch() {
         auto onnx_function_proto = node.op_->GetFunction();
         auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto);
         function_container_.emplace_back(std::move(func_ptr));
-        node.SetFunctionBody(*function_container_.back());
+        node.SetFunctionBody(function_container_.back().get());
       }
 
       if (!node.op_) {
@@ -2284,7 +2285,7 @@ Status Graph::SetGraphInputsOutputs() {
           auto iter3 = graph_inputs.find(graph_output_name);
           if (graph_inputs.end() == iter3) {
             // Graph output is not found as any graph input.
-            return Status(ONNXRUNTIME, FAIL, "This is an invalid model. " 
+            return Status(ONNXRUNTIME, FAIL, "This is an invalid model. "
                                              "Graph output (" + graph_output_name + ") does not exist in the graph.");
           }
           graph_outputs_.push_back(iter3->second);
@@ -2449,7 +2450,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
 
   fused_node.SetNodeType(Node::Type::Fused);
   function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph)));
-  fused_node.SetFunctionBody(*(function_container_.back().get()));
+  fused_node.SetFunctionBody(function_container_.back().get());
 
   // Remove nodes fused above.
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();

@@ -101,7 +101,7 @@ class Node {
   Node::Type NodeType() const noexcept;
 
   /** Gets the function body if the #NodeType is fused, or nullptr if not. */
-  const Function* GetFunctionBody() const noexcept;
+  Function* GetFunctionBody() noexcept;
 
   /** Gets the node description. */
   const std::string& Description() const noexcept;
@@ -270,7 +270,7 @@ class Node {
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 
-  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop). 
+  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop).
   @returns true if the Node contains a subgraph.
   */
   bool ContainsSubgraph() const {
@@ -400,7 +400,7 @@ class Node {
 
   void SetNodeType(Node::Type node_type) noexcept;
 
-  void SetFunctionBody(const Function& func);
+  void SetFunctionBody(Function* func);
 
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
@@ -422,7 +422,7 @@ class Node {
   Node::Type node_type_ = Node::Type::Primitive;
 
   // The function body is owned by graph_
-  const Function* func_body_ = nullptr;
+  Function* func_body_ = nullptr;
 
   // Node doc string.
   std::string description_;
