@@ -26,6 +26,7 @@ class GraphTransformer;
 
 namespace ONNX_NAMESPACE {
 class ModelProto;
+class GraphProto;
 }  // namespace ONNX_NAMESPACE
 
 struct OrtCustomOpDomain {
@@ -38,6 +39,7 @@ class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
 class Notification;
+class PyCustomOp;
 
 namespace logging {
 class LoggingManager;
@@ -377,6 +379,13 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
+  template <typename T>
+  void LoadPyOp(const std::basic_string<T>& model_uri);
+
+  void LoadPyOp(const ONNX_NAMESPACE::ModelProto& model_proto);
+
+  void LoadPyOp(const ONNX_NAMESPACE::GraphProto& graph_proto);
+
   const SessionOptions session_options_;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
@@ -424,5 +433,7 @@ class InferenceSession {
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
+  std::vector<std::unique_ptr<PyCustomOp>> pyops_;
+  std::vector<std::unique_ptr<OrtCustomOpDomain>> pyop_domains_;
 };
 }  // namespace onnxruntime
