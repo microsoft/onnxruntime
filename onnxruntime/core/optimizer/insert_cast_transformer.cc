@@ -164,7 +164,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
-  TypeProto float_16_tensor_proto, float_tensor_proto;
+  TypeProto float_16_tensor_proto;
+  TypeProto float_tensor_proto;
   float_16_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
   float_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   IdGenerator id_generator;

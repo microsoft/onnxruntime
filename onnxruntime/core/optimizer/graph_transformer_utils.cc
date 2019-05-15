@@ -110,8 +110,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::move(rule_transformer));
     }
     return transformers;
-
-  } else {
+  }
     std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
     // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
     if (rule_transformer != nullptr) {
@@ -127,7 +126,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
                     });
     }
     return filtered_list;
-  }
 }
 
 }  // namespace transformer_utils
