@@ -204,7 +204,8 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     iter->second->setPrecision(precision);
     auto dims = iter->second->getTensorDesc().getDims();
     if(dims.size() == 2 || dims.size() == 4 || dims.size() == 5){
-        first_dim = iter->second->getTensorDesc().getDims()[0];
+        if(first_dim == 1)
+            first_dim = iter->second->getTensorDesc().getDims()[0];
     }
     switch (iter->second->getTensorDesc().getDims().size()) {
       case 1:
@@ -227,8 +228,7 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     }
   }
 
-
-  network->setBatchSize(first_dim);
+    network->setBatchSize(first_dim);
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();

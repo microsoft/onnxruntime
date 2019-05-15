@@ -104,10 +104,12 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
     #ifdef OPENVINO_CONFIG_MYRIAD
         precision_fp32 = false;
+        device_id = "MYRIAD"
     #endif
 
     #ifdef OPENVINO_CONFIG_VAD_R
         precision_fp32 = false;
+        device_id = "HDDL"
     #endif
 
 
@@ -127,6 +129,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
 
     auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+
 
     auto graph_proto = model_proto.mutable_graph();
     int input_dims = 0;
@@ -166,7 +169,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             return result;
         }
         //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
-        if(node->OpType() == "Gemm" || node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape" || node->OpType() == "MatMul"){
+        if(node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape"){
 
 
             int count = 0;
@@ -180,6 +183,11 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             if(count > 1){
                 return result;
             }
+        }
+
+        if(node->OpType() == "MatMul"){
+            if(input_dims > 2)
+                return result;
         }
         //Dropout or Identity can't have graph inputs
         if(node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
@@ -287,6 +295,9 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 }
             }
         }
+        else{
+            return result;
+        }
 
 
         for(auto index : node_indexes){
@@ -329,21 +340,10 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 }
 
 
-
 common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<onnxruntime::Node*>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
 
-    // for (const auto& fused_node : fused_nodes) {
-
-    //     auto fused_graph = fused_node->GetFunctionBody()->Body();
-
-        // auto opset = model_proto.add_opset_import();
-        // opset->set_domain(kOnnxDomain);
-        // opset->set_version(fused_graph.DomainToVersionMap().at(kOnnxDomain));
-        // model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-        // SaveModel(model_proto,"mo_model.onnx");
-    // }
 
   for (auto fused_node : fused_nodes) {
     std::shared_ptr<openvino_ep::OpenVINOGraph> openvino_graph;
