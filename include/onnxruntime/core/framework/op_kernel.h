@@ -107,14 +107,17 @@ class OpKernelContext {
     return *logger_;
   }
 
+  // always >= 0
   int InputCount() const {
     return static_cast<int>(kernel_->Node().InputDefs().size());
   }
 
+  // always >= 0
   int ImplicitInputCount() const {
     return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
   }
 
+  // always >= 0
   int OutputCount() const {
     return static_cast<int>(kernel_->Node().OutputDefs().size());
   }
