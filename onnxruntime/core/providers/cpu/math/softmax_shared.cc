@@ -25,6 +25,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include <algorithm>
+#include <cmath>
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -79,7 +80,7 @@ common::Status SoftmaxCPU(const int64_t N,
     }
   } else {
     for (int i = 0; i < N; ++i) {
-      auto log_fmaxf_scale_i = log(fmaxf(scale[i], 1e-20f));
+      auto log_fmaxf_scale_i = std::log(fmaxf(scale[i], 1e-20f));
       for (int j = 0; j < D; ++j) {
         Ydata[i * D + j] = Xdata[i * D + j] - rowmax[i] - log_fmaxf_scale_i;
       }

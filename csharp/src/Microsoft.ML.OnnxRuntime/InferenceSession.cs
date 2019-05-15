@@ -315,7 +315,7 @@ namespace Microsoft.ML.OnnxRuntime
             Type dotnetType = null;
             int width = 0;
             TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width); 
-            ulong numDimensions = NativeMethods.OrtGetNumOfDimensions(tensorInfo);
+            ulong numDimensions = NativeMethods.OrtGetDimensionsCount(tensorInfo);
             long[] dimensions = new long[(int)numDimensions];
             NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions);
             int[] intDimensions = new int[(int)numDimensions];

@@ -185,8 +185,10 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory
 // and continue to access throughout the OrtSession lifetime?
 //  What sort of access is needed to model_path : read or read/write?
-// TODO:  allow loading from an in-memory byte-array
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
+
+ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
@@ -385,10 +387,10 @@ ORT_API_STATUS(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo*, enum ON
  * \param dim_values An array with length of `dim_count`. Its elements can contain negative values.
  * \param dim_count length of dim_values
  */
-ORT_API_STATUS(OrtSetDims, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
+ORT_API_STATUS(OrtSetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
 ORT_API(enum ONNXTensorElementDataType, OrtGetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*);
-ORT_API(size_t, OrtGetNumOfDimensions, _In_ const OrtTensorTypeAndShapeInfo* info);
+ORT_API(size_t, OrtGetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info);
 ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
 
 /**
@@ -523,7 +525,7 @@ ORT_API_STATUS(OrtGetValueCount, const OrtValue* value, size_t* out);
    * sequence. 'in' should be an arrary of N OrtValues.
    * \value_type should be either map or sequence.
    */
-ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
+ORT_API_STATUS(OrtCreateValue, OrtValue** const in, size_t num_values, enum ONNXType value_type,
                OrtValue** out);
 
 /*
