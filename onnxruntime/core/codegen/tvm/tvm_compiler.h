@@ -22,7 +22,7 @@ struct TVMGraph {
    public:
     TensorDescriptor(MLDataType type, onnxruntime::ProviderType execution_provider_type, tvm::Tensor tvm_tensor);
 
-    TensorDescriptor() {}
+    TensorDescriptor() = default;
   };
   std::vector<TensorDescriptor> inputs_;
   std::vector<TensorDescriptor> outputs_;

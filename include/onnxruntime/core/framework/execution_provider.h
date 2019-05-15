@@ -52,8 +52,8 @@ class IExecutionProvider {
   }
 
   /**
-     Get allocator with specified MemType
-  */
+   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
+   */
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
   /**

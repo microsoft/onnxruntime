@@ -40,7 +40,7 @@ struct Exception : std::exception {
   Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
 
   OrtErrorCode GetOrtErrorCode() const { return code_; }
-  const char* what() const noexcept { return message_.c_str(); }
+  const char* what() const noexcept override { return message_.c_str(); }
 
  private:
   std::string message_;
@@ -149,6 +149,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
+
+  SessionOptions& EnableMemPattern();
+  SessionOptions& DisableMemPattern();
 
   SessionOptions& EnableSequentialExecution();
   SessionOptions& DisableSequentialExecution();
@@ -321,6 +324,16 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
 inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_optimization_level) {
   if (OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level) == -1)
     throw Exception("Error calling SessionOptions::SetGraphOptimizationLevel", ORT_FAIL);
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::EnableMemPattern() {
+  OrtEnableMemPattern(p_);
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::DisableMemPattern() {
+  OrtDisableMemPattern(p_);
   return *this;
 }
 
