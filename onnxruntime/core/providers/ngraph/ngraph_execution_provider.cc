@@ -12,7 +12,7 @@
 #include "ngraph_custom_op.h"
 
 #if defined(_MSC_VER)
-#pragma warning(disable:4244 4245)
+#pragma warning(disable : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -20,7 +20,7 @@
 #include <ngraph/ngraph.hpp>
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
-#pragma warning(default:4244 4245)
+#pragma warning(default : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -547,10 +547,10 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
         delete reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
 
-      const Status compute_status = ng_custom_op->Compute(input_tensors, num_inputs, output_tensors, num_outputs);
+      const Status compute_status = ng_custom_op->Compute(api, context);
 
       return compute_status == Status::OK() ? 0 : 1;
     };

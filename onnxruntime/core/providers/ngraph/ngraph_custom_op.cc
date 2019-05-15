@@ -6,14 +6,14 @@
 #include <string>
 
 #if defined(_MSC_VER)
-#pragma warning(disable:4244 4245)
+#pragma warning(disable : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
-#pragma warning(default:4244 4245)
+#pragma warning(default : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -85,8 +85,11 @@ NGRAPHCustomOp::~NGRAPHCustomOp() {
 }
 
 //This method gets called in critical path of execution: Optimize
-void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const size_t& num_inputs) const {
+void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const {
+  Ort::CustomOpApi ort{*api};
   LOGS_DEFAULT(INFO) << "nGraph compiling customOp: " << name_;
+
+  size_t num_inputs = ort.KernelContext_GetInputCount(context);
 
   //Key for ng_exe_map
   std::string uniq_input_shape;
@@ -95,9 +98,14 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
   uniq_input_shape.reserve(4 * sizeof(int64_t) * num_inputs + num_inputs);
 
   for (size_t i = 0; i < num_inputs; i++) {
-    const auto& ndim = input_tensors[i].ndim;
+    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+    auto tensor_shape = ort.GetTensorShape(tensor_info);
+    ort.ReleaseTensorTypeAndShape(tensor_info);
+
+    const auto ndim = tensor_shape.size();
     uniq_input_shape.append(reinterpret_cast<const char*>(&ndim), sizeof(ndim));
-    uniq_input_shape.append(reinterpret_cast<const char*>(input_tensors[i].shape), ndim * sizeof(int64_t));
+    uniq_input_shape.append(reinterpret_cast<const char*>(tensor_shape.data()), ndim * sizeof(int64_t));
   }
 
   auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});  //TODO: Limit the size of map with configurable size.
@@ -113,8 +121,13 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
       auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
       g_in_shape->clear_dim();
 
-      for (size_t dim = 0; dim < input_tensors[i].ndim; dim++) {
-        g_in_shape->add_dim()->set_dim_value(input_tensors[i].shape[dim]);
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      ort.ReleaseTensorTypeAndShape(tensor_info);
+
+      for (size_t dim = 0; dim < tensor_shape.size(); dim++) {
+        g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
       }
     }
 
@@ -149,14 +162,13 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
 }  // namespace ngraph_ep
 
 //This method gets called in critical path of execution: Optimize
-Status NGRAPHCustomOp::Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs, ONNXRunTimeTensor* const output_tensors, const size_t num_outputs) const {
-  ORT_UNUSED_PARAMETER(num_outputs);
-
+//Status NGRAPHCustomOp::Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs, ONNXRunTimeTensor* const output_tensors) const {
+Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   //TODO: Minimize locked region
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Initialize nGraph function if it is not already initialized.
-  Initialize(input_tensors, num_inputs);
+  Initialize(api, context);
 
   ORT_ENFORCE(ng_curr_exe_ != nullptr);
 
@@ -165,7 +177,8 @@ Status NGRAPHCustomOp::Compute(const ONNXRunTimeTensor* input_tensors, const siz
 
   // Write ONNXR input data to nGraph input tensors.
   try {
-    auto& in_tensor = input_tensors;
+    unsigned input_index = 0;
+
     for (const auto& ng_param : ng_curr_exe_->get_parameters()) {
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), (in_tensor++)->data));
     }
