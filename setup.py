@@ -99,9 +99,11 @@ setup(
     package_data={
         'onnxruntime': data + examples + extra,
     },
-    extras_require={
-        'backend': ['onnx>=1.2.3'],
+    install_requires={
         'numpy': ['numpy>=1.15.0']
+    },
+    extras_require={
+        'backend': ['onnx>=1.2.3']
     },
     entry_points= {
         'console_scripts': [
