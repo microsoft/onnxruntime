@@ -84,7 +84,7 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
-    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
+    parser.add_argument("--numpy_version", help="Installs a specific version of numpy "
                         "before building the python binding.")
     parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
@@ -219,7 +219,7 @@ def install_ubuntu_deps(args):
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel']
-    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
+    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
