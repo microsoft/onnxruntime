@@ -71,7 +71,7 @@ struct ort_endian {
 //BFloat16
 struct BFloat16 {
   uint16_t val{0};
-  explicit BFloat16() {}
+  explicit BFloat16() = default;
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
     uint16_t* dst = reinterpret_cast<uint16_t*>(&v);

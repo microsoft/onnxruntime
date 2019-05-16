@@ -17,7 +17,6 @@ class Graph;
 class KernelDef;
 class KernelRegistryManager;
 class IExecutionProvider;
-class MLValue;
 class Node;
 class Tensor;
 

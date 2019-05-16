@@ -95,6 +95,9 @@ def launch_server_app(cmd, server_ip, server_port, wait_server_ready_in_seconds)
     test_log('Wait up to {0} second(s) for server initialization'.format(wait_server_ready_in_seconds))
     wait_service_up(server_ip, server_port, wait_server_ready_in_seconds)
 
+    # Additional sleep to make sure the server is ready.
+    time.sleep(1)
+
     return server_app_proc
 
 
@@ -143,12 +146,21 @@ def json_response_validation(cls, resp, expected_resp_json_file):
         for x in actual_response['outputs'][output]['dims']:
             count = count * int(x)
 
-        actual_array = decode_base64_string(actual_response['outputs'][output]['rawData'], '{0}f'.format(count))
-        expected_array = decode_base64_string(expected_result['outputs'][output]['rawData'], '{0}f'.format(count))
-        cls.assertEqual(len(actual_array), len(expected_array))
-        cls.assertEqual(len(actual_array), count)
-        for i in range(0, count):
-            cls.assertTrue(compare_floats(actual_array[i], expected_array[i], rel_tol=0.001))
+        if actual_response['outputs'][output]['dataType'] == 10 or actual_response['outputs'][output]['dataType'] == 16:
+            actual_array = numpy.frombuffer(base64.b64decode(actual_response['outputs'][output]['rawData']), dtype=numpy.float16)
+            expected_array = numpy.frombuffer(base64.b64decode(expected_result['outputs'][output]['rawData']), dtype=numpy.float16)
+            cls.assertEqual(len(actual_array), len(expected_array))
+            cls.assertEqual(len(actual_array), count)
+            for i in range(0, count):
+                cls.assertTrue(compare_floats(actual_array[i], expected_array[i], rel_tol=0.05, abs_tol=0.05))
+        elif actual_response['outputs'][output]['dataType'] == 1:
+            actual_array = decode_base64_string(actual_response['outputs'][output]['rawData'], '{0}f'.format(count))
+            expected_array = decode_base64_string(expected_result['outputs'][output]['rawData'], '{0}f'.format(count))
+            cls.assertEqual(len(actual_array), len(expected_array))
+            cls.assertEqual(len(actual_array), count)
+            for i in range(0, count):
+                cls.assertTrue(compare_floats(actual_array[i], expected_array[i], rel_tol=0.001))
+        
 
 
 def pb_response_validation(cls, resp, expected_resp_pb_file):
@@ -171,9 +183,17 @@ def pb_response_validation(cls, resp, expected_resp_pb_file):
             cls.assertEqual(actual_result.outputs[k].dims[i], expected_result.outputs[k].dims[i])
             count = count * int(actual_result.outputs[k].dims[i])
 
-        actual_array = numpy.frombuffer(actual_result.outputs[k].raw_data, dtype=numpy.float32)
-        expected_array = numpy.frombuffer(expected_result.outputs[k].raw_data, dtype=numpy.float32)
-        cls.assertEqual(len(actual_array), len(expected_array))
-        cls.assertEqual(len(actual_array), count)
-        for i in range(0, count):
-            cls.assertTrue(compare_floats(actual_array[i], expected_array[i], rel_tol=0.001))
+        if actual_result.outputs[k].data_type == 10 or actual_result.outputs[k].data_type == 16:
+            actual_array = numpy.frombuffer(actual_result.outputs[k].raw_data, dtype=numpy.float16)
+            expected_array = numpy.frombuffer(expected_result.outputs[k].raw_data, dtype=numpy.float16)
+            cls.assertEqual(len(actual_array), len(expected_array))
+            cls.assertEqual(len(actual_array), count)
+            for i in range(0, count):
+                cls.assertTrue(compare_floats(actual_array[i], expected_array[i], rel_tol=0.05, abs_tol=0.05))
+        elif actual_result.outputs[k].data_type == 1:
+            actual_array = numpy.frombuffer(actual_result.outputs[k].raw_data, dtype=numpy.float32)
+            expected_array = numpy.frombuffer(expected_result.outputs[k].raw_data, dtype=numpy.float32)
+            cls.assertEqual(len(actual_array), len(expected_array))
+            cls.assertEqual(len(actual_array), count)
+            for i in range(0, count):
+                cls.assertTrue(compare_floats(actual_array[i], expected_array[i], rel_tol=0.001))

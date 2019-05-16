@@ -4,10 +4,9 @@
 # -*- coding: UTF-8 -*-
 import unittest
 import os
-import sys
 import numpy as np
 import onnxruntime as onnxrt
-from onnxruntime.capi._pybind_state import onnxruntime_ostream_redirect
+import threading
 
 
 class TestInferenceSession(unittest.TestCase):
@@ -24,6 +23,13 @@ class TestInferenceSession(unittest.TestCase):
         if os.path.exists(res):
             return res
         raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+
+    def run_model(self, session_object, run_options):
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = session_object.get_inputs()[0].name
+        res = session_object.run([], {input_name: x}, run_options=run_options)
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.pb"))
@@ -71,6 +77,22 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+    def testRunModelMultipleThreads(self):
+        so = onnxrt.SessionOptions()
+        so.session_log_verbosity_level = 1
+        so.session_logid = "MultiThreadsTest"
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.pb"), sess_options=so)
+        ro1 = onnxrt.RunOptions()
+        ro1.run_tag =  "thread1"
+        t1 = threading.Thread(target=self.run_model, args = (sess, ro1))
+        ro2 = onnxrt.RunOptions()
+        ro2.run_tag = "thread2"
+        t2 = threading.Thread(target=self.run_model, args = (sess, ro2))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
     def testRunDevice(self):
         device = onnxrt.get_device()
@@ -315,29 +337,6 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual('', modelmeta.domain)
         self.assertEqual('', modelmeta.description)
 
-    def testConfigureSessionVerbosityLevel(self):
-        so = onnxrt.SessionOptions()
-        so.session_log_verbosity_level = 1
-
-        # use onnxruntime_ostream_redirect to redirect c++ stdout/stderr to python sys.stdout and sys.stderr
-        with onnxruntime_ostream_redirect(stdout=True, stderr=True):
-          sess = onnxrt.InferenceSession(self.get_name("matmul_1.pb"), sess_options=so)
-          output = sys.stderr.getvalue()
-          self.assertTrue('[I:onnxruntime:InferenceSession, inference_session' in output)
-
-    def testConfigureRunVerbosityLevel(self):
-        ro = onnxrt.RunOptions()
-        ro.run_log_verbosity_level = 1
-        ro.run_tag = "testtag123"
-
-        # use onnxruntime_ostream_redirect to redirect c++ stdout/stderr to python sys.stdout and sys.stderr
-        with onnxruntime_ostream_redirect(stdout=True, stderr=True):
-            sess = onnxrt.InferenceSession(self.get_name("mul_1.pb"))
-            x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-            sess.run([], {'X': x}, run_options=ro)
-            output = sys.stderr.getvalue()
-            self.assertTrue('[I:onnxruntime:testtag123,' in output)
-
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()
         so.enable_profiling = True
@@ -459,4 +458,4 @@ class TestInferenceSession(unittest.TestCase):
 
         
 if __name__ == '__main__':
-    unittest.main(module=__name__, buffer=True)
+    unittest.main()
