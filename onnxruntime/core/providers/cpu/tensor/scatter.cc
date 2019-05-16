@@ -60,7 +60,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
       std::string* dst = data_output->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(dst_base, src_base, total_input_bytes);
+      memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);
     }
   }
 
