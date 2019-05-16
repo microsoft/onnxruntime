@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgrpc++_error_details.a  CMakeFiles/grpc++_error_details.dir/gens/src/proto/grpc/status/status.pb.cc.o CMakeFiles/grpc++_error_details.dir/gens/src/proto/grpc/status/status.grpc.pb.cc.o CMakeFiles/grpc++_error_details.dir/src/cpp/util/error_details.cc.o
+/usr/bin/ranlib libgrpc++_error_details.a

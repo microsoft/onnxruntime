@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgrpc++_reflection.a  CMakeFiles/grpc++_reflection.dir/src/cpp/ext/proto_server_reflection.cc.o CMakeFiles/grpc++_reflection.dir/src/cpp/ext/proto_server_reflection_plugin.cc.o CMakeFiles/grpc++_reflection.dir/gens/src/proto/grpc/reflection/v1alpha/reflection.pb.cc.o CMakeFiles/grpc++_reflection.dir/gens/src/proto/grpc/reflection/v1alpha/reflection.grpc.pb.cc.o
+/usr/bin/ranlib libgrpc++_reflection.a

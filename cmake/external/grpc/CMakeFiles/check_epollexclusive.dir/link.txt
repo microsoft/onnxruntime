@@ -1,0 +1,1 @@
+/usr/bin/cc  -std=c99  -rdynamic CMakeFiles/check_epollexclusive.dir/test/build/check_epollexclusive.c.o  -o check_epollexclusive -ldl -lrt -lm -lpthread libgrpc.a libgpr.a third_party/boringssl/ssl/libssl.a third_party/boringssl/crypto/libcrypto.a third_party/zlib/libz.a third_party/cares/cares/lib/libcares.a -lnsl libaddress_sorting.a -ldl -lrt -lm -lpthread 

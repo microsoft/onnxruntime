@@ -1,0 +1,964 @@
+Determining if the function res_servicename exists in the resolv failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_48009/fast 
+/usr/bin/make -f CMakeFiles/cmTC_48009.dir/build.make CMakeFiles/cmTC_48009.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_48009.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=res_servicename -fPIE   -o CMakeFiles/cmTC_48009.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_48009
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_48009.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=res_servicename    -rdynamic CMakeFiles/cmTC_48009.dir/CheckFunctionExists.c.o  -o cmTC_48009 -lresolv 
+CMakeFiles/cmTC_48009.dir/CheckFunctionExists.c.o: In function `main':
+CheckFunctionExists.c:(.text+0x10): undefined reference to `res_servicename'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_48009.dir/build.make:86: recipe for target 'cmTC_48009' failed
+make[1]: *** [cmTC_48009] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_48009/fast' failed
+make: *** [cmTC_48009/fast] Error 2
+
+
+Determining if the function gethostbyname exists in the socket failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_efc0f/fast 
+/usr/bin/make -f CMakeFiles/cmTC_efc0f.dir/build.make CMakeFiles/cmTC_efc0f.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_efc0f.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=gethostbyname -fPIE   -o CMakeFiles/cmTC_efc0f.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_efc0f
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_efc0f.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=gethostbyname    -rdynamic CMakeFiles/cmTC_efc0f.dir/CheckFunctionExists.c.o  -o cmTC_efc0f -lsocket 
+/usr/bin/ld: cannot find -lsocket
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_efc0f.dir/build.make:86: recipe for target 'cmTC_efc0f' failed
+make[1]: *** [cmTC_efc0f] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_efc0f/fast' failed
+make: *** [cmTC_efc0f/fast] Error 2
+
+
+Determining if the function socket exists in the socket failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b4ff2/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b4ff2.dir/build.make CMakeFiles/cmTC_b4ff2.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b4ff2.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=socket -fPIE   -o CMakeFiles/cmTC_b4ff2.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_b4ff2
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b4ff2.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=socket    -rdynamic CMakeFiles/cmTC_b4ff2.dir/CheckFunctionExists.c.o  -o cmTC_b4ff2 -lsocket 
+/usr/bin/ld: cannot find -lsocket
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_b4ff2.dir/build.make:86: recipe for target 'cmTC_b4ff2' failed
+make[1]: *** [cmTC_b4ff2] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_b4ff2/fast' failed
+make: *** [cmTC_b4ff2/fast] Error 2
+
+
+Determining if files socket.h exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_97ffa/fast 
+/usr/bin/make -f CMakeFiles/cmTC_97ffa.dir/build.make CMakeFiles/cmTC_97ffa.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_97ffa.dir/HAVE_SOCKET_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_97ffa.dir/HAVE_SOCKET_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SOCKET_H.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SOCKET_H.c:2:10: fatal error: socket.h: No such file or directory
+ #include <socket.h>
+          ^~~~~~~~~~
+compilation terminated.
+CMakeFiles/cmTC_97ffa.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_97ffa.dir/HAVE_SOCKET_H.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_97ffa.dir/HAVE_SOCKET_H.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_97ffa/fast' failed
+make: *** [cmTC_97ffa/fast] Error 2
+
+Source:
+/* */
+#include <socket.h>
+
+
+int main(void){return 0;}
+
+Determining if files winsock2.h;windows.h exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f3229/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f3229.dir/build.make CMakeFiles/cmTC_f3229.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f3229.dir/HAVE_WINSOCK2_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_f3229.dir/HAVE_WINSOCK2_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WINSOCK2_H.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WINSOCK2_H.c:2:10: fatal error: winsock2.h: No such file or directory
+ #include <winsock2.h>
+          ^~~~~~~~~~~~
+compilation terminated.
+CMakeFiles/cmTC_f3229.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_f3229.dir/HAVE_WINSOCK2_H.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_f3229.dir/HAVE_WINSOCK2_H.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_f3229/fast' failed
+make: *** [cmTC_f3229/fast] Error 2
+
+Source:
+/* */
+#include <winsock2.h>
+#include <windows.h>
+
+
+int main(void){return 0;}
+
+Determining if files winsock2.h;ws2tcpip.h;windows.h exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f77ad/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f77ad.dir/build.make CMakeFiles/cmTC_f77ad.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f77ad.dir/HAVE_WS2TCPIP_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_f77ad.dir/HAVE_WS2TCPIP_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WS2TCPIP_H.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WS2TCPIP_H.c:2:10: fatal error: winsock2.h: No such file or directory
+ #include <winsock2.h>
+          ^~~~~~~~~~~~
+compilation terminated.
+CMakeFiles/cmTC_f77ad.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_f77ad.dir/HAVE_WS2TCPIP_H.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_f77ad.dir/HAVE_WS2TCPIP_H.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_f77ad/fast' failed
+make: *** [cmTC_f77ad/fast] Error 2
+
+Source:
+/* */
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+
+
+int main(void){return 0;}
+
+Determining if files winsock.h;windows.h exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a8755/fast 
+/usr/bin/make -f CMakeFiles/cmTC_a8755.dir/build.make CMakeFiles/cmTC_a8755.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_a8755.dir/HAVE_WINSOCK_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_a8755.dir/HAVE_WINSOCK_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WINSOCK_H.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WINSOCK_H.c:2:10: fatal error: winsock.h: No such file or directory
+ #include <winsock.h>
+          ^~~~~~~~~~~
+compilation terminated.
+CMakeFiles/cmTC_a8755.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_a8755.dir/HAVE_WINSOCK_H.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_a8755.dir/HAVE_WINSOCK_H.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_a8755/fast' failed
+make: *** [cmTC_a8755/fast] Error 2
+
+Source:
+/* */
+#include <winsock.h>
+#include <windows.h>
+
+
+int main(void){return 0;}
+
+Determining if files windows.h exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_6191f/fast 
+/usr/bin/make -f CMakeFiles/cmTC_6191f.dir/build.make CMakeFiles/cmTC_6191f.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_6191f.dir/HAVE_WINDOWS_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_6191f.dir/HAVE_WINDOWS_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WINDOWS_H.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_WINDOWS_H.c:2:10: fatal error: windows.h: No such file or directory
+ #include <windows.h>
+          ^~~~~~~~~~~
+compilation terminated.
+CMakeFiles/cmTC_6191f.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_6191f.dir/HAVE_WINDOWS_H.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_6191f.dir/HAVE_WINDOWS_H.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_6191f/fast' failed
+make: *** [cmTC_6191f/fast] Error 2
+
+Source:
+/* */
+#include <windows.h>
+
+
+int main(void){return 0;}
+
+Performing C SOURCE FILE Test HAVE_TYPE_SOCKET failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f4217/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f4217.dir/build.make CMakeFiles/cmTC_f4217.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f4217.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_TYPE_SOCKET -fPIE   -o CMakeFiles/cmTC_f4217.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c:26:4: error: unknown type name ‘SOCKET’; did you mean ‘LOCK_EX’?
+    SOCKET var_exists;
+    ^~~~~~
+    LOCK_EX
+CMakeFiles/cmTC_f4217.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_f4217.dir/src.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_f4217.dir/src.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_f4217/fast' failed
+make: *** [cmTC_f4217/fast] Error 2
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			SOCKET var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Determining if the SO_NONBLOCK exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7e18f/fast 
+/usr/bin/make -f CMakeFiles/cmTC_7e18f.dir/build.make CMakeFiles/cmTC_7e18f.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_7e18f.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_7e18f.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘SO_NONBLOCK’ undeclared (first use in this function); did you mean ‘O_NONBLOCK’?
+   return ((int*)(&SO_NONBLOCK))[argc];
+                   ^~~~~~~~~~~
+                   O_NONBLOCK
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_7e18f.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_7e18f.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_7e18f.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_7e18f/fast' failed
+make: *** [cmTC_7e18f/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef SO_NONBLOCK
+  return ((int*)(&SO_NONBLOCK))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the bitncmp exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_69c1d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_69c1d.dir/build.make CMakeFiles/cmTC_69c1d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_69c1d.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_69c1d.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘bitncmp’ undeclared (first use in this function); did you mean ‘bcmp’?
+   return ((int*)(&bitncmp))[argc];
+                   ^~~~~~~
+                   bcmp
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_69c1d.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_69c1d.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_69c1d.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_69c1d/fast' failed
+make: *** [cmTC_69c1d/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef bitncmp
+  return ((int*)(&bitncmp))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the closesocket exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8f803/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8f803.dir/build.make CMakeFiles/cmTC_8f803.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8f803.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_8f803.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘closesocket’ undeclared (first use in this function); did you mean ‘socket’?
+   return ((int*)(&closesocket))[argc];
+                   ^~~~~~~~~~~
+                   socket
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_8f803.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_8f803.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_8f803.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_8f803/fast' failed
+make: *** [cmTC_8f803/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef closesocket
+  return ((int*)(&closesocket))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the CloseSocket exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_23a83/fast 
+/usr/bin/make -f CMakeFiles/cmTC_23a83.dir/build.make CMakeFiles/cmTC_23a83.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_23a83.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_23a83.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘CloseSocket’ undeclared (first use in this function); did you mean ‘socket’?
+   return ((int*)(&CloseSocket))[argc];
+                   ^~~~~~~~~~~
+                   socket
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_23a83.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_23a83.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_23a83.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_23a83/fast' failed
+make: *** [cmTC_23a83/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef CloseSocket
+  return ((int*)(&CloseSocket))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the inet_net_pton exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f486f/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f486f.dir/build.make CMakeFiles/cmTC_f486f.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f486f.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_f486f.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_f486f
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f486f.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f486f.dir/CheckSymbolExists.c.o  -o cmTC_f486f -lnsl -lrt 
+CMakeFiles/cmTC_f486f.dir/CheckSymbolExists.c.o: In function `main':
+CheckSymbolExists.c:(.text+0x1b): undefined reference to `inet_net_pton'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_f486f.dir/build.make:86: recipe for target 'cmTC_f486f' failed
+make[1]: *** [cmTC_f486f] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_f486f/fast' failed
+make: *** [cmTC_f486f/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef inet_net_pton
+  return ((int*)(&inet_net_pton))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the ioctlsocket exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_6642a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_6642a.dir/build.make CMakeFiles/cmTC_6642a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_6642a.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_6642a.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘ioctlsocket’ undeclared (first use in this function); did you mean ‘socket’?
+   return ((int*)(&ioctlsocket))[argc];
+                   ^~~~~~~~~~~
+                   socket
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_6642a.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_6642a.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_6642a.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_6642a/fast' failed
+make: *** [cmTC_6642a/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef ioctlsocket
+  return ((int*)(&ioctlsocket))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the IoctlSocket exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a30e7/fast 
+/usr/bin/make -f CMakeFiles/cmTC_a30e7.dir/build.make CMakeFiles/cmTC_a30e7.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_a30e7.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_a30e7.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘IoctlSocket’ undeclared (first use in this function); did you mean ‘clock_t’?
+   return ((int*)(&IoctlSocket))[argc];
+                   ^~~~~~~~~~~
+                   clock_t
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_a30e7.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_a30e7.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_a30e7.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_a30e7/fast' failed
+make: *** [cmTC_a30e7/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef IoctlSocket
+  return ((int*)(&IoctlSocket))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the strcmpi exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b3489/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b3489.dir/build.make CMakeFiles/cmTC_b3489.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b3489.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_b3489.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘strcmpi’ undeclared (first use in this function); did you mean ‘strcmp’?
+   return ((int*)(&strcmpi))[argc];
+                   ^~~~~~~
+                   strcmp
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_b3489.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_b3489.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_b3489.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_b3489/fast' failed
+make: *** [cmTC_b3489/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strcmpi
+  return ((int*)(&strcmpi))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the stricmp exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f1394/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f1394.dir/build.make CMakeFiles/cmTC_f1394.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f1394.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_f1394.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘stricmp’ undeclared (first use in this function); did you mean ‘strncmp’?
+   return ((int*)(&stricmp))[argc];
+                   ^~~~~~~
+                   strncmp
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_f1394.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_f1394.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_f1394.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_f1394/fast' failed
+make: *** [cmTC_f1394/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef stricmp
+  return ((int*)(&stricmp))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the strncmpi exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_12714/fast 
+/usr/bin/make -f CMakeFiles/cmTC_12714.dir/build.make CMakeFiles/cmTC_12714.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_12714.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_12714.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘strncmpi’ undeclared (first use in this function); did you mean ‘strncmp’?
+   return ((int*)(&strncmpi))[argc];
+                   ^~~~~~~~
+                   strncmp
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_12714.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_12714.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_12714.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_12714/fast' failed
+make: *** [cmTC_12714/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strncmpi
+  return ((int*)(&strncmpi))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the strnicmp exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c247a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c247a.dir/build.make CMakeFiles/cmTC_c247a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_c247a.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_c247a.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c: In function ‘main’:
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: error: ‘strnicmp’ undeclared (first use in this function); did you mean ‘strncmp’?
+   return ((int*)(&strnicmp))[argc];
+                   ^~~~~~~~
+                   strncmp
+/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:27:19: note: each undeclared identifier is reported only once for each function it appears in
+CMakeFiles/cmTC_c247a.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_c247a.dir/CheckSymbolExists.c.o' failed
+make[1]: *** [CMakeFiles/cmTC_c247a.dir/CheckSymbolExists.c.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_c247a/fast' failed
+make: *** [cmTC_c247a/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strnicmp
+  return ((int*)(&strnicmp))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the function __system_property_get exists failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_cbbaa/fast 
+/usr/bin/make -f CMakeFiles/cmTC_cbbaa.dir/build.make CMakeFiles/cmTC_cbbaa.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_cbbaa.dir/CheckFunctionExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DCHECK_FUNCTION_EXISTS=__system_property_get -fPIE   -o CMakeFiles/cmTC_cbbaa.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_cbbaa
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cbbaa.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=__system_property_get    -rdynamic CMakeFiles/cmTC_cbbaa.dir/CheckFunctionExists.c.o  -o cmTC_cbbaa -lnsl -lrt 
+CMakeFiles/cmTC_cbbaa.dir/CheckFunctionExists.c.o: In function `main':
+CheckFunctionExists.c:(.text+0x10): undefined reference to `__system_property_get'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_cbbaa.dir/build.make:86: recipe for target 'cmTC_cbbaa' failed
+make[1]: *** [cmTC_cbbaa] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_cbbaa/fast' failed
+make: *** [cmTC_cbbaa/fast] Error 2
+
+
+Determining if the pthread_create exist failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5e9c8/fast 
+/usr/bin/make -f CMakeFiles/cmTC_5e9c8.dir/build.make CMakeFiles/cmTC_5e9c8.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_5e9c8.dir/CheckSymbolExists.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_5e9c8.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_5e9c8
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5e9c8.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_5e9c8.dir/CheckSymbolExists.c.o  -o cmTC_5e9c8 
+CMakeFiles/cmTC_5e9c8.dir/CheckSymbolExists.c.o: In function `main':
+CheckSymbolExists.c:(.text+0x1b): undefined reference to `pthread_create'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_5e9c8.dir/build.make:86: recipe for target 'cmTC_5e9c8' failed
+make[1]: *** [cmTC_5e9c8] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_5e9c8/fast' failed
+make: *** [cmTC_5e9c8/fast] Error 2
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <pthread.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef pthread_create
+  return ((int*)(&pthread_create))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_e6fdd/fast 
+/usr/bin/make -f CMakeFiles/cmTC_e6fdd.dir/build.make CMakeFiles/cmTC_e6fdd.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_e6fdd.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pthread_create -fPIE   -o CMakeFiles/cmTC_e6fdd.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_e6fdd
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e6fdd.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=pthread_create    -rdynamic CMakeFiles/cmTC_e6fdd.dir/CheckFunctionExists.c.o  -o cmTC_e6fdd -lpthreads 
+/usr/bin/ld: cannot find -lpthreads
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_e6fdd.dir/build.make:86: recipe for target 'cmTC_e6fdd' failed
+make[1]: *** [cmTC_e6fdd] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_e6fdd/fast' failed
+make: *** [cmTC_e6fdd/fast] Error 2
+
+
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WSHORTEN_64_TO_32 failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_4e81a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_4e81a.dir/build.make CMakeFiles/cmTC_4e81a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_4e81a.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors -DHAVE_CXX_FLAG_WSHORTEN_64_TO_32  -Wshorten-64-to-32 -fPIE   -Wshorten-64-to-32 -o CMakeFiles/cmTC_4e81a.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wshorten-64-to-32'
+c++: error: unrecognized command line option '-Wshorten-64-to-32'
+CMakeFiles/cmTC_4e81a.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_4e81a.dir/src.cxx.o' failed
+make[1]: *** [CMakeFiles/cmTC_4e81a.dir/src.cxx.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_4e81a/fast' failed
+make: *** [cmTC_4e81a/fast] Error 2
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WD654 failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8162c/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8162c.dir/build.make CMakeFiles/cmTC_8162c.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_8162c.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DHAVE_CXX_FLAG_WD654  -wd654 -fPIE   -wd654 -o CMakeFiles/cmTC_8162c.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-wd654'
+c++: error: unrecognized command line option '-wd654'
+CMakeFiles/cmTC_8162c.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_8162c.dir/src.cxx.o' failed
+make[1]: *** [CMakeFiles/cmTC_8162c.dir/src.cxx.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_8162c/fast' failed
+make: *** [cmTC_8162c/fast] Error 2
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WTHREAD_SAFETY failed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5a226/fast 
+/usr/bin/make -f CMakeFiles/cmTC_5a226.dir/build.make CMakeFiles/cmTC_5a226.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_5a226.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DHAVE_CXX_FLAG_WTHREAD_SAFETY  -Wthread-safety -fPIE   -Wthread-safety -o CMakeFiles/cmTC_5a226.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+c++: error: unrecognized command line option '-Wthread-safety'; did you mean '-fthread-jumps'?
+c++: error: unrecognized command line option '-Wthread-safety'; did you mean '-fthread-jumps'?
+CMakeFiles/cmTC_5a226.dir/build.make:65: recipe for target 'CMakeFiles/cmTC_5a226.dir/src.cxx.o' failed
+make[1]: *** [CMakeFiles/cmTC_5a226.dir/src.cxx.o] Error 1
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Makefile:121: recipe for target 'cmTC_5a226/fast' failed
+make: *** [cmTC_5a226/fast] Error 2
+
+Source file was:
+int main() { return 0; }

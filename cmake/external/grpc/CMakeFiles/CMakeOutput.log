@@ -1,0 +1,3609 @@
+The system is: Linux - 4.18.0-1014-azure - x86_64
+Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+Compiler: /usr/bin/cc 
+Build flags: 
+Id flags:  
+
+The output was:
+0
+
+
+Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.out"
+
+The C compiler identification is GNU, found in "/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/3.14.3/CompilerIdC/a.out"
+
+Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+Compiler: /usr/bin/c++ 
+Build flags: 
+Id flags:  
+
+The output was:
+0
+
+
+Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+
+The CXX compiler identification is GNU, found in "/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/3.14.3/CompilerIdCXX/a.out"
+
+Determining if the C compiler works passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_82de6/fast 
+/usr/bin/make -f CMakeFiles/cmTC_82de6.dir/build.make CMakeFiles/cmTC_82de6.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_82de6.dir/testCCompiler.c.o
+/usr/bin/cc    -o CMakeFiles/cmTC_82de6.dir/testCCompiler.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/testCCompiler.c
+Linking C executable cmTC_82de6
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_82de6.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_82de6.dir/testCCompiler.c.o  -o cmTC_82de6 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Detecting C compiler ABI info compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_cf9f3/fast 
+/usr/bin/make -f CMakeFiles/cmTC_cf9f3.dir/build.make CMakeFiles/cmTC_cf9f3.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o
+/usr/bin/cc   -v -o CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o   -c /usr/local/share/cmake-3.14/Modules/CMakeCCompilerABI.c
+Using built-in specs.
+COLLECT_GCC=/usr/bin/cc
+OFFLOAD_TARGET_NAMES=nvptx-none
+OFFLOAD_TARGET_DEFAULT=1
+Target: x86_64-linux-gnu
+Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu
+Thread model: posix
+gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) 
+COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64'
+ /usr/lib/gcc/x86_64-linux-gnu/7/cc1 -quiet -v -imultiarch x86_64-linux-gnu /usr/local/share/cmake-3.14/Modules/CMakeCCompilerABI.c -quiet -dumpbase CMakeCCompilerABI.c -mtune=generic -march=x86-64 -auxbase-strip CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o -version -fstack-protector-strong -Wformat -Wformat-security -o /tmp/cce62M79.s
+GNU C11 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)
+	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP
+
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"
+ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/7/../../../../x86_64-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /usr/lib/gcc/x86_64-linux-gnu/7/include
+ /usr/local/include
+ /usr/lib/gcc/x86_64-linux-gnu/7/include-fixed
+ /usr/include/x86_64-linux-gnu
+ /usr/include
+End of search list.
+GNU C11 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)
+	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP
+
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+Compiler executable checksum: ed867d3a178a50a244bc36d984e23f37
+COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64'
+ as -v --64 -o CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o /tmp/cce62M79.s
+GNU assembler version 2.30 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.30
+COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/
+LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64'
+Linking C executable cmTC_cf9f3
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cf9f3.dir/link.txt --verbose=1
+/usr/bin/cc     -v -rdynamic CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o  -o cmTC_cf9f3 
+Using built-in specs.
+COLLECT_GCC=/usr/bin/cc
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper
+OFFLOAD_TARGET_NAMES=nvptx-none
+OFFLOAD_TARGET_DEFAULT=1
+Target: x86_64-linux-gnu
+Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu
+Thread model: posix
+gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) 
+COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/
+LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_cf9f3' '-mtune=generic' '-march=x86-64'
+ /usr/lib/gcc/x86_64-linux-gnu/7/collect2 -plugin /usr/lib/gcc/x86_64-linux-gnu/7/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper -plugin-opt=-fresolution=/tmp/cc2OhqMa.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s --sysroot=/ --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_cf9f3 /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/7/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/7/../../.. CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o -lgcc --push-state --as-needed -lgcc_s --pop-state -lc -lgcc --push-state --as-needed -lgcc_s --pop-state /usr/lib/gcc/x86_64-linux-gnu/7/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crtn.o
+COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_cf9f3' '-mtune=generic' '-march=x86-64'
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Parsed C implicit include dir info from above output: rv=done
+  found start of include info
+  found start of implicit include info
+    add: [/usr/lib/gcc/x86_64-linux-gnu/7/include]
+    add: [/usr/local/include]
+    add: [/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed]
+    add: [/usr/include/x86_64-linux-gnu]
+    add: [/usr/include]
+  end of search list found
+  collapse include dir [/usr/lib/gcc/x86_64-linux-gnu/7/include] ==> [/usr/lib/gcc/x86_64-linux-gnu/7/include]
+  collapse include dir [/usr/local/include] ==> [/usr/local/include]
+  collapse include dir [/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed] ==> [/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed]
+  collapse include dir [/usr/include/x86_64-linux-gnu] ==> [/usr/include/x86_64-linux-gnu]
+  collapse include dir [/usr/include] ==> [/usr/include]
+  implicit include dirs: [/usr/lib/gcc/x86_64-linux-gnu/7/include;/usr/local/include;/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed;/usr/include/x86_64-linux-gnu;/usr/include]
+
+
+Parsed C implicit link information from above output:
+  link line regex: [^( *|.*[/\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\]+-)?ld|collect2)[^/\]*( |$)]
+  ignore line: [Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp]
+  ignore line: []
+  ignore line: [Run Build Command(s):/usr/bin/make cmTC_cf9f3/fast ]
+  ignore line: [/usr/bin/make -f CMakeFiles/cmTC_cf9f3.dir/build.make CMakeFiles/cmTC_cf9f3.dir/build]
+  ignore line: [make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp']
+  ignore line: [Building C object CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o]
+  ignore line: [/usr/bin/cc   -v -o CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o   -c /usr/local/share/cmake-3.14/Modules/CMakeCCompilerABI.c]
+  ignore line: [Using built-in specs.]
+  ignore line: [COLLECT_GCC=/usr/bin/cc]
+  ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none]
+  ignore line: [OFFLOAD_TARGET_DEFAULT=1]
+  ignore line: [Target: x86_64-linux-gnu]
+  ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu]
+  ignore line: [Thread model: posix]
+  ignore line: [gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) ]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64']
+  ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/7/cc1 -quiet -v -imultiarch x86_64-linux-gnu /usr/local/share/cmake-3.14/Modules/CMakeCCompilerABI.c -quiet -dumpbase CMakeCCompilerABI.c -mtune=generic -march=x86-64 -auxbase-strip CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o -version -fstack-protector-strong -Wformat -Wformat-security -o /tmp/cce62M79.s]
+  ignore line: [GNU C11 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)]
+  ignore line: [	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP]
+  ignore line: []
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"]
+  ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/7/../../../../x86_64-linux-gnu/include"]
+  ignore line: [#include "..." search starts here:]
+  ignore line: [#include <...> search starts here:]
+  ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/7/include]
+  ignore line: [ /usr/local/include]
+  ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/7/include-fixed]
+  ignore line: [ /usr/include/x86_64-linux-gnu]
+  ignore line: [ /usr/include]
+  ignore line: [End of search list.]
+  ignore line: [GNU C11 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)]
+  ignore line: [	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP]
+  ignore line: []
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [Compiler executable checksum: ed867d3a178a50a244bc36d984e23f37]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64']
+  ignore line: [ as -v --64 -o CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o /tmp/cce62M79.s]
+  ignore line: [GNU assembler version 2.30 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.30]
+  ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/]
+  ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64']
+  ignore line: [Linking C executable cmTC_cf9f3]
+  ignore line: [/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cf9f3.dir/link.txt --verbose=1]
+  ignore line: [/usr/bin/cc     -v -rdynamic CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o  -o cmTC_cf9f3 ]
+  ignore line: [Using built-in specs.]
+  ignore line: [COLLECT_GCC=/usr/bin/cc]
+  ignore line: [COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper]
+  ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none]
+  ignore line: [OFFLOAD_TARGET_DEFAULT=1]
+  ignore line: [Target: x86_64-linux-gnu]
+  ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu]
+  ignore line: [Thread model: posix]
+  ignore line: [gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) ]
+  ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/]
+  ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_cf9f3' '-mtune=generic' '-march=x86-64']
+  link line: [ /usr/lib/gcc/x86_64-linux-gnu/7/collect2 -plugin /usr/lib/gcc/x86_64-linux-gnu/7/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper -plugin-opt=-fresolution=/tmp/cc2OhqMa.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s --sysroot=/ --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_cf9f3 /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/7/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/7/../../.. CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o -lgcc --push-state --as-needed -lgcc_s --pop-state -lc -lgcc --push-state --as-needed -lgcc_s --pop-state /usr/lib/gcc/x86_64-linux-gnu/7/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crtn.o]
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/collect2] ==> ignore
+    arg [-plugin] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/liblto_plugin.so] ==> ignore
+    arg [-plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper] ==> ignore
+    arg [-plugin-opt=-fresolution=/tmp/cc2OhqMa.res] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+    arg [-plugin-opt=-pass-through=-lc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+    arg [--sysroot=/] ==> ignore
+    arg [--build-id] ==> ignore
+    arg [--eh-frame-hdr] ==> ignore
+    arg [-m] ==> ignore
+    arg [elf_x86_64] ==> ignore
+    arg [--hash-style=gnu] ==> ignore
+    arg [--as-needed] ==> ignore
+    arg [-export-dynamic] ==> ignore
+    arg [-dynamic-linker] ==> ignore
+    arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+    arg [-pie] ==> ignore
+    arg [-znow] ==> ignore
+    arg [-zrelro] ==> ignore
+    arg [-o] ==> ignore
+    arg [cmTC_cf9f3] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crti.o] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/crtbeginS.o] ==> ignore
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7]
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu]
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib]
+    arg [-L/lib/x86_64-linux-gnu] ==> dir [/lib/x86_64-linux-gnu]
+    arg [-L/lib/../lib] ==> dir [/lib/../lib]
+    arg [-L/usr/lib/x86_64-linux-gnu] ==> dir [/usr/lib/x86_64-linux-gnu]
+    arg [-L/usr/lib/../lib] ==> dir [/usr/lib/../lib]
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7/../../..] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../..]
+    arg [CMakeFiles/cmTC_cf9f3.dir/CMakeCCompilerABI.c.o] ==> ignore
+    arg [-lgcc] ==> lib [gcc]
+    arg [--push-state] ==> ignore
+    arg [--as-needed] ==> ignore
+    arg [-lgcc_s] ==> lib [gcc_s]
+    arg [--pop-state] ==> ignore
+    arg [-lc] ==> lib [c]
+    arg [-lgcc] ==> lib [gcc]
+    arg [--push-state] ==> ignore
+    arg [--as-needed] ==> ignore
+    arg [-lgcc_s] ==> lib [gcc_s]
+    arg [--pop-state] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/crtendS.o] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crtn.o] ==> ignore
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7] ==> [/usr/lib/gcc/x86_64-linux-gnu/7]
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib] ==> [/usr/lib]
+  collapse library dir [/lib/x86_64-linux-gnu] ==> [/lib/x86_64-linux-gnu]
+  collapse library dir [/lib/../lib] ==> [/lib]
+  collapse library dir [/usr/lib/x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+  collapse library dir [/usr/lib/../lib] ==> [/usr/lib]
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../..] ==> [/usr/lib]
+  implicit libs: [gcc;gcc_s;c;gcc;gcc_s]
+  implicit dirs: [/usr/lib/gcc/x86_64-linux-gnu/7;/usr/lib/x86_64-linux-gnu;/usr/lib;/lib/x86_64-linux-gnu;/lib]
+  implicit fwks: []
+
+
+
+
+Detecting C [-std=c11] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_88e91/fast 
+/usr/bin/make -f CMakeFiles/cmTC_88e91.dir/build.make CMakeFiles/cmTC_88e91.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_88e91.dir/feature_tests.c.o
+/usr/bin/cc   -std=c11 -o CMakeFiles/cmTC_88e91.dir/feature_tests.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.c
+Linking C executable cmTC_88e91
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_88e91.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_88e91.dir/feature_tests.c.o  -o cmTC_88e91 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: C_FEATURE:1c_function_prototypes
+    Feature record: C_FEATURE:1c_restrict
+    Feature record: C_FEATURE:1c_static_assert
+    Feature record: C_FEATURE:1c_variadic_macros
+
+
+Detecting C [-std=c99] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b571d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b571d.dir/build.make CMakeFiles/cmTC_b571d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b571d.dir/feature_tests.c.o
+/usr/bin/cc   -std=c99 -o CMakeFiles/cmTC_b571d.dir/feature_tests.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.c
+Linking C executable cmTC_b571d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b571d.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b571d.dir/feature_tests.c.o  -o cmTC_b571d 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: C_FEATURE:1c_function_prototypes
+    Feature record: C_FEATURE:1c_restrict
+    Feature record: C_FEATURE:0c_static_assert
+    Feature record: C_FEATURE:1c_variadic_macros
+
+
+Detecting C [-std=c90] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c9f35/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c9f35.dir/build.make CMakeFiles/cmTC_c9f35.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_c9f35.dir/feature_tests.c.o
+/usr/bin/cc   -std=c90 -o CMakeFiles/cmTC_c9f35.dir/feature_tests.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.c
+Linking C executable cmTC_c9f35
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c9f35.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_c9f35.dir/feature_tests.c.o  -o cmTC_c9f35 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: C_FEATURE:1c_function_prototypes
+    Feature record: C_FEATURE:0c_restrict
+    Feature record: C_FEATURE:0c_static_assert
+    Feature record: C_FEATURE:0c_variadic_macros
+Determining if the CXX compiler works passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_d373a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_d373a.dir/build.make CMakeFiles/cmTC_d373a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_d373a.dir/testCXXCompiler.cxx.o
+/usr/bin/c++     -o CMakeFiles/cmTC_d373a.dir/testCXXCompiler.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/testCXXCompiler.cxx
+Linking CXX executable cmTC_d373a
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d373a.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_d373a.dir/testCXXCompiler.cxx.o  -o cmTC_d373a 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Detecting CXX compiler ABI info compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ce0a6/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ce0a6.dir/build.make CMakeFiles/cmTC_ce0a6.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o
+/usr/bin/c++    -v -o CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o -c /usr/local/share/cmake-3.14/Modules/CMakeCXXCompilerABI.cpp
+Using built-in specs.
+COLLECT_GCC=/usr/bin/c++
+OFFLOAD_TARGET_NAMES=nvptx-none
+OFFLOAD_TARGET_DEFAULT=1
+Target: x86_64-linux-gnu
+Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu
+Thread model: posix
+gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) 
+COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /usr/lib/gcc/x86_64-linux-gnu/7/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -D_GNU_SOURCE /usr/local/share/cmake-3.14/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpbase CMakeCXXCompilerABI.cpp -mtune=generic -march=x86-64 -auxbase-strip CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o -version -fstack-protector-strong -Wformat -Wformat-security -o /tmp/ccxcuZcN.s
+GNU C++14 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)
+	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP
+
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+ignoring duplicate directory "/usr/include/x86_64-linux-gnu/c++/7"
+ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"
+ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/7/../../../../x86_64-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /usr/include/c++/7
+ /usr/include/x86_64-linux-gnu/c++/7
+ /usr/include/c++/7/backward
+ /usr/lib/gcc/x86_64-linux-gnu/7/include
+ /usr/local/include
+ /usr/lib/gcc/x86_64-linux-gnu/7/include-fixed
+ /usr/include/x86_64-linux-gnu
+ /usr/include
+End of search list.
+GNU C++14 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)
+	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP
+
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+Compiler executable checksum: 3eed20556f1f27506d69be41be2e40fd
+COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ as -v --64 -o CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o /tmp/ccxcuZcN.s
+GNU assembler version 2.30 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.30
+COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/
+LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+Linking CXX executable cmTC_ce0a6
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ce0a6.dir/link.txt --verbose=1
+/usr/bin/c++      -v -rdynamic CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o  -o cmTC_ce0a6 
+Using built-in specs.
+COLLECT_GCC=/usr/bin/c++
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper
+OFFLOAD_TARGET_NAMES=nvptx-none
+OFFLOAD_TARGET_DEFAULT=1
+Target: x86_64-linux-gnu
+Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu
+Thread model: posix
+gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) 
+COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/
+LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_ce0a6' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /usr/lib/gcc/x86_64-linux-gnu/7/collect2 -plugin /usr/lib/gcc/x86_64-linux-gnu/7/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper -plugin-opt=-fresolution=/tmp/ccxRTAIS.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --sysroot=/ --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_ce0a6 /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/7/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/7/../../.. CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-linux-gnu/7/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crtn.o
+COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_ce0a6' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Parsed CXX implicit include dir info from above output: rv=done
+  found start of include info
+  found start of implicit include info
+    add: [/usr/include/c++/7]
+    add: [/usr/include/x86_64-linux-gnu/c++/7]
+    add: [/usr/include/c++/7/backward]
+    add: [/usr/lib/gcc/x86_64-linux-gnu/7/include]
+    add: [/usr/local/include]
+    add: [/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed]
+    add: [/usr/include/x86_64-linux-gnu]
+    add: [/usr/include]
+  end of search list found
+  collapse include dir [/usr/include/c++/7] ==> [/usr/include/c++/7]
+  collapse include dir [/usr/include/x86_64-linux-gnu/c++/7] ==> [/usr/include/x86_64-linux-gnu/c++/7]
+  collapse include dir [/usr/include/c++/7/backward] ==> [/usr/include/c++/7/backward]
+  collapse include dir [/usr/lib/gcc/x86_64-linux-gnu/7/include] ==> [/usr/lib/gcc/x86_64-linux-gnu/7/include]
+  collapse include dir [/usr/local/include] ==> [/usr/local/include]
+  collapse include dir [/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed] ==> [/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed]
+  collapse include dir [/usr/include/x86_64-linux-gnu] ==> [/usr/include/x86_64-linux-gnu]
+  collapse include dir [/usr/include] ==> [/usr/include]
+  implicit include dirs: [/usr/include/c++/7;/usr/include/x86_64-linux-gnu/c++/7;/usr/include/c++/7/backward;/usr/lib/gcc/x86_64-linux-gnu/7/include;/usr/local/include;/usr/lib/gcc/x86_64-linux-gnu/7/include-fixed;/usr/include/x86_64-linux-gnu;/usr/include]
+
+
+Parsed CXX implicit link information from above output:
+  link line regex: [^( *|.*[/\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\]+-)?ld|collect2)[^/\]*( |$)]
+  ignore line: [Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp]
+  ignore line: []
+  ignore line: [Run Build Command(s):/usr/bin/make cmTC_ce0a6/fast ]
+  ignore line: [/usr/bin/make -f CMakeFiles/cmTC_ce0a6.dir/build.make CMakeFiles/cmTC_ce0a6.dir/build]
+  ignore line: [make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp']
+  ignore line: [Building CXX object CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o]
+  ignore line: [/usr/bin/c++    -v -o CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o -c /usr/local/share/cmake-3.14/Modules/CMakeCXXCompilerABI.cpp]
+  ignore line: [Using built-in specs.]
+  ignore line: [COLLECT_GCC=/usr/bin/c++]
+  ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none]
+  ignore line: [OFFLOAD_TARGET_DEFAULT=1]
+  ignore line: [Target: x86_64-linux-gnu]
+  ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu]
+  ignore line: [Thread model: posix]
+  ignore line: [gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) ]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/7/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -D_GNU_SOURCE /usr/local/share/cmake-3.14/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpbase CMakeCXXCompilerABI.cpp -mtune=generic -march=x86-64 -auxbase-strip CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o -version -fstack-protector-strong -Wformat -Wformat-security -o /tmp/ccxcuZcN.s]
+  ignore line: [GNU C++14 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)]
+  ignore line: [	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP]
+  ignore line: []
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [ignoring duplicate directory "/usr/include/x86_64-linux-gnu/c++/7"]
+  ignore line: [ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"]
+  ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/7/../../../../x86_64-linux-gnu/include"]
+  ignore line: [#include "..." search starts here:]
+  ignore line: [#include <...> search starts here:]
+  ignore line: [ /usr/include/c++/7]
+  ignore line: [ /usr/include/x86_64-linux-gnu/c++/7]
+  ignore line: [ /usr/include/c++/7/backward]
+  ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/7/include]
+  ignore line: [ /usr/local/include]
+  ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/7/include-fixed]
+  ignore line: [ /usr/include/x86_64-linux-gnu]
+  ignore line: [ /usr/include]
+  ignore line: [End of search list.]
+  ignore line: [GNU C++14 (Ubuntu 7.4.0-1ubuntu1~18.04) version 7.4.0 (x86_64-linux-gnu)]
+  ignore line: [	compiled by GNU C version 7.4.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.19-GMP]
+  ignore line: []
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [Compiler executable checksum: 3eed20556f1f27506d69be41be2e40fd]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ as -v --64 -o CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o /tmp/ccxcuZcN.s]
+  ignore line: [GNU assembler version 2.30 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.30]
+  ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/]
+  ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [Linking CXX executable cmTC_ce0a6]
+  ignore line: [/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ce0a6.dir/link.txt --verbose=1]
+  ignore line: [/usr/bin/c++      -v -rdynamic CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o  -o cmTC_ce0a6 ]
+  ignore line: [Using built-in specs.]
+  ignore line: [COLLECT_GCC=/usr/bin/c++]
+  ignore line: [COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper]
+  ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none]
+  ignore line: [OFFLOAD_TARGET_DEFAULT=1]
+  ignore line: [Target: x86_64-linux-gnu]
+  ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 7.4.0-1ubuntu1~18.04' --with-bugurl=file:///usr/share/doc/gcc-7/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++ --prefix=/usr --with-gcc-major-version-only --program-suffix=-7 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --with-sysroot=/ --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-libmpx --enable-plugin --enable-default-pie --with-system-zlib --with-target-system-zlib --enable-objc-gc=auto --enable-multiarch --disable-werror --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu]
+  ignore line: [Thread model: posix]
+  ignore line: [gcc version 7.4.0 (Ubuntu 7.4.0-1ubuntu1~18.04) ]
+  ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/]
+  ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/7/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/7/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-v' '-rdynamic' '-o' 'cmTC_ce0a6' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  link line: [ /usr/lib/gcc/x86_64-linux-gnu/7/collect2 -plugin /usr/lib/gcc/x86_64-linux-gnu/7/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper -plugin-opt=-fresolution=/tmp/ccxRTAIS.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --sysroot=/ --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_ce0a6 /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/7/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/7/../../.. CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /usr/lib/gcc/x86_64-linux-gnu/7/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crtn.o]
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/collect2] ==> ignore
+    arg [-plugin] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/liblto_plugin.so] ==> ignore
+    arg [-plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/7/lto-wrapper] ==> ignore
+    arg [-plugin-opt=-fresolution=/tmp/ccxRTAIS.res] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+    arg [--sysroot=/] ==> ignore
+    arg [--build-id] ==> ignore
+    arg [--eh-frame-hdr] ==> ignore
+    arg [-m] ==> ignore
+    arg [elf_x86_64] ==> ignore
+    arg [--hash-style=gnu] ==> ignore
+    arg [--as-needed] ==> ignore
+    arg [-export-dynamic] ==> ignore
+    arg [-dynamic-linker] ==> ignore
+    arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+    arg [-pie] ==> ignore
+    arg [-znow] ==> ignore
+    arg [-zrelro] ==> ignore
+    arg [-o] ==> ignore
+    arg [cmTC_ce0a6] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/Scrt1.o] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crti.o] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/crtbeginS.o] ==> ignore
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7]
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu]
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib]
+    arg [-L/lib/x86_64-linux-gnu] ==> dir [/lib/x86_64-linux-gnu]
+    arg [-L/lib/../lib] ==> dir [/lib/../lib]
+    arg [-L/usr/lib/x86_64-linux-gnu] ==> dir [/usr/lib/x86_64-linux-gnu]
+    arg [-L/usr/lib/../lib] ==> dir [/usr/lib/../lib]
+    arg [-L/usr/lib/gcc/x86_64-linux-gnu/7/../../..] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../..]
+    arg [CMakeFiles/cmTC_ce0a6.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+    arg [-lstdc++] ==> lib [stdc++]
+    arg [-lm] ==> lib [m]
+    arg [-lgcc_s] ==> lib [gcc_s]
+    arg [-lgcc] ==> lib [gcc]
+    arg [-lc] ==> lib [c]
+    arg [-lgcc_s] ==> lib [gcc_s]
+    arg [-lgcc] ==> lib [gcc]
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/crtendS.o] ==> ignore
+    arg [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu/crtn.o] ==> ignore
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7] ==> [/usr/lib/gcc/x86_64-linux-gnu/7]
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../../../lib] ==> [/usr/lib]
+  collapse library dir [/lib/x86_64-linux-gnu] ==> [/lib/x86_64-linux-gnu]
+  collapse library dir [/lib/../lib] ==> [/lib]
+  collapse library dir [/usr/lib/x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+  collapse library dir [/usr/lib/../lib] ==> [/usr/lib]
+  collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/7/../../..] ==> [/usr/lib]
+  implicit libs: [stdc++;m;gcc_s;gcc;c;gcc_s;gcc]
+  implicit dirs: [/usr/lib/gcc/x86_64-linux-gnu/7;/usr/lib/x86_64-linux-gnu;/usr/lib;/lib/x86_64-linux-gnu;/lib]
+  implicit fwks: []
+
+
+
+
+Detecting CXX [-std=c++1z] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_15f1a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_15f1a.dir/build.make CMakeFiles/cmTC_15f1a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_15f1a.dir/feature_tests.cxx.o
+/usr/bin/c++    -std=c++1z -o CMakeFiles/cmTC_15f1a.dir/feature_tests.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.cxx
+Linking CXX executable cmTC_15f1a
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_15f1a.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_15f1a.dir/feature_tests.cxx.o  -o cmTC_15f1a 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: CXX_FEATURE:1cxx_aggregate_default_initializers
+    Feature record: CXX_FEATURE:1cxx_alias_templates
+    Feature record: CXX_FEATURE:1cxx_alignas
+    Feature record: CXX_FEATURE:1cxx_alignof
+    Feature record: CXX_FEATURE:1cxx_attributes
+    Feature record: CXX_FEATURE:1cxx_attribute_deprecated
+    Feature record: CXX_FEATURE:1cxx_auto_type
+    Feature record: CXX_FEATURE:1cxx_binary_literals
+    Feature record: CXX_FEATURE:1cxx_constexpr
+    Feature record: CXX_FEATURE:1cxx_contextual_conversions
+    Feature record: CXX_FEATURE:1cxx_decltype
+    Feature record: CXX_FEATURE:1cxx_decltype_auto
+    Feature record: CXX_FEATURE:1cxx_decltype_incomplete_return_types
+    Feature record: CXX_FEATURE:1cxx_default_function_template_args
+    Feature record: CXX_FEATURE:1cxx_defaulted_functions
+    Feature record: CXX_FEATURE:1cxx_defaulted_move_initializers
+    Feature record: CXX_FEATURE:1cxx_delegating_constructors
+    Feature record: CXX_FEATURE:1cxx_deleted_functions
+    Feature record: CXX_FEATURE:1cxx_digit_separators
+    Feature record: CXX_FEATURE:1cxx_enum_forward_declarations
+    Feature record: CXX_FEATURE:1cxx_explicit_conversions
+    Feature record: CXX_FEATURE:1cxx_extended_friend_declarations
+    Feature record: CXX_FEATURE:1cxx_extern_templates
+    Feature record: CXX_FEATURE:1cxx_final
+    Feature record: CXX_FEATURE:1cxx_func_identifier
+    Feature record: CXX_FEATURE:1cxx_generalized_initializers
+    Feature record: CXX_FEATURE:1cxx_generic_lambdas
+    Feature record: CXX_FEATURE:1cxx_inheriting_constructors
+    Feature record: CXX_FEATURE:1cxx_inline_namespaces
+    Feature record: CXX_FEATURE:1cxx_lambdas
+    Feature record: CXX_FEATURE:1cxx_lambda_init_captures
+    Feature record: CXX_FEATURE:1cxx_local_type_template_args
+    Feature record: CXX_FEATURE:1cxx_long_long_type
+    Feature record: CXX_FEATURE:1cxx_noexcept
+    Feature record: CXX_FEATURE:1cxx_nonstatic_member_init
+    Feature record: CXX_FEATURE:1cxx_nullptr
+    Feature record: CXX_FEATURE:1cxx_override
+    Feature record: CXX_FEATURE:1cxx_range_for
+    Feature record: CXX_FEATURE:1cxx_raw_string_literals
+    Feature record: CXX_FEATURE:1cxx_reference_qualified_functions
+    Feature record: CXX_FEATURE:1cxx_relaxed_constexpr
+    Feature record: CXX_FEATURE:1cxx_return_type_deduction
+    Feature record: CXX_FEATURE:1cxx_right_angle_brackets
+    Feature record: CXX_FEATURE:1cxx_rvalue_references
+    Feature record: CXX_FEATURE:1cxx_sizeof_member
+    Feature record: CXX_FEATURE:1cxx_static_assert
+    Feature record: CXX_FEATURE:1cxx_strong_enums
+    Feature record: CXX_FEATURE:1cxx_template_template_parameters
+    Feature record: CXX_FEATURE:1cxx_thread_local
+    Feature record: CXX_FEATURE:1cxx_trailing_return_types
+    Feature record: CXX_FEATURE:1cxx_unicode_literals
+    Feature record: CXX_FEATURE:1cxx_uniform_initialization
+    Feature record: CXX_FEATURE:1cxx_unrestricted_unions
+    Feature record: CXX_FEATURE:1cxx_user_literals
+    Feature record: CXX_FEATURE:1cxx_variable_templates
+    Feature record: CXX_FEATURE:1cxx_variadic_macros
+    Feature record: CXX_FEATURE:1cxx_variadic_templates
+
+
+Detecting CXX [-std=c++14] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_6400b/fast 
+/usr/bin/make -f CMakeFiles/cmTC_6400b.dir/build.make CMakeFiles/cmTC_6400b.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_6400b.dir/feature_tests.cxx.o
+/usr/bin/c++    -std=c++14 -o CMakeFiles/cmTC_6400b.dir/feature_tests.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.cxx
+Linking CXX executable cmTC_6400b
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6400b.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_6400b.dir/feature_tests.cxx.o  -o cmTC_6400b 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: CXX_FEATURE:1cxx_aggregate_default_initializers
+    Feature record: CXX_FEATURE:1cxx_alias_templates
+    Feature record: CXX_FEATURE:1cxx_alignas
+    Feature record: CXX_FEATURE:1cxx_alignof
+    Feature record: CXX_FEATURE:1cxx_attributes
+    Feature record: CXX_FEATURE:1cxx_attribute_deprecated
+    Feature record: CXX_FEATURE:1cxx_auto_type
+    Feature record: CXX_FEATURE:1cxx_binary_literals
+    Feature record: CXX_FEATURE:1cxx_constexpr
+    Feature record: CXX_FEATURE:1cxx_contextual_conversions
+    Feature record: CXX_FEATURE:1cxx_decltype
+    Feature record: CXX_FEATURE:1cxx_decltype_auto
+    Feature record: CXX_FEATURE:1cxx_decltype_incomplete_return_types
+    Feature record: CXX_FEATURE:1cxx_default_function_template_args
+    Feature record: CXX_FEATURE:1cxx_defaulted_functions
+    Feature record: CXX_FEATURE:1cxx_defaulted_move_initializers
+    Feature record: CXX_FEATURE:1cxx_delegating_constructors
+    Feature record: CXX_FEATURE:1cxx_deleted_functions
+    Feature record: CXX_FEATURE:1cxx_digit_separators
+    Feature record: CXX_FEATURE:1cxx_enum_forward_declarations
+    Feature record: CXX_FEATURE:1cxx_explicit_conversions
+    Feature record: CXX_FEATURE:1cxx_extended_friend_declarations
+    Feature record: CXX_FEATURE:1cxx_extern_templates
+    Feature record: CXX_FEATURE:1cxx_final
+    Feature record: CXX_FEATURE:1cxx_func_identifier
+    Feature record: CXX_FEATURE:1cxx_generalized_initializers
+    Feature record: CXX_FEATURE:1cxx_generic_lambdas
+    Feature record: CXX_FEATURE:1cxx_inheriting_constructors
+    Feature record: CXX_FEATURE:1cxx_inline_namespaces
+    Feature record: CXX_FEATURE:1cxx_lambdas
+    Feature record: CXX_FEATURE:1cxx_lambda_init_captures
+    Feature record: CXX_FEATURE:1cxx_local_type_template_args
+    Feature record: CXX_FEATURE:1cxx_long_long_type
+    Feature record: CXX_FEATURE:1cxx_noexcept
+    Feature record: CXX_FEATURE:1cxx_nonstatic_member_init
+    Feature record: CXX_FEATURE:1cxx_nullptr
+    Feature record: CXX_FEATURE:1cxx_override
+    Feature record: CXX_FEATURE:1cxx_range_for
+    Feature record: CXX_FEATURE:1cxx_raw_string_literals
+    Feature record: CXX_FEATURE:1cxx_reference_qualified_functions
+    Feature record: CXX_FEATURE:1cxx_relaxed_constexpr
+    Feature record: CXX_FEATURE:1cxx_return_type_deduction
+    Feature record: CXX_FEATURE:1cxx_right_angle_brackets
+    Feature record: CXX_FEATURE:1cxx_rvalue_references
+    Feature record: CXX_FEATURE:1cxx_sizeof_member
+    Feature record: CXX_FEATURE:1cxx_static_assert
+    Feature record: CXX_FEATURE:1cxx_strong_enums
+    Feature record: CXX_FEATURE:1cxx_template_template_parameters
+    Feature record: CXX_FEATURE:1cxx_thread_local
+    Feature record: CXX_FEATURE:1cxx_trailing_return_types
+    Feature record: CXX_FEATURE:1cxx_unicode_literals
+    Feature record: CXX_FEATURE:1cxx_uniform_initialization
+    Feature record: CXX_FEATURE:1cxx_unrestricted_unions
+    Feature record: CXX_FEATURE:1cxx_user_literals
+    Feature record: CXX_FEATURE:1cxx_variable_templates
+    Feature record: CXX_FEATURE:1cxx_variadic_macros
+    Feature record: CXX_FEATURE:1cxx_variadic_templates
+
+
+Detecting CXX [-std=c++11] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a88e1/fast 
+/usr/bin/make -f CMakeFiles/cmTC_a88e1.dir/build.make CMakeFiles/cmTC_a88e1.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_a88e1.dir/feature_tests.cxx.o
+/usr/bin/c++    -std=c++11 -o CMakeFiles/cmTC_a88e1.dir/feature_tests.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.cxx
+Linking CXX executable cmTC_a88e1
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a88e1.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_a88e1.dir/feature_tests.cxx.o  -o cmTC_a88e1 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: CXX_FEATURE:0cxx_aggregate_default_initializers
+    Feature record: CXX_FEATURE:1cxx_alias_templates
+    Feature record: CXX_FEATURE:1cxx_alignas
+    Feature record: CXX_FEATURE:1cxx_alignof
+    Feature record: CXX_FEATURE:1cxx_attributes
+    Feature record: CXX_FEATURE:0cxx_attribute_deprecated
+    Feature record: CXX_FEATURE:1cxx_auto_type
+    Feature record: CXX_FEATURE:0cxx_binary_literals
+    Feature record: CXX_FEATURE:1cxx_constexpr
+    Feature record: CXX_FEATURE:0cxx_contextual_conversions
+    Feature record: CXX_FEATURE:1cxx_decltype
+    Feature record: CXX_FEATURE:0cxx_decltype_auto
+    Feature record: CXX_FEATURE:1cxx_decltype_incomplete_return_types
+    Feature record: CXX_FEATURE:1cxx_default_function_template_args
+    Feature record: CXX_FEATURE:1cxx_defaulted_functions
+    Feature record: CXX_FEATURE:1cxx_defaulted_move_initializers
+    Feature record: CXX_FEATURE:1cxx_delegating_constructors
+    Feature record: CXX_FEATURE:1cxx_deleted_functions
+    Feature record: CXX_FEATURE:0cxx_digit_separators
+    Feature record: CXX_FEATURE:1cxx_enum_forward_declarations
+    Feature record: CXX_FEATURE:1cxx_explicit_conversions
+    Feature record: CXX_FEATURE:1cxx_extended_friend_declarations
+    Feature record: CXX_FEATURE:1cxx_extern_templates
+    Feature record: CXX_FEATURE:1cxx_final
+    Feature record: CXX_FEATURE:1cxx_func_identifier
+    Feature record: CXX_FEATURE:1cxx_generalized_initializers
+    Feature record: CXX_FEATURE:0cxx_generic_lambdas
+    Feature record: CXX_FEATURE:1cxx_inheriting_constructors
+    Feature record: CXX_FEATURE:1cxx_inline_namespaces
+    Feature record: CXX_FEATURE:1cxx_lambdas
+    Feature record: CXX_FEATURE:0cxx_lambda_init_captures
+    Feature record: CXX_FEATURE:1cxx_local_type_template_args
+    Feature record: CXX_FEATURE:1cxx_long_long_type
+    Feature record: CXX_FEATURE:1cxx_noexcept
+    Feature record: CXX_FEATURE:1cxx_nonstatic_member_init
+    Feature record: CXX_FEATURE:1cxx_nullptr
+    Feature record: CXX_FEATURE:1cxx_override
+    Feature record: CXX_FEATURE:1cxx_range_for
+    Feature record: CXX_FEATURE:1cxx_raw_string_literals
+    Feature record: CXX_FEATURE:1cxx_reference_qualified_functions
+    Feature record: CXX_FEATURE:0cxx_relaxed_constexpr
+    Feature record: CXX_FEATURE:0cxx_return_type_deduction
+    Feature record: CXX_FEATURE:1cxx_right_angle_brackets
+    Feature record: CXX_FEATURE:1cxx_rvalue_references
+    Feature record: CXX_FEATURE:1cxx_sizeof_member
+    Feature record: CXX_FEATURE:1cxx_static_assert
+    Feature record: CXX_FEATURE:1cxx_strong_enums
+    Feature record: CXX_FEATURE:1cxx_template_template_parameters
+    Feature record: CXX_FEATURE:1cxx_thread_local
+    Feature record: CXX_FEATURE:1cxx_trailing_return_types
+    Feature record: CXX_FEATURE:1cxx_unicode_literals
+    Feature record: CXX_FEATURE:1cxx_uniform_initialization
+    Feature record: CXX_FEATURE:1cxx_unrestricted_unions
+    Feature record: CXX_FEATURE:1cxx_user_literals
+    Feature record: CXX_FEATURE:0cxx_variable_templates
+    Feature record: CXX_FEATURE:1cxx_variadic_macros
+    Feature record: CXX_FEATURE:1cxx_variadic_templates
+
+
+Detecting CXX [-std=c++98] compiler features compiled with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_19373/fast 
+/usr/bin/make -f CMakeFiles/cmTC_19373.dir/build.make CMakeFiles/cmTC_19373.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_19373.dir/feature_tests.cxx.o
+/usr/bin/c++    -std=c++98 -o CMakeFiles/cmTC_19373.dir/feature_tests.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/feature_tests.cxx
+Linking CXX executable cmTC_19373
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_19373.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_19373.dir/feature_tests.cxx.o  -o cmTC_19373 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+    Feature record: CXX_FEATURE:0cxx_aggregate_default_initializers
+    Feature record: CXX_FEATURE:0cxx_alias_templates
+    Feature record: CXX_FEATURE:0cxx_alignas
+    Feature record: CXX_FEATURE:0cxx_alignof
+    Feature record: CXX_FEATURE:0cxx_attributes
+    Feature record: CXX_FEATURE:0cxx_attribute_deprecated
+    Feature record: CXX_FEATURE:0cxx_auto_type
+    Feature record: CXX_FEATURE:0cxx_binary_literals
+    Feature record: CXX_FEATURE:0cxx_constexpr
+    Feature record: CXX_FEATURE:0cxx_contextual_conversions
+    Feature record: CXX_FEATURE:0cxx_decltype
+    Feature record: CXX_FEATURE:0cxx_decltype_auto
+    Feature record: CXX_FEATURE:0cxx_decltype_incomplete_return_types
+    Feature record: CXX_FEATURE:0cxx_default_function_template_args
+    Feature record: CXX_FEATURE:0cxx_defaulted_functions
+    Feature record: CXX_FEATURE:0cxx_defaulted_move_initializers
+    Feature record: CXX_FEATURE:0cxx_delegating_constructors
+    Feature record: CXX_FEATURE:0cxx_deleted_functions
+    Feature record: CXX_FEATURE:0cxx_digit_separators
+    Feature record: CXX_FEATURE:0cxx_enum_forward_declarations
+    Feature record: CXX_FEATURE:0cxx_explicit_conversions
+    Feature record: CXX_FEATURE:0cxx_extended_friend_declarations
+    Feature record: CXX_FEATURE:0cxx_extern_templates
+    Feature record: CXX_FEATURE:0cxx_final
+    Feature record: CXX_FEATURE:0cxx_func_identifier
+    Feature record: CXX_FEATURE:0cxx_generalized_initializers
+    Feature record: CXX_FEATURE:0cxx_generic_lambdas
+    Feature record: CXX_FEATURE:0cxx_inheriting_constructors
+    Feature record: CXX_FEATURE:0cxx_inline_namespaces
+    Feature record: CXX_FEATURE:0cxx_lambdas
+    Feature record: CXX_FEATURE:0cxx_lambda_init_captures
+    Feature record: CXX_FEATURE:0cxx_local_type_template_args
+    Feature record: CXX_FEATURE:0cxx_long_long_type
+    Feature record: CXX_FEATURE:0cxx_noexcept
+    Feature record: CXX_FEATURE:0cxx_nonstatic_member_init
+    Feature record: CXX_FEATURE:0cxx_nullptr
+    Feature record: CXX_FEATURE:0cxx_override
+    Feature record: CXX_FEATURE:0cxx_range_for
+    Feature record: CXX_FEATURE:0cxx_raw_string_literals
+    Feature record: CXX_FEATURE:0cxx_reference_qualified_functions
+    Feature record: CXX_FEATURE:0cxx_relaxed_constexpr
+    Feature record: CXX_FEATURE:0cxx_return_type_deduction
+    Feature record: CXX_FEATURE:0cxx_right_angle_brackets
+    Feature record: CXX_FEATURE:0cxx_rvalue_references
+    Feature record: CXX_FEATURE:0cxx_sizeof_member
+    Feature record: CXX_FEATURE:0cxx_static_assert
+    Feature record: CXX_FEATURE:0cxx_strong_enums
+    Feature record: CXX_FEATURE:1cxx_template_template_parameters
+    Feature record: CXX_FEATURE:0cxx_thread_local
+    Feature record: CXX_FEATURE:0cxx_trailing_return_types
+    Feature record: CXX_FEATURE:0cxx_unicode_literals
+    Feature record: CXX_FEATURE:0cxx_uniform_initialization
+    Feature record: CXX_FEATURE:0cxx_unrestricted_unions
+    Feature record: CXX_FEATURE:0cxx_user_literals
+    Feature record: CXX_FEATURE:0cxx_variable_templates
+    Feature record: CXX_FEATURE:0cxx_variadic_macros
+    Feature record: CXX_FEATURE:0cxx_variadic_templates
+Determining if the include file sys/types.h exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b93f7/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b93f7.dir/build.make CMakeFiles/cmTC_b93f7.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b93f7.dir/CheckIncludeFile.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_b93f7.dir/CheckIncludeFile.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckIncludeFile.c
+Linking C executable cmTC_b93f7
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b93f7.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b93f7.dir/CheckIncludeFile.c.o  -o cmTC_b93f7 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the include file stdint.h exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_cf33a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_cf33a.dir/build.make CMakeFiles/cmTC_cf33a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_cf33a.dir/CheckIncludeFile.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_cf33a.dir/CheckIncludeFile.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckIncludeFile.c
+Linking C executable cmTC_cf33a
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cf33a.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_cf33a.dir/CheckIncludeFile.c.o  -o cmTC_cf33a 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the include file stddef.h exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_41c8d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_41c8d.dir/build.make CMakeFiles/cmTC_41c8d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_41c8d.dir/CheckIncludeFile.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_41c8d.dir/CheckIncludeFile.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckIncludeFile.c
+Linking C executable cmTC_41c8d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_41c8d.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_41c8d.dir/CheckIncludeFile.c.o  -o cmTC_41c8d 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining size of off64_t passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f57a1/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f57a1.dir/build.make CMakeFiles/cmTC_f57a1.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f57a1.dir/OFF64_T.c.o
+/usr/bin/cc -DHAVE_STDDEF_H -DHAVE_STDINT_H -DHAVE_SYS_TYPES_H -D_LARGEFILE64_SOURCE=1  -fPIE   -o CMakeFiles/cmTC_f57a1.dir/OFF64_T.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckTypeSize/OFF64_T.c
+Linking C executable cmTC_f57a1
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f57a1.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f57a1.dir/OFF64_T.c.o  -o cmTC_f57a1 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the function fseeko exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f274d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f274d.dir/build.make CMakeFiles/cmTC_f274d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f274d.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=fseeko -fPIE   -o CMakeFiles/cmTC_f274d.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_f274d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f274d.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=fseeko    -rdynamic CMakeFiles/cmTC_f274d.dir/CheckFunctionExists.c.o  -o cmTC_f274d 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the include file unistd.h exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_6702f/fast 
+/usr/bin/make -f CMakeFiles/cmTC_6702f.dir/build.make CMakeFiles/cmTC_6702f.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_6702f.dir/CheckIncludeFile.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_6702f.dir/CheckIncludeFile.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckIncludeFile.c
+Linking C executable cmTC_6702f
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6702f.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_6702f.dir/CheckIncludeFile.c.o  -o cmTC_6702f 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the function gethostbyname exists in the nsl passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_e2c4f/fast 
+/usr/bin/make -f CMakeFiles/cmTC_e2c4f.dir/build.make CMakeFiles/cmTC_e2c4f.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_e2c4f.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=gethostbyname -fPIE   -o CMakeFiles/cmTC_e2c4f.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_e2c4f
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e2c4f.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=gethostbyname    -rdynamic CMakeFiles/cmTC_e2c4f.dir/CheckFunctionExists.c.o  -o cmTC_e2c4f -lnsl 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the function clock_gettime exists in the rt passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7d68d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_7d68d.dir/build.make CMakeFiles/cmTC_7d68d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_7d68d.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=clock_gettime -fPIE   -o CMakeFiles/cmTC_7d68d.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_7d68d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7d68d.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=clock_gettime    -rdynamic CMakeFiles/cmTC_7d68d.dir/CheckFunctionExists.c.o  -o cmTC_7d68d -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/socket.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_e47bd/fast 
+/usr/bin/make -f CMakeFiles/cmTC_e47bd.dir/build.make CMakeFiles/cmTC_e47bd.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_e47bd.dir/HAVE_SYS_SOCKET_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_e47bd.dir/HAVE_SYS_SOCKET_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_SOCKET_H.c
+Linking C executable cmTC_e47bd
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e47bd.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_e47bd.dir/HAVE_SYS_SOCKET_H.c.o  -o cmTC_e47bd 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files arpa/inet.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8655e/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8655e.dir/build.make CMakeFiles/cmTC_8655e.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8655e.dir/HAVE_ARPA_INET_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_8655e.dir/HAVE_ARPA_INET_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_ARPA_INET_H.c
+Linking C executable cmTC_8655e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8655e.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_8655e.dir/HAVE_ARPA_INET_H.c.o  -o cmTC_8655e 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files arpa/nameser_compat.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8a387/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8a387.dir/build.make CMakeFiles/cmTC_8a387.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8a387.dir/HAVE_ARPA_NAMESER_COMPAT_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_8a387.dir/HAVE_ARPA_NAMESER_COMPAT_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_ARPA_NAMESER_COMPAT_H.c
+Linking C executable cmTC_8a387
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8a387.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_8a387.dir/HAVE_ARPA_NAMESER_COMPAT_H.c.o  -o cmTC_8a387 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files arpa/nameser.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b0e30/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b0e30.dir/build.make CMakeFiles/cmTC_b0e30.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b0e30.dir/HAVE_ARPA_NAMESER_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_b0e30.dir/HAVE_ARPA_NAMESER_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_ARPA_NAMESER_H.c
+Linking C executable cmTC_b0e30
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b0e30.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b0e30.dir/HAVE_ARPA_NAMESER_H.c.o  -o cmTC_b0e30 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files assert.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b9f23/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b9f23.dir/build.make CMakeFiles/cmTC_b9f23.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b9f23.dir/HAVE_ASSERT_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_b9f23.dir/HAVE_ASSERT_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_ASSERT_H.c
+Linking C executable cmTC_b9f23
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b9f23.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b9f23.dir/HAVE_ASSERT_H.c.o  -o cmTC_b9f23 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files errno.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_514aa/fast 
+/usr/bin/make -f CMakeFiles/cmTC_514aa.dir/build.make CMakeFiles/cmTC_514aa.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_514aa.dir/HAVE_ERRNO_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_514aa.dir/HAVE_ERRNO_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_ERRNO_H.c
+Linking C executable cmTC_514aa
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_514aa.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_514aa.dir/HAVE_ERRNO_H.c.o  -o cmTC_514aa 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files fcntl.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c0824/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c0824.dir/build.make CMakeFiles/cmTC_c0824.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_c0824.dir/HAVE_FCNTL_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_c0824.dir/HAVE_FCNTL_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_FCNTL_H.c
+Linking C executable cmTC_c0824
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c0824.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_c0824.dir/HAVE_FCNTL_H.c.o  -o cmTC_c0824 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files inttypes.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_15706/fast 
+/usr/bin/make -f CMakeFiles/cmTC_15706.dir/build.make CMakeFiles/cmTC_15706.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_15706.dir/HAVE_INTTYPES_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_15706.dir/HAVE_INTTYPES_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_INTTYPES_H.c
+Linking C executable cmTC_15706
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_15706.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_15706.dir/HAVE_INTTYPES_H.c.o  -o cmTC_15706 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files limits.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f1559/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f1559.dir/build.make CMakeFiles/cmTC_f1559.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f1559.dir/HAVE_LIMITS_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_f1559.dir/HAVE_LIMITS_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_LIMITS_H.c
+Linking C executable cmTC_f1559
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f1559.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f1559.dir/HAVE_LIMITS_H.c.o  -o cmTC_f1559 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files malloc.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b4282/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b4282.dir/build.make CMakeFiles/cmTC_b4282.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b4282.dir/HAVE_MALLOC_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_b4282.dir/HAVE_MALLOC_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_MALLOC_H.c
+Linking C executable cmTC_b4282
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b4282.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b4282.dir/HAVE_MALLOC_H.c.o  -o cmTC_b4282 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files memory.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_26374/fast 
+/usr/bin/make -f CMakeFiles/cmTC_26374.dir/build.make CMakeFiles/cmTC_26374.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_26374.dir/HAVE_MEMORY_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_26374.dir/HAVE_MEMORY_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_MEMORY_H.c
+Linking C executable cmTC_26374
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_26374.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_26374.dir/HAVE_MEMORY_H.c.o  -o cmTC_26374 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files netdb.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_1d2db/fast 
+/usr/bin/make -f CMakeFiles/cmTC_1d2db.dir/build.make CMakeFiles/cmTC_1d2db.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_1d2db.dir/HAVE_NETDB_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_1d2db.dir/HAVE_NETDB_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_NETDB_H.c
+Linking C executable cmTC_1d2db
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_1d2db.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_1d2db.dir/HAVE_NETDB_H.c.o  -o cmTC_1d2db 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files netinet/in.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_22f18/fast 
+/usr/bin/make -f CMakeFiles/cmTC_22f18.dir/build.make CMakeFiles/cmTC_22f18.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_22f18.dir/HAVE_NETINET_IN_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_22f18.dir/HAVE_NETINET_IN_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_NETINET_IN_H.c
+Linking C executable cmTC_22f18
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_22f18.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_22f18.dir/HAVE_NETINET_IN_H.c.o  -o cmTC_22f18 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files netinet/tcp.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_01163/fast 
+/usr/bin/make -f CMakeFiles/cmTC_01163.dir/build.make CMakeFiles/cmTC_01163.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_01163.dir/HAVE_NETINET_TCP_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_01163.dir/HAVE_NETINET_TCP_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_NETINET_TCP_H.c
+Linking C executable cmTC_01163
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_01163.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_01163.dir/HAVE_NETINET_TCP_H.c.o  -o cmTC_01163 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files net/if.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8d7c9/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8d7c9.dir/build.make CMakeFiles/cmTC_8d7c9.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8d7c9.dir/HAVE_NET_IF_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_8d7c9.dir/HAVE_NET_IF_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_NET_IF_H.c
+Linking C executable cmTC_8d7c9
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8d7c9.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_8d7c9.dir/HAVE_NET_IF_H.c.o  -o cmTC_8d7c9 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files signal.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_d04e4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_d04e4.dir/build.make CMakeFiles/cmTC_d04e4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_d04e4.dir/HAVE_SIGNAL_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_d04e4.dir/HAVE_SIGNAL_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SIGNAL_H.c
+Linking C executable cmTC_d04e4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d04e4.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_d04e4.dir/HAVE_SIGNAL_H.c.o  -o cmTC_d04e4 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files stdbool.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_2dbf2/fast 
+/usr/bin/make -f CMakeFiles/cmTC_2dbf2.dir/build.make CMakeFiles/cmTC_2dbf2.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_2dbf2.dir/HAVE_STDBOOL_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_2dbf2.dir/HAVE_STDBOOL_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_STDBOOL_H.c
+Linking C executable cmTC_2dbf2
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2dbf2.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_2dbf2.dir/HAVE_STDBOOL_H.c.o  -o cmTC_2dbf2 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files stdlib.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_bbb09/fast 
+/usr/bin/make -f CMakeFiles/cmTC_bbb09.dir/build.make CMakeFiles/cmTC_bbb09.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_bbb09.dir/HAVE_STDLIB_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_bbb09.dir/HAVE_STDLIB_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_STDLIB_H.c
+Linking C executable cmTC_bbb09
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_bbb09.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_bbb09.dir/HAVE_STDLIB_H.c.o  -o cmTC_bbb09 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files strings.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f27ad/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f27ad.dir/build.make CMakeFiles/cmTC_f27ad.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f27ad.dir/HAVE_STRINGS_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_f27ad.dir/HAVE_STRINGS_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_STRINGS_H.c
+Linking C executable cmTC_f27ad
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f27ad.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f27ad.dir/HAVE_STRINGS_H.c.o  -o cmTC_f27ad 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files string.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_cdb5e/fast 
+/usr/bin/make -f CMakeFiles/cmTC_cdb5e.dir/build.make CMakeFiles/cmTC_cdb5e.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_cdb5e.dir/HAVE_STRING_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_cdb5e.dir/HAVE_STRING_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_STRING_H.c
+Linking C executable cmTC_cdb5e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cdb5e.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_cdb5e.dir/HAVE_STRING_H.c.o  -o cmTC_cdb5e 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files stropts.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5e3f7/fast 
+/usr/bin/make -f CMakeFiles/cmTC_5e3f7.dir/build.make CMakeFiles/cmTC_5e3f7.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_5e3f7.dir/HAVE_STROPTS_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_5e3f7.dir/HAVE_STROPTS_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_STROPTS_H.c
+Linking C executable cmTC_5e3f7
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5e3f7.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_5e3f7.dir/HAVE_STROPTS_H.c.o  -o cmTC_5e3f7 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/ioctl.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_fc927/fast 
+/usr/bin/make -f CMakeFiles/cmTC_fc927.dir/build.make CMakeFiles/cmTC_fc927.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_fc927.dir/HAVE_SYS_IOCTL_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_fc927.dir/HAVE_SYS_IOCTL_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_IOCTL_H.c
+Linking C executable cmTC_fc927
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_fc927.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_fc927.dir/HAVE_SYS_IOCTL_H.c.o  -o cmTC_fc927 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/param.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_500d6/fast 
+/usr/bin/make -f CMakeFiles/cmTC_500d6.dir/build.make CMakeFiles/cmTC_500d6.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_500d6.dir/HAVE_SYS_PARAM_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_500d6.dir/HAVE_SYS_PARAM_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_PARAM_H.c
+Linking C executable cmTC_500d6
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_500d6.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_500d6.dir/HAVE_SYS_PARAM_H.c.o  -o cmTC_500d6 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/select.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a22aa/fast 
+/usr/bin/make -f CMakeFiles/cmTC_a22aa.dir/build.make CMakeFiles/cmTC_a22aa.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_a22aa.dir/HAVE_SYS_SELECT_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_a22aa.dir/HAVE_SYS_SELECT_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_SELECT_H.c
+Linking C executable cmTC_a22aa
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a22aa.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_a22aa.dir/HAVE_SYS_SELECT_H.c.o  -o cmTC_a22aa 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/stat.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ec114/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ec114.dir/build.make CMakeFiles/cmTC_ec114.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ec114.dir/HAVE_SYS_STAT_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_ec114.dir/HAVE_SYS_STAT_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_STAT_H.c
+Linking C executable cmTC_ec114
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ec114.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_ec114.dir/HAVE_SYS_STAT_H.c.o  -o cmTC_ec114 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/time.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_1ad6e/fast 
+/usr/bin/make -f CMakeFiles/cmTC_1ad6e.dir/build.make CMakeFiles/cmTC_1ad6e.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_1ad6e.dir/HAVE_SYS_TIME_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_1ad6e.dir/HAVE_SYS_TIME_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_TIME_H.c
+Linking C executable cmTC_1ad6e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_1ad6e.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_1ad6e.dir/HAVE_SYS_TIME_H.c.o  -o cmTC_1ad6e 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files sys/uio.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_353a8/fast 
+/usr/bin/make -f CMakeFiles/cmTC_353a8.dir/build.make CMakeFiles/cmTC_353a8.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_353a8.dir/HAVE_SYS_UIO_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_353a8.dir/HAVE_SYS_UIO_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_SYS_UIO_H.c
+Linking C executable cmTC_353a8
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_353a8.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_353a8.dir/HAVE_SYS_UIO_H.c.o  -o cmTC_353a8 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files time.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5b0f9/fast 
+/usr/bin/make -f CMakeFiles/cmTC_5b0f9.dir/build.make CMakeFiles/cmTC_5b0f9.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_5b0f9.dir/HAVE_TIME_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_5b0f9.dir/HAVE_TIME_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_TIME_H.c
+Linking C executable cmTC_5b0f9
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5b0f9.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_5b0f9.dir/HAVE_TIME_H.c.o  -o cmTC_5b0f9 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files dlfcn.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_52a5c/fast 
+/usr/bin/make -f CMakeFiles/cmTC_52a5c.dir/build.make CMakeFiles/cmTC_52a5c.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_52a5c.dir/HAVE_DLFCN_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_52a5c.dir/HAVE_DLFCN_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_DLFCN_H.c
+Linking C executable cmTC_52a5c
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_52a5c.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_52a5c.dir/HAVE_DLFCN_H.c.o  -o cmTC_52a5c 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if files unistd.h exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ad0f3/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ad0f3.dir/build.make CMakeFiles/cmTC_ad0f3.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ad0f3.dir/HAVE_UNISTD_H.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_ad0f3.dir/HAVE_UNISTD_H.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckIncludeFiles/HAVE_UNISTD_H.c
+Linking C executable cmTC_ad0f3
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ad0f3.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_ad0f3.dir/HAVE_UNISTD_H.c.o  -o cmTC_ad0f3 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Performing C SOURCE FILE Test HAVE_SOCKLEN_T succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_03524/fast 
+/usr/bin/make -f CMakeFiles/cmTC_03524.dir/build.make CMakeFiles/cmTC_03524.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_03524.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_SOCKLEN_T -fPIE   -o CMakeFiles/cmTC_03524.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_03524
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_03524.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_SOCKLEN_T    -rdynamic CMakeFiles/cmTC_03524.dir/src.c.o  -o cmTC_03524 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			socklen_t var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_BOOL_T succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c8993/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c8993.dir/build.make CMakeFiles/cmTC_c8993.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_c8993.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_BOOL_T -fPIE   -o CMakeFiles/cmTC_c8993.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_c8993
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c8993.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_BOOL_T    -rdynamic CMakeFiles/cmTC_c8993.dir/src.c.o  -o cmTC_c8993 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			bool var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_SSIZE_T succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f0d74/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f0d74.dir/build.make CMakeFiles/cmTC_f0d74.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f0d74.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_SSIZE_T -fPIE   -o CMakeFiles/cmTC_f0d74.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_f0d74
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f0d74.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_SSIZE_T    -rdynamic CMakeFiles/cmTC_f0d74.dir/src.c.o  -o cmTC_f0d74 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			ssize_t var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_LONGLONG succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_54f75/fast 
+/usr/bin/make -f CMakeFiles/cmTC_54f75.dir/build.make CMakeFiles/cmTC_54f75.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_54f75.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_LONGLONG -fPIE   -o CMakeFiles/cmTC_54f75.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_54f75
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_54f75.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_LONGLONG    -rdynamic CMakeFiles/cmTC_54f75.dir/src.c.o  -o cmTC_54f75 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			long long var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_SIG_ATOMIC_T succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_40fb7/fast 
+/usr/bin/make -f CMakeFiles/cmTC_40fb7.dir/build.make CMakeFiles/cmTC_40fb7.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_40fb7.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_SIG_ATOMIC_T -fPIE   -o CMakeFiles/cmTC_40fb7.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_40fb7
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_40fb7.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_SIG_ATOMIC_T    -rdynamic CMakeFiles/cmTC_40fb7.dir/src.c.o  -o cmTC_40fb7 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			sig_atomic_t var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_STRUCT_ADDRINFO succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_448a1/fast 
+/usr/bin/make -f CMakeFiles/cmTC_448a1.dir/build.make CMakeFiles/cmTC_448a1.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_448a1.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_STRUCT_ADDRINFO -fPIE   -o CMakeFiles/cmTC_448a1.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_448a1
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_448a1.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_STRUCT_ADDRINFO    -rdynamic CMakeFiles/cmTC_448a1.dir/src.c.o  -o cmTC_448a1 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			struct addrinfo var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_STRUCT_IN6_ADDR succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_77f5b/fast 
+/usr/bin/make -f CMakeFiles/cmTC_77f5b.dir/build.make CMakeFiles/cmTC_77f5b.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_77f5b.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_STRUCT_IN6_ADDR -fPIE   -o CMakeFiles/cmTC_77f5b.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_77f5b
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_77f5b.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_STRUCT_IN6_ADDR    -rdynamic CMakeFiles/cmTC_77f5b.dir/src.c.o  -o cmTC_77f5b -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			struct in6_addr var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_STRUCT_SOCKADDR_IN6 succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_38686/fast 
+/usr/bin/make -f CMakeFiles/cmTC_38686.dir/build.make CMakeFiles/cmTC_38686.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_38686.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_STRUCT_SOCKADDR_IN6 -fPIE   -o CMakeFiles/cmTC_38686.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_38686
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_38686.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_STRUCT_SOCKADDR_IN6    -rdynamic CMakeFiles/cmTC_38686.dir/src.c.o  -o cmTC_38686 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			struct sockaddr_in6 var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_STRUCT_SOCKADDR_STORAGE succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_43683/fast 
+/usr/bin/make -f CMakeFiles/cmTC_43683.dir/build.make CMakeFiles/cmTC_43683.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_43683.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_STRUCT_SOCKADDR_STORAGE -fPIE   -o CMakeFiles/cmTC_43683.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_43683
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_43683.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_STRUCT_SOCKADDR_STORAGE    -rdynamic CMakeFiles/cmTC_43683.dir/src.c.o  -o cmTC_43683 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			struct sockaddr_storage var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Performing C SOURCE FILE Test HAVE_STRUCT_TIMEVAL succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c2eaf/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c2eaf.dir/build.make CMakeFiles/cmTC_c2eaf.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_c2eaf.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_STRUCT_TIMEVAL -fPIE   -o CMakeFiles/cmTC_c2eaf.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_c2eaf
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c2eaf.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_STRUCT_TIMEVAL    -rdynamic CMakeFiles/cmTC_c2eaf.dir/src.c.o  -o cmTC_c2eaf -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+		#include <stdio.h>
+		#include <stdlib.h>
+	
+		#include <stdbool.h>
+		#include <sys/types.h>
+		#include <arpa/inet.h>
+		#include <arpa/nameser.h>
+		#include <netdb.h>
+		#include <net/if.h>
+		#include <netinet/in.h>
+		#include <netinet/tcp.h>
+		#include <signal.h>
+		#include <stdlib.h>
+		#include <string.h>
+		#include <strings.h>
+		#include <sys/ioctl.h>
+		#include <sys/select.h>
+		#include <sys/socket.h>
+		#include <sys/time.h>
+		#include <sys/uio.h>
+		#include <time.h>
+		#include <fcntl.h>
+		#include <unistd.h>
+		int main() {
+			struct timeval var_exists;
+			(void)var_exists;
+			return 0;
+		}
+	
+Determining if the AF_INET6 exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_2c521/fast 
+/usr/bin/make -f CMakeFiles/cmTC_2c521.dir/build.make CMakeFiles/cmTC_2c521.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_2c521.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_2c521.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_2c521
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2c521.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_2c521.dir/CheckSymbolExists.c.o  -o cmTC_2c521 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef AF_INET6
+  return ((int*)(&AF_INET6))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the O_NONBLOCK exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_bdf54/fast 
+/usr/bin/make -f CMakeFiles/cmTC_bdf54.dir/build.make CMakeFiles/cmTC_bdf54.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_bdf54.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_bdf54.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_bdf54
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_bdf54.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_bdf54.dir/CheckSymbolExists.c.o  -o cmTC_bdf54 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef O_NONBLOCK
+  return ((int*)(&O_NONBLOCK))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the FIONBIO exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_628d4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_628d4.dir/build.make CMakeFiles/cmTC_628d4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_628d4.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_628d4.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_628d4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_628d4.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_628d4.dir/CheckSymbolExists.c.o  -o cmTC_628d4 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef FIONBIO
+  return ((int*)(&FIONBIO))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the SIOCGIFADDR exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_044c4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_044c4.dir/build.make CMakeFiles/cmTC_044c4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_044c4.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_044c4.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_044c4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_044c4.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_044c4.dir/CheckSymbolExists.c.o  -o cmTC_044c4 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef SIOCGIFADDR
+  return ((int*)(&SIOCGIFADDR))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the MSG_NOSIGNAL exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a47d1/fast 
+/usr/bin/make -f CMakeFiles/cmTC_a47d1.dir/build.make CMakeFiles/cmTC_a47d1.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_a47d1.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_a47d1.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_a47d1
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a47d1.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_a47d1.dir/CheckSymbolExists.c.o  -o cmTC_a47d1 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef MSG_NOSIGNAL
+  return ((int*)(&MSG_NOSIGNAL))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the PF_INET6 exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_3834a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_3834a.dir/build.make CMakeFiles/cmTC_3834a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_3834a.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_3834a.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_3834a
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_3834a.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_3834a.dir/CheckSymbolExists.c.o  -o cmTC_3834a -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef PF_INET6
+  return ((int*)(&PF_INET6))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the CLOCK_MONOTONIC exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_77048/fast 
+/usr/bin/make -f CMakeFiles/cmTC_77048.dir/build.make CMakeFiles/cmTC_77048.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_77048.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_77048.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_77048
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_77048.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_77048.dir/CheckSymbolExists.c.o  -o cmTC_77048 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef CLOCK_MONOTONIC
+  return ((int*)(&CLOCK_MONOTONIC))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Performing C SOURCE FILE Test HAVE_SOCKADDR_IN6_SIN6_SCOPE_ID succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_77ca4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_77ca4.dir/build.make CMakeFiles/cmTC_77ca4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_77ca4.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_SOCKADDR_IN6_SIN6_SCOPE_ID -fPIE   -o CMakeFiles/cmTC_77ca4.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_77ca4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_77ca4.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_SOCKADDR_IN6_SIN6_SCOPE_ID    -rdynamic CMakeFiles/cmTC_77ca4.dir/src.c.o  -o cmTC_77ca4 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main()
+{
+   (void)sizeof(((struct sockaddr_in6 *)0)->sin6_scope_id);
+   return 0;
+}
+
+Performing C SOURCE FILE Test HAVE_LL succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_cbeb4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_cbeb4.dir/build.make CMakeFiles/cmTC_cbeb4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_cbeb4.dir/src.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -DHAVE_LL -fPIE   -o CMakeFiles/cmTC_cbeb4.dir/src.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.c
+Linking C executable cmTC_cbeb4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cbeb4.dir/link.txt --verbose=1
+/usr/bin/cc  -DHAVE_LL    -rdynamic CMakeFiles/cmTC_cbeb4.dir/src.c.o  -o cmTC_cbeb4 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { int n=1234LL; return 0; }
+Determining if the connect exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ad427/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ad427.dir/build.make CMakeFiles/cmTC_ad427.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ad427.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_ad427.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_ad427
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ad427.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_ad427.dir/CheckSymbolExists.c.o  -o cmTC_ad427 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef connect
+  return ((int*)(&connect))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the fcntl exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f344d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f344d.dir/build.make CMakeFiles/cmTC_f344d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f344d.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_f344d.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_f344d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f344d.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f344d.dir/CheckSymbolExists.c.o  -o cmTC_f344d -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef fcntl
+  return ((int*)(&fcntl))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the freeaddrinfo exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_32494/fast 
+/usr/bin/make -f CMakeFiles/cmTC_32494.dir/build.make CMakeFiles/cmTC_32494.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_32494.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_32494.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_32494
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_32494.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_32494.dir/CheckSymbolExists.c.o  -o cmTC_32494 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef freeaddrinfo
+  return ((int*)(&freeaddrinfo))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the getaddrinfo exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b3aad/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b3aad.dir/build.make CMakeFiles/cmTC_b3aad.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b3aad.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_b3aad.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_b3aad
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b3aad.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b3aad.dir/CheckSymbolExists.c.o  -o cmTC_b3aad -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef getaddrinfo
+  return ((int*)(&getaddrinfo))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the getenv exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_0485d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_0485d.dir/build.make CMakeFiles/cmTC_0485d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_0485d.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_0485d.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_0485d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_0485d.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_0485d.dir/CheckSymbolExists.c.o  -o cmTC_0485d -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef getenv
+  return ((int*)(&getenv))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the gethostbyaddr exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5f853/fast 
+/usr/bin/make -f CMakeFiles/cmTC_5f853.dir/build.make CMakeFiles/cmTC_5f853.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_5f853.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_5f853.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_5f853
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5f853.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_5f853.dir/CheckSymbolExists.c.o  -o cmTC_5f853 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef gethostbyaddr
+  return ((int*)(&gethostbyaddr))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the gethostbyname exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_17cde/fast 
+/usr/bin/make -f CMakeFiles/cmTC_17cde.dir/build.make CMakeFiles/cmTC_17cde.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_17cde.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_17cde.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_17cde
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_17cde.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_17cde.dir/CheckSymbolExists.c.o  -o cmTC_17cde -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef gethostbyname
+  return ((int*)(&gethostbyname))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the gethostname exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f1d29/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f1d29.dir/build.make CMakeFiles/cmTC_f1d29.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f1d29.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_f1d29.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_f1d29
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f1d29.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f1d29.dir/CheckSymbolExists.c.o  -o cmTC_f1d29 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef gethostname
+  return ((int*)(&gethostname))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the getnameinfo exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_9371c/fast 
+/usr/bin/make -f CMakeFiles/cmTC_9371c.dir/build.make CMakeFiles/cmTC_9371c.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_9371c.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_9371c.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_9371c
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_9371c.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_9371c.dir/CheckSymbolExists.c.o  -o cmTC_9371c -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef getnameinfo
+  return ((int*)(&getnameinfo))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the getservbyport_r exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_267dd/fast 
+/usr/bin/make -f CMakeFiles/cmTC_267dd.dir/build.make CMakeFiles/cmTC_267dd.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_267dd.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_267dd.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_267dd
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_267dd.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_267dd.dir/CheckSymbolExists.c.o  -o cmTC_267dd -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef getservbyport_r
+  return ((int*)(&getservbyport_r))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the gettimeofday exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_d4a3a/fast 
+/usr/bin/make -f CMakeFiles/cmTC_d4a3a.dir/build.make CMakeFiles/cmTC_d4a3a.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_d4a3a.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_d4a3a.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_d4a3a
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d4a3a.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_d4a3a.dir/CheckSymbolExists.c.o  -o cmTC_d4a3a -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef gettimeofday
+  return ((int*)(&gettimeofday))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the if_indextoname exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_299f0/fast 
+/usr/bin/make -f CMakeFiles/cmTC_299f0.dir/build.make CMakeFiles/cmTC_299f0.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_299f0.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_299f0.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_299f0
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_299f0.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_299f0.dir/CheckSymbolExists.c.o  -o cmTC_299f0 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef if_indextoname
+  return ((int*)(&if_indextoname))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the inet_ntop exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8a14d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8a14d.dir/build.make CMakeFiles/cmTC_8a14d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8a14d.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_8a14d.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_8a14d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8a14d.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_8a14d.dir/CheckSymbolExists.c.o  -o cmTC_8a14d -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef inet_ntop
+  return ((int*)(&inet_ntop))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the inet_pton exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_b590c/fast 
+/usr/bin/make -f CMakeFiles/cmTC_b590c.dir/build.make CMakeFiles/cmTC_b590c.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b590c.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_b590c.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_b590c
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b590c.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_b590c.dir/CheckSymbolExists.c.o  -o cmTC_b590c -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef inet_pton
+  return ((int*)(&inet_pton))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the ioctl exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8a7b8/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8a7b8.dir/build.make CMakeFiles/cmTC_8a7b8.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8a7b8.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_8a7b8.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_8a7b8
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8a7b8.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_8a7b8.dir/CheckSymbolExists.c.o  -o cmTC_8a7b8 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef ioctl
+  return ((int*)(&ioctl))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the recv exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_51ca7/fast 
+/usr/bin/make -f CMakeFiles/cmTC_51ca7.dir/build.make CMakeFiles/cmTC_51ca7.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_51ca7.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_51ca7.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_51ca7
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_51ca7.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_51ca7.dir/CheckSymbolExists.c.o  -o cmTC_51ca7 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef recv
+  return ((int*)(&recv))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the recvfrom exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c5a06/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c5a06.dir/build.make CMakeFiles/cmTC_c5a06.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_c5a06.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_c5a06.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_c5a06
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c5a06.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_c5a06.dir/CheckSymbolExists.c.o  -o cmTC_c5a06 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef recvfrom
+  return ((int*)(&recvfrom))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the send exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_4a066/fast 
+/usr/bin/make -f CMakeFiles/cmTC_4a066.dir/build.make CMakeFiles/cmTC_4a066.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_4a066.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_4a066.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_4a066
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4a066.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_4a066.dir/CheckSymbolExists.c.o  -o cmTC_4a066 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef send
+  return ((int*)(&send))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the setsockopt exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_5a2f4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_5a2f4.dir/build.make CMakeFiles/cmTC_5a2f4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_5a2f4.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_5a2f4.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_5a2f4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5a2f4.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_5a2f4.dir/CheckSymbolExists.c.o  -o cmTC_5a2f4 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef setsockopt
+  return ((int*)(&setsockopt))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the socket exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_db894/fast 
+/usr/bin/make -f CMakeFiles/cmTC_db894.dir/build.make CMakeFiles/cmTC_db894.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_db894.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_db894.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_db894
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_db894.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_db894.dir/CheckSymbolExists.c.o  -o cmTC_db894 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef socket
+  return ((int*)(&socket))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the strcasecmp exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_d16bf/fast 
+/usr/bin/make -f CMakeFiles/cmTC_d16bf.dir/build.make CMakeFiles/cmTC_d16bf.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_d16bf.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_d16bf.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_d16bf
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d16bf.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_d16bf.dir/CheckSymbolExists.c.o  -o cmTC_d16bf -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strcasecmp
+  return ((int*)(&strcasecmp))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the strdup exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f3776/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f3776.dir/build.make CMakeFiles/cmTC_f3776.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_f3776.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_f3776.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_f3776
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f3776.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_f3776.dir/CheckSymbolExists.c.o  -o cmTC_f3776 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strdup
+  return ((int*)(&strdup))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the strncasecmp exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ccbb0/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ccbb0.dir/build.make CMakeFiles/cmTC_ccbb0.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ccbb0.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_ccbb0.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_ccbb0
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ccbb0.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_ccbb0.dir/CheckSymbolExists.c.o  -o cmTC_ccbb0 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strncasecmp
+  return ((int*)(&strncasecmp))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the writev exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7ec67/fast 
+/usr/bin/make -f CMakeFiles/cmTC_7ec67.dir/build.make CMakeFiles/cmTC_7ec67.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_7ec67.dir/CheckSymbolExists.c.o
+/usr/bin/cc -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=600  -fPIE   -o CMakeFiles/cmTC_7ec67.dir/CheckSymbolExists.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_7ec67
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7ec67.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_7ec67.dir/CheckSymbolExists.c.o  -o cmTC_7ec67 -lnsl -lrt 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <stdbool.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/uio.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef writev
+  return ((int*)(&writev))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the include file pthread.h exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_48fbd/fast 
+/usr/bin/make -f CMakeFiles/cmTC_48fbd.dir/build.make CMakeFiles/cmTC_48fbd.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_48fbd.dir/CheckIncludeFile.c.o
+/usr/bin/cc   -fPIE   -o CMakeFiles/cmTC_48fbd.dir/CheckIncludeFile.c.o   -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckIncludeFile.c
+Linking C executable cmTC_48fbd
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_48fbd.dir/link.txt --verbose=1
+/usr/bin/cc      -rdynamic CMakeFiles/cmTC_48fbd.dir/CheckIncludeFile.c.o  -o cmTC_48fbd 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the function pthread_create exists in the pthread passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_79679/fast 
+/usr/bin/make -f CMakeFiles/cmTC_79679.dir/build.make CMakeFiles/cmTC_79679.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_79679.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pthread_create -fPIE   -o CMakeFiles/cmTC_79679.dir/CheckFunctionExists.c.o   -c /usr/local/share/cmake-3.14/Modules/CheckFunctionExists.c
+Linking C executable cmTC_79679
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_79679.dir/link.txt --verbose=1
+/usr/bin/cc  -DCHECK_FUNCTION_EXISTS=pthread_create    -rdynamic CMakeFiles/cmTC_79679.dir/CheckFunctionExists.c.o  -o cmTC_79679 -lpthread 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Checking whether the ASM compiler is GNU using "--version" matched "(GNU assembler)|(GCC)|(Free Software Foundation)":
+cc (Ubuntu 7.4.0-1ubuntu1~18.04) 7.4.0
+Copyright (C) 2017 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Determining if the include file fnmatch.h exists passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_9ae25/fast 
+/usr/bin/make -f CMakeFiles/cmTC_9ae25.dir/build.make CMakeFiles/cmTC_9ae25.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_9ae25.dir/CheckIncludeFile.cxx.o
+/usr/bin/c++    -fPIE   -o CMakeFiles/cmTC_9ae25.dir/CheckIncludeFile.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckIncludeFile.cxx
+Linking CXX executable cmTC_9ae25
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_9ae25.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_9ae25.dir/CheckIncludeFile.cxx.o  -o cmTC_9ae25 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining size of uint32_t passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_f54d9/fast 
+/usr/bin/make -f CMakeFiles/cmTC_f54d9.dir/build.make CMakeFiles/cmTC_f54d9.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_f54d9.dir/uint32_t.cpp.o
+/usr/bin/c++    -fPIE   -o CMakeFiles/cmTC_f54d9.dir/uint32_t.cpp.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CheckTypeSize/uint32_t.cpp
+Linking CXX executable cmTC_f54d9
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f54d9.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_f54d9.dir/uint32_t.cpp.o  -o cmTC_f54d9 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+
+Determining if the strtoll exist passed with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_3eb75/fast 
+/usr/bin/make -f CMakeFiles/cmTC_3eb75.dir/build.make CMakeFiles/cmTC_3eb75.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_3eb75.dir/CheckSymbolExists.cxx.o
+/usr/bin/c++    -fPIE   -o CMakeFiles/cmTC_3eb75.dir/CheckSymbolExists.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.cxx
+Linking CXX executable cmTC_3eb75
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_3eb75.dir/link.txt --verbose=1
+/usr/bin/c++       -rdynamic CMakeFiles/cmTC_3eb75.dir/CheckSymbolExists.cxx.o  -o cmTC_3eb75 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+File /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/CheckSymbolExists.cxx:
+/* */
+#include <stdlib.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef strtoll
+  return ((int*)(&strtoll))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_STD_CXX11 succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_839ff/fast 
+/usr/bin/make -f CMakeFiles/cmTC_839ff.dir/build.make CMakeFiles/cmTC_839ff.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_839ff.dir/src.cxx.o
+/usr/bin/c++    -DHAVE_CXX_FLAG_STD_CXX11  -std=c++11 -fPIE   -std=c++11 -o CMakeFiles/cmTC_839ff.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_839ff
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_839ff.dir/link.txt --verbose=1
+/usr/bin/c++   -DHAVE_CXX_FLAG_STD_CXX11  -std=c++11    -rdynamic CMakeFiles/cmTC_839ff.dir/src.cxx.o  -o cmTC_839ff 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WALL succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_902e4/fast 
+/usr/bin/make -f CMakeFiles/cmTC_902e4.dir/build.make CMakeFiles/cmTC_902e4.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_902e4.dir/src.cxx.o
+/usr/bin/c++    -std=c++11 -DHAVE_CXX_FLAG_WALL  -Wall -fPIE   -Wall -o CMakeFiles/cmTC_902e4.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_902e4
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_902e4.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11 -DHAVE_CXX_FLAG_WALL  -Wall    -rdynamic CMakeFiles/cmTC_902e4.dir/src.cxx.o  -o cmTC_902e4 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WEXTRA succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_44cb6/fast 
+/usr/bin/make -f CMakeFiles/cmTC_44cb6.dir/build.make CMakeFiles/cmTC_44cb6.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_44cb6.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall -DHAVE_CXX_FLAG_WEXTRA  -Wextra -fPIE   -Wextra -o CMakeFiles/cmTC_44cb6.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_44cb6
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_44cb6.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall -DHAVE_CXX_FLAG_WEXTRA  -Wextra    -rdynamic CMakeFiles/cmTC_44cb6.dir/src.cxx.o  -o cmTC_44cb6 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WSHADOW succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_746ee/fast 
+/usr/bin/make -f CMakeFiles/cmTC_746ee.dir/build.make CMakeFiles/cmTC_746ee.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_746ee.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra -DHAVE_CXX_FLAG_WSHADOW  -Wshadow -fPIE   -Wshadow -o CMakeFiles/cmTC_746ee.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_746ee
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_746ee.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra -DHAVE_CXX_FLAG_WSHADOW  -Wshadow    -rdynamic CMakeFiles/cmTC_746ee.dir/src.cxx.o  -o cmTC_746ee 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WERROR succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ae531/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ae531.dir/build.make CMakeFiles/cmTC_ae531.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_ae531.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow -DHAVE_CXX_FLAG_WERROR  -Werror -fPIE   -Werror -o CMakeFiles/cmTC_ae531.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_ae531
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ae531.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow -DHAVE_CXX_FLAG_WERROR  -Werror    -rdynamic CMakeFiles/cmTC_ae531.dir/src.cxx.o  -o cmTC_ae531 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_PEDANTIC succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_034c5/fast 
+/usr/bin/make -f CMakeFiles/cmTC_034c5.dir/build.make CMakeFiles/cmTC_034c5.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_034c5.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow -DHAVE_CXX_FLAG_PEDANTIC  -pedantic -fPIE   -pedantic -o CMakeFiles/cmTC_034c5.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_034c5
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_034c5.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow -DHAVE_CXX_FLAG_PEDANTIC  -pedantic    -rdynamic CMakeFiles/cmTC_034c5.dir/src.cxx.o  -o cmTC_034c5 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_PEDANTIC_ERRORS succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_72bba/fast 
+/usr/bin/make -f CMakeFiles/cmTC_72bba.dir/build.make CMakeFiles/cmTC_72bba.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_72bba.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic -DHAVE_CXX_FLAG_PEDANTIC_ERRORS  -pedantic-errors -fPIE   -pedantic-errors -o CMakeFiles/cmTC_72bba.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_72bba
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_72bba.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic -DHAVE_CXX_FLAG_PEDANTIC_ERRORS  -pedantic-errors    -rdynamic CMakeFiles/cmTC_72bba.dir/src.cxx.o  -o cmTC_72bba 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WFLOAT_EQUAL succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_7ff41/fast 
+/usr/bin/make -f CMakeFiles/cmTC_7ff41.dir/build.make CMakeFiles/cmTC_7ff41.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_7ff41.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors -DHAVE_CXX_FLAG_WFLOAT_EQUAL  -Wfloat-equal -fPIE   -Wfloat-equal -o CMakeFiles/cmTC_7ff41.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_7ff41
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7ff41.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors -DHAVE_CXX_FLAG_WFLOAT_EQUAL  -Wfloat-equal    -rdynamic CMakeFiles/cmTC_7ff41.dir/src.cxx.o  -o cmTC_7ff41 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_FSTRICT_ALIASING succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_8071d/fast 
+/usr/bin/make -f CMakeFiles/cmTC_8071d.dir/build.make CMakeFiles/cmTC_8071d.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_8071d.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal -DHAVE_CXX_FLAG_FSTRICT_ALIASING  -fstrict-aliasing -fPIE   -fstrict-aliasing -o CMakeFiles/cmTC_8071d.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_8071d
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8071d.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal -DHAVE_CXX_FLAG_FSTRICT_ALIASING  -fstrict-aliasing    -rdynamic CMakeFiles/cmTC_8071d.dir/src.cxx.o  -o cmTC_8071d 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_WSTRICT_ALIASING succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_a3fa7/fast 
+/usr/bin/make -f CMakeFiles/cmTC_a3fa7.dir/build.make CMakeFiles/cmTC_a3fa7.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_a3fa7.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing -DHAVE_CXX_FLAG_WSTRICT_ALIASING  -Wstrict-aliasing -fPIE   -Wstrict-aliasing -o CMakeFiles/cmTC_a3fa7.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_a3fa7
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a3fa7.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing -DHAVE_CXX_FLAG_WSTRICT_ALIASING  -Wstrict-aliasing    -rdynamic CMakeFiles/cmTC_a3fa7.dir/src.cxx.o  -o cmTC_a3fa7 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test HAVE_CXX_FLAG_COVERAGE succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_e4a51/fast 
+/usr/bin/make -f CMakeFiles/cmTC_e4a51.dir/build.make CMakeFiles/cmTC_e4a51.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_e4a51.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DHAVE_CXX_FLAG_COVERAGE  --coverage -fPIE   --coverage -o CMakeFiles/cmTC_e4a51.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_e4a51
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e4a51.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DHAVE_CXX_FLAG_COVERAGE  --coverage    -rdynamic CMakeFiles/cmTC_e4a51.dir/src.cxx.o  -o cmTC_e4a51 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test BENCHMARK_HAS_O3_FLAG succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_ee973/fast 
+/usr/bin/make -f CMakeFiles/cmTC_ee973.dir/build.make CMakeFiles/cmTC_ee973.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_ee973.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DBENCHMARK_HAS_O3_FLAG -fPIE   -O3 -o CMakeFiles/cmTC_ee973.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_ee973
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ee973.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DBENCHMARK_HAS_O3_FLAG    -rdynamic CMakeFiles/cmTC_ee973.dir/src.cxx.o  -o cmTC_ee973 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test BENCHMARK_HAS_CXX03_FLAG succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_c1949/fast 
+/usr/bin/make -f CMakeFiles/cmTC_c1949.dir/build.make CMakeFiles/cmTC_c1949.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_c1949.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DBENCHMARK_HAS_CXX03_FLAG -fPIE   -std=c++03 -o CMakeFiles/cmTC_c1949.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_c1949
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c1949.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DBENCHMARK_HAS_CXX03_FLAG    -rdynamic CMakeFiles/cmTC_c1949.dir/src.cxx.o  -o cmTC_c1949 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
+Performing C++ SOURCE FILE Test BENCHMARK_HAS_WNO_ODR succeeded with the following output:
+Change Dir: /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/make cmTC_88c64/fast 
+/usr/bin/make -f CMakeFiles/cmTC_88c64.dir/build.make CMakeFiles/cmTC_88c64.dir/build
+make[1]: Entering directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_88c64.dir/src.cxx.o
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DBENCHMARK_HAS_WNO_ODR -fPIE   -Wno-odr -o CMakeFiles/cmTC_88c64.dir/src.cxx.o -c /home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp/src.cxx
+Linking CXX executable cmTC_88c64
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_88c64.dir/link.txt --verbose=1
+/usr/bin/c++    -std=c++11  -Wall  -Wextra  -Wshadow  -pedantic  -pedantic-errors  -Wfloat-equal  -fstrict-aliasing  -Wstrict-aliasing -DBENCHMARK_HAS_WNO_ODR    -rdynamic CMakeFiles/cmTC_88c64.dir/src.cxx.o  -o cmTC_88c64 
+make[1]: Leaving directory '/home/colin/src/onnxruntime/cmake/external/grpc/CMakeFiles/CMakeTmp'
+
+Source file was:
+int main() { return 0; }
