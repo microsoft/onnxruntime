@@ -396,6 +396,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests["mul_bcast"] = "disabled temporarily";
   broken_tests["transpose_all_permutations_0"] = "disabled temporarily";
   broken_tests["fp16_shufflenet"] = "disabled temporarily";
+  broken_tests["fp16_inception_v1"] = "disabled temporarily";
   broken_tests["maxpool_2d_same_upper"] = "disabled temporarily";
 #endif
 
