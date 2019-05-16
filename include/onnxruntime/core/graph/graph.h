@@ -101,7 +101,7 @@ class Node {
   Node::Type NodeType() const noexcept;
 
   /** Gets the function body if the #NodeType is fused, or nullptr if not. */
-  Function* GetFunctionBody() noexcept;
+  Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
   const std::string& Description() const noexcept;

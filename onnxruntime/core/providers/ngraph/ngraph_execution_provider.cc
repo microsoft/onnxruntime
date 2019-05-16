@@ -326,7 +326,7 @@ static std::vector<NodeIndex> GetUnsupportedNodeIndices(const GraphViewer& graph
 }
 
 /* Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
-   supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph 
+   supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
 */
 static std::vector<std::vector<NodeIndex>> GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
   std::vector<std::vector<NodeIndex>> ng_clusters;
@@ -458,7 +458,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     std::for_each(graph_viewer.GetInputs().begin(), graph_viewer.GetInputs().end(),
                   [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
 
-    /* In scenarios, when there are no inputs or all inputs being initializers, 
+    /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
     if (inputs.empty()) {
       return result;
@@ -499,7 +499,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   ONNX_NAMESPACE::ModelProto model_proto;
   auto graph_proto = model_proto.mutable_graph();
-  const auto& fused_graph = fused_node->GetFunctionBody()->Body();
+  auto& fused_graph = fused_node->GetFunctionBody()->Body();
 
   for (const auto& node : fused_graph.Nodes()) {
     node.ToProto(*(graph_proto->add_node()));

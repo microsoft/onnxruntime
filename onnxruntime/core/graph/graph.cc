@@ -301,7 +301,7 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-Function* Node::GetFunctionBody() noexcept {
+Function* Node::GetFunctionBody() const noexcept {
   return func_body_;
 }
 
