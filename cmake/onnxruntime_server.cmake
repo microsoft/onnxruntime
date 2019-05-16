@@ -24,35 +24,46 @@ endif()
 include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
-set(gRPC_BUILD_CSHARP_EXT OFF)
-set(gRPC_ZLIB_PROVIDER "package")
-set(gRPC_SSL_PROVIDER "")
-set(gRPC_PROTOBUF_PROVIDER "module")
-set(PROTOBUF_ROOT_DIR "${PROJECT_SOURCE_DIR}/external/protobuf/cmake")
-add_subdirectory(${REPO_ROOT}/cmake/external/grpc EXCLUDE_FROM_ALL)
+if(EXISTS "${ONNX_CUSTOM_PROTOC_EXECUTABLE}")
+    set(_PROTOBUF_PROTOC ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+  else()
+    set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
+endif()
 
-# Geenrate GPRC stuff
-get_filename_component(hw_proto "${ONNXRUNTIME_ROOT}/server/protobuf/prediction_service.proto" ABSOLUTE)
-get_filename_component(hw_proto_path "${hw_proto}" PATH)
+# In path
+set(_GRPC_CPP_PLUGIN_EXECUTABLE "/usr/local/bin/grpc_cpp_plugin") ##TODO: PARAMETERIZE THIS.
+
+# Genrate GPRC stuff
+get_filename_component(grpc_proto "${ONNXRUNTIME_ROOT}/server/protobuf/prediction_service.proto" ABSOLUTE)
+get_filename_component(grpc_proto_path "${grpc_proto}" PATH)
 
 # Generated sources
 
-set(hw_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.cc")
-set(hw_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.h")
+set(grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.cc")
+set(grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.h")
 add_custom_command(
-      OUTPUT "${hw_grpc_srcs}" "${hw_grpc_hdrs}"
+      OUTPUT "${grpc_srcs}" "${grpc_hdrs}"
       COMMAND ${_PROTOBUF_PROTOC}
-      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+      ARGS 
+        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
+        --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
-        "${hw_proto}"
-      DEPENDS "${hw_proto}")
+        -I ${grpc_proto_path}
+        "${grpc_proto}"
+      DEPENDS "${grpc_proto}")
 
-add_library(server_grpc ${hw_grpc_srcs})
+add_library(server_grpc ${grpc_srcs})
 target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 target_compile_definitions(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 add_dependencies(server_grpc server_proto)
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+
+if(NOT WIN32)
+  if(HAS_UNUSED_PARAMETER)
+  set_source_files_properties(${grpc_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  endif()
+endif()
 
 
 # Setup source code
