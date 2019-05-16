@@ -124,9 +124,9 @@ IfImpl::IfImpl(OpKernelContextInternal& context,
 
 Status IfImpl::Initialize() {
   auto& graph_outputs = subgraph_.GetOutputs();
-  auto num_subgraph_outputs = graph_outputs.size();
+  size_t num_subgraph_outputs = graph_outputs.size();
 
-  if (num_subgraph_outputs != num_outputs_) {
+  if (num_subgraph_outputs != static_cast<size_t>(num_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
                            " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }
@@ -168,7 +168,7 @@ Status IfImpl::AllocateOutputTensors() {
       if (!tensor)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
 
-      outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+      outputs_.emplace_back(AllocationType::IfOutput, *context_.GetOutputMLValue(index));
     }
 
     ++index;

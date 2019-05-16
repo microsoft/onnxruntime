@@ -35,7 +35,14 @@ void NonMaxSuppression::MaxMin(const float& lhs, const float& rhs, float& min, f
 }
 
 bool NonMaxSuppression::SuppressByIOU(const float* boxes_data, int64_t box_index1, int64_t box_index2, float iou_threshold) const {
-  float x1_min, y1_min, x1_max, y1_max, x2_min, y2_min, x2_max, y2_max;
+  float x1_min;
+  float y1_min;
+  float x1_max;
+  float y1_max;
+  float x2_min;
+  float y2_min;
+  float x2_max;
+  float y2_max;
   // center_point_box_ only support 0 or 1
   if (0 == center_point_box_) {
     // boxes data format [y1, x1, y2, x2],
@@ -180,8 +187,9 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
         bool selected = true;
         // Check with existing selected boxes for this class, suppress if exceed the IOU (Intersection Over Union) threshold
-        for (int i = 0; i < selected_indicies_inside_class.size(); ++i) {
-          if (SuppressByIOU(boxes_data + box_offset, selected_indicies_inside_class[i], next_top_score.index, iou_threshold)) {
+        for (int64_t selected_indicies_inside_clas : selected_indicies_inside_class) {
+          if (SuppressByIOU(boxes_data + box_offset, selected_indicies_inside_clas, next_top_score.index,
+                            iou_threshold)) {
             selected = false;
             break;
           }
@@ -192,7 +200,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
             break;
           }
           selected_indicies_inside_class.push_back(next_top_score.index);
-          tmp_selected_indices.push_back(selected_index(batch_index, class_index, next_top_score.index));
+          tmp_selected_indices.emplace_back(batch_index, class_index, next_top_score.index);
         }
       }  //while
     }    //for class_index

@@ -114,14 +114,9 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) {
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-      next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-      next_node.GetInputEdgesCount() != 1 ||
-      graph.IsNodeOutputsInGraphOutputs(next_node)) {
-    return false;
-  }
-
-  return true;
+  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
+           next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node));
 }
 
 }  // namespace onnxruntime

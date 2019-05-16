@@ -126,7 +126,7 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
  public:
   SequentialPlannerTestContext(ShapeMap* shape_map) : shape_map_(shape_map) {}
 
-  virtual TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
+  TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
     auto iter = shape_map_->find(&arg);
     return (shape_map_->end() != iter) ? iter->second : nullptr;
   }
@@ -160,7 +160,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SequentialExecutionPlan> plan_;
 
  public:
-  PlannerTest() : model_("test"), graph_{model_.MainGraph()}, state_{execution_providers_} {
+  PlannerTest() : model_("test"), graph_{model_.MainGraph()}, state_{execution_providers_, false} {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Build();
     in_place_kernel_ = KernelDefBuilder().SetName("Clip").MayInplace(0, 0).Build();
     CPUExecutionProviderInfo epi;

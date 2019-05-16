@@ -56,9 +56,9 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
 ImputerOp::ImputerOp(const OpKernelInfo& info) : OpKernel(info),
                                                  imputed_values_float_(info.GetAttrsOrDefault<float>("imputed_value_floats")),
                                                  imputed_values_int64_(info.GetAttrsOrDefault<int64_t>("imputed_value_int64s")) {
-  if (imputed_values_float_.size() && !info.GetAttr<float>("replaced_value_float", &replaced_value_float_).IsOK())
+  if (!imputed_values_float_.empty() && !info.GetAttr<float>("replaced_value_float", &replaced_value_float_).IsOK())
     ORT_THROW("Expected 'replaced_value_float' attribute since 'imputed_value_floats' is specified");
-  if (imputed_values_int64_.size() && !info.GetAttr<int64_t>("replaced_value_int64", &replaced_value_int64_).IsOK())
+  if (!imputed_values_int64_.empty() && !info.GetAttr<int64_t>("replaced_value_int64", &replaced_value_int64_).IsOK())
     ORT_THROW("Expected 'replace_value_int64' attribute since 'imputed_values_int64' is specified");
   ORT_ENFORCE(imputed_values_float_.empty() ^ imputed_values_int64_.empty(),
               "Must provide imputed_values_float_ or imputed_values_int64_ but not both.");
@@ -118,7 +118,8 @@ common::Status ImputerOp::Compute(OpKernelContext* context) const {
   auto input_type = input_tensor_ptr->DataType();
   if (input_type == DataTypeImpl::GetType<float>()) {
     return ComputeByType<float>(context, replaced_value_float_, imputed_values_float_);
-  } else if (input_type == DataTypeImpl::GetType<int64_t>()) {
+  }
+  if (input_type == DataTypeImpl::GetType<int64_t>()) {
     return ComputeByType<int64_t>(context, replaced_value_int64_, imputed_values_int64_);
   } else {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid type");

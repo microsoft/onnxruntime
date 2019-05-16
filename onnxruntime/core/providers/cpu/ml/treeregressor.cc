@@ -70,7 +70,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   ORT_ENFORCE(nodes_id_size == nodes_modes_.size());
   ORT_ENFORCE(nodes_id_size == nodes_truenodeids_.size());
   ORT_ENFORCE(nodes_id_size == nodes_falsenodeids_.size());
-  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (0 == nodes_hitrates_.size()));
+  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (nodes_hitrates_.empty()));
 
   max_tree_depth_ = 1000;
   offset_ = four_billion_;
@@ -81,8 +81,8 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   std::sort(begin(leafnode_data_), end(leafnode_data_), [](auto const& t1, auto const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
-    else
-      return std::get<1>(t1) < std::get<1>(t2);
+
+    return std::get<1>(t1) < std::get<1>(t2);
   });
   //make an index so we can find the leafnode data quickly when evaluating
   int64_t field0 = -1;

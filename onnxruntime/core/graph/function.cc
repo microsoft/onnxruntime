@@ -19,7 +19,8 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
   std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   for (auto& node : onnx_func_proto_->node()) {
-    const auto node_op_schema = schema_registry->GetSchema(node.op_type(), (int)onnx_func_proto_->since_version(), node.domain());
+    const auto node_op_schema =
+        schema_registry->GetSchema(node.op_type(), static_cast<int>(onnx_func_proto_->since_version()), node.domain());
     for (int i = 0; i < node.input_size(); ++i) {
       auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
@@ -115,7 +116,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   //instead of create new nodes.
   for (auto& node_index : customized_func_body_->nodes) {
     auto node = parent_graph_->GetNode(node_index);
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
+    std::vector<onnxruntime::NodeArg*> inputs;
+    std::vector<onnxruntime::NodeArg*> outputs;
     for (auto input : node->InputDefs()) {
       auto& n_input = sub_graph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
@@ -127,7 +129,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     sub_graph.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
   }
 
-  for (auto input : meta_def->inputs) {
+  for (const auto& input : meta_def->inputs) {
     const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
     if (graph.GetInitializedTensor(input, initializer)) {
       sub_graph.AddInitializedTensor(*initializer);
@@ -148,7 +150,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->SetName(onnx_func_proto_->name());
   op_schema_->SetDomain(onnx_func_proto_->node().Get(0).domain());
   op_schema_->SetDoc(onnx_func_proto_->doc_string());
-  op_schema_->SinceVersion((ONNX_NAMESPACE::OperatorSetVersion)onnx_func_proto_->since_version());
+  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(onnx_func_proto_->since_version()));
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
   for (int i = 0; i < onnx_func_proto_->input_size(); ++i) {
@@ -202,7 +204,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   //construct body
   std::unordered_map<std::string, int> domain_to_version;
   //TODO: set correct domain and version
-  domain_to_version[onnxruntime::kOnnxDomain] = (int)onnx_func_proto_->since_version();
+  domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_->since_version());
   body_ = std::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
                                                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   auto& sub_graph = body_->MainGraph();
@@ -211,7 +213,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // in the parent graph for later inlining purpose
   auto attr_map = node_in_parent_graph->GetAttributes();
   for (auto& node : onnx_func_proto_->node()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
+    std::vector<onnxruntime::NodeArg*> inputs;
+    std::vector<onnxruntime::NodeArg*> outputs;
     std::string uniq_identifier = node.name();
     if (!node.has_name()) {
       std::stringstream ss;

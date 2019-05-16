@@ -294,8 +294,8 @@ Status Scan8Impl::ValidateInput() {
     auto d = sequence_lens_tensor_->DataAsSpan<int64_t>();
     sequence_lens_.assign(d.cbegin(), d.cend());
 
-    if (std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
-                    [this](int64_t value) { return value > 0 && value <= max_sequence_len_; }) == false) {
+    if (!std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
+                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; })) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
@@ -370,7 +370,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
       auto& input_iter = loop_state_input_iterators[i];
       auto& output_iter = *output_iterators_[i];
 
-      variables.push_back(LoopStateVariable(*input_iter, *output_iter, sequence_lens_[b], alloc));
+      variables.emplace_back(*input_iter, *output_iter, sequence_lens_[b], alloc);
 
       ++input_iter;
       ++output_iter;

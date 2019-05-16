@@ -18,7 +18,8 @@ enum UpsampleMode {
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) : scales_cached_(false) {
-    int start, end;
+    int start;
+    int end;
     info.GetKernelDef().SinceVersion(&start, &end);
     is_resize = (start == 10);
 
@@ -51,12 +52,12 @@ class UpsampleBase {
   UpsampleMode StringToUpsampleMode(const std::string& mode) {
     if (strcmp(mode.c_str(), UpsampleModeNN) == 0) {
       return UpsampleMode::NN;
-    } else if (strcmp(mode.c_str(), UpsampleModeLinear) == 0) {
+    }
+    if (strcmp(mode.c_str(), UpsampleModeLinear) == 0) {
       return UpsampleMode::LINEAR;
-    } else {
+    }
       ORT_THROW("mode attribute is " + mode + ". It can only be " +
                 UpsampleModeNN + "(default) or " + UpsampleModeLinear + ".");
-    }
   }
 
   void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
@@ -81,7 +82,7 @@ class UpsampleBase {
     const float* scale_data = scale->template Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
-    if (scales.size() == 0) {
+    if (scales.empty()) {
       scales.resize(scales_size);
     }
     memcpy(scales.data(), scale_data, scales_size * sizeof(float));
