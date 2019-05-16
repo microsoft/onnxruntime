@@ -292,10 +292,6 @@ const onnxruntime::Graph& FunctionImpl::Body() const {
   return body_->MainGraph();
 }
 
-onnxruntime::Graph& FunctionImpl::Body() {
-  return body_->MainGraph();
-}
-
 const IndexedSubGraph& FunctionImpl::GetIndexedSubGraph() const {
   return *customized_func_body_;
 }

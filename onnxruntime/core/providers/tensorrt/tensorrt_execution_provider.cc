@@ -192,7 +192,7 @@ common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& 
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (auto* fused_node : fused_nodes) {
+  for (const auto* fused_node : fused_nodes) {
     std::vector<int> input_indexes;
     std::vector<int> input_dim_sizes;
     std::vector<int> output_indexes;
@@ -216,11 +216,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     // Reconstruct graph proto from fused node's function body
-    auto* func_body = fused_node->GetFunctionBody();
+    const auto* func_body = fused_node->GetFunctionBody();
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
-    auto& graph_body = func_body->Body();
+    const Graph& graph_body = func_body->Body();
     onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     *(model_proto.mutable_graph()) = graph_body.ToGraphProto();

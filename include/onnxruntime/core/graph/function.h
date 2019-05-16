@@ -26,7 +26,6 @@ class Function {
 
   /** Gets the Graph instance for the Function body subgraph. */
   virtual const onnxruntime::Graph& Body() const = 0;
-  virtual onnxruntime::Graph& Body() = 0;
 
   /** Gets the IndexedSubGraph for the Function. */
   virtual const IndexedSubGraph& GetIndexedSubGraph() const = 0;

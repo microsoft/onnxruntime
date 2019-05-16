@@ -101,7 +101,7 @@ class Node {
   Node::Type NodeType() const noexcept;
 
   /** Gets the function body if the #NodeType is fused, or nullptr if not. */
-  Function* GetFunctionBody() const noexcept;
+  const Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
   const std::string& Description() const noexcept;
@@ -400,7 +400,7 @@ class Node {
 
   void SetNodeType(Node::Type node_type) noexcept;
 
-  void SetFunctionBody(Function* func);
+  void SetFunctionBody(const Function& func);
 
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
@@ -422,7 +422,7 @@ class Node {
   Node::Type node_type_ = Node::Type::Primitive;
 
   // The function body is owned by graph_
-  Function* func_body_ = nullptr;
+  const Function* func_body_ = nullptr;
 
   // Node doc string.
   std::string description_;
@@ -705,6 +705,7 @@ class Graph {
 
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+  ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -877,9 +878,6 @@ class Graph {
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
 
-  // Sync graph inputs/outputs when serializing to proto.
-  void SyncGraphInputsOutputs();
-
   // Clear all unused initializers
   void CleanUnusedInitializers();
 
@@ -902,6 +900,8 @@ class Graph {
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+
+  void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and

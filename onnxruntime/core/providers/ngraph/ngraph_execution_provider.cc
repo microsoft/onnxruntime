@@ -499,7 +499,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   ONNX_NAMESPACE::ModelProto model_proto;
   auto graph_proto = model_proto.mutable_graph();
-  auto& fused_graph = fused_node->GetFunctionBody()->Body();
+  const auto& fused_graph = fused_node->GetFunctionBody()->Body();
 
   for (const auto& node : fused_graph.Nodes()) {
     node.ToProto(*(graph_proto->add_node()));
