@@ -72,19 +72,19 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   state.CalculateNodeIndexInfo();
 
-  vector<MLValue> outputs;
+  vector<OrtValue> outputs;
   ExecutionFrame frame({}, {}, {}, outputs, {}, state);
 
   int start_index = frame.GetNodeOffset(node->Index());
   EXPECT_EQ(start_index, 0);
 
   TensorShape shape(std::vector<int64_t>{2, 3});
-  MLValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
+  OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
   status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
                                                     execution_providers.Get(xp_typ)->GetAllocator(0, OrtMemTypeDefault)->Info(), shape);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
+  OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   EXPECT_TRUE(p_tensor);
   EXPECT_EQ(p_tensor->Shape(), shape);
@@ -92,7 +92,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   //test share memory from tensor
   TensorShape shape2(std::vector<int64_t>{3, 2});
-  MLValue& mlvalue1 = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
+  OrtValue& mlvalue1 = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
   status = frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
                                                         start_index,
                                                         DataTypeImpl::GetType<float>(),
@@ -100,7 +100,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
                                                         shape2);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  const MLValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
+  const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
   EXPECT_TRUE(tensor2);
   EXPECT_EQ(tensor2->Shape(), shape2);
@@ -123,7 +123,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
                                                               shape,
                                                               cpu_allocator);
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -145,10 +145,10 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
 
   state.CalculateNodeIndexInfo();
 
-  vector<MLValue> outputs;
+  vector<OrtValue> outputs;
   ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state);
 
-  MLValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
+  OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   EXPECT_TRUE(p_tensor_arg_0);
   EXPECT_EQ(p_tensor_arg_0->Shape(), shape);
@@ -202,7 +202,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
 
   auto cpu_allocator = execution_providers.Get(xp_type)->GetAllocator(0, OrtMemTypeDefault);
 
-  MLValue v1, v2, v3;
+  OrtValue v1, v2, v3;
   CreateMLValue<float>(cpu_allocator,
                        std::vector<int64_t>{1, 2},
                        std::vector<float>{1.0f, 1.0f}, &v1);
@@ -223,12 +223,12 @@ TEST(ExecutionFrameTest, MemPatternTest) {
 
   state.CalculateNodeIndexInfo();
 
-  vector<MLValue> outputs;
+  vector<OrtValue> outputs;
   ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
 
-  MLValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
-  MLValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
-  MLValue& mlvalue5 = *frame.GetMutableNodeInputOrOutputMLValue(5);
+  OrtValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
+  OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
+  OrtValue& mlvalue5 = *frame.GetMutableNodeInputOrOutputMLValue(5);
 
   status = frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue3, 3,
                                                     DataTypeImpl::GetType<float>(),

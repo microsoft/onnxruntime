@@ -174,7 +174,7 @@ class DataTypeImpl {
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
    * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back
-   * Don't pass the returned value to MLValue::MLValue(...) function
+   * Don't pass the returned value to OrtValue::OrtValue(...) function
    * \param proto
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);

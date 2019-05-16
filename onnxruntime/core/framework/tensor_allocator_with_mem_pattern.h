@@ -57,19 +57,20 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     return Status::OK();
   }
 
-  common::Status GetPreallocatedBuffer(int mlvalue_index, const char* name, std::unique_ptr<MemBuffer>& out) override {
+  common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
+                                       std::unique_ptr<MemBuffer>& out) override {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
-    const struct OrtAllocatorInfo& location = seq_plan_.GetLocation(mlvalue_index);
+    const struct OrtAllocatorInfo& location = seq_plan_.GetLocation(ort_value_index);
     auto pattern = mem_patterns_.GetPatterns(location);
     if (pattern == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mem pattern for initializer ", name, " is not found");
     }
-    // if block is not found, means this mlvalue is not traced
+    // if block is not found, means this ort_value is not traced
     // fall back to allocate separate buffer.
     // if it->second.get() is null, then fall back to the block not found case
-    auto block = pattern->GetBlock(mlvalue_index);
+    auto block = pattern->GetBlock(ort_value_index);
     auto it = buffers_.find(location);
     if (it == buffers_.end()) {
       if (block != nullptr && block->size_ == 0) {

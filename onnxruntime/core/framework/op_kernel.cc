@@ -28,7 +28,7 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
-MLValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
+OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
@@ -134,7 +134,7 @@ const OrtValue* OpKernelContext::GetImplicitInputMLValue(int index) const {
   return execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
 }
 
-MLValue* OpKernelContext::GetOutputMLValue(int index) {
+OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 

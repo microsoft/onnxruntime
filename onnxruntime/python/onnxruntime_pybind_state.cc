@@ -489,7 +489,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
-          MLValue ml_value;
+          OrtValue ml_value;
           CreateGenericMLValue(GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
@@ -507,7 +507,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           feeds.insert(std::make_pair(_.first, ml_value));
         }
 
-        std::vector<MLValue> fetches;
+        std::vector<OrtValue> fetches;
         common::Status status;
 
         {
