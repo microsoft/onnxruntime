@@ -413,6 +413,7 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/runner.cc
   ${onnx_test_runner_src_dir}/TestCase.cc
   ${onnx_test_runner_src_dir}/TestCase.h
+  ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
   ${onnx_test_runner_src_dir}/sync_api.cc)
 
@@ -423,8 +424,6 @@ if(WIN32)
   set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
   set(GETOPT_LIB_WIDE win_getopt_wide)
-else()
-  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h)
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})

@@ -84,7 +84,7 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
-    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
+    parser.add_argument("--numpy_version", help="Installs a specific version of numpy "
                         "before building the python binding.")
     parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
@@ -98,6 +98,7 @@ Use the individual flags to only run the specified stages.
     # Build ONNX Runtime server
     parser.add_argument("--build_server", action='store_true', help="Build server application for the ONNXRuntime.")
     parser.add_argument("--enable_server_tests", action='store_true', help="Run server application tests.")
+    parser.add_argument("--enable_server_model_tests", action='store_true', help="Run server model tests.")
 
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
@@ -218,7 +219,7 @@ def install_ubuntu_deps(args):
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel']
-    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
+    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -269,8 +270,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         shutil.rmtree(models_dir)
     if shutil.which('unzip'):
         run_subprocess(['unzip','-qd', models_dir, local_zip_file])
-    elif shutil.which('7za'):
-        run_subprocess(['7za','x', local_zip_file, '-y', '-o' + models_dir])
+    elif shutil.which('7z'):  # 7-Zip
+        run_subprocess(['7z','x', local_zip_file, '-y', '-o' + models_dir])
+    elif shutil.which('7za'):  # 7-Zip standalone
+        run_subprocess(['7za', 'x', local_zip_file, '-y', '-o' + models_dir])
     else:
         #TODO: use python for unzip
         log.error("No unzip tool for use")
@@ -592,6 +595,23 @@ def run_server_tests(build_dir, configs):
         server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
         run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
+
+def run_server_model_tests(build_dir, configs):
+    for config in configs:
+        config_build_dir = get_config_build_dir(build_dir, config)
+        if is_windows():
+            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+            test_raw_data_folder = os.path.join(config_build_dir, 'models')
+        else:
+            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+            test_raw_data_folder = os.path.join(build_dir, 'models')
+
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
+        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+
+
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -774,7 +794,7 @@ def main():
 
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.enable_pybind if not args.skip_onnx_tests else False,
+                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt, args.use_ngraph)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
@@ -801,6 +821,9 @@ def main():
 
     if args.build_server and args.enable_server_tests:
         run_server_tests(build_dir, configs)
+
+    if args.build_server and args.enable_server_model_tests:
+        run_server_model_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:

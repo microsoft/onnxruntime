@@ -56,9 +56,8 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   if (attr) {
     values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
