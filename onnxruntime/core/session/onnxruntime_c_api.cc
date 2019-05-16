@@ -32,7 +32,6 @@ using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
 using onnxruntime::MLFloat16;
 using onnxruntime::MLStatus;
-using onnxruntime::MLValue;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
 using onnxruntime::ToOrtStatus;
@@ -70,14 +69,14 @@ struct OrtEnv {
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-#define TENSOR_READ_API_BEGIN                                      \
-  API_IMPL_BEGIN                                                   \
-  auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value); \
+#define TENSOR_READ_API_BEGIN                          \
+  API_IMPL_BEGIN                                       \
+  auto v = reinterpret_cast<const ::OrtValue*>(value); \
   auto& tensor = v->Get<onnxruntime::Tensor>();
 
-#define TENSOR_READWRITE_API_BEGIN                           \
-  API_IMPL_BEGIN                                             \
-  auto v = reinterpret_cast<::onnxruntime::MLValue*>(value); \
+#define TENSOR_READWRITE_API_BEGIN               \
+  API_IMPL_BEGIN                                 \
+  auto v = reinterpret_cast<::OrtValue*>(value); \
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 class LoggingWrapper : public ISink {
@@ -433,7 +432,7 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
     }
 
     feed_names[i] = input_names[i];
-    auto& mlvalue = feeds[i] = *reinterpret_cast<const ::onnxruntime::MLValue*>(input[i]);
+    auto& mlvalue = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
 
     if (mlvalue.Fence())
       mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
@@ -451,7 +450,7 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
   std::vector<MLValue> fetches(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] != nullptr) {
-      ::onnxruntime::MLValue& value = *reinterpret_cast<::onnxruntime::MLValue*>(output[i]);
+      ::OrtValue& value = *reinterpret_cast<::OrtValue*>(output[i]);
       if (value.Fence())
         value.Fence()->BeforeUsingAsOutput(onnxruntime::kCpuExecutionProvider, queue_id);
       fetches[i] = value;
@@ -468,7 +467,7 @@ ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
   if (!status.IsOK())
     return ToOrtStatus(status);
   for (size_t i = 0; i != output_names_len; ++i) {
-    ::onnxruntime::MLValue& value = fetches[i];
+    ::OrtValue& value = fetches[i];
     if (value.Fence())
       value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, queue_id);
     if (output[i] == nullptr) {
@@ -647,7 +646,7 @@ static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t ind
 }
 
 ORT_API(int, OrtIsTensor, _In_ const OrtValue* value) {
-  auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
+  auto v = reinterpret_cast<const ::OrtValue*>(value);
   return v->IsTensor() ? 1 : 0;
 }
 
