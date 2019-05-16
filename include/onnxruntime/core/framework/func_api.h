@@ -1,5 +1,9 @@
 #pragma once
 #include "core/common/common.h"
+
+struct OrtCustomOpApi;
+struct OrtKernelContext;
+
 namespace onnxruntime {
 
 // AllocateFunc(void* handle, size_t alignment, size_t size)
