@@ -21,11 +21,8 @@ void SessionState::SetGraphViewer(std::unique_ptr<onnxruntime::GraphViewer> grap
 const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
 
 const OpKernel* SessionState::GetKernel(NodeIndex node_id) const {
-  if (session_kernels_.count(node_id) == 0) {
-    return nullptr;
-  }
-
-  return session_kernels_.find(node_id)->second.get();
+  auto kernel = session_kernels_.find(node_id);
+  return (kernel != session_kernels_.cend()) ? kernel->second.get() : nullptr;
 }
 
 void SessionState::AddKernel(onnxruntime::NodeIndex node_id, std::unique_ptr<OpKernel> p_kernel) {
@@ -148,10 +145,12 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
 
 common::Status SessionState::GetInputNodeInfo(const std::string& input_name,
                                               std::vector<NodeInfo>& node_info_vec) const {
-  if (!input_names_to_nodeinfo_mapping_.count(input_name)) {
+  auto entry = input_names_to_nodeinfo_mapping_.find(input_name);
+  if (entry == input_names_to_nodeinfo_mapping_.cend()) {
     return Status(ONNXRUNTIME, FAIL, "Failed to find input name in the mapping: " + input_name);
   }
-  node_info_vec = input_names_to_nodeinfo_mapping_.at(input_name);
+
+  node_info_vec = entry->second;
   return Status::OK();
 }
 
