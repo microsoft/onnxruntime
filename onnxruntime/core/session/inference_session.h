@@ -39,7 +39,7 @@ class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
 class Notification;
-class PyCustomOp;
+struct PyCustomOp;
 
 namespace logging {
 class LoggingManager;
