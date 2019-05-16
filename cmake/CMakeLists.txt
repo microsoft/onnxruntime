@@ -82,15 +82,20 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
-
-include(CheckIPOSupported)
-check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
-#TODO: figure out why nsync doesn't work
-if(onnxruntime_USE_NSYNC)
-  message(WARNING "IPO is not supported: ${ipo_output}")
-  set(onnxruntime_ENABLE_LTO OFF)
+if(onnxruntime_ENABLE_LTO)
+  #TODO: figure out why nsync doesn't work
+  if(onnxruntime_USE_NSYNC)
+    message(WARNING "IPO is not supported when nsync is in use")
+    set(onnxruntime_ENABLE_LTO OFF)
+  else()
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
+    if(NOT ipo_enabled)
+      message(WARNING "IPO is not supported by this compiler")
+      set(onnxruntime_ENABLE_LTO OFF)
+    endif()
+  endif()
 endif()
-
 
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
