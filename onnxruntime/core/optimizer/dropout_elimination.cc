@@ -35,6 +35,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) {
   if (graph_utils::IsSingleInSingleOutNode(node)) {
     return true;
   } else {
+    // The `mask` output, which must not be used downstream for node removal, is at outputs[1].
     return !graph_utils::IsOutputUsed(node, 1);
   }
 }
