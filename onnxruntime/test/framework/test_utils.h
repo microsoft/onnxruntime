@@ -18,13 +18,16 @@
 
 namespace onnxruntime {
 namespace test {
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
 
 #ifdef USE_CUDA
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCudaExecutionProvider();
 #endif
 
 #ifdef USE_TENSORRT
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestTensorrtExecutionProvider();
 #endif
 

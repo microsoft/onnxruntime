@@ -202,7 +202,7 @@ Status IterateSequence(OpKernelContextInternal& context,
               };
 
           // also need a dummy empty entry in fetches so the order matches the output names
-          fetches.push_back({});
+          fetches.emplace_back();
         }
       }
     }
@@ -250,7 +250,7 @@ MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& s
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                      std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -269,7 +269,7 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
 }
 
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                       std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -494,8 +494,8 @@ MLValue& OutputIterator::operator*() {
   // for v8 both outputs and loop state vars use slicers. for v9 only outputs do
   if (is_v8_ || !is_loop_state_var_)
     return **cur_slicer_iterator_;
-  else
-    return *final_output_mlvalue_;
+
+  return *final_output_mlvalue_;
 }
 
 OutputIterator& OutputIterator::operator++() {

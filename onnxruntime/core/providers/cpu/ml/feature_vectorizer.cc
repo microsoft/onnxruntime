@@ -28,10 +28,9 @@ static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
                          gsl::span<float>::iterator out_iter);
 
 Status FeatureVectorizer::Compute(OpKernelContext* context) const {
-  auto input_count = context->NumVariadicInputs(0);
-  ORT_ENFORCE(input_count == input_dimensions_.size(),
-              "Number of inputs (", input_count, ") does not match number of inputdimensions values (",
-              input_dimensions_.size(), ").");
+  int input_count = context->NumVariadicInputs(0);
+  ORT_ENFORCE(input_count >= 0 && static_cast<size_t>(input_count) == input_dimensions_.size(), "Number of inputs (",
+              input_count, ") does not match number of inputdimensions values (", input_dimensions_.size(), ").");
 
   const Tensor* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");

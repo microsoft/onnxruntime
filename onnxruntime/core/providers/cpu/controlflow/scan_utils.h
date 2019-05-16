@@ -30,8 +30,7 @@ The MLValue flips between two internal temporary buffers to minimize copies.
 */
 class LoopStateVariable {
  public:
-  LoopStateVariable(const MLValue& original_value, MLValue& final_value, const int64_t sequence_len,
-                    AllocatorPtr& allocator);
+  LoopStateVariable(const MLValue& original_value, MLValue& final_value, int64_t sequence_len, AllocatorPtr& allocator);
 
   // get current Input MLValue
   const MLValue& Input() const;
@@ -180,7 +179,7 @@ Status IterateSequence(OpKernelContextInternal& context,
                        FeedsFetchesManager* ffm,
                        const FeedsFetchesManager* cached_ffm);
 
-MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
+MLValue AllocateTensorInMLValue(MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
 
 /**
 Calculate the transpose permutations and shape by shifting the chosen axis TO the first dimension.
@@ -190,7 +189,7 @@ e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 
      if axis 2 is chosen the permutations will be {2, 0, 1} and the output shape will be {4, 2, 3}
 */
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape);
+                                      std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape);
 
 /**
 Calculate the transpose permutations and shape by shifting the chosen axis FROM the first dimension.
@@ -199,7 +198,7 @@ e.g. if shape is {4, 2, 3} and axis 2 is chosen, dimension 0 will move to dimens
      the permutations will be {1, 2, 0} and output shape will be {2, 3, 4}
 */
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape);
+                                       std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape);
 
 }  // namespace detail
 }  // namespace scan

@@ -140,7 +140,7 @@ template <typename T>
 std::enable_if_t<!IsEigenScalarCompatible<T>, void>
 MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
   const auto merge_scalar_and_vector = [](gsl::span<T> output, const T& scalar_value, gsl::span<const T> vector_value) {
-    if (scalar_value != T{}) {
+    if (!scalar_value.empty()) {
       std::fill(output.begin(), output.end(), scalar_value);
     } else {
       std::copy(vector_value.cbegin(), vector_value.cend(), output.begin());
@@ -156,11 +156,8 @@ MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* m
         merge_scalar_and_vector(output, Y_selection, X_selection);
       },
       [](gsl::span<T> output, gsl::span<const T> X_selection, gsl::span<const T> Y_selection) {
-        std::transform(
-            X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(),
-            [](const T& x, const T& y) {
-              return x != T{} ? x : y;
-            });
+        std::transform(X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(),
+                       [](const T& x, const T& y) { return !x.empty() ? x : y; });
       });
 }
 }  // namespace

@@ -37,7 +37,7 @@ const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType
   return alloc->Info();
 }
 
-const AllocatorPtr OpKernelInfo::GetAllocator(int device_id, OrtMemType mem_type) const {
+AllocatorPtr OpKernelInfo::GetAllocator(int device_id, OrtMemType mem_type) const {
   return execution_provider_->GetAllocator(device_id, mem_type);
 }
 

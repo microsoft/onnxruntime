@@ -10,7 +10,7 @@ namespace onnxruntime {
 
 struct CpuProviderFactory : IExecutionProviderFactory {
   CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {}
-  ~CpuProviderFactory() override {}
+  ~CpuProviderFactory() override = default;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:

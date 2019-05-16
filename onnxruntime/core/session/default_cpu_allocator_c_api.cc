@@ -8,7 +8,7 @@
 // In the future we'll have more than one allocator type. Since all allocators are of type 'OrtAllocator' and there is a single
 // OrtReleaseAllocator function, we need to have a common base type that lets us delete them.
 struct OrtAllocatorImpl : OrtAllocator {
-  virtual ~OrtAllocatorImpl() {}
+  virtual ~OrtAllocatorImpl() = default;
 };
 
 struct OrtDefaultAllocator : OrtAllocatorImpl {
@@ -20,9 +20,7 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
     ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
   }
 
-  ~OrtDefaultAllocator() {
-    OrtReleaseAllocatorInfo(cpuAllocatorInfo);
-  }
+  ~OrtDefaultAllocator() override { OrtReleaseAllocatorInfo(cpuAllocatorInfo); }
 
   void* Alloc(size_t size) {
     return ::malloc(size);

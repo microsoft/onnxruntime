@@ -20,12 +20,8 @@ ONNX_CPU_OPERATOR_KERNEL(
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
-Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
-                                    const int num_outputs,
-                                    int64_t& axis,
-                                    int& before_dims,
-                                    int& after_dims_including_split_axis,
-                                    int& after_dims_excluding_split,
+Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
+                                    int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                     std::vector<int64_t>& split_sizes) const {
   auto& input_dims = input_shape.GetDims();
   const int64_t num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
@@ -40,15 +36,15 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape,
 
   if (split_sizes_.empty()) {
     // equal split based on number of outputs
-    if (split_dim_size % num_outputs != 0) {
+    if (split_dim_size % static_cast<size_t>(num_outputs) != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input cannot be split evenly on selected axis. Input shape=", input_shape,
                              " Axis=", axis_, " NumOutputs=", num_outputs);
     }
 
     // populate split_sizes with the same size for each output
-    split_sizes = std::vector<int64_t>(num_outputs, split_dim_size / num_outputs);
+    split_sizes = std::vector<int64_t>(static_cast<size_t>(num_outputs), split_dim_size / num_outputs);
   } else {
-    if (split_sizes_.size() != num_outputs || split_size_sum_ != split_dim_size)
+    if (split_sizes_.size() != static_cast<size_t>(num_outputs) || split_size_sum_ != split_dim_size)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Cannot split using values in 'split' attribute. Axis=", axis_,
                              " Input shape=", input_shape,

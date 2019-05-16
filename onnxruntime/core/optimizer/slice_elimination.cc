@@ -37,7 +37,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
   }
   std::vector<int64_t> axes;
   if (!graph_utils::GetRepeatedNodeAttributeValues(node, "axes", axes)) {
-    for (int i = 0; (size_t)i < starts.size(); ++i) {
+    for (int i = 0; static_cast<size_t>(i) < starts.size(); ++i) {
       axes.push_back(i);
     }
   } else if (axes.size() != starts.size()) {

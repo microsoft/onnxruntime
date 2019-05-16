@@ -42,7 +42,7 @@ Model::Model(const std::string& graph_name,
   }
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
-  for (auto schema_collection : local_registries) {
+  for (const auto& schema_collection : local_registries) {
     schema_registry->RegisterRegistry(schema_collection);
   }
 
@@ -53,7 +53,7 @@ Model::Model(const std::string& graph_name,
     p_domain_to_version = &domain_to_version_static;
   }
 
-  for (auto domain : *p_domain_to_version) {
+  for (const auto& domain : *p_domain_to_version) {
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
     opset_id_proto->set_domain(domain.first);
     opset_id_proto->set_version(domain.second);
@@ -97,7 +97,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
   if (local_registries != nullptr) {
-    for (auto schema_collection : *local_registries) {
+    for (const auto& schema_collection : *local_registries) {
       schema_registry->RegisterRegistry(schema_collection);
     }
   }
@@ -108,7 +108,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
-  for (auto domain : domain_map) {
+  for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
@@ -391,8 +391,7 @@ Status Model::Save(Model& model, int p_fd) {
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
-  } else {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
   }
+  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 }  // namespace onnxruntime

@@ -6,6 +6,8 @@
 #include <sstream>
 
 #include "core/framework/mem_pattern_planner.h"
+#include "core/framework/execution_plan_base.h"
+#include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
@@ -368,7 +370,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(MLValue& mlvalue, int mlvalue
 
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index < alloc_plan.size());
+  ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[mlvalue_index];
 
   auto alloc_info = per_alloc_plan.location;
@@ -438,7 +440,7 @@ Status ExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
 const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int mlvalue_idx) {
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(mlvalue_idx != NodeIndexInfo::kInvalidEntry && mlvalue_idx < alloc_plan.size());
+  ORT_ENFORCE(mlvalue_idx >= 0 && static_cast<size_t>(mlvalue_idx) < alloc_plan.size());
   return alloc_plan[mlvalue_idx];
 }
 
@@ -459,7 +461,8 @@ void ExecutionFrame::TraceFree(int mlvalue_idx) {
   if (planner_ && !IsOutput(mlvalue_idx)) {
     const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
     const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-    const auto& per_alloc_plan = alloc_plan.at(mlvalue_idx);
+    ORT_ENFORCE(mlvalue_idx >= 0 && static_cast<size_t>(mlvalue_idx) < alloc_plan.size());
+    const auto& per_alloc_plan = alloc_plan[mlvalue_idx];
 
     // only trace tensors
     auto ml_type = per_alloc_plan.value_type;

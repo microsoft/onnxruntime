@@ -28,11 +28,13 @@ void usage() {
       "Options:\n"
       "\t-j [models]: Specifies the number of models to run simultaneously.\n"
       "\t-A : Disable memory arena\n"
+      "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn','tensorrt', 'ngraph' or 'openvino'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
+      "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -62,7 +64,7 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
 #endif
 }  // namespace
 
@@ -83,11 +85,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
+  bool enable_mem_pattern = true;
   bool enable_openvino = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xv"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -116,8 +119,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             return -1;
           }
           break;
-        case 'm':
-          // ignore.
+        case 'M':
+          enable_mem_pattern = false;
           break;
         case 'n':
           // run only some whitelisted tests
@@ -196,6 +199,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableCpuMemArena();
     else
       sf.DisableCpuMemArena();
+    if (enable_mem_pattern)
+      sf.EnableMemPattern();
+    else
+      sf.DisableMemPattern();
     if (enable_sequential_execution)
       sf.EnableSequentialExecution();
     else

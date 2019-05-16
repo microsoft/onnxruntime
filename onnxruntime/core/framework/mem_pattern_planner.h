@@ -16,19 +16,24 @@ limitations under the License.
 // Licensed under the MIT License.
 
 #pragma once
+#include <list>
+
 #include "core/framework/mem_pattern.h"
 #include "core/framework/allocation_planner.h"
-#include <list>
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 // MemPatternPlanner is used to trace allocation/free steps
 // in a single iteration, record the pattern and cached for
 // future request if they have the same input shape.
+// Thread-safe.
 class MemPatternPlanner {
  public:
   MemPatternPlanner() = default;
 
   void TraceAllocation(int ml_value_idx, size_t size) {
+    std::lock_guard<OrtMutex> lock(lock_);
+
     if (size == 0) {
       allocs_.emplace_back(ml_value_idx, MemoryBlock(0, 0));
       return;
@@ -61,6 +66,8 @@ class MemPatternPlanner {
   }
 
   void TraceFree(int ml_value_index) {
+    std::lock_guard<OrtMutex> lock(lock_);
+
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].index_ == ml_value_index) {
         blocks_.erase(it);
@@ -70,6 +77,8 @@ class MemPatternPlanner {
   }
 
   MemoryPattern GenerateMemPattern() const {
+    std::lock_guard<OrtMutex> lock(lock_);
+
     MemoryPattern pattern;
     pattern.peak_size_ = buffer_size;
     for (auto& alloc : allocs_) {
@@ -92,6 +101,7 @@ class MemPatternPlanner {
   // blocks_ the list of currently allocated memory blocks, sorted in order of their offset
   std::list<int> blocks_;
   size_t buffer_size{0};
+  mutable OrtMutex lock_;
 };
 
 }  // namespace onnxruntime
