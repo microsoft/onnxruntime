@@ -15,7 +15,7 @@ TEST(MathOpTest, Add_int32) {
   test.AddInput<int32_t>("A", {3}, {1, 2, 3});
   test.AddInput<int32_t>("B", {3}, {4, 5, 6});
   test.AddOutput<int32_t>("C", {3}, {5, 7, 9});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT parser: elementwise inputs must not be Int32
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: elementwise inputs must not be Int32
 }
 
 TEST(MathOpTest, Add_int64) {
@@ -23,7 +23,7 @@ TEST(MathOpTest, Add_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 2, 3});
   test.AddInput<int64_t>("B", {3}, {4, 5, 6});
   test.AddOutput<int64_t>("C", {3}, {5, 7, 9});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: INT64 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT64 is not supported
 }
 
 TEST(MathOpTest, Add) {
@@ -60,7 +60,7 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
                         {4.0f, 5.0f, 6.0f,
                          6.0f, 7.0f, 8.0f,
                          8.0f, 9.0f, 10.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
 TEST(MathOpTest, Add_Broadcast_0x0) {
@@ -69,7 +69,7 @@ TEST(MathOpTest, Add_Broadcast_0x0) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {}, {12.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: dynamic shape is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: dynamic shape is not supported
 }
 
 TEST(MathOpTest, Add_Broadcast_0x1) {
@@ -78,7 +78,7 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {1}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: dynamic shape is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: dynamic shape is not supported
 }
 
 TEST(MathOpTest, Add_Broadcast_1x0) {
@@ -87,7 +87,7 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
   test.AddInput<float>("A", {1}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: dynamic shape is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: dynamic shape is not supported
 }
 
 TEST(MathOpTest, Add_Broadcast_1x1) {
@@ -96,7 +96,7 @@ TEST(MathOpTest, Add_Broadcast_1x1) {
   test.AddInput<float>("A", {1}, {10.0f});
   test.AddInput<float>("B", {1}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",{kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
 TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
@@ -115,7 +115,7 @@ TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
                         {2.0f, 3.0f,
                          5.0f, 6.0f,
                          8.0f, 9.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess,"",{kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess,"");
 }
 
 TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
@@ -134,7 +134,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
                          211.0f, 212.0f, 213.0f, 214.0f,
                          221.0f, 222.0f, 223.0f, 224.0f,
                          231.0f, 232.0f, 233.0f, 234.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //Input batch size is inconsistent
 }
 
 TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
@@ -154,7 +154,7 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
                          211.0f, 212.0f, 213.0f, 214.0f,
                          221.0f, 222.0f, 223.0f, 224.0f,
                          231.0f, 232.0f, 233.0f, 234.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //Input batch size is inconsistent
 }
 
 TEST(MathOpTest, Sub_int32) {
@@ -162,7 +162,7 @@ TEST(MathOpTest, Sub_int32) {
   test.AddInput<int32_t>("A", {3}, {1, 4, 3});
   test.AddInput<int32_t>("B", {3}, {4, 2, 4});
   test.AddOutput<int32_t>("C", {3}, {-3, 2, -1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
 }
 
 TEST(MathOpTest, Sub_int64) {
@@ -170,7 +170,7 @@ TEST(MathOpTest, Sub_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 5, 6});
   test.AddInput<int64_t>("B", {3}, {4, 5, 3});
   test.AddOutput<int64_t>("C", {3}, {-3, 0, 3});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: INT64 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT64 is not supported
 }
 
 TEST(MathOpTest, Sub) {
@@ -211,7 +211,7 @@ TEST(MathOpTest, Mul_int32) {
   test.AddInput<int32_t>("A", {3}, {1, 2, 3});
   test.AddInput<int32_t>("B", {3}, {4, -3, 6});
   test.AddOutput<int32_t>("C", {3}, {4, -6, 18});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser:elementwise inputs must not be Int32
 }
 
 TEST(MathOpTest, Mul_int64) {
@@ -219,7 +219,7 @@ TEST(MathOpTest, Mul_int64) {
   test.AddInput<int64_t>("A", {3}, {3, 6, -3});
   test.AddInput<int64_t>("B", {3}, {4, -3, -2});
   test.AddOutput<int64_t>("C", {3}, {12, -18, 6});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: INT64 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT64 is not supported
 }
 
 TEST(MathOpTest, Mul) {
@@ -470,7 +470,7 @@ TEST(MathOpTest, Sum_8_Test1) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  // TensorRT parser failed on this test
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser failed on this test
 }
 
 TEST(MathOpTest, Sum_8_Test2) {
@@ -499,7 +499,7 @@ TEST(MathOpTest, Sum_8_Test2) {
                          3.3f, 4.4f, -94.7f,
                          59.6f, 64.01f, -8.0f});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "Sum is not correct", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "Sum is not correct", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Min_6) {

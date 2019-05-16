@@ -17,7 +17,7 @@ TEST(MathOpTest, Concat1D_string) {
   test.AddInput<std::string>("input2", {2}, {"2", "3"});
   test.AddInput<std::string>("input3", {4}, {"4", "5", "6", "7"});
   test.AddOutput<std::string>("concat_result", {7}, {"1", "2", "3", "4", "5", "6", "7"});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_int32) {
@@ -28,7 +28,7 @@ TEST(MathOpTest, Concat1D_int32) {
   test.AddInput<int32_t>("input2", {2}, {2, 3});
   test.AddInput<int32_t>("input3", {4}, {4, 5, 6, 7});
   test.AddOutput<int32_t>("concat_result", {7}, {1, 2, 3, 4, 5, 6, 7});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_int32_negative_axis) {
@@ -39,7 +39,7 @@ TEST(MathOpTest, Concat1D_int32_negative_axis) {
   test.AddInput<int32_t>("input2", {2}, {2, 3});
   test.AddInput<int32_t>("input3", {4}, {4, 5, 6, 7});
   test.AddOutput<int32_t>("concat_result", {7}, {1, 2, 3, 4, 5, 6, 7});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_1) {
@@ -61,7 +61,7 @@ TEST(MathOpTest, Concat1D_2) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {0}, {});
   test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat2D_1) {
@@ -103,7 +103,7 @@ TEST(MathOpTest, Concat2D_3) {
   test.AddInput<float>("input2", {1, 0}, {});
   test.AddInput<float>("input3", {1, 0}, {});
   test.AddOutput<float>("concat_result", {1, 0}, {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat3D_1) {
