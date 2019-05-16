@@ -3,6 +3,7 @@
 
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_allocator.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
@@ -347,7 +348,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
       output_dim_sizes[bindingIndex] = dim_size;
 
-      const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
+      const auto& tensor_type = graph_output[i].type().tensor_type();
+      const auto& tensor_shape = tensor_type.shape();
       if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
         output_shapes[bindingIndex].pop_back();
       }
@@ -385,13 +387,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // Create compute function
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
-
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& input_dim_sizes = (trt_state->input_info)[1];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
       const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
       std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
+
       int num_binding_inputs = input_indexes.size();
       int num_binding_outputs = output_indexes.size();
       int total_bindings = num_binding_inputs + num_binding_outputs;
@@ -402,10 +404,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        auto tensor_shape = ort.GetTensorShape(tensor_info)
-                                ort.ReleaseTensorTypeAndShape(tensor_info);
+        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        ort.ReleaseTensorTypeAndShape(tensor_info);
+        const float* input = ort.GetTensorData<float>(input_tensor);
 
         const int input_batch_size = tensor_shape[0];
         if (i > 0 && batch_size != input_batch_size) {
@@ -413,7 +416,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
         batch_size = input_batch_size;
 
-        const float* input = ort.GetTensorData<float>(input_tensor);
         CHECK_CUDA(cudaMalloc(&buffers[i], input_batch_size * input_dim_sizes[i] * sizeof(float)));
         CHECK_CUDA(cudaMemcpy(buffers[i], input, input_batch_size * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
       }
@@ -429,13 +431,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Copy TRT outputs to output tensors
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        // Setup output tensor property
         int output_index = output_indexes[i];
         output_shapes[i].insert(output_shapes[i].begin(), batch_size);
-
-        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, output_shapes[i].data(), output_shapes[i].size());
-        auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
-        CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<double>(output_tensor), buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
+        CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
       }
 
       // Sync stream
