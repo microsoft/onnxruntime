@@ -2,32 +2,31 @@
 // Licensed under the MIT License
 
 #include <unordered_map>
-namespace openvino_ep{
+namespace openvino_ep {
 
-class OpenVINOLayer{
+class OpenVINOLayer {
+ private:
+  static const std::unordered_map<std::string, std::tuple<std::string, int>> opMap;
+  static const std::unordered_map<std::string, std::tuple<std::string, int>> createMap();
+  std::string layerName;
+  bool supportedOnCPU = true;
+  bool supportedOnGPU = true;
+  bool supportedOnFPGA = true;
+  bool supportedOnVPU = true;
+  int opsetVersion = 0;
 
-private:
-    static const std::unordered_map<std::string, std::tuple<std::string, int>> opMap;
-    static const std::unordered_map<std::string, std::tuple<std::string, int>> createMap();
-    std::string layerName;
-    bool supportedOnCPU = true;
-    bool supportedOnGPU = true;
-    bool supportedOnFPGA = true;
-    bool supportedOnVPU = true;
-    int opsetVersion = 0;
+ public:
+  static std::unordered_map<std::string, std::tuple<std::string, int>> getOpMap() {
+    return opMap;
+  };
 
-public:
-    static std::unordered_map<std::string, std::tuple<std::string, int>> getOpMap(){
-        return opMap;
-    };
+  OpenVINOLayer(std::string name);
 
-    OpenVINOLayer(std::string name);
+  bool supportedOnPlugin(std::string name);
 
-    bool supportedOnPlugin(std::string name);
+  std::string getName();
 
-    std::string getName();
-
-    int getOpsetVersion();
+  int getOpsetVersion();
 };
 
-}
+}  // namespace openvino_ep

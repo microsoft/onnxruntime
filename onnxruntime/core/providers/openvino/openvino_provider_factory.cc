@@ -8,16 +8,15 @@
 using namespace onnxruntime;
 
 namespace onnxruntime {
-struct OpenVINOProviderFactory: IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device) :
-      device_(device) {
+struct OpenVINOProviderFactory : IExecutionProviderFactory {
+  OpenVINOProviderFactory(const char* device) : device_(device) {
   }
   ~OpenVINOProviderFactory() override {
   }
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-private:
+ private:
   const char* device_;
 };
 
@@ -35,7 +34,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
-    _In_ OrtSessionOptions* options, const char* device_id) {
+                    _In_ OrtSessionOptions* options, const char* device_id) {
   options->provider_factories.push_back(
       onnxruntime::CreateExecutionProviderFactory_OpenVINO(device_id));
   return nullptr;

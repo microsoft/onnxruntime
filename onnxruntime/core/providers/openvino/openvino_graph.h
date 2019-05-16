@@ -19,7 +19,7 @@
 namespace openvino_ep {
 
 class OpenVINOGraph {
-public:
+ public:
   InferenceEngine::Precision precision_;
   const onnxruntime::Graph* onnx_graph_;
 
@@ -27,15 +27,12 @@ public:
 
   std::shared_ptr<InferenceEngine::CNNNetwork> GetCNNNetwork();
 
-
   void Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
-      size_t num_inputs, onnxruntime::ONNXRunTimeTensor* output_tensors,
-      size_t num_outputs, onnxruntime::AllocateFunc& output_allocator_func,
-      onnxruntime::AllocatorHandle& output_allocator_handle);
+             size_t num_inputs, onnxruntime::ONNXRunTimeTensor* output_tensors,
+             size_t num_outputs, onnxruntime::AllocateFunc& output_allocator_func,
+             onnxruntime::AllocatorHandle& output_allocator_handle);
 
-
-private:
-
+ private:
   std::shared_ptr<InferenceEngine::CNNNetwork> BuildCNNNetworkWithMO();
 
   std::vector<InferenceEngine::InferRequest::Ptr> GetExecutableHandle(
@@ -51,8 +48,7 @@ private:
   std::string device_id_;
   mutable std::mutex compute_lock_;
   long dyn_dim_;
-
 };
-}
+}  // namespace openvino_ep
 
 #endif
