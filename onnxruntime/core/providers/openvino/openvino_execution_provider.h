@@ -54,7 +54,7 @@ public:
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
 
-    // Todo: Copy for now. May optimize later to avoid copy.
+    // TODO: Copy for now. May optimize later to avoid copy.
     size_t bytes = src.DataType()->Size() * src.Shape().Size();
     const void* src_data = src.DataRaw();
     void* dst_data = dst.MutableDataRaw();

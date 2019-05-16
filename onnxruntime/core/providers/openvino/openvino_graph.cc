@@ -63,15 +63,7 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_i
 
 	fused_node_ = fused_node;
 
-
-
     cnn_network_ = BuildCNNNetworkWithMO();
-
-  // TODO: make this a debug option
-  // Uncomment the below code to enable dumping IE CNN graphs.
-  //std::string file_name = "./conv_" + fused_node->Name();
-  //cnn_network_->serialize( file_name+".xml", file_name+".bin");
-
 
   infer_requests_ = GetExecutableHandle(cnn_network_, device_id_, precision_);
 }
@@ -107,7 +99,6 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
        Py_Finalize();
        throw "Python module not found";
     }
-
 
     // Load the relevant function
     PyObject* pFunc = NULL;
@@ -189,7 +180,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
 
   precision = InferenceEngine::Precision::FP32;
 
-
   // Load Plugin for inference engine
   std::cout << "[OpenVINO-EP]Loading plugin" << std::endl;
 
@@ -197,7 +187,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   plugin_path.push_back("");
   InferenceEngine::InferencePlugin plugin = InferenceEngine::PluginDispatcher(
       plugin_path).getPluginByDevice(device);
-  //InferenceEngine::printPluginVersion(plugin, std::cout);
 
   // Configure input & output
   // Prepare input blobs
@@ -326,9 +315,6 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
       }
 
       size_t input_data_size = num_input_elements * sizeof(float);
-    //   for(int j=0; j< num_input_elements; j++){
-    //       std::cout << "Input tensors " << ((float*)input_tensors[i].data)[j] << std::endl ;
-    //   }
       // Copy input data into OpenVINO's input buffer
       std::memcpy(graph_input_buffer, input_tensors[i].data, input_data_size);
 
@@ -364,10 +350,6 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
 
 		// Get data size & initialize output tensor info
 		auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
-        // for(auto dims : graph_output_dims){
-        //     std::cout << "Output Dims are " << dims << std::endl;
-        // }
-
 		auto num_dims = graph_output_dims.size();
 		size_t output_data_size = graph_output_blob->byteSize();
 

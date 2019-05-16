@@ -8,7 +8,6 @@ import os
 ov_root = os.environ['INTEL_CVSDK_DIR']
 mo_path = ov_root + "/deployment_tools/model_optimizer"
 sys.path.append(mo_path)
-# sys.path.append('/opt/intel/computer_vision_sdk/deployment_tools/model_optimizer')
 
 import hashlib
 import xml.dom.minidom
@@ -65,7 +64,6 @@ def serialize_constants(weights, graph: nx.MultiDiGraph,  data_type=np.float32):
 
     weights = serialize_constants_recursively(weights, graph, data_type, bin_hashes)
 
-    # print(weights)
     return weights
 
 

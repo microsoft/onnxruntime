@@ -24,10 +24,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 namespace onnxruntime {
 
-//using namespace InferenceEngine;
-
 constexpr const char* OpenVINO = "OpenVINO";
-
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderInfo& info)
 : IExecutionProvider {onnxruntime::kOpenVINOExecutionProvider} {
@@ -38,12 +35,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderIn
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::GraphViewer& graph_viewer) {
-//   const auto& attributes = fused_node->GetAttributes();
-//   const auto& initializers = attributes.at("initializers").tensors();
 
   ONNX_NAMESPACE::ModelProto model_proto;
   auto graph_proto = model_proto.mutable_graph();
-//   const auto& fused_graph = fused_node->GetFunctionBody()->Body();
 
   for (const auto& node : graph_viewer.Nodes()) {
     node.ToProto(*(graph_proto->add_node()));
@@ -70,19 +64,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   return model_proto;
 }
-
-//static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
-//    int fd;
-//    Status status = Env::Default().FileOpenWr(file_path,fd);
-//
-//    google::protobuf::io::FileOutputStream output(fd);
-//    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-//    if(result)
-//        return Status::OK();
-//    else
-//        return Status::OK();
-//
-//}
 
 std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer,
@@ -119,18 +100,12 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     if(it != domain_map.end())
         opset_version = it->second;
 
-    // std::vector<std::vector<onnxruntime::NodeIndex>> groups;
     std::vector<onnxruntime::NodeIndex> group;
     int counter = 0;
     auto initializers = graph_viewer.GetAllInitializedTensors();
-
     auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-
-
     auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
-
-
     auto graph_proto = model_proto.mutable_graph();
     int input_dims = 0;
     int output_dims = 0;
@@ -149,25 +124,18 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             return result;
     }
 
-
-
-
-
     // bool newSubGraph(true);
     bool isGraphSupported = true;
     for (auto index : node_indexes) {
 
         auto node = graph_viewer.GetNode(index);
-
-
         auto layer = openvino_ep::OpenVINOLayer(node->OpType());
 
-
         if (layer.getName() == "NotSupported" && layer.getOpsetVersion() < opset_version) {
-
             isGraphSupported = false;
             return result;
         }
+
         //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
         if(node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape"){
 
@@ -234,13 +202,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                         return result;
                     }
                 }
-                // else{
-                //     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-                //     graph_viewer.GetInitializedTensor(node->InputDefs()[0]->Name(), tensor_proto);
-                //     if(tensor_proto->dims_size() == 3){
-                //         return result;
-                //     }
-                // }
             }
         }
 
@@ -322,7 +283,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
         meta_def->domain = "OpenVINO";
         meta_def->since_version = 1;
-        // meta_def->attributes["initializers"] = izers_attr;
 
         for(auto input : fused_inputs){
             meta_def->inputs.push_back(input->Name());

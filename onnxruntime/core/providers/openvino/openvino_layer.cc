@@ -5,8 +5,6 @@
 #include "opset_versions.h"
 namespace openvino_ep{
 
-
-
 const std::unordered_map<std::string, std::tuple<std::string, int>> OpenVINOLayer::createMap(){
     std::unordered_map<std::string, std::tuple<std::string,int>> mMap;
 
@@ -33,8 +31,6 @@ const std::unordered_map<std::string, std::tuple<std::string, int>> OpenVINOLaye
     mMap.emplace("ImageScaler",std::make_tuple("ScaleShift",OpenVINOScaleShift));
     mMap.emplace("LeakyRelu",std::make_tuple("ReLU",OpenVINOReLU));
     mMap.emplace("GlobalMaxPool",std::make_tuple("Pooling",OpenVINOReshape));
-
-
 
     return mMap;
 }
