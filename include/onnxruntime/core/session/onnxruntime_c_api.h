@@ -122,15 +122,6 @@ typedef enum OrtErrorCode {
   ORT_REQUIREMENT_NOT_REGISTERED,
 } OrtErrorCode;
 
-typedef enum OrtExecutionProviderType {
-  ORT_EXECUTION_PROVIDER_CPU,
-  ORT_EXECUTION_PROVIDER_CUDA,
-  ORT_EXECUTION_PROVIDER_MKL_DNN,
-  ORT_EXECUTION_PROVIDER_NUPHAR,
-  ORT_EXECUTION_PROVIDER_BRAIN_SLICE,
-  ORT_EXECUTION_PROVIDER_TENSORRT,
-} OrtExecutionProviderType;
-
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) \
   ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
@@ -583,7 +574,7 @@ struct OrtCustomOp {
 
   // Returns the type of the execution provider
   // If the function pointer is null, use CPU execution provider by default
-  OrtExecutionProviderType(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
 
   // Returns the count and types of the input & output tensors
   ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
