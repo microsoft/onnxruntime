@@ -11,10 +11,13 @@
 namespace onnxruntime {
 namespace perftest {
 
-std::chrono::duration<double> OnnxRuntimeTestSession::Run(const OrtValue* const* input) {
+std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
+  //Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
+  const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
+  const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
+  OrtValueArray* const input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
-
-  ORT_THROW_ON_ERROR(OrtRun(session_object_, nullptr, input_names_.data(), input, input_names_.size(),
+  ORT_THROW_ON_ERROR(OrtRun(session_object_, nullptr, input_names_.data(), input->Data(), input_names_.size(),
                             output_names_raw_ptr.data(), output_names_raw_ptr.size(), output_values_.data()));
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - start;
@@ -25,9 +28,10 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run(const OrtValue* const*
   return duration_seconds;
 }
 
-OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, PerformanceTestConfig& performance_test_config,
+OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, std::random_device& rd,
+                                               const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo* m)
-    : input_names_(m->GetInputCount()) {
+    : rand_engine_(rd()), input_names_(m->GetInputCount()), input_length_(m->GetInputCount()) {
   SessionOptionsWrapper sf(env);
   const bool enable_cpu_mem_arena = true;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
@@ -36,6 +40,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, PerformanceTestConfi
     ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("MKL-DNN is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
+#ifdef USE_NGRAPH
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_NGraph(sf, "CPU"));
+#else
+    ORT_THROW("nGraph is not supported in this build");
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA

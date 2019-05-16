@@ -947,12 +947,12 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   // required, optional and invalid input
   status = RunOptionalInputTest(true, true, true);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
   // missing required
   status = RunOptionalInputTest(false, true, false);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
@@ -1239,7 +1239,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  for (int i = 0; i < Y_data.size(); ++i)
+  for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
@@ -1262,7 +1262,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     if (seq_start > 0) {
       // continue from truncated sequence
       ASSERT_TRUE(fetches.size() == output_names.size());
-      for (int i_output = 0; i_output < output_names.size(); ++i_output) {
+      for (size_t i_output = 0; i_output < output_names.size(); ++i_output) {
         auto iter = init_state_map.find(output_names[i_output]);
         if (iter != init_state_map.end())
           truncated_feeds.insert(std::make_pair(iter->second, fetches[i_output]));
@@ -1393,6 +1393,29 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
 }
+
+#ifdef USE_CUDA
+
+TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.enable_sequential_execution = false;
+  so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
+  InferenceSession session_object{so};
+  
+  CUDAExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  auto status = session_object.Initialize();
+
+  ASSERT_TRUE(!status.IsOK());
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

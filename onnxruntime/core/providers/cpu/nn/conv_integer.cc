@@ -12,7 +12,18 @@
 #include "core/util/gemmlowp_common_wrapper.h"
 
 namespace onnxruntime {
-namespace contrib {
+
+ONNX_OPERATOR_KERNEL_EX(
+    ConvInteger,
+    kOnnxDomain,
+    10,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
+    ConvInteger);
+
 Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
@@ -135,16 +146,4 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
-
-ONNX_OPERATOR_KERNEL_EX(
-    ConvInteger,
-	kMSDomain,
-    1,
-	kCpuExecutionProvider,
-    KernelDefBuilder()
-	.TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-	.TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
-	.TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
-    ConvInteger);
-}  // namespace contrib
 }  // namespace onnxruntime

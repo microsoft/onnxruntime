@@ -3,7 +3,7 @@
 
 // onnxruntime dependencies
 #include <core/session/onnxruntime_c_api.h>
-
+#include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
 
@@ -30,7 +30,8 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     }
     *p_env = env;
   }
-  perftest::PerformanceRunner perf_runner(env, test_config);
+  std::random_device rd;
+  perftest::PerformanceRunner perf_runner(env, test_config, rd);
   auto status = perf_runner.Run();
   if (!status.IsOK()) {
     printf("Run failed:%s\n", status.ErrorMessage().c_str());

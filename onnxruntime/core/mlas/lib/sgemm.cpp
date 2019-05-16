@@ -1080,7 +1080,8 @@ MlasSgemmTryMultithread(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1118,6 +1119,9 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
 Return Value:
 
     Returns true if the operation was completed across multiple threads, else
@@ -1125,9 +1129,6 @@ Return Value:
 
 --*/
 {
-
-#if defined(MLAS_HAS_THREADING_SUPPORT)
-
     MLAS_SGEMM_WORK_BLOCK WorkBlock;
     int32_t TargetThreadCount;
 
@@ -1144,7 +1145,7 @@ Return Value:
         TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
     }
 
-    int32_t MaximumThreadCount = MlasPlatform.GetMaximumThreadCount();
+    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
@@ -1231,34 +1232,9 @@ Return Value:
         }
     }
 
-    MlasExecuteThreaded(MlasSgemmOperationThreaded, &WorkBlock, Index);
+    MlasExecuteThreaded(MlasSgemmOperationThreaded, &WorkBlock, Index, ThreadPool);
 
     return true;
-
-#else
-
-    //
-    // No threading implementation is available.
-    //
-
-    MLAS_UNREFERENCED_PARAMETER(TransA);
-    MLAS_UNREFERENCED_PARAMETER(TransB);
-    MLAS_UNREFERENCED_PARAMETER(M);
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(alpha);
-    MLAS_UNREFERENCED_PARAMETER(A);
-    MLAS_UNREFERENCED_PARAMETER(lda);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(beta);
-    MLAS_UNREFERENCED_PARAMETER(C);
-    MLAS_UNREFERENCED_PARAMETER(ldc);
-
-    return false;
-
-#endif
-
 }
 
 void
@@ -1276,7 +1252,8 @@ MlasSgemm(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
     )
 /*++
 
@@ -1314,6 +1291,9 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
 Return Value:
 
     None.
@@ -1325,7 +1305,7 @@ Return Value:
     // single thread based on the GEMM parameters and system configuration.
     //
 
-    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc)) {
+    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ThreadPool)) {
         MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 }

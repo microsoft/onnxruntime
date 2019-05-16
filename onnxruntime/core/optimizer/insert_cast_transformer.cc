@@ -91,10 +91,10 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   return Status::OK();
 }
 
+/** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
-  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer",
-                                                      "Transformer to remove duplicate Cast nodes.") {
+  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer") {
   }
 
  private:
@@ -118,9 +118,9 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
           const Node& output_node{*it};
           if (output_node.OpType() == "Cast") {
-            // Skip if the node's output is also the output of the graph
+            // Skip this child node if this child node's output is also an output of the graph
             if (graph_outputs.find(output_node.OutputDefs()[0]) != graph_outputs.end()) {
-              break;
+              continue;
             }
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
@@ -138,7 +138,9 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           num_child++;
         }
 
-        if (child_removed == num_child && child_removed > 0) {
+        if (child_removed == num_child && 
+            child_removed > 0 && 
+            graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
           removed_nodes.push_back(node.Index());
         }
       }
@@ -162,7 +164,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
-  TypeProto float_16_tensor_proto, float_tensor_proto;
+  TypeProto float_16_tensor_proto;
+  TypeProto float_tensor_proto;
   float_16_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
   float_tensor_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   IdGenerator id_generator;

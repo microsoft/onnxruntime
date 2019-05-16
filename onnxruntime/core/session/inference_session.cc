@@ -12,11 +12,12 @@
 #include <unordered_set>
 #include <list>
 #include <string>
+#include <thread>
 
 #include "core/common/logging/logging.h"
-#include "core/common/task_thread_pool.h"
 #include "core/platform/notification.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/threadpool.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
@@ -49,10 +50,6 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
-
-#ifdef USE_EIGEN_THREADPOOL
-#include <unsupported/Eigen/CXX11/ThreadPool>
-#endif
 
 using namespace ONNX_NAMESPACE;
 
@@ -103,21 +100,18 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
 
   InitLogger(logging_manager);
 
-  // currently the threadpool is used by the parallel executor only and hence
-  // there is no point creating it when only sequential execution is enabled.
-  if (!session_options.enable_sequential_execution) {
-    int pool_size = session_options_.session_thread_pool_size == 0
+  // The threadpool is currently evolving.  We will always create a per session threadpool.
+  // Beyond this, we will create a global thread pool to share across sessions.
+  {
+    int pool_size = session_options_.session_thread_pool_size <= 0
                         ? std::thread::hardware_concurrency() / 2
                         : session_options_.session_thread_pool_size;
 
-#ifdef USE_EIGEN_THREADPOOL
-    thread_pool_ = std::make_unique<Eigen::NonBlockingThreadPool>(pool_size);
-#else
-    thread_pool_ = std::make_unique<TaskThreadPool>(pool_size);
-#endif
+    thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("SESSION", pool_size);
   }
 
   session_state_.SetThreadPool(thread_pool_.get());
+  session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern && session_options.enable_sequential_execution);
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
@@ -287,6 +281,22 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   return Load(loader, "model_loading_istream");
 }
 
+common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
+    ModelProto model_proto;
+
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    if (!result) {
+      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                    "Failed to load model because protobuf parsing failed.");
+    }
+
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+  };
+
+  return Load(loader, "model_loading_array");
+}
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                                 const ExecutionProviders& providers,
@@ -355,6 +365,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
+      // Pass threadpool to subgraph
+      subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
 
       // recurse
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
@@ -385,10 +397,11 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       SessionStateInitializer initializer{model_location_, subgraph, *subgraph_session_state, execution_providers_,
                                           kernel_registry_manager_};
 
-      ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, node.ImplicitInputDefs(),
+      const auto implicit_inputs = node.ImplicitInputDefs();
+      ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
                                                  session_options_.enable_sequential_execution));
 
-      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&node.ImplicitInputDefs()));
+      ORT_RETURN_IF_ERROR(initializer.InitializeAndSave(&implicit_inputs));
 
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
@@ -426,6 +439,15 @@ common::Status InferenceSession::Initialize() {
                                                    std::make_unique<CPUExecutionProvider>(epi)));
     }
 
+    if (!session_options_.enable_sequential_execution &&
+        execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
+      LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
+                                       "for the registered CUDA Execution Provider.";
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "Parallel execution is currently not supported "
+                            "for the registered CUDA Execution Provider.");
+    }
+
     // add predefined transformers
     AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level, transformers_to_enable_);
 
@@ -456,7 +478,7 @@ common::Status InferenceSession::Initialize() {
     // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
-    ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, {}, session_options_.enable_sequential_execution));
+    ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr, nullptr, session_options_.enable_sequential_execution));
     ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
     // handle any subgraphs
@@ -500,26 +522,24 @@ common::Status InferenceSession::CheckTypes(MLDataType actual, MLDataType expect
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
                                                 const std::vector<MLValue>& feeds) {
-  const auto begin_names = feed_names.cbegin();
-  const auto end_names = feed_names.cend();
-  std::unordered_set<ptrdiff_t> required_feed_ids;
-  for (auto& arg : required_input_def_list_) {
-    auto& arg_name = arg->Name();
-    if (arg_name.empty()) {
-      continue;
-    }
+  if (feed_names.size() != feeds.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Size mismatch: feed_names has ",
+                           feed_names.size(), "elements, but feeds has ",
+                           feeds.size(), " elements.");
+  }
 
-    auto feed_names_entry = std::find(begin_names, end_names, arg_name);
-    if (feed_names_entry == end_names) {
+  // More feeds are offered.
+  // In the case of overriding some initializers (which are also taken as graph inputs).
+  for (size_t i = 0; i < feeds.size(); ++i) {
+    auto iter = input_def_map_.find(feed_names[i]);
+    if (input_def_map_.end() == iter) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Missing required input: ", arg_name);
+                             "Invalid Feed Input Name:", feed_names[i]);
     }
 
-    auto idx = feed_names_entry - begin_names;
-    required_feed_ids.insert(idx);
-    auto& input_ml_value = feeds.at(idx);
-    auto expected_type = utils::GetMLDataType(*arg);
-
+    auto expected_type = utils::GetMLDataType(*iter->second);
+    auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
@@ -527,37 +547,6 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     } else {
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
-    }
-  }
-
-  if (feeds.size() > required_feed_ids.size()) {
-    // More feeds are offered.
-    // In the case of overriding some initializers (which are also taken as graph inputs).
-    for (size_t i = 0; i < feeds.size(); ++i) {
-      if (required_feed_ids.count(i) > 0) {
-        continue;
-      }
-      auto iter = input_def_map_.find(feed_names[i]);
-      if (input_def_map_.end() == iter) {
-        std::ostringstream ostr;
-        std::for_each(std::begin(model_input_names_),
-                      std::end(model_input_names_),
-                      [&ostr](const std::string& elem) {
-                        ostr << elem << " ";
-                      });
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Invalid Feed Input Names:", feed_names[i],
-                               ". Valid input names are: ", ostr.str());
-      }
-
-      auto& input_ml_value = feeds.at(i);
-      ORT_ENFORCE(input_ml_value.IsTensor());
-      auto input_element_type = input_ml_value.Get<Tensor>().DataType();
-
-      auto expected_type = utils::GetMLDataType(*iter->second);
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
-
-      ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
     }
   }
 
@@ -584,25 +573,11 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
   }
 
-  bool valid = true;
-  std::ostringstream invalid_names;
   for (const auto& name : output_names) {
     if (model_output_names_.find(name) == model_output_names_.end()) {
-      valid = false;
-      invalid_names << " " << name;
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "Invalid Output Name:" + name);
     }
-  }
-
-  if (!valid) {
-    std::ostringstream ostr;
-    std::for_each(std::begin(model_output_names_),
-                  std::end(model_output_names_),
-                  [&ostr](const std::string& elem) {
-                    ostr << elem << " ";
-                  });
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                          "Invalid Output Names:" + invalid_names.str() +
-                              " Valid output names are: " + ostr.str());
   }
 
   // TODO add more validation here like checking shape of the allocated buffers
@@ -619,12 +594,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
 
   try {
-    {
-      std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-      if (!is_inited_) {
-        LOGS(*session_logger_, ERROR) << "Session was not initialized";
-        retval = Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-      }
+    if (!is_inited_) {
+      LOGS(*session_logger_, ERROR) << "Session was not initialized";
+      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
     }
 
     ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
@@ -820,18 +792,12 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save required inputs
   const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
   required_input_def_list_ = required_inputs;       // A direct copy of required inputs
-  required_model_input_names_.reserve(required_inputs.size());
-  for (const auto& elem : required_inputs) {
-    required_model_input_names_.insert(elem->Name());
-  }
 
   // save all valid inputs
   auto& all_inputs = graph.GetInputsIncludingInitializers();
   input_def_map_.reserve(all_inputs.size());
-  model_input_names_.reserve(all_inputs.size());
   for (auto elem : all_inputs) {
     input_def_map_.insert({elem->Name(), elem});
-    model_input_names_.insert(elem->Name());
   }
 
   // save outputs
@@ -911,10 +877,10 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level,
-                                                 std::vector<std::string>& custom_list) {
+                                                 const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GenerateTransformers(level, &custom_list);
+    auto transformers_to_register = transformer_utils::GenerateTransformers(level, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

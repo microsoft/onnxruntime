@@ -102,6 +102,9 @@ class GraphViewer {
     return graph_->DomainToVersionMap();
   }
 
+  /** Check if this is a Subgraph */
+  bool IsSubgraph() const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
 

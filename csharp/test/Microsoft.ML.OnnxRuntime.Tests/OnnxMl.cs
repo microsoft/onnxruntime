@@ -48,57 +48,58 @@ namespace Onnx {
             "KAsyEC5vbm54LkdyYXBoUHJvdG8SJgoJZnVuY3Rpb25zGGQgAygLMhMub25u",
             "eC5GdW5jdGlvblByb3RvEjQKDm1ldGFkYXRhX3Byb3BzGA4gAygLMhwub25u",
             "eC5TdHJpbmdTdHJpbmdFbnRyeVByb3RvIjQKFlN0cmluZ1N0cmluZ0VudHJ5",
-            "UHJvdG8SCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJImQKCVF1YW50SW5m",
-            "bxITCgt0ZW5zb3JfbmFtZRgBIAEoCRJCChxxdWFudF9wYXJhbWV0ZXJfdGVu",
-            "c29yX25hbWVzGAIgAygLMhwub25ueC5TdHJpbmdTdHJpbmdFbnRyeVByb3Rv",
-            "IpwCCgpHcmFwaFByb3RvEh0KBG5vZGUYASADKAsyDy5vbm54Lk5vZGVQcm90",
-            "bxIMCgRuYW1lGAIgASgJEiYKC2luaXRpYWxpemVyGAUgAygLMhEub25ueC5U",
-            "ZW5zb3JQcm90bxISCgpkb2Nfc3RyaW5nGAogASgJEiMKBWlucHV0GAsgAygL",
-            "MhQub25ueC5WYWx1ZUluZm9Qcm90bxIkCgZvdXRwdXQYDCADKAsyFC5vbm54",
-            "LlZhbHVlSW5mb1Byb3RvEigKCnZhbHVlX2luZm8YDSADKAsyFC5vbm54LlZh",
-            "bHVlSW5mb1Byb3RvEjAKF3F1YW50aXphdGlvbl9hbm5vdGF0aW9uGGQgAygL",
-            "Mg8ub25ueC5RdWFudEluZm8iuAUKC1RlbnNvclByb3RvEgwKBGRpbXMYASAD",
-            "KAMSEQoJZGF0YV90eXBlGAIgASgFEioKB3NlZ21lbnQYAyABKAsyGS5vbm54",
-            "LlRlbnNvclByb3RvLlNlZ21lbnQSFgoKZmxvYXRfZGF0YRgEIAMoAkICEAES",
-            "FgoKaW50MzJfZGF0YRgFIAMoBUICEAESEwoLc3RyaW5nX2RhdGEYBiADKAwS",
-            "FgoKaW50NjRfZGF0YRgHIAMoA0ICEAESDAoEbmFtZRgIIAEoCRISCgpkb2Nf",
-            "c3RyaW5nGAwgASgJEhAKCHJhd19kYXRhGAkgASgMEjMKDWV4dGVybmFsX2Rh",
-            "dGEYDSADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8SNQoNZGF0",
-            "YV9sb2NhdGlvbhgOIAEoDjIeLm9ubnguVGVuc29yUHJvdG8uRGF0YUxvY2F0",
-            "aW9uEhcKC2RvdWJsZV9kYXRhGAogAygBQgIQARIXCgt1aW50NjRfZGF0YRgL",
-            "IAMoBEICEAEaJQoHU2VnbWVudBINCgViZWdpbhgBIAEoAxILCgNlbmQYAiAB",
-            "KAMi2gEKCERhdGFUeXBlEg0KCVVOREVGSU5FRBAAEgkKBUZMT0FUEAESCQoF",
-            "VUlOVDgQAhIICgRJTlQ4EAMSCgoGVUlOVDE2EAQSCQoFSU5UMTYQBRIJCgVJ",
-            "TlQzMhAGEgkKBUlOVDY0EAcSCgoGU1RSSU5HEAgSCAoEQk9PTBAJEgsKB0ZM",
-            "T0FUMTYQChIKCgZET1VCTEUQCxIKCgZVSU5UMzIQDBIKCgZVSU5UNjQQDRIN",
-            "CglDT01QTEVYNjQQDhIOCgpDT01QTEVYMTI4EA8SDAoIQkZMT0FUMTYQECIp",
-            "CgxEYXRhTG9jYXRpb24SCwoHREVGQVVMVBAAEgwKCEVYVEVSTkFMEAEilQEK",
-            "EFRlbnNvclNoYXBlUHJvdG8SLQoDZGltGAEgAygLMiAub25ueC5UZW5zb3JT",
-            "aGFwZVByb3RvLkRpbWVuc2lvbhpSCglEaW1lbnNpb24SEwoJZGltX3ZhbHVl",
-            "GAEgASgDSAASEwoJZGltX3BhcmFtGAIgASgJSAASEgoKZGVub3RhdGlvbhgD",
-            "IAEoCUIHCgV2YWx1ZSLCBAoJVHlwZVByb3RvEi0KC3RlbnNvcl90eXBlGAEg",
-            "ASgLMhYub25ueC5UeXBlUHJvdG8uVGVuc29ySAASMQoNc2VxdWVuY2VfdHlw",
-            "ZRgEIAEoCzIYLm9ubnguVHlwZVByb3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5",
-            "cGUYBSABKAsyEy5vbm54LlR5cGVQcm90by5NYXBIABItCgtvcGFxdWVfdHlw",
-            "ZRgHIAEoCzIWLm9ubnguVHlwZVByb3RvLk9wYXF1ZUgAEjoKEnNwYXJzZV90",
-            "ZW5zb3JfdHlwZRgIIAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRlbnNv",
-            "ckgAEhIKCmRlbm90YXRpb24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlw",
-            "ZRgBIAEoBRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90",
-            "bxouCghTZXF1ZW5jZRIiCgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQ",
-            "cm90bxo8CgNNYXASEAoIa2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgC",
-            "IAEoCzIPLm9ubnguVHlwZVByb3RvGiYKBk9wYXF1ZRIOCgZkb21haW4YASAB",
-            "KAkSDAoEbmFtZRgCIAEoCRpICgxTcGFyc2VUZW5zb3ISEQoJZWxlbV90eXBl",
-            "GAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFwZVByb3Rv",
-            "QgcKBXZhbHVlIjUKEk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASAB",
-            "KAkSDwoHdmVyc2lvbhgCIAEoAyK/AQoNRnVuY3Rpb25Qcm90bxIMCgRuYW1l",
-            "GAEgASgJEhUKDXNpbmNlX3ZlcnNpb24YAiABKAMSJAoGc3RhdHVzGAMgASgO",
-            "MhQub25ueC5PcGVyYXRvclN0YXR1cxINCgVpbnB1dBgEIAMoCRIOCgZvdXRw",
-            "dXQYBSADKAkSEQoJYXR0cmlidXRlGAYgAygJEh0KBG5vZGUYByADKAsyDy5v",
-            "bm54Lk5vZGVQcm90bxISCgpkb2Nfc3RyaW5nGAggASgJKn0KB1ZlcnNpb24S",
-            "EgoOX1NUQVJUX1ZFUlNJT04QABIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMTAQ",
-            "ARIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMzAQAhIYChRJUl9WRVJTSU9OXzIw",
-            "MTdfMTFfMxADEg4KCklSX1ZFUlNJT04QBCouCg5PcGVyYXRvclN0YXR1cxIQ",
-            "CgxFWFBFUklNRU5UQUwQABIKCgZTVEFCTEUQAWIGcHJvdG8z"));
+            "UHJvdG8SCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJImsKEFRlbnNvckFu",
+            "bm90YXRpb24SEwoLdGVuc29yX25hbWUYASABKAkSQgoccXVhbnRfcGFyYW1l",
+            "dGVyX3RlbnNvcl9uYW1lcxgCIAMoCzIcLm9ubnguU3RyaW5nU3RyaW5nRW50",
+            "cnlQcm90byKjAgoKR3JhcGhQcm90bxIdCgRub2RlGAEgAygLMg8ub25ueC5O",
+            "b2RlUHJvdG8SDAoEbmFtZRgCIAEoCRImCgtpbml0aWFsaXplchgFIAMoCzIR",
+            "Lm9ubnguVGVuc29yUHJvdG8SEgoKZG9jX3N0cmluZxgKIAEoCRIjCgVpbnB1",
+            "dBgLIAMoCzIULm9ubnguVmFsdWVJbmZvUHJvdG8SJAoGb3V0cHV0GAwgAygL",
+            "MhQub25ueC5WYWx1ZUluZm9Qcm90bxIoCgp2YWx1ZV9pbmZvGA0gAygLMhQu",
+            "b25ueC5WYWx1ZUluZm9Qcm90bxI3ChdxdWFudGl6YXRpb25fYW5ub3RhdGlv",
+            "bhgOIAMoCzIWLm9ubnguVGVuc29yQW5ub3RhdGlvbiK4BQoLVGVuc29yUHJv",
+            "dG8SDAoEZGltcxgBIAMoAxIRCglkYXRhX3R5cGUYAiABKAUSKgoHc2VnbWVu",
+            "dBgDIAEoCzIZLm9ubnguVGVuc29yUHJvdG8uU2VnbWVudBIWCgpmbG9hdF9k",
+            "YXRhGAQgAygCQgIQARIWCgppbnQzMl9kYXRhGAUgAygFQgIQARITCgtzdHJp",
+            "bmdfZGF0YRgGIAMoDBIWCgppbnQ2NF9kYXRhGAcgAygDQgIQARIMCgRuYW1l",
+            "GAggASgJEhIKCmRvY19zdHJpbmcYDCABKAkSEAoIcmF3X2RhdGEYCSABKAwS",
+            "MwoNZXh0ZXJuYWxfZGF0YRgNIAMoCzIcLm9ubnguU3RyaW5nU3RyaW5nRW50",
+            "cnlQcm90bxI1Cg1kYXRhX2xvY2F0aW9uGA4gASgOMh4ub25ueC5UZW5zb3JQ",
+            "cm90by5EYXRhTG9jYXRpb24SFwoLZG91YmxlX2RhdGEYCiADKAFCAhABEhcK",
+            "C3VpbnQ2NF9kYXRhGAsgAygEQgIQARolCgdTZWdtZW50Eg0KBWJlZ2luGAEg",
+            "ASgDEgsKA2VuZBgCIAEoAyLaAQoIRGF0YVR5cGUSDQoJVU5ERUZJTkVEEAAS",
+            "CQoFRkxPQVQQARIJCgVVSU5UOBACEggKBElOVDgQAxIKCgZVSU5UMTYQBBIJ",
+            "CgVJTlQxNhAFEgkKBUlOVDMyEAYSCQoFSU5UNjQQBxIKCgZTVFJJTkcQCBII",
+            "CgRCT09MEAkSCwoHRkxPQVQxNhAKEgoKBkRPVUJMRRALEgoKBlVJTlQzMhAM",
+            "EgoKBlVJTlQ2NBANEg0KCUNPTVBMRVg2NBAOEg4KCkNPTVBMRVgxMjgQDxIM",
+            "CghCRkxPQVQxNhAQIikKDERhdGFMb2NhdGlvbhILCgdERUZBVUxUEAASDAoI",
+            "RVhURVJOQUwQASKVAQoQVGVuc29yU2hhcGVQcm90bxItCgNkaW0YASADKAsy",
+            "IC5vbm54LlRlbnNvclNoYXBlUHJvdG8uRGltZW5zaW9uGlIKCURpbWVuc2lv",
+            "bhITCglkaW1fdmFsdWUYASABKANIABITCglkaW1fcGFyYW0YAiABKAlIABIS",
+            "CgpkZW5vdGF0aW9uGAMgASgJQgcKBXZhbHVlIsIECglUeXBlUHJvdG8SLQoL",
+            "dGVuc29yX3R5cGUYASABKAsyFi5vbm54LlR5cGVQcm90by5UZW5zb3JIABIx",
+            "Cg1zZXF1ZW5jZV90eXBlGAQgASgLMhgub25ueC5UeXBlUHJvdG8uU2VxdWVu",
+            "Y2VIABInCghtYXBfdHlwZRgFIAEoCzITLm9ubnguVHlwZVByb3RvLk1hcEgA",
+            "Ei0KC29wYXF1ZV90eXBlGAcgASgLMhYub25ueC5UeXBlUHJvdG8uT3BhcXVl",
+            "SAASOgoSc3BhcnNlX3RlbnNvcl90eXBlGAggASgLMhwub25ueC5UeXBlUHJv",
+            "dG8uU3BhcnNlVGVuc29ySAASEgoKZGVub3RhdGlvbhgGIAEoCRpCCgZUZW5z",
+            "b3ISEQoJZWxlbV90eXBlGAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5U",
+            "ZW5zb3JTaGFwZVByb3RvGi4KCFNlcXVlbmNlEiIKCWVsZW1fdHlwZRgBIAEo",
+            "CzIPLm9ubnguVHlwZVByb3RvGjwKA01hcBIQCghrZXlfdHlwZRgBIAEoBRIj",
+            "Cgp2YWx1ZV90eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8aJgoGT3BhcXVl",
+            "Eg4KBmRvbWFpbhgBIAEoCRIMCgRuYW1lGAIgASgJGkgKDFNwYXJzZVRlbnNv",
+            "chIRCgllbGVtX3R5cGUYASABKAUSJQoFc2hhcGUYAiABKAsyFi5vbm54LlRl",
+            "bnNvclNoYXBlUHJvdG9CBwoFdmFsdWUiNQoST3BlcmF0b3JTZXRJZFByb3Rv",
+            "Eg4KBmRvbWFpbhgBIAEoCRIPCgd2ZXJzaW9uGAIgASgDIr8BCg1GdW5jdGlv",
+            "blByb3RvEgwKBG5hbWUYASABKAkSFQoNc2luY2VfdmVyc2lvbhgCIAEoAxIk",
+            "CgZzdGF0dXMYAyABKA4yFC5vbm54Lk9wZXJhdG9yU3RhdHVzEg0KBWlucHV0",
+            "GAQgAygJEg4KBm91dHB1dBgFIAMoCRIRCglhdHRyaWJ1dGUYBiADKAkSHQoE",
+            "bm9kZRgHIAMoCzIPLm9ubnguTm9kZVByb3RvEhIKCmRvY19zdHJpbmcYCCAB",
+            "KAkqlwEKB1ZlcnNpb24SEgoOX1NUQVJUX1ZFUlNJT04QABIZChVJUl9WRVJT",
+            "SU9OXzIwMTdfMTBfMTAQARIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMzAQAhIY",
+            "ChRJUl9WRVJTSU9OXzIwMTdfMTFfMxADEhgKFElSX1ZFUlNJT05fMjAxOV8x",
+            "XzIyEAQSDgoKSVJfVkVSU0lPThAFKi4KDk9wZXJhdG9yU3RhdHVzEhAKDEVY",
+            "UEVSSU1FTlRBTBAAEgoKBlNUQUJMRRABYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, new pbr::GeneratedClrTypeInfo[] {
@@ -107,7 +108,7 @@ namespace Onnx {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.QuantInfo), global::Onnx.QuantInfo.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorAnnotation), global::Onnx.TensorAnnotation.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null)}),
@@ -164,7 +165,13 @@ namespace Onnx {
     /// - Relax constraint that initializers should be a subset of graph inputs
     /// - Add type BFLOAT16
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 4,
+    [pbr::OriginalName("IR_VERSION_2019_1_22")] IrVersion2019122 = 4,
+    /// <summary>
+    /// IR VERSION 5 published on March 18, 2019
+    /// - Add message TensorAnnotation.
+    /// - Add quantization annotation in GraphProto to map tensor with its scale and zero point quantization parameters.
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 5,
   }
 
   /// <summary>
@@ -1815,11 +1822,11 @@ namespace Onnx {
 
   }
 
-  public sealed partial class QuantInfo : pb::IMessage<QuantInfo> {
-    private static readonly pb::MessageParser<QuantInfo> _parser = new pb::MessageParser<QuantInfo>(() => new QuantInfo());
+  public sealed partial class TensorAnnotation : pb::IMessage<TensorAnnotation> {
+    private static readonly pb::MessageParser<TensorAnnotation> _parser = new pb::MessageParser<TensorAnnotation>(() => new TensorAnnotation());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public static pb::MessageParser<QuantInfo> Parser { get { return _parser; } }
+    public static pb::MessageParser<TensorAnnotation> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
@@ -1832,22 +1839,22 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public QuantInfo() {
+    public TensorAnnotation() {
       OnConstruction();
     }
 
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public QuantInfo(QuantInfo other) : this() {
+    public TensorAnnotation(TensorAnnotation other) : this() {
       tensorName_ = other.tensorName_;
       quantParameterTensorNames_ = other.quantParameterTensorNames_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public QuantInfo Clone() {
-      return new QuantInfo(this);
+    public TensorAnnotation Clone() {
+      return new TensorAnnotation(this);
     }
 
     /// <summary>Field number for the "tensor_name" field.</summary>
@@ -1867,8 +1874,9 @@ namespace Onnx {
         = pb::FieldCodec.ForMessage(18, global::Onnx.StringStringEntryProto.Parser);
     private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> quantParameterTensorNames_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
     /// <summary>
-    /// The keys used in the mapping below will be pre-defined in ONNX spec.
-    /// For example, for linear case, “SCALE”, “ZERO_POINT” will be pre-defined as
+    /// &lt;key, value> pairs to annotate tensor specified by &lt;tensor_name> above.
+    /// The keys used in the mapping below must be pre-defined in ONNX spec.
+    /// For example, for 8-bit linear quantization case, 'SCALE_TENSOR', 'ZERO_POINT_TENSOR' will be pre-defined as
     /// quantization parameter keys.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1878,11 +1886,11 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
-      return Equals(other as QuantInfo);
+      return Equals(other as TensorAnnotation);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public bool Equals(QuantInfo other) {
+    public bool Equals(TensorAnnotation other) {
       if (ReferenceEquals(other, null)) {
         return false;
       }
@@ -1936,7 +1944,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public void MergeFrom(QuantInfo other) {
+    public void MergeFrom(TensorAnnotation other) {
       if (other == null) {
         return;
       }
@@ -2112,18 +2120,18 @@ namespace Onnx {
     }
 
     /// <summary>Field number for the "quantization_annotation" field.</summary>
-    public const int QuantizationAnnotationFieldNumber = 100;
-    private static readonly pb::FieldCodec<global::Onnx.QuantInfo> _repeated_quantizationAnnotation_codec
-        = pb::FieldCodec.ForMessage(802, global::Onnx.QuantInfo.Parser);
-    private readonly pbc::RepeatedField<global::Onnx.QuantInfo> quantizationAnnotation_ = new pbc::RepeatedField<global::Onnx.QuantInfo>();
+    public const int QuantizationAnnotationFieldNumber = 14;
+    private static readonly pb::FieldCodec<global::Onnx.TensorAnnotation> _repeated_quantizationAnnotation_codec
+        = pb::FieldCodec.ForMessage(114, global::Onnx.TensorAnnotation.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.TensorAnnotation> quantizationAnnotation_ = new pbc::RepeatedField<global::Onnx.TensorAnnotation>();
     /// <summary>
     /// This field carries information to indicate the mapping among a tensor and its
     /// quantization parameter tensors. For example:
-    /// A tensor “a” and its quantization parameter tensor are “scale_a” and
-    /// “zero_point_a” (in linear case).
+    /// For tensor 'a', it may have {'SCALE_TENSOR', 'a_scale'} and {'ZERO_POINT_TENSOR', 'a_zero_point'} annotated,
+    /// which means, tensor 'a_scale' and tensor 'a_zero_point' are scale and zero point of tensor 'a' in the model.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    public pbc::RepeatedField<global::Onnx.QuantInfo> QuantizationAnnotation {
+    public pbc::RepeatedField<global::Onnx.TensorAnnotation> QuantizationAnnotation {
       get { return quantizationAnnotation_; }
     }
 
@@ -2271,7 +2279,7 @@ namespace Onnx {
             valueInfo_.AddEntriesFrom(input, _repeated_valueInfo_codec);
             break;
           }
-          case 802: {
+          case 114: {
             quantizationAnnotation_.AddEntriesFrom(input, _repeated_quantizationAnnotation_codec);
             break;
           }

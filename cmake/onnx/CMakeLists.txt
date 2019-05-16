@@ -11,18 +11,23 @@ endif()
 # Cpp Tests were added and they require googletest
 # since we have our own copy, try using that
 set(ONNX_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/onnx)
-file(GLOB_RECURSE onnx_src
+file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
     "${ONNX_SOURCE_ROOT}/onnx/*.h"
     "${ONNX_SOURCE_ROOT}/onnx/*.cc"
 )
 
-file(GLOB_RECURSE onnx_exclude_src
+file(GLOB_RECURSE onnx_exclude_src CONFIGURE_DEPENDS
     "${ONNX_SOURCE_ROOT}/onnx/py_utils.h"
     "${ONNX_SOURCE_ROOT}/onnx/proto_utils.h"
     "${ONNX_SOURCE_ROOT}/onnx/backend/test/cpp/*"
     "${ONNX_SOURCE_ROOT}/onnx/test/*"
     "${ONNX_SOURCE_ROOT}/onnx/cpp2py_export.cc"
 )
+
+if (MSVC)
+  SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
+  SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
+endif()
 
 list(REMOVE_ITEM onnx_src ${onnx_exclude_src})
 add_library(onnx ${onnx_src})
@@ -33,7 +38,7 @@ target_compile_definitions(onnx PUBLIC $<TARGET_PROPERTY:onnx_proto,INTERFACE_CO
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx")
 else()
-  target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx" "ONNX_USE_LITE_PROTO")
+  target_compile_definitions(onnx PUBLIC "ONNX_ML" "ONNX_NAMESPACE=onnx" "ONNX_USE_LITE_PROTO" "__ONNX_NO_DOC_STRINGS")
 endif()
 if (WIN32)
     target_compile_options(onnx PRIVATE

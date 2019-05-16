@@ -16,8 +16,8 @@
 #include <Windows.h>
 #else
 #include <pthread.h>
-#include <unsupported/Eigen/CXX11/ThreadPool>
 #endif
+
 #include <test/compare_mlvalue.h>
 #include "TestCase.h"
 #include "heap_buffer.h"
@@ -34,7 +34,7 @@ void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK
   ITestCase* info = task->env.tests[task->task_id];
   std::shared_ptr<TestCaseResult> ret;
   try {
-    RunSingleTestCase(info, task->env.sf, task->concurrent_runs, task->repeat_count, task->pool, pci, [task](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
+    RunSingleTestCase(info, task->env.env, task->env.sf, task->concurrent_runs, task->repeat_count, task->pool, pci, [task](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
       return OnTestCaseFinished(pci, task, result);
     });
     return;
@@ -169,7 +169,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
       ORT_EVENT ev;
       ORT_RETURN_IF_ERROR(CreateOnnxRuntimeEvent(&ev));
       try {
-        RunSingleTestCase(env.tests[i], env.sf, concurrent_runs, repeat_count, tpool, nullptr, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
+        RunSingleTestCase(env.tests[i], env.env, env.sf, concurrent_runs, repeat_count, tpool, nullptr, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
           //TODO:output this information to a xml
           if (concurrent_runs == 1) {
             TIME_SPEC ts = result->GetSpentTime();
@@ -242,10 +242,10 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
   return common::Status::OK();
 }
 
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  double default_per_sample_tolerance, double default_relative_per_sample_tolerance) {
-  std::vector<ITestCase*> tests;
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
     std::basic_string<PATH_CHAR_TYPE> node_data_root_path = paths.back();
@@ -271,11 +271,10 @@ std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_
 
       ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),
                                         default_per_sample_tolerance, default_relative_per_sample_tolerance);
-      tests.push_back(l);
+      process_function(l);
       return true;
     });
   }
-  return tests;
 }
 
 SeqTestRunner::SeqTestRunner(OrtSession* session1,
@@ -311,6 +310,7 @@ std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const OrtValue* o, co
                                                            bool post_processing) {
   return onnxruntime::CompareMLValue(*(MLValue*)o, *(MLValue*)expected_mlvalue, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
 }
+
 EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   HeapBuffer holder;
   std::unordered_map<std::string, OrtValue*> feeds;
@@ -401,7 +401,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
       if (v == nullptr) continue;
-      ret = VerifyValueInfo(*v, actual_output_value);
+      ret = VerifyValueInfo(*v, Ort::Unowned<Ort::Value>{actual_output_value});
       compare_result = ret.first;
       if (compare_result != COMPARE_RESULT::SUCCESS) {
         switch (compare_result) {
@@ -459,16 +459,15 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
   finish(pci);
 }
 
-void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
+void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();
   try {
     DataRunner* r = nullptr;
     std::string node_name = info->GetNodeName();
-    auto sf2 = sf.clone();
-    sf2.SetSessionLogId(info->GetTestCaseName().c_str());
-    std::unique_ptr<OrtSession, decltype(&OrtReleaseSession)> session_object(
-        sf2.OrtCreateSession(info->GetModelUrl()), OrtReleaseSession);
+    auto sf2 = sf.Clone();
+    sf2.SetLogId(info->GetTestCaseName().c_str());
+    Ort::Session session_object{env, info->GetModelUrl(), sf2};
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
     //temp hack. Because we have no resource control. We may not have enough memory to run this test in parallel
     if (info->GetTestCaseName() == "coreml_FNS-Candy_ImageNet")
@@ -480,6 +479,13 @@ void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper
     }
     r->Start(pci, concurrent_runs);
     return;
+  } catch (const Ort::Exception& ex) {
+    if (ex.GetOrtErrorCode() != ORT_NOT_IMPLEMENTED)
+      throw;
+
+    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
+    std::string node_name;
+    ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   } catch (onnxruntime::NotImplementedException& ex) {
     LOGF_DEFAULT(ERROR, "Test %s failed:%s", info->GetTestCaseName().c_str(), ex.what());
     std::string node_name;

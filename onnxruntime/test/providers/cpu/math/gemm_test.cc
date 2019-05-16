@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because TensorRT only support FLOAT, INT8, FLOAT16 and INT32 for now
+
 TEST(GemmOpTest, GemmNoTrans) {
   OpTester test("Gemm");
 
@@ -23,7 +25,7 @@ TEST(GemmOpTest, GemmNoTrans) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Only CUDA kernel has float 16 support
@@ -56,7 +58,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddInput<MLFloat16>("C", {2, 3}, f_C);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
@@ -76,7 +78,7 @@ TEST(GemmOpTest, GemmBroadcast) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 12.0f, 13.0f,
                          -9.0f, -8.0f, -7.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmTrans) {
@@ -97,7 +99,7 @@ TEST(GemmOpTest, GemmTrans) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmAlphaBeta) {
@@ -116,7 +118,7 @@ TEST(GemmOpTest, GemmAlphaBeta) {
   test.AddOutput<float>("Y", {2, 3},
                         {7.0f, 7.0f, 7.0f,
                          -3.0f, -3.0f, -3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmNaN) {
@@ -135,7 +137,7 @@ TEST(GemmOpTest, GemmNaN) {
   test.AddOutput<float>("Y", {2, 3},
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmScalarBroadcast) {
@@ -154,7 +156,7 @@ TEST(GemmOpTest, GemmScalarBroadcast) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Gemm2DBroadcast) {
@@ -173,7 +175,7 @@ TEST(MathOpTest, Gemm2DBroadcast) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -8.0f, -8.0f, -8.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmFalseBroadcast) {
@@ -192,7 +194,7 @@ TEST(GemmOpTest, GemmFalseBroadcast) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -8.0f, -8.0f, -8.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmEmptyTensor) {
@@ -209,7 +211,7 @@ TEST(GemmOpTest, GemmEmptyTensor) {
   test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {0, 3},
                         {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

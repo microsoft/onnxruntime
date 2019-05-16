@@ -169,7 +169,7 @@ void OpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>&
       output_names.push_back(output.def_.Name());
   }
 
-  for (auto i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     if (std::find(initializer_index_.begin(), initializer_index_.end(), i) == initializer_index_.end() && input_data_[i].def_.Exists()) {
       feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
     }
@@ -244,7 +244,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (auto i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 
@@ -315,7 +315,10 @@ void OpTester::ExecuteModel(Model& model,
     }
   } else {
     if (expect_result == ExpectResult::kExpectFailure) {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
+      if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
+        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      }
     } else {
       LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -340,7 +343,7 @@ void OpTester::ExecuteModel(Model& model,
           auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
           const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
           EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
-          for (int d = 0; d < inferred_dims.size(); ++d) {
+          for (size_t d = 0; d < inferred_dims.size(); ++d) {
             // check equal unless the input involved a symbolic dimension
             if (inferred_dims[d] != -1)
               EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
@@ -411,6 +414,7 @@ void OpTester::Run(ExpectResult expect_result,
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kMklDnnExecutionProvider,
+        kNGraphExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
@@ -448,6 +452,8 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
           execution_provider = DefaultMkldnnExecutionProvider();
+        else if (provider_type == onnxruntime::kNGraphExecutionProvider)
+          execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
@@ -467,6 +473,8 @@ void OpTester::Run(ExpectResult expect_result,
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
+          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider)
+            continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
           if (!kci) {

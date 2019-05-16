@@ -185,8 +185,10 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory
 // and continue to access throughout the OrtSession lifetime?
 //  What sort of access is needed to model_path : read or read/write?
-// TODO:  allow loading from an in-memory byte-array
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+               _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
+
+ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
@@ -208,9 +210,12 @@ ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
 ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
 
-// deprecated
+// Enable the memory pattern optimization.
+// The idea is if the input shapes are the same, we could trace the internal memory allocation
+// and generate a memory pattern for future request. So next time we could just do one allocation
+// with a big chunk for all the internal memory allocation.
+// Note: memory pattern optimization is only available when SequentialExecution enabled.
 ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
-// deprecated
 ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 
 // Enable the memory arena on CPU
@@ -234,6 +239,7 @@ ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, u
 ORT_API(int, OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level);
 
 // How many threads in the session thread pool.
+// Returns 0 on success, and -1 otherwise
 ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
@@ -381,10 +387,10 @@ ORT_API_STATUS(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo*, enum ON
  * \param dim_values An array with length of `dim_count`. Its elements can contain negative values.
  * \param dim_count length of dim_values
  */
-ORT_API_STATUS(OrtSetDims, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
+ORT_API_STATUS(OrtSetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
 ORT_API(enum ONNXTensorElementDataType, OrtGetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*);
-ORT_API(size_t, OrtGetNumOfDimensions, _In_ const OrtTensorTypeAndShapeInfo* info);
+ORT_API(size_t, OrtGetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info);
 ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
 
 /**
@@ -519,7 +525,7 @@ ORT_API_STATUS(OrtGetValueCount, const OrtValue* value, size_t* out);
    * sequence. 'in' should be an arrary of N OrtValues.
    * \value_type should be either map or sequence.
    */
-ORT_API_STATUS(OrtCreateValue, OrtValue** const in, int num_values, enum ONNXType value_type,
+ORT_API_STATUS(OrtCreateValue, OrtValue** const in, size_t num_values, enum ONNXType value_type,
                OrtValue** out);
 
 /*
@@ -551,11 +557,11 @@ struct OrtCustomOpApi {
   size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
   void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
-  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, void** data);
+  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Out_ void** data);
 
   void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
 
-  OrtValue*(ORT_API_CALL* KernelContext_GetInput)(OrtKernelContext* context, _In_ size_t index);
+  const OrtValue*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index);
   OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;

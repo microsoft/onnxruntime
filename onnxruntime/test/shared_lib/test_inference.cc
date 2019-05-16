@@ -28,7 +28,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   std::vector<OrtValue*> ort_inputs;
   std::vector<std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>> ort_inputs_cleanup;
   std::vector<const char*> input_names;
-  for (int i = 0; i < inputs.size(); i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
     ort_inputs.emplace_back(OrtCreateTensorWithDataAsOrtValue(env->Info(env), (void*)inputs[i].values.data(), inputs[i].values.size() * sizeof(inputs[i].values[0]), inputs[i].dims, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
     ort_inputs_cleanup.emplace_back(ort_inputs.back(), OrtReleaseValue);
@@ -47,7 +47,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
     ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(output_tensor, &shape_info_ptr));
     shape_info.reset(shape_info_ptr);
   }
-  size_t rtensor_dims = OrtGetNumOfDimensions(shape_info.get());
+  size_t rtensor_dims = OrtGetDimensionsCount(shape_info.get());
   std::vector<int64_t> shape_array(rtensor_dims);
   OrtGetDimensions(shape_info.get(), shape_array.data(), shape_array.size());
   ASSERT_EQ(shape_array, dims_y);
@@ -166,7 +166,7 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
                         ::testing::Values(0, 1, 2, 3, 4));
 
 struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(onnxruntime::CustomOpApi ort, OrtValue* value) {
+  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
     OrtTensorTypeAndShapeInfo* info = ort.GetTensorShapeAndType(value);
     auto dimensionCount = ort.GetDimensionCount(info);
     resize(dimensionCount);
@@ -176,7 +176,7 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 
   size_t ElementCount() const {
     int64_t count = 1;
-    for (int i = 0; i < size(); i++)
+    for (size_t i = 0; i < size(); i++)
       count *= (*this)[i];
     return count;
   }
@@ -187,21 +187,21 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
-  MyCustomKernel(onnxruntime::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
   }
 
   void GetOutputShape(OrtKernelContext* context, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
-    OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     OrtTensorDimensions dimensions(ort_, input_X);
     ort_.SetDimensions(info, dimensions.data(), dimensions.size());
   }
 
   void Compute(OrtKernelContext* context) {
     // Setup inputs
-    OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    float* X = ort_.GetTensorMutableData<float>(input_X);
-    float* Y = ort_.GetTensorMutableData<float>(input_Y);
+    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+    const float* X = ort_.GetTensorData<float>(input_X);
+    const float* Y = ort_.GetTensorData<float>(input_Y);
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
@@ -219,11 +219,11 @@ struct MyCustomKernel {
   }
 
  private:
-  onnxruntime::CustomOpApi ort_;
+  Ort::CustomOpApi ort_;
 };
 
-struct MyCustomOp : onnxruntime::CustomOpBase<MyCustomOp, MyCustomKernel> {
-  void* CreateKernel(onnxruntime::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
+struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
 
   size_t GetInputTypeCount() const { return 2; };
@@ -247,11 +247,10 @@ TEST_F(CApiTest, custom_op_handler) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   MyCustomOp custom_op;
-  OrtCustomOpDomain* custom_op_domain = OrtCreateCustomOpDomain("");
-  ORT_THROW_ON_ERROR(OrtCustomOpDomain_Add(custom_op_domain, &custom_op));
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
 
   TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
-  OrtReleaseCustomOpDomain(custom_op_domain);
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
@@ -308,7 +307,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   ORT_THROW_ON_ERROR(OrtGetTypeInfo(tensor.get(), &type_info));
   const struct OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(type_info);
   ASSERT_NE(tensor_info, nullptr);
-  ASSERT_EQ(1, OrtGetNumOfDimensions(tensor_info));
+  ASSERT_EQ(1, OrtGetDimensionsCount(tensor_info));
   OrtReleaseTypeInfo(type_info);
 }
 

@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because the limit in its parser: axis >=0 && axis < nbDims
+
 TEST(MathOpTest, Concat1D_string) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
@@ -15,7 +17,7 @@ TEST(MathOpTest, Concat1D_string) {
   test.AddInput<std::string>("input2", {2}, {"2", "3"});
   test.AddInput<std::string>("input3", {4}, {"4", "5", "6", "7"});
   test.AddOutput<std::string>("concat_result", {7}, {"1", "2", "3", "4", "5", "6", "7"});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_int32) {
@@ -26,7 +28,7 @@ TEST(MathOpTest, Concat1D_int32) {
   test.AddInput<int32_t>("input2", {2}, {2, 3});
   test.AddInput<int32_t>("input3", {4}, {4, 5, 6, 7});
   test.AddOutput<int32_t>("concat_result", {7}, {1, 2, 3, 4, 5, 6, 7});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_int32_negative_axis) {
@@ -37,7 +39,7 @@ TEST(MathOpTest, Concat1D_int32_negative_axis) {
   test.AddInput<int32_t>("input2", {2}, {2, 3});
   test.AddInput<int32_t>("input3", {4}, {4, 5, 6, 7});
   test.AddOutput<int32_t>("concat_result", {7}, {1, 2, 3, 4, 5, 6, 7});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_1) {
@@ -48,7 +50,7 @@ TEST(MathOpTest, Concat1D_1) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {4}, {4.0f, 5.0f, 6.0f, 7.0f});
   test.AddOutput<float>("concat_result", {7}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat1D_2) {
@@ -59,7 +61,7 @@ TEST(MathOpTest, Concat1D_2) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {0}, {});
   test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat2D_1) {
@@ -74,7 +76,7 @@ TEST(MathOpTest, Concat2D_1) {
                         {11.0f, 12.0f, 13.0f, 14.0f,
                          21.0f, 22.0f, 23.0f, 24.0f,
                          31.0f, 32.0f, 33.0f, 34.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat2D_2) {
@@ -90,7 +92,7 @@ TEST(MathOpTest, Concat2D_2) {
                          21.0f, 22.0f, 23.0f, 24.0f,
                          31.0f, 32.0f, 33.0f, 34.0f,
                          41.0f, 42.0f, 43.0f, 44.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat2D_3) {
@@ -101,7 +103,7 @@ TEST(MathOpTest, Concat2D_3) {
   test.AddInput<float>("input2", {1, 0}, {});
   test.AddInput<float>("input3", {1, 0}, {});
   test.AddOutput<float>("concat_result", {1, 0}, {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat3D_1) {
@@ -133,7 +135,7 @@ TEST(MathOpTest, Concat3D_1) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat3D_1_negative_axis) {
@@ -165,7 +167,7 @@ TEST(MathOpTest, Concat3D_1_negative_axis) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(MathOpTest, Concat3D_2) {
