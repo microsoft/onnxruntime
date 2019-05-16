@@ -5,6 +5,7 @@ add_library(onnx_proto ${ONNXRUNTIME_ROOT}/core/protobuf/onnx-ml.proto ${ONNXRUN
 target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/..")
 target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_proto)
+onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf LANGUAGE python TARGET onnx_proto)
 if (WIN32)
   target_compile_options(onnx_proto PRIVATE /wd4146) # unary minus operator applied to unsigned type
 endif()

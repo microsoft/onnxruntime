@@ -137,6 +137,8 @@ if __name__ == '__main__':
   test_data = os.path.realpath(sys.argv[2])
 
   sys.path.append(os.path.realpath(sys.argv[3]))
+  sys.path.append(os.path.realpath(sys.argv[4]))
+
   import onnxruntime
   import predict_pb2
   import onnx_ml_pb2

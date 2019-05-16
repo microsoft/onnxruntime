@@ -587,11 +587,15 @@ def run_server_tests(build_dir, configs):
         config_build_dir = get_config_build_dir(build_dir, config)
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+            python_package_path = os.path.join(config_build_dir, config)
+            onnx_package_path = os.path.join(python_package_path, 'onnx')
         else:
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+            python_package_path = config_build_dir
+            onnx_package_path = os.path.join(config_build_dir, 'onnx')
         server_test_folder = os.path.join(config_build_dir, 'server_test')
         server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
-        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder, python_package_path, onnx_package_path], cwd=server_test_folder, dll_path=None)
 
 
 def run_server_model_tests(build_dir, configs):
@@ -600,26 +604,19 @@ def run_server_model_tests(build_dir, configs):
         server_test_folder = os.path.join(config_build_dir, 'server_test')
         server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
  
-        onnx_ml_pb2_file = os.path.join(server_test_folder, 'onnx_ml_pb2.py')
-        predict_pb2_file = os.path.join(server_test_folder, 'predict_pb2.py')
-        if os.path.exists(onnx_ml_pb2_file):
-            os.remove(onnx_ml_pb2_file)
-        if os.path.exists(predict_pb2_file):
-            os.remove(predict_pb2_file)        
-
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
             test_raw_data_folder = os.path.join(config_build_dir, 'models')
-            shutil.copytree('../onnxruntime/', './onnxruntime/')
             python_package_path = os.path.join(config_build_dir, config)
+            onnx_package_path = os.path.join(python_package_path, 'onnx')
 
         else:
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             test_raw_data_folder = os.path.join(build_dir, 'models')
-            run_subprocess(['ln', '-s', '../onnxruntime', 'onnxruntime'], cwd=server_test_folder, dll_path=None)
             python_package_path = config_build_dir
+            onnx_package_path = os.path.join(config_build_dir, 'onnx')
         
-        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, python_package_path], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, python_package_path, onnx_package_path], cwd=server_test_folder, dll_path=None)
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
 
