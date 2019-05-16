@@ -27,8 +27,8 @@ template <typename T>
 T Clip(const T& x, T clip) {
   if (clip < 0)
     return x;
-  else
-    return std::max(std::min(x, clip), -clip);
+
+  return std::max(std::min(x, clip), -clip);
 }
 
 template <typename T>

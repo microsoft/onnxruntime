@@ -159,8 +159,8 @@ class ConvBase {
                           const std::vector<int64_t>& dilations,
                           std::vector<int64_t>* pads,
                           std::vector<int64_t>* output_shape) const {
-    int rank = gsl::narrow_cast<int>(input_shape.NumDimensions());
-    for (int dim = 0; dim < rank; ++dim) {
+    size_t rank = input_shape.NumDimensions();
+    for (size_t dim = 0; dim < rank; ++dim) {
       if (dim >= strides.size() || dim >= kernel_shape.size() ||
           dim >= dilations.size() || dim >= pads->size() ||
           rank + dim >= pads->size()) {

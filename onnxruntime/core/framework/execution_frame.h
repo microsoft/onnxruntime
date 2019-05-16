@@ -111,7 +111,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
 
-  ~ExecutionFrame();
+  ~ExecutionFrame() override;
 
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
   // Fix the unit tests so they set an execution plan that results in these methods being called by
@@ -130,6 +130,7 @@ class ExecutionFrame final : public IExecutionFrame {
                                                 const TensorShape& shape,
                                                 bool create_fence = false);
 
+  // thread-safe
   Status GeneratePatterns(MemoryPatternGroup* out) const;
 
   bool HasMemoryPatternPlanner() const {

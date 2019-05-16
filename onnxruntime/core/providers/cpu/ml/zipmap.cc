@@ -49,7 +49,7 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& x_shape = X.Shape();
-  const vector<int64_t> x_dims = x_shape.GetDims();
+  const vector<int64_t>& x_dims = x_shape.GetDims();
 
   if (x_dims.empty()) {
     return Status(ONNXRUNTIME,
@@ -81,9 +81,9 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
     //auto* y_data = Y->template MutableData<std::vector<std::map<std::string, float>>>();
     y_data->resize(batch_size);
     int64_t current_weight_0 = 0;
-    for (int n = 0; n < batch_size; n++) {
+    for (int64_t n = 0; n < batch_size; n++) {
       std::map<std::string, float> map1;
-      for (int j = 0; j < features_per_batch; j++) {
+      for (int64_t j = 0; j < features_per_batch; j++) {
         map1[classlabels_strings_[j]] = x_data[current_weight_0 + j];
       }
       current_weight_0 += features_per_batch;
