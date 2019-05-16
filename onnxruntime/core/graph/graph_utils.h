@@ -32,8 +32,8 @@ bool IsSupportedProvider(const Node& node,
     fed to multiple downstream operators, i.e., it can have multiple output edges. */
 bool IsSingleInSingleOutNode(const Node& node);
 
-/** Checks if the output `outputName` is input to downstream Nodes. */
-bool IsOutputUsed(const Node& node, const std::string& outputName);
+/** Checks if the output at the specified index is input to downstream Nodes. */
+bool IsOutputUsed(const Node& node, int index);
 
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
@@ -68,8 +68,9 @@ Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> f
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
 /** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
-    We support the removal of the Node if it has no implicit inputs and a single output (but it can have multiple
-    output edges). As for the Node's inputs, we support the following cases:
+    We support the removal of the Node as long as the following conditions hold:
+    - There should be no implicit inputs.
+    - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
     - If the Node has a single incoming node (and possibly multiple initializers), we can remove the Node and
       connect its incoming node to its outgoing nodes.
     - If the Node has a single initializer as input, we remove the Node and feed the initializer as input to its

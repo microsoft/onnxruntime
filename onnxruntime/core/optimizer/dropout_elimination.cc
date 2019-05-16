@@ -28,15 +28,14 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) {
     return false;
   }
 
-  // A Dropout Node has one required output and an optional second output, `mask`.
+  // A Dropout Node has one required output and an optional second output (i.e. at index = 1), `mask`.
   // It can be safely removed if a) it has only one output
-  // or b) if the `mask` output is present but is not an input to any downsteam Nodes.
+  // or b) if the `mask` output is present but is not an input to any downstream Nodes.
   // The `is_test` attribute in v1 and v6 is captured by the check for the `mask` output.
   if (graph_utils::IsSingleInSingleOutNode(node)) {
     return true;
   } else {
-    const std::string& mask_name = node.OutputDefs()[1]->Name();
-    return !graph_utils::IsOutputUsed(node, mask_name);
+    return !graph_utils::IsOutputUsed(node, 1);
   }
 }
 

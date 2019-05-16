@@ -348,7 +348,7 @@ TEST(GraphUtils, TestMultiOutputRemoveNode) {
   // Try removing do_0 after removing id_2, which should return true
   // because it now has exactly one output consumed by downstream Operators.
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[1]));
-  ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], "do_0_out"));
+  ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], 0));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
 }
 

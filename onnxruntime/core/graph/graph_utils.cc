@@ -355,14 +355,13 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
 
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. */
 static bool IsOnlyOneOutputUsed(const Node& node) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-  if (output_edges.size() > 1) {
+  if (node.GetOutputEdgesCount() > 1) {
     const int unassigned = -1;
-    int firstOutput = unassigned;
-    for (auto& output_edge : output_edges) {
-      if (firstOutput == unassigned) {
-        firstOutput = output_edge.src_arg_index;
-      } else if (firstOutput != output_edge.src_arg_index) {
+    int first_output = unassigned;
+    for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+      if (first_output == unassigned) {
+        first_output = it->GetSrcArgIndex();
+      } else if (first_output != it->GetSrcArgIndex()) {
         return false;
       }
     }
@@ -370,10 +369,9 @@ static bool IsOnlyOneOutputUsed(const Node& node) {
   return true;
 }
 
-bool IsOutputUsed(const Node& node, const std::string& output_name) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-  for (auto& output_edge : output_edges) {
-    if (output_edge.arg_name == output_name) {
+bool IsOutputUsed(const Node& node, int index) {
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetSrcArgIndex() == index) {
       return true;
     }
   }
