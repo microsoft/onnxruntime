@@ -116,7 +116,7 @@ class TensorflowTestSession : public TestSession {
     ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &shape));
     size_t buffer_length = 0;
     std::vector<int64_t> dims;
-    size_t dim_count = OrtGetNumOfDimensions(shape);
+    size_t dim_count = OrtGetDimensionsCount(shape);
     dims.resize(dim_count);
     OrtGetDimensions(shape, dims.data(), dim_count);
     int64_t ele_count = OrtGetTensorShapeElementCount(shape);

@@ -484,6 +484,7 @@ Status Node::UpdateInputArgCount() {
 
   if (total_arg_count < 0 || static_cast<size_t>(total_arg_count) != definitions_.input_defs.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "This is an invalid model. "
                            "The sum of input arg count is not equal to size of input defs in node (",
                            name_, ")");
   }
@@ -710,7 +711,7 @@ Status Graph::VerifyNoDuplicateName() {
     if (!node_name.empty() && node_name_to_index.end() != node_name_to_index.find(node_name)) {
       // The node has name and its name was used by another node.
       Status status(ONNXRUNTIME, FAIL,
-                    "Error: two nodes with same node name (" + node_name + ").");
+                    "This is an invalid model. Error: two nodes with same node name (" + node_name + ").");
       return status;
     }
 
@@ -724,14 +725,14 @@ Status Graph::VerifyNoDuplicateName() {
         auto& output_arg_name = output_def->Name();
         if (inputs_and_initializers.count(output_arg_name)) {
           Status status(ONNXRUNTIME, FAIL,
-                        "Error: Duplicate definition of name (" + output_arg_name + ").");
+                        "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
         auto result = output_args.insert({output_arg_name, {&node, output_index}});
         if (!result.second) {
           // Two outputs with same name, so that insertion fails.
           Status status(ONNXRUNTIME, FAIL,
-                        "Error: Duplicate definition of name (" + output_arg_name + ").");
+                        "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
       }
@@ -901,7 +902,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             if (!parent_graph_) {
               return ORT_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
-                  "At top level graph without matching NodeArg that subgraph consumes. Name=",
+                  "This is an invalid model. At top level graph without matching NodeArg that subgraph consumes. Name=",
                   node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
@@ -912,7 +913,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             if (!node_arg) {
               return ORT_MAKE_STATUS(
                   ONNXRUNTIME, INVALID_GRAPH,
-                  "Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
+                  "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
           }
@@ -1129,7 +1130,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
       const NodeIndex idx = (*iter).Index();
       if (output_nodes.find(idx) != output_nodes.end()) {
-        Status status(ONNXRUNTIME, FAIL, "Error: the graph is not acyclic.");
+        Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
         return status;
       }
 
@@ -1145,7 +1146,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   if (num_of_nodes_ >= 0 && static_cast<size_t>(num_of_nodes_) == nodes_in_topological_order_.size()) {
     return Status::OK();
   } else {
-    return Status(ONNXRUNTIME, FAIL, "Error: the graph is not acyclic.");
+    return Status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
   }
 }
 
@@ -1421,8 +1422,9 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
         // Logic error: This should not happen if we properly checked that every use has
         // a corresponding def, for which type-inference already produced a valid type
         Status status(ONNXRUNTIME, FAIL,
+                      "This is an invalid model. "
                       "Node (" + node_name + ") input arg (" +
-                          input_def->Name() + ") does not have type information set by parent node.");
+                       input_def->Name() + ") does not have type information set by parent node.");
         return status;
       }
 
@@ -1435,6 +1437,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
         // Type error in input model/graph.
 
         Status status(ONNXRUNTIME, INVALID_GRAPH,
+                      "This is an invalid model. "
                       "Type Error: Type '" + *input_type + "' of input parameter (" + input_def->Name() +
                           ") of operator (" + op.Name() + ") in node (" + node_name + ") is invalid.");
         return status;
@@ -1457,9 +1460,9 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                            ") bound to different types (" + *(param_to_type_iter->second) +
-                            " and " + *(input_def->Type()) +
-                            " in node (" + node_name + ").");
+                        ") bound to different types (" + *(param_to_type_iter->second) +
+                        " and " + *(input_def->Type()) +
+                        " in node (" + node_name + ").");
           return status;
         }
       }
@@ -1565,7 +1568,8 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   // Check that the type of every input is specified:
   for (auto* graph_input : GetInputs()) {
     if (nullptr == graph_input->Type()) {
-      Status status(ONNXRUNTIME, FAIL, "Model input (" + graph_input->Name() + ") does not have type information.");
+      Status status(ONNXRUNTIME, FAIL, "This is an invalid model. " 
+                                       "Model input (" + graph_input->Name() + ") does not have type information.");
       return status;
     }
   }
@@ -1656,7 +1660,7 @@ Status Graph::VerifyNodeAndOpMatch() {
       try {
         checker::check_node(node_proto, ctx, lsc);
       } catch (const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Node:", node_name, " ", ex.what());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node_name, " : ", ex.what());
       }
 
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
@@ -1700,6 +1704,7 @@ Status Graph::VerifyNodeAndOpMatch() {
           // TODO: Handle optional attribute but no default value specified in op definition.
         } else {
           Status status(ONNXRUNTIME, FAIL,
+                        "This is an invalid model. "
                         "Node (" + node_name + ") attribute (" + attr_def.first +
                             ") is required but not specified.");
           return status;
@@ -2279,7 +2284,8 @@ Status Graph::SetGraphInputsOutputs() {
           auto iter3 = graph_inputs.find(graph_output_name);
           if (graph_inputs.end() == iter3) {
             // Graph output is not found as any graph input.
-            return Status(ONNXRUNTIME, FAIL, "Graph output (" + graph_output_name + ") does not exist in the graph.");
+            return Status(ONNXRUNTIME, FAIL, "This is an invalid model. " 
+                                             "Graph output (" + graph_output_name + ") does not exist in the graph.");
           }
           graph_outputs_.push_back(iter3->second);
           continue;
