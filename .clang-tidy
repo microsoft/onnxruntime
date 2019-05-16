@@ -1,8 +1,8 @@
 ---
 # turn off readability-braces-around-statements to allow single line statement like 'if (x == y) doSomething();'
-Checks:          '-*,cppcoreguidelines-*,google-*,readability-*,modernize-*,-readability-braces-around-statements,-google-runtime-references,-cppcoreguidelines-pro-type-reinterpret-cast'
+Checks:          'performance-*,bugprone-*,clang-analyzer-*,clang-diagnostic-*,google-*,readability-*,modernize-*,-readability-braces-around-statements,-google-runtime-references,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-bounds-array-to-pointer-decay,-google-runtime-int,-modernize-pass-by-value,-google-readability-todo,-readability-inconsistent-declaration-parameter-name,-google-build-using-namespace,-google-readability-braces-around-statements,-readability-implicit-bool-conversion,-cppcoreguidelines-special-member-functions,-modernize-use-auto,-readability-named-parameter,-modernize-deprecated-headers,-bugprone-macro-parentheses,-performance-unnecessary-value-param,-google-explicit-constructor,-modernize-use-transparent-functors,-modernize-use-using,-modernize-return-braced-init-list,-readability-magic-numbers,-modernize-avoid-c-arrays,-readability-string-compare,-readability-uppercase-literal-suffix,-modernize-raw-string-literal'
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*onnxruntime\/core\/.*'
+HeaderFilterRegex: '.*(\/onnxruntime\/onnxruntime\/.*|include\/onnxruntime\/.*)\.h'
 AnalyzeTemporaryDtors: false
 FormatStyle:     none
 CheckOptions:    
