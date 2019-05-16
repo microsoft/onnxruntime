@@ -617,7 +617,7 @@ def run_server_model_tests(build_dir, configs):
             onnx_package_path = os.path.join(config_build_dir, 'onnx')
         
         run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, python_package_path, onnx_package_path], cwd=server_test_folder, dll_path=None)
-        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, onnx_package_path], cwd=server_test_folder, dll_path=None)
 
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
