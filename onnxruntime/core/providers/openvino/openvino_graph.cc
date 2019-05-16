@@ -20,9 +20,10 @@
 
 namespace openvino_ep {
 
-OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device_info*/) {
-	//TODO: parse device info to obtain the following values
+OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info, long dyn_dim) {
+  (void) device_info;
 
+  dyn_dim_ = dyn_dim;
 
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
@@ -125,8 +126,13 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
 
     // Prepare ModelProto Input to Python
     PyObject* pFileName = PyByteArray_FromStringAndSize(modelProtoStr.c_str(), modelProtoStr.size());
-    PyObject* pArgs = PyTuple_New(1);
+    PyObject* pArgs = PyTuple_New(2);
     PyTuple_SetItem(pArgs, 0, pFileName);
+
+    // Prepare dynamic dim arg
+    PyObject* pDynDim = PyLong_FromLong(dyn_dim_);
+    PyTuple_SetItem(pArgs, 1, pDynDim);
+
 
     // Call the Python function
     PyObject* pOutputTuple = PyObject_CallObject(pFunc, pArgs);

@@ -76,6 +76,7 @@ from operator import itemgetter
 import logging as log
 import networkx as nx
 
+import openvino_emitter
 from openvino_emitter import port_renumber, serialize_mean_image, create_const_nodes, serialize_network, add_meta_data, generate_ie_ir, serialize_constants, serialize_constants_recursively
 #from mo.back.ie_ir_ver_2.emitter import port_renumber, serialize_mean_image, create_const_nodes #, generate_ie_ir, serialize_constants, serialize_constants_recursively
 from mo.graph.graph import Node, unique_id
@@ -401,8 +402,9 @@ def driver_entry(onnx_modelproto_bytes, precision : str):
 
     return weights, xml_string
 
-def convert_fp16(onnx_modelproto_bytes):
+def convert_fp16(onnx_modelproto_bytes, dyn_dim=0):
     try:
+        openvino_emitter.dyn_dim=dyn_dim
         init_logger('ERROR', False)
         framework = 'onnx'
 
@@ -416,8 +418,9 @@ def convert_fp16(onnx_modelproto_bytes):
         #log.debug(traceback.format_exc())
         return 1
 
-def convert_fp32(onnx_modelproto_bytes):
+def convert_fp32(onnx_modelproto_bytes, dyn_dim=0):
     try:
+        openvino_emitter.dyn_dim=dyn_dim
         init_logger('ERROR', False)
         framework = 'onnx'
 

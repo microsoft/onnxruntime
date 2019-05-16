@@ -23,7 +23,7 @@ public:
   InferenceEngine::Precision precision_;
   const onnxruntime::Graph* onnx_graph_;
 
-  OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info);
+  OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info, long dyn_dim);
 
   std::shared_ptr<InferenceEngine::CNNNetwork> GetCNNNetwork();
 
@@ -50,6 +50,7 @@ private:
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
   mutable std::mutex compute_lock_;
+  long dyn_dim_;
 
 };
 }
