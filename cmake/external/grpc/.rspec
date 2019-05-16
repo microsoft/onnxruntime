@@ -1,6 +1,0 @@
--Isrc/ruby
--Isrc/ruby/pb
---backtrace
---require spec/spec_helper
---format documentation
---color

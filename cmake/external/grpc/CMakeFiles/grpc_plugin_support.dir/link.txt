@@ -1,2 +1,0 @@
-/usr/bin/ar qc libgrpc_plugin_support.a  CMakeFiles/grpc_plugin_support.dir/src/compiler/cpp_generator.cc.o CMakeFiles/grpc_plugin_support.dir/src/compiler/csharp_generator.cc.o CMakeFiles/grpc_plugin_support.dir/src/compiler/node_generator.cc.o CMakeFiles/grpc_plugin_support.dir/src/compiler/objective_c_generator.cc.o CMakeFiles/grpc_plugin_support.dir/src/compiler/php_generator.cc.o CMakeFiles/grpc_plugin_support.dir/src/compiler/python_generator.cc.o CMakeFiles/grpc_plugin_support.dir/src/compiler/ruby_generator.cc.o
-/usr/bin/ranlib libgrpc_plugin_support.a

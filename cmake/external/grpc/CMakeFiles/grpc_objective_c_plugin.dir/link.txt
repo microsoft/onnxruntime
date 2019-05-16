@@ -1,1 +1,0 @@
-/usr/bin/c++   -std=c++11  -rdynamic CMakeFiles/grpc_objective_c_plugin.dir/src/compiler/objective_c_plugin.cc.o  -o grpc_objective_c_plugin third_party/protobuf/libprotoc.a third_party/protobuf/libprotobuf.a -ldl -lrt -lm -lpthread libgrpc_plugin_support.a third_party/protobuf/libprotoc.a third_party/protobuf/libprotobuf.a -lpthread -ldl -lrt -lm -lpthread 

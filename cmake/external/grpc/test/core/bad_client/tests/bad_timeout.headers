@@ -1,2 +1,0 @@
-# a badly encoded timeout value
-grpc-timeout: 15 seconds

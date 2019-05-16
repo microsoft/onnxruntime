@@ -1,2 +1,0 @@
-/usr/bin/ar qc libaddress_sorting.a  CMakeFiles/address_sorting.dir/third_party/address_sorting/address_sorting.c.o CMakeFiles/address_sorting.dir/third_party/address_sorting/address_sorting_posix.c.o CMakeFiles/address_sorting.dir/third_party/address_sorting/address_sorting_windows.c.o
-/usr/bin/ranlib libaddress_sorting.a
