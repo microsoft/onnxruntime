@@ -39,6 +39,20 @@ class OpenVINOGraph {
       std::shared_ptr<InferenceEngine::CNNNetwork> network,
       const std::string& device, InferenceEngine::Precision precision);
 
+  size_t DeduceBatchSize(onnxruntime::ONNXRunTimeTensor* input_tensor,
+                         InferenceEngine::SizeVector graph_dims);
+
+  void AllocateOutputTensors(size_t batch_size,
+                             onnxruntime::ONNXRunTimeTensor* output_tensors,
+                             onnxruntime::AllocateFunc& output_allocator_func,
+                             onnxruntime::AllocatorHandle& output_allocator_handle);
+
+  void StartAsyncInference(onnxruntime::ONNXRunTimeTensor* input_tensors,
+                           size_t batch_idx, size_t infer_req_idx);
+
+  void CompleteAsyncInference(onnxruntime::ONNXRunTimeTensor* output_tensors,
+                              size_t batch_idx, size_t infer_req_idx);
+
   std::vector<std::string> GetEnvLdLibraryPath();
 
   onnxruntime::Node* fused_node_;
