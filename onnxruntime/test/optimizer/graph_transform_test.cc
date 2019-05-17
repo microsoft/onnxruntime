@@ -7,6 +7,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/conv_bn_fusion.h"
@@ -60,6 +61,30 @@ TEST(GraphTransformationTests, IdentityElimination) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
+
+TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
+  string model_uri = MODEL_FOLDER + "dropout.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 5);
+  ASSERT_TRUE(op_to_count["Dropout"] == 6);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<EliminateDropout>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  // Of the 6 Dropout nodes in the graph, all but the ones named `d1` and `d6` should have been removed.
+  // A Dropout node can be removed if its second, optional output `mask` is either missing or unused downstream.
+  // `d1` cannot be removed because an Identity node has its `mask` output as an input;
+  // `d6` cannot be removed because its `mask` output is marked as a graph output.
+  ASSERT_TRUE(op_to_count["Identity"] == 5);
+  ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
 
 TEST(GraphTransformationTests, SliceElimination) {
