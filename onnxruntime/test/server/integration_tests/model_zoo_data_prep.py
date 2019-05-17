@@ -4,8 +4,6 @@
 import os
 import sys
 import shutil
-
-import onnx
 import json
 
 from google.protobuf.json_format import MessageToJson
@@ -40,7 +38,7 @@ def gen_output_pb(pb_full_path, output_name, response_file_path):
 
 
 def tensor2dict(full_path):
-  t = onnx.TensorProto()
+  t = onnx_ml_pb2.TensorProto()
   with open(full_path, 'rb') as f:
     t.ParseFromString(f.read())
 
