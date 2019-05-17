@@ -108,8 +108,10 @@ Status upsampleLiner(const T* input,
     return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
-    std::vector<int64_t> val1, val2;
-    std::vector<float> d1, d2;
+    std::vector<int64_t> val1;
+    std::vector<int64_t> val2;
+    std::vector<float> d1;
+    std::vector<float> d2;
     size_t cur_idx = i;
     //val1, vla2, d1, d2 are in reverse order
     for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
@@ -158,47 +160,68 @@ void upsampleBilinear(
     float height_scale,
     float width_scale,
     const T* Xdata,
-    T* Ydata) {
+    T* Ydata,
+    AllocatorPtr& alloc) {
   int64_t output_width = static_cast<int64_t>(input_width * width_scale);
   int64_t output_height = static_cast<int64_t>(input_height * height_scale);
+
+  size_t inx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
+  size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
+  auto inx_scale_data_buffer = alloc->Alloc(inx_buffer_size + scale_buffer_size);
+  BufferUniquePtr inx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+  int64_t* inx_data = static_cast<int64_t*>(inx_scale_data_buffer_holder.get());
+  int64_t* input_width_mul_y1 = inx_data;
+  int64_t* input_width_mul_y2 = inx_data + output_height;
+  int64_t* in_x1 = inx_data + 2 * output_height;
+  int64_t* in_x2 = inx_data + 2 * output_height + output_width;
+
+  float* scale_data = reinterpret_cast<float*>( in_x2 + output_width );
+  float* dy1 = scale_data;
+  float* dy2 = scale_data + output_height;
+  float* dx1 = scale_data + 2 * output_height;
+  float* dx2 = scale_data + 2 * output_height + output_width;
+
+  for (int64_t y = 0; y < output_height; ++y) {
+    float in_y = std::min(y / height_scale, static_cast<float>(input_height - 1));
+    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
+    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
+    dy1[y] = fabs(in_y - in_y1);
+    dy2[y] = fabs(in_y - in_y2);
+    if (in_y1 == in_y2) {
+      dy1[y] = 0.5f;
+      dy2[y] = 0.5f;
+    }
+
+    input_width_mul_y1[y] = input_width * in_y1;
+    input_width_mul_y2[y] = input_width * in_y2;
+  }
+
+  for (int64_t x = 0; x < output_width; ++x) {
+    float in_x = std::min(x / width_scale, static_cast<float>(input_width - 1));
+    in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    in_x2[x] = std::min(in_x1[x] + 1, input_width - 1);
+
+    dx1[x] = std::abs(in_x - in_x1[x]);
+    dx2[x] = std::abs(in_x - in_x2[x]);
+    if (in_x1[x] == in_x2[x]) {
+      dx1[x] = 0.5f;
+      dx2[x] = 0.5f;
+    }
+  }
 
   for (int64_t n = 0; n < batch_size; ++n) {
     for (int64_t c = 0; c < num_channels; ++c) {
       for (int64_t y = 0; y < output_height; ++y) {
-        float in_y = std::min(y / height_scale, static_cast<float>(input_height - 1));
-        const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
-        const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-        float dy1 = fabs(in_y - in_y1);
-        float dy2 = fabs(in_y - in_y2);
-        if (in_y1 == in_y2) {
-          dy1 = 0.5f;
-          dy2 = 0.5f;
-        }
-
-        const int64_t input_width_mul_y1 = input_width * in_y1;
-        const int64_t input_width_mul_y2 = input_width * in_y2;
-
         for (int64_t x = 0; x < output_width; ++x) {
-          float in_x = std::min(x / width_scale, static_cast<float>(input_width - 1));
-          const int64_t in_x1 = std::min(static_cast<int64_t>(in_x), input_width - 1);
-          const int64_t in_x2 = std::min(in_x1 + 1, input_width - 1);
+          T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
+          T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
+          T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
+          T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
 
-          float dx1 = std::abs(in_x - in_x1);
-          float dx2 = std::abs(in_x - in_x2);
-          if (in_x1 == in_x2) {
-            dx1 = 0.5f;
-            dx2 = 0.5f;
-          }
-
-          T X11 = Xdata[input_width_mul_y1 + in_x1];
-          T X21 = Xdata[input_width_mul_y1 + in_x2];
-          T X12 = Xdata[input_width_mul_y2 + in_x1];
-          T X22 = Xdata[input_width_mul_y2 + in_x2];
-
-          Ydata[output_width * y + x] = static_cast<T>(dx2 * dy2 * X11 +
-                                                       dx1 * dy2 * X21 +
-                                                       dx2 * dy1 * X12 +
-                                                       dx1 * dy1 * X22);
+          Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                       dx1[x] * dy2[y] * X21 +
+                                                       dx2[x] * dy1[y] * X12 +
+                                                       dx1[x] * dy1[y] * X22);
         }
       }
       Xdata += input_height * input_width;
@@ -232,11 +255,15 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       if (dims.size() != 4)
         return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
 
-      const int64_t batch_size = dims[0], num_channels = dims[1];
-      const int64_t input_height = dims[2], input_width = dims[3];
+      const int64_t batch_size = dims[0];
+      const int64_t num_channels = dims[1];
+      const int64_t input_height = dims[2];
+      const int64_t input_width = dims[3];
 
+      AllocatorPtr alloc;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
       upsampleBilinear(batch_size, num_channels, input_height, input_width,
-                       scales[2], scales[3], X->template Data<T>(), Y->template MutableData<T>());
+                       scales[2], scales[3], X->template Data<T>(), Y->template MutableData<T>(), alloc);
       return Status::OK();
     }
     default:

@@ -85,7 +85,7 @@ Status LinearClassifier<T>::Compute(OpKernelContext* ctx) const {
     size_t current_weight_0 = i * stride;
     int maxclass = -1;
     float maxweight = 0.f;
-    for (int j = 0; j < class_count; j++)  //for each class
+    for (int j = 0; j < class_count_; j++)  // for each class
     {
       size_t current_coeff_0 = j * stride;
       float weight = 0.f;

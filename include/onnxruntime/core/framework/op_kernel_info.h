@@ -32,7 +32,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   const OrtAllocatorInfo& GetAllocatorInfo(int device_id, OrtMemType mem_type) const;
 
-  const AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 
   const KernelDef& GetKernelDef() const;
 

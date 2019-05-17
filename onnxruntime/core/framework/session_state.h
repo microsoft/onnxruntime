@@ -42,9 +42,8 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers)
-      : execution_providers_{execution_providers} {
-  }
+  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern)
+      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern) {}
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -122,11 +121,6 @@ class SessionState {
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   /**
-  Set enable memory pattern flag
-  */
-  void SetEnableMemoryPattern(bool flag);
-
-  /**
   Get enable memory pattern flag
   */
   bool GetEnableMemoryPattern() const;
@@ -180,7 +174,7 @@ class SessionState {
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
-  std::map<OrtAllocatorInfo, BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
+  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
 
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -201,14 +195,14 @@ class SessionState {
   // This data structure is for unintializing string tensors and
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
-  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
+  std::vector<BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_;
 
   // switch for enable memory pattern optimization or not.
-  bool enable_mem_pattern_ = true;
+  const bool enable_mem_pattern_;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.

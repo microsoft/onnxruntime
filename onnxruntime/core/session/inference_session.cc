@@ -89,7 +89,8 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }  // namespace
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
-    : session_state_{execution_providers_},
+    : session_state_(execution_providers_,
+                     session_options.enable_mem_pattern && session_options.enable_sequential_execution),
       session_options_{session_options},
       graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
@@ -110,7 +111,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 
   session_state_.SetThreadPool(thread_pool_.get());
-  session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern && session_options.enable_sequential_execution);
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
@@ -280,6 +280,22 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   return Load(loader, "model_loading_istream");
 }
 
+common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
+    ModelProto model_proto;
+
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    if (!result) {
+      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                    "Failed to load model because protobuf parsing failed.");
+    }
+
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+  };
+
+  return Load(loader, "model_loading_array");
+}
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                                 const ExecutionProviders& providers,
@@ -345,7 +361,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       Graph* subgraph = entry.second;
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
-      auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
+      auto subgraph_session_state =
+          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
@@ -377,8 +394,8 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
 
       // setup everything required to execute the subgraph and save it in subgraph_session_state
-      SessionStateInitializer initializer{model_location_, subgraph, *subgraph_session_state, execution_providers_,
-                                          kernel_registry_manager_};
+      SessionStateInitializer initializer(session_options_.enable_mem_pattern, model_location_, subgraph,
+                                          *subgraph_session_state, execution_providers_, kernel_registry_manager_);
 
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
@@ -446,8 +463,8 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
-    SessionStateInitializer session_initializer{model_location_, graph, session_state_, execution_providers_,
-                                                kernel_registry_manager_};
+    SessionStateInitializer session_initializer(session_options_.enable_mem_pattern, model_location_, graph,
+                                                session_state_, execution_providers_, kernel_registry_manager_);
 
     // create SessionState for subgraphs as it's needed by the transformers
     ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
@@ -476,7 +493,7 @@ common::Status InferenceSession::Initialize() {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   } catch (const std::exception& ex) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception during initialization: ", ex.what());
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   } catch (...) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
@@ -775,18 +792,12 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save required inputs
   const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
   required_input_def_list_ = required_inputs;       // A direct copy of required inputs
-  required_model_input_names_.reserve(required_inputs.size());
-  for (const auto& elem : required_inputs) {
-    required_model_input_names_.insert(elem->Name());
-  }
 
   // save all valid inputs
   auto& all_inputs = graph.GetInputsIncludingInitializers();
   input_def_map_.reserve(all_inputs.size());
-  model_input_names_.reserve(all_inputs.size());
   for (auto elem : all_inputs) {
     input_def_map_.insert({elem->Name(), elem});
-    model_input_names_.insert(elem->Name());
   }
 
   // save outputs

@@ -20,7 +20,7 @@ class StringNormalizer : public OpKernel {
   };
 
   explicit StringNormalizer(const OpKernelInfo& info);
-  ~StringNormalizer() = default;
+  ~StringNormalizer() override = default;
 
   Status Compute(OpKernelContext* ctx) const override;
 

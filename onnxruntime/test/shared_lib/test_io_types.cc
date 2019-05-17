@@ -33,7 +33,7 @@ static void TestModelInfo(const OrtSession* inference_session, bool is_input, co
 
   enum ONNXTensorElementDataType ele_type = OrtGetTensorElementType(p);
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ele_type);
-  ASSERT_EQ(dims.size(), OrtGetNumOfDimensions(p));
+  ASSERT_EQ(dims.size(), OrtGetDimensionsCount(p));
   std::vector<int64_t> real_dims(dims.size());
   OrtGetDimensions(p, real_dims.data(), real_dims.size());
   ASSERT_EQ(real_dims, dims);

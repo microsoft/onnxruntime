@@ -175,7 +175,7 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
   }
 }
 
-static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
@@ -184,7 +184,7 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
   const bool is_string_type = input.DataType() == DataTypeImpl::GetType<std::string>();
 
   std::vector<size_t> stride(rank);
-  for (int i = 0; i < rank; i++) {
+  for (size_t i = 0; i < rank; i++) {
     size_t inpdim = permutations[i];
     if (inpdim + 1 < rank)
       stride[i] = input_shape.SizeFromDimension(inpdim + 1);
@@ -239,7 +239,7 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
   return Status::OK();
 }
 
-Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
   Status status = Status::OK();
 
   auto input_type = input.DataType();
@@ -265,8 +265,8 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   size_t rank = input_dims.size();
 
   std::vector<int64_t> output_dims(rank);
-  const std::vector<int64_t>* p_perm;
-  std::vector<int64_t> default_perm(rank);
+  const std::vector<size_t>* p_perm;
+  std::vector<size_t> default_perm(rank);
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;

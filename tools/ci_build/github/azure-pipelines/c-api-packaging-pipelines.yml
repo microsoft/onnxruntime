@@ -6,7 +6,7 @@ jobs:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -22,7 +22,7 @@ jobs:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x " --x86 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86 --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -38,7 +38,7 @@ jobs:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -x " --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -x "--test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
       displayName: 'Build and Test Linux on Docker'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:

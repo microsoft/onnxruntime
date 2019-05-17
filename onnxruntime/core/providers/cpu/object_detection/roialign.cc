@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "roialign.h"
+
+#include <cmath>
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -128,8 +130,12 @@ void pre_calc_for_bilinear_interpolate(
 
           T ly = y - y_low;
           T lx = x - x_low;
-          T hy = static_cast<T>(1.) - ly, hx = static_cast<T>(1.) - lx;
-          T w1 = hy * hx, w2 = hy * lx, w3 = ly * hx, w4 = ly * lx;
+          T hy = static_cast<T>(1.) - ly;
+          T hx = static_cast<T>(1.) - lx;
+          T w1 = hy * hx;
+          T w2 = hy * lx;
+          T w3 = ly * hx;
+          T w4 = ly * lx;
 
           // save weights and indeces
           PreCalc<T> pc;
@@ -190,9 +196,9 @@ void RoiAlignForward(
     // We use roi_bin_grid to sample the grid and mimic integral
     int64_t roi_bin_grid_h = (sampling_ratio > 0)
                                  ? sampling_ratio
-                                 : static_cast<int64_t>(ceil(roi_height / pooled_height));  // e.g., = 2
+                                 : static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
     int64_t roi_bin_grid_w =
-        (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(ceil(roi_width / pooled_width));
+        (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
 
     // We do average (integral) pooling inside a bin
     const int64_t count = roi_bin_grid_h * roi_bin_grid_w;  // e.g. = 4

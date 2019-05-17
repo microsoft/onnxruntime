@@ -53,7 +53,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  SessionState state{execution_providers};
+  SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
@@ -64,8 +64,9 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
+  SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, p_seq_exec_plan);
+                                         mlvalue_name_idx_map, context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   state.SetExecutionPlan(std::move(p_seq_exec_plan));
 
@@ -135,7 +136,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
 
-  SessionState state{execution_providers};
+  SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
@@ -182,13 +183,12 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   KernelRegistryManager kernel_registry_manager;
-  kernel_registry_manager.RegisterKernelRegistry(cpu_xp->GetKernelRegistry());
 
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_type, std::move(cpu_xp));
-
+  kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input
-  SessionState state{execution_providers};
+  SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
   MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
@@ -214,8 +214,9 @@ TEST(ExecutionFrameTest, MemPatternTest) {
                        std::vector<float>(6, 1.0f), &v3);
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = std::make_unique<SequentialExecutionPlan>();
+  SequentialPlannerContext context(false);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
-                                         mlvalue_name_idx_map, p_seq_exec_plan);
+                                         mlvalue_name_idx_map, context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   state.SetExecutionPlan(std::move(p_seq_exec_plan));

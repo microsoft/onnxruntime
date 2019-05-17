@@ -57,6 +57,7 @@ struct SessionOptions {
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
   // with a big chunk for all the internal memory allocation.
+  // See class 'MLValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
   // enable the memory arena on CPU
@@ -131,7 +132,7 @@ class InferenceSession {
 
   /**
     * Register an execution provider. If you've one to register, call this before invoking Initialize().
-    * The order of invocation indicates the preference order as well. In other words call this method 
+    * The order of invocation indicates the preference order as well. In other words call this method
     * on your most preferred execution provider first followed by the less preferred ones.
     * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
     * @return OK if success.
@@ -141,7 +142,7 @@ class InferenceSession {
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
-    * @param[in] - providers Optional. If providers is non-empty this transformer will only to 
+    * @param[in] - providers Optional. If providers is non-empty this transformer will only to
       applied to nodes which are assigned to given providers.
     * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
     * @return OK if success.
@@ -160,9 +161,9 @@ class InferenceSession {
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 
   /**
-    * Register a custom registry for operator schema and kernels.  If you've one to register, 
+    * Register a custom registry for operator schema and kernels.  If you've one to register,
     * call this before invoking Initialize().
-    * The order of invocation indicates the reversed preference order: Register your most 
+    * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
     * @return OK if success.
@@ -184,6 +185,14 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Load(std::istream& model_istream);
+
+  /**
+    * Load an ONNX model.
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    */
+  common::Status Load(const void* model_data, int model_data_len);
 
   /**
     * Initializes a previously loaded model. Initialization includes but is not
@@ -225,7 +234,7 @@ class InferenceSession {
 
   /**
   * Creates a new binding object for binding inputs and outputs.
-  * @param provider_type specifies the location where the inputs need to be potentially copied. 
+  * @param provider_type specifies the location where the inputs need to be potentially copied.
   * See IOBinding class for more info.
   */
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding);
@@ -260,9 +269,9 @@ class InferenceSession {
   int GetCurrentNumRuns() const;
 
   /**
-    * Start profiling on this inference session. This simply turns on profiling events to be 
+    * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
-    *@param file_prefix is the prefix of the profile file. It can include a directory path. 
+    *@param file_prefix is the prefix of the profile file. It can include a directory path.
     */
   void StartProfiling(const std::string& file_prefix);
 #ifdef _WIN32
@@ -311,9 +320,7 @@ class InferenceSession {
   // Immutable state for each op in the model. Shared by all executors.
   SessionState session_state_;
 
-  // names of model inputs and outputs used for quick validation.
-  std::unordered_set<std::string> required_model_input_names_;
-  std::unordered_set<std::string> model_input_names_;
+  // names of model outputs used for quick validation.
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
@@ -415,7 +422,7 @@ class InferenceSession {
   InsertCastTransformer insert_cast_transformer_;
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
-  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner. 
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
 };

@@ -32,12 +32,8 @@ ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
                         ReverseSequenceOp);
 
 template <typename T>
-static void ReverseSequenceImpl(const Tensor& X, Tensor& Y,
-                                gsl::span<const int64_t> sequence_lengths,
-                                const int64_t max_seq_len,
-                                const int64_t batch_size,
-                                const int64_t input_size,
-                                bool time_major);
+static void ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
+                                int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
 
 Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   Status status = Status::OK();
