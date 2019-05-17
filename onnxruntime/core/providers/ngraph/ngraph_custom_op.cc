@@ -73,7 +73,7 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
     const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
     auto tensor_shape = ort.GetTensorShape(tensor_info);
-    ort.ReleaseTensorTypeAndShape(tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
     const auto ndim = tensor_shape.size();
     uniq_input_shape.append(reinterpret_cast<const char*>(&ndim), sizeof(ndim));
@@ -153,7 +153,7 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
     unsigned input_index = 0;
     for (const auto& ng_param : ng_curr_exe_->get_parameters()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index++);
-      const void* input_data = ort.GetTensorData<void*>(input_tensor);
+      void* input_data = const_cast<void*>(ort.GetTensorData<void*>(input_tensor));
       ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
     }
   } catch (const std::exception& exp) {
