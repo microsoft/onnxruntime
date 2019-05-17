@@ -251,7 +251,7 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   // Create infer request
   std::cout << "[OpenVINO-EP]Creating Infer requests : " << num_inf_reqs_ << std::endl;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
-  for (int i = 0; i < num_inf_reqs_; i++) {
+  for (size_t i = 0; i < num_inf_reqs_; i++) {
     infer_requests.push_back(exeNetwork.CreateInferRequestPtr());
   }
   return infer_requests;
@@ -338,7 +338,7 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
     // TODO: Memory Leak!!!!
     // fix before shipping.
     output_tensors[i].shape = new int64_t[num_dims];
-    for (int j = 0; j < num_dims; j++) {
+    for (size_t j = 0; j < num_dims; j++) {
       output_tensors[i].shape[j] = (int64_t)graph_output_dims[j];
     }
 

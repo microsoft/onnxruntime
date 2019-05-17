@@ -16,7 +16,7 @@ RUN apt-get update && \
     apt-get install -y sudo git bash
 
 ENV PATH="/opt/cmake/bin:${PATH}"
-RUN git clone --recursive https://github.com/intel/onnxruntime onnxruntime
+RUN git clone --branch preview-v0.7 --recursive https://github.com/intel/onnxruntime onnxruntime
 RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
     /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh
 
