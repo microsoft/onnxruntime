@@ -52,7 +52,8 @@ add_custom_command(
         "${grpc_proto}"
       DEPENDS "${grpc_proto}")
 
-add_library(server_grpc ${grpc_srcs})
+
+add_library(server_grpc ${grpc_srcs} ${onnx_runtime_server_grpc_srcs})
 target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 target_compile_definitions(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 add_dependencies(server_grpc server_proto)
@@ -75,14 +76,11 @@ set(onnxruntime_server_lib_srcs
   "${ONNXRUNTIME_ROOT}/server/executor.cc"
   "${ONNXRUNTIME_ROOT}/server/converter.cc"
   "${ONNXRUNTIME_ROOT}/server/util.cc"
+  "${ONNXRUNTIME_ROOT}/server/grpc/prediction_service_impl.cpp"
   )
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
-    set_source_files_properties(${ONNXRUNTIME_ROOT}/server/http/json_handling.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties(${ONNXRUNTIME_ROOT}/server/http/predict_request_handler.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties(${ONNXRUNTIME_ROOT}/server/executor.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties(${ONNXRUNTIME_ROOT}/server/converter.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties(${ONNXRUNTIME_ROOT}/server/util.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${onnxruntime_server_lib_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
 

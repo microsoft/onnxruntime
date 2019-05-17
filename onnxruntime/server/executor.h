@@ -21,7 +21,7 @@ class Executor {
   // Prediction method
   google::protobuf::util::Status Predict(const std::string& model_name,
                                          const std::string& model_version,
-                                         onnxruntime::server::PredictRequest& request,
+                                         const onnxruntime::server::PredictRequest& request,
                                          /* out */ onnxruntime::server::PredictResponse& response);
 
  private:

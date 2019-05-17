@@ -89,7 +89,7 @@ protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name
 
 protobufutil::Status Executor::Predict(const std::string& model_name,
                                        const std::string& model_version,
-                                       onnxruntime::server::PredictRequest& request,
+                                       const onnxruntime::server::PredictRequest& request,
                                        /* out */ onnxruntime::server::PredictResponse& response) {
   auto logger = env_->GetLogger(request_id_);
 
