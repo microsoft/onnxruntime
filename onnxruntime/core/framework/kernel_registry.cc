@@ -47,7 +47,7 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
   }
 
   // process outputs:
-  auto& actual_outputs = node.OutputDefs();
+  auto actual_outputs = node.OutputDefs();
   const auto num_actual_outputs = actual_outputs.size();
   const auto last_formal = op_schema.outputs().size() - 1;
   for (size_t i = 0; i != num_actual_outputs; ++i) {
@@ -142,7 +142,8 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   }
 
   // check if version matches
-  int kernel_start_version, kernel_end_version;
+  int kernel_start_version;
+  int kernel_end_version;
   kernel_def.SinceVersion(&kernel_start_version, &kernel_end_version);
 
   int node_since_version = node.Op()->since_version();

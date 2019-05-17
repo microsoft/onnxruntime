@@ -135,7 +135,7 @@ class Node {
 
   /** Gets the Node's input definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  const ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
   }
 
@@ -147,7 +147,7 @@ class Node {
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
-  const ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.implicit_input_defs);
   }
 
@@ -158,7 +158,7 @@ class Node {
 
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  const ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
   }
 
@@ -211,7 +211,9 @@ class Node {
   NodeConstIterator InputNodesEnd() const noexcept { return NodeConstIterator(relationships_.input_edges.cend()); }
 
   /** Gets an iterator to the beginning of the output nodes from this Node. */
-  NodeConstIterator OutputNodesBegin() const noexcept { return NodeConstIterator(relationships_.output_edges.cbegin()); }
+  NodeConstIterator OutputNodesBegin() const noexcept {
+    return NodeConstIterator(relationships_.output_edges.cbegin());
+  }
   /** Gets an iterator to the end of the output nodes from this Node. */
   NodeConstIterator OutputNodesEnd() const noexcept { return NodeConstIterator(relationships_.output_edges.cend()); }
 
@@ -737,12 +739,12 @@ class Graph {
   /** When programmatically constructing a Graph, explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetInputs(const std::vector<const NodeArg*> inputs);
+  void SetInputs(const std::vector<const NodeArg*>& inputs);
 
   /** When programmatically constructing a Graph, explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetOutputs(const std::vector<const NodeArg*> outputs);
+  void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }

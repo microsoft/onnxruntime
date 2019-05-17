@@ -314,8 +314,9 @@ TEST(InferenceSessionTests, NoTimeout) {
   so.session_logid = "InferenceSessionTests.NoTimeout";
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  Status st;
+  ASSERT_TRUE((st = session_object.Load(MODEL_URI)).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
@@ -1393,6 +1394,29 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
     ASSERT_TRUE(session_object.Initialize().IsOK());
   }
 }
+
+#ifdef USE_CUDA
+
+TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.enable_sequential_execution = false;
+  so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
+  InferenceSession session_object{so};
+  
+  CUDAExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  auto status = session_object.Initialize();
+
+  ASSERT_TRUE(!status.IsOK());
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

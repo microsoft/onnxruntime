@@ -23,15 +23,26 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 
   // Currently, fusion is only supported for float or double data type.
   if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
-      conv_W_tensor_proto->dims_size() < 4 ||
-      add_B_tensor_proto->dims_size() != conv_W_tensor_proto->dims_size() - 1 ||
-      conv_W_tensor_proto->dims(0) != add_B_tensor_proto->dims(0)) {
+      conv_W_tensor_proto->dims_size() < 4) {
     return Status::OK();
   }
 
-  // The dimensions of add_B should be equal to 1 except first dimension.
-  for (int i = 1; i < add_B_tensor_proto->dims_size(); i++) {
-    if (add_B_tensor_proto->dims(i) != 1) {
+  int axis;
+  if (add_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size()) {
+    // Test for broadcast add such as 1xCx1x1 for a 2D convolution.
+    axis = 1;
+  } else if (add_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1) {
+    // Test for broadcast add such as Cx1x1 for a 2D convolution.
+    axis = 0;
+  } else {
+    return Status::OK();
+  }
+  if (add_B_tensor_proto->dims(axis) != conv_W_tensor_proto->dims(0)) {
+    return Status::OK();
+  }
+  // The dimensions of add_B should be equal to 1 except axis dimension.
+  for (int i = 0; i < add_B_tensor_proto->dims_size(); i++) {
+    if (i != axis && add_B_tensor_proto->dims(i) != 1) {
       return Status::OK();
     }
   }
@@ -43,7 +54,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
-        conv_B_tensor_proto->dims(0) != add_B_tensor_proto->dims(0)) {
+        conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
 
@@ -103,14 +114,9 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) {
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-      next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-      next_node.GetInputEdgesCount() != 1 ||
-      graph.IsNodeOutputsInGraphOutputs(next_node)) {
-    return false;
-  }
-
-  return true;
+  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
+           next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node));
 }
 
 }  // namespace onnxruntime

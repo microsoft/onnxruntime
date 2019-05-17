@@ -28,11 +28,13 @@ void usage() {
       "Options:\n"
       "\t-j [models]: Specifies the number of models to run simultaneously.\n"
       "\t-A : Disable memory arena\n"
+      "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. "
+      "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -62,7 +64,7 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
 #endif
 }  // namespace
 
@@ -83,10 +85,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
+  bool enable_mem_pattern = true;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xv"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -115,8 +118,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             return -1;
           }
           break;
-        case 'm':
-          // ignore.
+        case 'M':
+          enable_mem_pattern = false;
           break;
         case 'n':
           // run only some whitelisted tests
@@ -187,6 +190,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableCpuMemArena();
     else
       sf.DisableCpuMemArena();
+    if (enable_mem_pattern)
+      sf.EnableMemPattern();
+    else
+      sf.DisableMemPattern();
     if (enable_sequential_execution)
       sf.EnableSequentialExecution();
     else
@@ -238,14 +245,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests](ITestCase* l) {
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, [&stat, &sf, enable_cuda, &cuda_flaky_tests, &env](ITestCase* l) {
       std::unique_ptr<ITestCase> test_case_ptr(l);
       if (enable_cuda && cuda_flaky_tests.find(l->GetTestCaseName()) != cuda_flaky_tests.end()) {
         return;
       }
       TestResultStat per_case_stat;
       std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, sf);
+      TestEnv per_case_args(per_case_tests, per_case_stat, env ,sf);
       RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
       stat += per_case_stat;
     });

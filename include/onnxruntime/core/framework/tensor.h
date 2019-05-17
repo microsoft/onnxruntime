@@ -40,7 +40,7 @@ class BufferDeleter {
   AllocatorPtr alloc_;
 };
 
-typedef std::unique_ptr<void, BufferDeleter> BufferUniquePtr;
+using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
 using BufferNakedPtr = void*;
 //TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__

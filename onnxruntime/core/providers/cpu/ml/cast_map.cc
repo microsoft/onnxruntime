@@ -118,7 +118,8 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
                   });
   } else {
     // sparse map puts pad_value in all entries that aren't present in the input, up to map_max_
-    auto cur_input = X.cbegin(), end_input = X.cend();
+    auto cur_input = X.cbegin();
+    auto end_input = X.cend();
     auto out_end = out.end();
     int64_t cur_idx = 0;
 

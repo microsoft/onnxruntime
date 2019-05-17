@@ -31,22 +31,22 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
-  const MLValue* GetInputMLValue(int index) const {
+  const OrtValue* GetInputMLValue(int index) const {
     return OpKernelContext::GetInputMLValue(index);
   }
 
-  MLValue* GetOutputMLValue(int index) {
+  OrtValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
-  MLValue* OutputMLValue(int index, const TensorShape& shape) {
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
     return OpKernelContext::OutputMLValue(index, shape);
   }
 
-  std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const {
-    // we need to convert implicit_inputs_ to a name to MLValue map so it can be used in the ExecutionFrame
+  std::unordered_map<std::string, const OrtValue*> GetImplicitInputs() const {
+    // we need to convert implicit_inputs_ to a name to OrtValue map so it can be used in the ExecutionFrame
     // for a subgraph (the index numbers will be different there).
-    std::unordered_map<std::string, const MLValue*> implicit_inputs_map;
+    std::unordered_map<std::string, const OrtValue*> implicit_inputs_map;
 
     for (int i = 0, end = gsl::narrow_cast<int>(implicit_inputs_.size()); i < end; ++i) {
       implicit_inputs_map[implicit_inputs_[i]->Name()] = GetImplicitInputMLValue(i);

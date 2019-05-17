@@ -6,60 +6,27 @@
 #include <memory>
 
 #include "core/common/common.h"
-#include "core/platform/ort_mutex.h"
 #include "core/framework/mem_pattern_planner.h"
+#include "core/framework/execution_plan_base.h"
 #include "core/framework/allocation_planner.h"
 
 namespace onnxruntime {
-struct SequentialExecutionPlan;
+class ExecutionPlanBase;
 
+// Thread-safe
+// As it doesn't always work, the usage of it must be guarded by
+// SessionOptions.enable_mem_pattern
 class MLValuePatternPlanner {
  public:
-  explicit MLValuePatternPlanner(const SequentialExecutionPlan& execution_plan);
-
-  common::Status TraceAllocation(int ml_value_idx, size_t size) {
-    auto location = execution_planner_.allocation_plan[ml_value_idx].location;
-    auto it = planner_map_.find(location);
-    if (it == planner_map_.end()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
-    }
-
-    std::lock_guard<OrtMutex> lock(lock_);
-    it->second->TraceAllocation(ml_value_idx, size);
-    return common::Status::OK();
-  }
-
-  common::Status TraceFree(int ml_value_index) {
-    auto location = execution_planner_.allocation_plan[ml_value_index].location;
-    auto it = planner_map_.find(location);
-    if (it == planner_map_.end()) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
-    }
-
-    std::lock_guard<OrtMutex> lock(lock_);
-    it->second->TraceFree(ml_value_index);
-    return common::Status::OK();
-  }
-
-  common::Status GeneratePatterns(MemoryPatternGroup* out) {
-    if (!out)
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
-
-    std::lock_guard<OrtMutex> lock(lock_);
-    for (auto& it : planner_map_) {
-      out->locations.push_back(it.first);
-      out->patterns.push_back(it.second->GenerateMemPattern());
-    }
-
-    return common::Status::OK();
-  }
-
- private:
+  explicit MLValuePatternPlanner(const ExecutionPlanBase& execution_plan);
+  common::Status TraceAllocation(int ml_value_idx, size_t size);
+  common::Status TraceFree(int ml_value_index);
+  common::Status GeneratePatterns(MemoryPatternGroup* out);
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MLValuePatternPlanner);
 
-  mutable OrtMutex lock_;
-  std::map<OrtAllocatorInfo, MemPatternPlanner*> planner_map_;
-  std::vector<std::unique_ptr<MemPatternPlanner> > pattern_planners_;
-  const SequentialExecutionPlan& execution_planner_;
+ private:
+  // This map itself is const after the construction
+  std::map<OrtAllocatorInfo, std::unique_ptr<MemPatternPlanner>> planner_map_;
+  const ExecutionPlanBase& execution_planner_;
 };
 }  // namespace onnxruntime

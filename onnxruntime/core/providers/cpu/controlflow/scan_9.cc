@@ -345,7 +345,7 @@ Status ScanImpl::SetupInputs() {
       auto& input_tensor = *context_.Input<Tensor>(i + num_loop_state_variables_);
       const auto& input_shape = input_tensor.Shape();
 
-      std::vector<int64_t> permutations;
+      std::vector<size_t> permutations;
       std::vector<int64_t> new_shape;
       CalculateTransposedShapeForInput(input_shape, sequence_dim, permutations, new_shape);
 
@@ -414,7 +414,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
     MLValue* output_mlvalue = context_.GetOutputMLValue(i);
     ORT_ENFORCE(output_mlvalue, "Output MLValue has not been created for loop state variable output ", i);
 
-    loop_state_variables.push_back(LoopStateVariable(input_mlvalue, *output_mlvalue, sequence_len_, alloc));
+    loop_state_variables.emplace_back(input_mlvalue, *output_mlvalue, sequence_len_, alloc);
   }
 
   return status;
@@ -481,7 +481,7 @@ Status ScanImpl::TransposeOutput() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
                                " of ", axis, ". Output tensor rank was ", output_rank);
 
-      std::vector<int64_t> permutations;
+      std::vector<size_t> permutations;
       std::vector<int64_t> new_shape;
       CalculateTransposedShapeForOutput(temporary_output_tensor.Shape(), axis, permutations, new_shape);
 

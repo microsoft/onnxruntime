@@ -6,6 +6,7 @@
 #include "core/graph/basic_types.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
+#include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.
@@ -37,7 +38,7 @@ struct AllocPlanPerValue {
 
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
-struct SequentialExecutionPlan {
+struct SequentialExecutionPlan : public ExecutionPlanBase {
   // Allocation plan:
   // ExecutionFrame::GetOrCreateTensor() should use the following information
   // to decide whether to allocate a new buffer or reuse an existing buffer
@@ -67,6 +68,22 @@ struct SequentialExecutionPlan {
 
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
   std::vector<MLValueIndex> to_be_freed;
+
+  const OrtAllocatorInfo& GetLocation(size_t mlvalue_index) const override {
+    return allocation_plan[mlvalue_index].location;
+  }
+
+  void SetLocation(size_t mlvalue_index, const struct OrtAllocatorInfo& info) override {
+    allocation_plan[mlvalue_index].location = info;
+  }
+
+  std::set<OrtAllocatorInfo> GetAllLocations() const override {
+    std::set<OrtAllocatorInfo> locations;
+    for (auto& alloc_plan : allocation_plan) {
+      if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
+    }
+    return locations;
+  }
 };
 
 // Output details of an execution plan:

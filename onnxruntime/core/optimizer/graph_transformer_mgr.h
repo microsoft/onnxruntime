@@ -6,7 +6,6 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/rewrite_rule.h"
-using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 

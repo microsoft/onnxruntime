@@ -291,6 +291,26 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   ASSERT_TRUE(op_to_count["Mul"] == 0);
 }
 
+TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
+  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d-2.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
+  rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
+  rule_transformer_L2->Register(std::make_unique<ConvMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+}
+
 TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
 

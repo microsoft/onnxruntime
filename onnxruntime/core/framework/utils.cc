@@ -17,10 +17,6 @@
 
 namespace onnxruntime {
 namespace utils {
-AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info) {
-  return exec_providers.GetAllocator(allocator_info);
-}
-
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
   return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }
@@ -51,8 +47,7 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
 
   // node may declare input_mem_type to be on CPU explicitly
   // skip implicit inputs as they don't have a valid 'index' value
-  bool node_input_on_cpu = !implicit_input &&
-                           info.kci && MemTypeOnCpuExplicitly(info.kci->kernel_def->InputMemoryType(info.index));
+  bool node_input_on_cpu = !implicit_input && info.kci && info.kci->kernel_def->IsInputOnCpu(info.index);
 
   // need a std::string that doesn't go away for kCpuExecutionProvider so we can return a reference.
   static const std::string cpu_execution_provider{onnxruntime::kCpuExecutionProvider};
@@ -203,7 +198,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
       copied = true;
 
       if (copy_info) {
-        (*copy_info)[idx] = std::move(current_copy_info);
+        (*copy_info)[idx] = current_copy_info;
       }
     }
   }
@@ -259,7 +254,7 @@ static common::Status SetupFetchesForExecute(const SessionState& session_state,
       return std::make_pair(false, size_t(0));
     }
 
-    return std::make_pair<bool, size_t>(true, it - output_names.begin());
+    return std::pair<bool, size_t>(true, it - output_names.begin());
   };
 
   std::pair<bool, size_t> found;
@@ -397,7 +392,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
     ORT_RETURN_IF_ERROR(CopyMLValue(copy_info, fetched_mlvalue, output_mlvalue));
 
     if (copiers) {
-      (*copiers)[idx] = std::move(copy_info);
+      (*copiers)[idx] = copy_info;
     }
   }
 

@@ -99,7 +99,7 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();
   std::vector<int64_t> output_dims = input_shape.GetDims();
-  for (auto axis = 0; axis < input_rank; axis++) {
+  for (size_t axis = 0; axis < input_rank; axis++) {
     output_dims[axis] *= repeats[axis];
   }
 
@@ -125,9 +125,8 @@ Status Tile::Compute(OpKernelContext* ctx) const {
       dtype == DataTypeImpl::GetType<uint32_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(float));
 
-  else if (dtype == DataTypeImpl::GetType<double>() ||
-           dtype == DataTypeImpl::GetType<int64_t>() ||
-           dtype == DataTypeImpl::GetType<uint64_t>())
+  if (dtype == DataTypeImpl::GetType<double>() || dtype == DataTypeImpl::GetType<int64_t>() ||
+      dtype == DataTypeImpl::GetType<uint64_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
   else if (dtype == DataTypeImpl::GetType<int8_t>() ||

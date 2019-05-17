@@ -30,7 +30,7 @@ using ::onnxruntime::common::Status;
 void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work) {
   OnnxRuntimeCloseThreadpoolWork(work);
   assert(context != nullptr);
-  TestCaseTask* task((TestCaseTask*)context);
+  TestCaseTask* task(static_cast<TestCaseTask*>(context));
   ITestCase* info = task->env.tests[task->task_id];
   std::shared_ptr<TestCaseResult> ret;
   try {
@@ -96,7 +96,7 @@ PTestRunner::PTestRunner(OrtSession* session1,
 
 void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work) {
   OnnxRuntimeCloseThreadpoolWork(work);
-  DataTask* task((DataTask*)context);
+  DataTask* task(static_cast<DataTask*>(context));
   PTestRunner* env = task->env;
   const size_t task_id = task->task_id;
   delete task;
@@ -128,7 +128,7 @@ Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::sh
 
 //Do not run this function in the thread pool passed in
 static Status ParallelRunTests(TestEnv& env, int p_models, size_t current_runs, size_t repeat_count, PThreadPool pool) {
-  p_models = (int)std::min<size_t>(p_models, env.tests.size());
+  p_models = static_cast<int>(std::min<size_t>(p_models, env.tests.size()));
   LOGF_DEFAULT(ERROR, "Running tests in parallel: at most %d models at any time", p_models);
   env.next_test_to_run = p_models;
   for (int i = 0; i != p_models; ++i) {
@@ -339,7 +339,8 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     ++input_index;
   }
 
-  TIME_SPEC start_time, end_time;
+  TIME_SPEC start_time;
+  TIME_SPEC end_time;
   OrtValueArray output_values(static_cast<int>(output_count));
   {
     std::vector<const char*> output_names_raw_ptr(output_count);
@@ -354,7 +355,8 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
 
-  double per_sample_tolerance, relative_per_sample_tolerance;
+  double per_sample_tolerance;
+  double relative_per_sample_tolerance;
   bool post_procesing;
   Status status;
   if (!(status = c_->GetPerSampleTolerance(&per_sample_tolerance)).IsOK()) {
@@ -465,7 +467,7 @@ void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions
   try {
     DataRunner* r = nullptr;
     std::string node_name = info->GetNodeName();
-    auto sf2 = sf.clone();
+    auto sf2 = sf.Clone();
     sf2.SetLogId(info->GetTestCaseName().c_str());
     Ort::Session session_object{env, info->GetModelUrl(), sf2};
     LOGF_DEFAULT(INFO, "testing %s\n", info->GetTestCaseName().c_str());
