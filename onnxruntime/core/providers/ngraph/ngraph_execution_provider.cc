@@ -12,7 +12,7 @@
 #include "ngraph_custom_op.h"
 
 #if defined(_MSC_VER)
-#pragma warning(disable:4244 4245)
+#pragma warning(disable : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -20,7 +20,7 @@
 #include <ngraph/ngraph.hpp>
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
-#pragma warning(default:4244 4245)
+#pragma warning(default : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -464,15 +464,13 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       return result;
     }
 
+    //Initializers need to be part of meta_def->inputs
+    std::for_each(ng_required_initializers.begin(), ng_required_initializers.end(),
+                  [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
+
     //Fill outputs with names
     std::for_each(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end(),
                   [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
-
-    // Remove initializers from inputs if they are in ng_required_initializers
-    inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [&ng_required_initializers](const std::string& name) -> bool {
-                   return ng_required_initializers.count(name);
-                 }),
-                 inputs.end());
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, ng_required_initializers, result);
