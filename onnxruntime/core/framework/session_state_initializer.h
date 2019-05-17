@@ -8,6 +8,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/path_lib.h"
+#include "core/framework/tensor_allocator.h"
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -30,8 +31,8 @@ class SessionStateInitializer {
    *
    * \param graph_loc The file path of where the graph was loaded. e.g. /tmp/test_squeezenet/model.onnx
    */
-  SessionStateInitializer(const std::basic_string<PATH_CHAR_TYPE>& graph_loc, onnxruntime::Graph& graph,
-                          SessionState& session_state, const ExecutionProviders& providers,
+  SessionStateInitializer(bool enable_mem_pattern, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                          onnxruntime::Graph& graph, SessionState& session_state, const ExecutionProviders& providers,
                           KernelRegistryManager& kernel_registry_manager);
 
   // First perform any transformations and create the execution plan
@@ -51,5 +52,6 @@ class SessionStateInitializer {
   const ExecutionProviders& execution_providers_;
   KernelRegistryManager& kernel_registry_manager_;
   const logging::Logger& logger_;
+  const bool enable_mem_pattern_;
 };
 }  // namespace onnxruntime

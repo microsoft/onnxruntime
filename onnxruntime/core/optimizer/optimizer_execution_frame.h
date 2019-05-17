@@ -71,7 +71,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   OptimizerExecutionFrame(const Info& info,
                           const std::vector<int>& fetch_mlvalue_idxs);
 
-  ~OptimizerExecutionFrame() = default;
+  ~OptimizerExecutionFrame() override = default;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerExecutionFrame);

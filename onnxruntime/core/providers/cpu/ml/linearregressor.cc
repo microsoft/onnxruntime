@@ -34,7 +34,7 @@ Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
   const auto* Xdata = X->template Data<float>();
   int64_t yindex = 0;
 
-  bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_) ? true : false;
+  bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_);
   for (int64_t i = 0; i < N; i++)  //for each point
   {
     std::vector<float> scores;

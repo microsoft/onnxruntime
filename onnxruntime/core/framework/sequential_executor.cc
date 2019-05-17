@@ -22,12 +22,10 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-Status SequentialExecutor::Execute(const SessionState& session_state,
-                                   const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<MLValue>& feeds,
-                                   const std::vector<int>& fetch_mlvalue_idxs,
+Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                   const std::vector<MLValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<MLValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
   TimePoint tp;
