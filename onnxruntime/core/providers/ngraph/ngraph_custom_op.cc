@@ -25,35 +25,6 @@
 namespace onnxruntime {
 namespace ngraph_ep {
 
-static DType GetDataType(const ngraph::element::Type& ng_type) {
-  switch (ng_type.get_type_enum()) {
-    case ngraph::element::Type_t::f32:
-      return DType::TFloat32;
-    case ngraph::element::Type_t::f64:
-      return DType::TDouble;
-    case ngraph::element::Type_t::boolean:
-      return DType::TBool;
-    case ngraph::element::Type_t::u8:
-      return DType::TUint8;
-    case ngraph::element::Type_t::i8:
-      return DType::TInt8;
-    case ngraph::element::Type_t::u16:
-      return DType::TUint16;
-    case ngraph::element::Type_t::i16:
-      return DType::TInt16;
-    case ngraph::element::Type_t::u32:
-      return DType::TUint32;
-    case ngraph::element::Type_t::i32:
-      return DType::TInt32;
-    case ngraph::element::Type_t::u64:
-      return DType::TUint64;
-    case ngraph::element::Type_t::i64:
-      return DType::TInt64;
-    default:
-      throw "Unsupported DataType";
-  }
-}
-
 static bool check_ngraph_dump_ops() {
 #ifdef _WIN32
   size_t env_name_len = 0;
@@ -199,7 +170,6 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       const auto& dtype = ng_result->get_element_type();
       const auto& shape = ng_result->get_shape();
 
-      //      onxr_output->dtype = GetDataType(dtype);
       OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, shape.data(), shape.size());
       void* output_data = ort.GetTensorMutableData<void*>(output_tensor);
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
