@@ -32,6 +32,7 @@ __global__ void _TileKernel(
 
 template <typename T>
 void TileImpl(
+    cudaStream_t execution_stream,
     const size_t shape_rank,
     const fast_divmod* fdm_input_shape,
     const int64_t* input_stride,
@@ -40,13 +41,20 @@ void TileImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
       shape_rank, fdm_input_shape, input_stride, input_data,
       fdm_output_strides, output_data, (CUDA_LONG)N);
 }
 
-#define SPECIALIZED_IMPL(T) \
-  template void TileImpl<T>(const size_t shape_rank, const fast_divmod* fdm_input_shape, const int64_t* input_stride, const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, const size_t N);
+#define SPECIALIZED_IMPL(T)                                         \
+  template void TileImpl<T>(cudaStream_t execution_stream,          \
+                            const size_t shape_rank,                \
+                            const fast_divmod* fdm_input_shape,     \
+                            const int64_t* input_stride,            \
+                            const T* input_data,                    \
+                            const fast_divmod* fdm_output_strides,  \
+                            T* output_data,                         \
+                            const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

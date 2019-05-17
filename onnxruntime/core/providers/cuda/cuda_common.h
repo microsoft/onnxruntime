@@ -119,21 +119,25 @@ class CudaKernel : public OpKernel {
   };
 
  protected:
-  inline cublasHandle_t CublasHandle() const {
-    return provider_->PerThreadCublasHandle();
+  inline cublasHandle_t GetCublasHandle(int execution_id) const {
+    return provider_->PerThreadCublasHandle(execution_id);
   }
 
-  inline cudnnHandle_t CudnnHandle() const {
-    return provider_->PerThreadCudnnHandle();
+  inline cudnnHandle_t GetCudnnHandle(int execution_id) const {
+    return provider_->PerThreadCudnnHandle(execution_id);
   }
 
   template <typename T>
-  inline const T* GetConstOnes(size_t count) const {
-    return provider_->template GetConstOnes<T>(count);
+  inline const T* GetConstOnes(int exec_queue_id, size_t count) const {
+    return provider_->template GetConstOnes<T>(exec_queue_id, count);
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
     return provider_->CopyTensor(src, dst);
+  }
+
+  inline cudaStream_t GetExecutionStream() const {
+    return provider_->GetStream(GetExecQueueId());
   }
 
  private:

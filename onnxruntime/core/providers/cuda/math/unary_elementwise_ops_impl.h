@@ -26,6 +26,7 @@ namespace cuda {
 #define UNARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                          \
   void Impl_##name(                              \
+      cudaStream_t execution_stream,             \
       const T* input_data,                       \
       T* output_data,                            \
       size_t count)
@@ -36,6 +37,7 @@ UNARY_OPS()
 
 template <typename InT, typename OutT>
 void Impl_Cast(
+    cudaStream_t execution_stream,
     const InT* input_data,
     OutT* output_data,
     size_t count);

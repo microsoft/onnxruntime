@@ -49,6 +49,7 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
   TransposeImpl(
+      GetExecutionStream(),
       rank,
       input_strides.GpuPtr(),
       perm.GpuPtr(),

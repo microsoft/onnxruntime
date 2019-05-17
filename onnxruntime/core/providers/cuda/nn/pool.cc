@@ -149,7 +149,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
 
-  CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(CudnnHandle(), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
+  auto exec_queue_id = GetExecQueueId();
+  CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(GetCudnnHandle(exec_queue_id), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
 
   return Status::OK();
 }
@@ -184,7 +185,9 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   Tensor* I = context->Output(1, TensorShape(y_dims));
   if (nullptr != I) {
     auto i_data = I->template MutableData<int64_t>();
+    auto execution_stream = GetExecutionStream();
     MaxPoolWithIndex<CudaT>(
+        execution_stream,
         x_shape,
         TensorShape(y_dims),
         kernel_shape,

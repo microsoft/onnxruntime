@@ -55,6 +55,7 @@ typedef CtxAlpha CtxThresholdedRelu;
 #define UNARY_ACTIVATION_IMPL_DECLARATION(name) \
   template <typename T>                         \
   void Impl_##name(                             \
+      cudaStream_t execution_stream,            \
       const T* input_data,                      \
       T* output_data,                           \
       const Ctx##name* func_ctx,                \

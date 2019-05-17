@@ -59,6 +59,7 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
   TileImpl(
+      GetExecutionStream(),
       rank,
       fdm_input_shape.GpuPtr(),
       input_strides.GpuPtr(),

@@ -78,10 +78,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       }
   }
 
+  auto execution_stream = GetExecutionStream();
   if (is_resize) {
     CudaAsyncBuffer<float> scales_vals(this, device_id, scales);
     scales_vals.CopyToGpu();
-    ResizeImpl(mode_,
+    ResizeImpl(execution_stream,
+               mode_,
                rank,
                (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
                input_strides.GpuPtr(),
@@ -99,7 +101,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
     }
     scales_div.CopyToGpu();
 
-    UpampleImpl(mode_,
+    UpampleImpl(execution_stream,
+                mode_,
                 rank,
                 (UpsampleMode::LINEAR == mode_) ? X_dims[2] : 0,
                 input_strides.GpuPtr(),

@@ -34,22 +34,36 @@ __global__ void _GatherKernel(
 }
 
 template <typename T, typename Tin>
-void GatherImpl(
-    const int64_t input_block_size,
-    const int64_t indices_max,
-    const Tin* indices_data,
-    const fast_divmod* div_strides,
-    const T* input_data,
-    T* output_data,
-    const size_t N) {
+void GatherImpl(cudaStream_t execution_stream,
+                const int64_t input_block_size,
+                const int64_t indices_max,
+                const Tin* indices_data,
+                const fast_divmod* div_strides,
+                const T* input_data,
+                T* output_data,
+                const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _GatherKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _GatherKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
       input_block_size, indices_max, indices_data, div_strides, input_data, output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T)                                                                                                                                                                                          \
-  template void GatherImpl<T, int32_t>(const int64_t input_block_size, const int64_t indices_max, const int32_t* indices_data, const fast_divmod* div_strides, const T* input_data, T* output_data, const size_t N); \
-  template void GatherImpl<T, int64_t>(const int64_t input_block_size, const int64_t indices_max, const int64_t* indices_data, const fast_divmod* div_strides, const T* input_data, T* output_data, const size_t N);
+  template void GatherImpl<T, int32_t>(cudaStream_t execution_stream,   \
+                                       const int64_t input_block_size,  \
+                                       const int64_t indices_max,       \
+                                       const int32_t* indices_data,     \
+                                       const fast_divmod* div_strides,  \
+                                       const T* input_data,             \
+                                       T* output_data,                  \
+                                       const size_t N);                 \
+  template void GatherImpl<T, int64_t>(cudaStream_t execution_stream,   \
+                                       const int64_t input_block_size,  \
+                                       const int64_t indices_max,       \
+                                       const int64_t* indices_data,     \
+                                       const fast_divmod* div_strides,  \
+                                       const T* input_data,             \
+                                       T* output_data,                  \
+                                       const size_t N);
 
 SPECIALIZED_IMPL(int8_t)
 SPECIALIZED_IMPL(int16_t)

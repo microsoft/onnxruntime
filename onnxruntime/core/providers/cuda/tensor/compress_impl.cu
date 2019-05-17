@@ -41,7 +41,8 @@ __global__ void _CompressKernel(const int32_t valid_condition_length,
   }
 }
 
-Status CompressImpl(const size_t element_bytes,
+Status CompressImpl(cudaStream_t execution_stream,
+                    const size_t element_bytes,
                     const int32_t valid_condition_length,
                     const int32_t axis_right_stride,
                     const int32_t input_axis_dim_length,
@@ -59,7 +60,7 @@ Status CompressImpl(const size_t element_bytes,
 
   switch (element_bytes) {
     case sizeof(int8_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -71,7 +72,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -83,7 +84,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,
@@ -95,7 +96,7 @@ Status CompressImpl(const size_t element_bytes,
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _CompressKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           valid_condition_length,
           axis_right_stride_div,
           input_axis_included_stride_div,

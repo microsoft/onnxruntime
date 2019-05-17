@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T>
 void TransposeImpl(
+    cudaStream_t execution_stream,
     const size_t shape_rank,
     const int64_t* input_strides,
     const int64_t* perm,

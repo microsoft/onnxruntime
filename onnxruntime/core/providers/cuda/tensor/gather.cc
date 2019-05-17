@@ -26,6 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
     const T* input_data = p.input_tensor->template Data<T>();                 \
     if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                       \
       GatherImpl(                                                             \
+          execution_stream,                                                   \
           input_block_size,                                                   \
           indices_max,                                                        \
           p.indices_tensor->template Data<int32_t>(),                         \
@@ -37,6 +38,7 @@ ONNX_OPERATOR_KERNEL_EX(
     }                                                                         \
     if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                       \
       GatherImpl(                                                             \
+          execution_stream,                                                   \
           input_block_size,                                                   \
           indices_max,                                                        \
           p.indices_tensor->template Data<int64_t>(),                         \
@@ -70,6 +72,7 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
 
   MLDataType T_type = p.input_tensor->DataType();
   MLDataType Tin_type = p.indices_tensor->DataType();
+  auto execution_stream = GetExecutionStream();
 
   TYPED_FUNCTION_CALL(int8_t)
   TYPED_FUNCTION_CALL(int16_t)

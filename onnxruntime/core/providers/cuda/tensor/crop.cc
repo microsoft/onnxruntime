@@ -54,16 +54,17 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
   fast_divmod fdm_YW(gsl::narrow_cast<int>(rightLimit - leftBorder));
   fast_divmod fdm_YHW(gsl::narrow_cast<int>((bottomLimit - topBorder) * (rightLimit - leftBorder)));
 
-  CropImpl<CudaT>(
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
-      gsl::narrow_cast<int>(leftBorder),
-      gsl::narrow_cast<int>(topBorder),
-      gsl::narrow_cast<int>(W),
-      gsl::narrow_cast<int>(W * H),
-      fdm_YW,
-      fdm_YHW,
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-      Y->Shape().Size());
+  auto execution_stream = GetExecutionStream();
+  CropImpl<CudaT>(execution_stream,
+                  reinterpret_cast<const CudaT*>(X->template Data<T>()),
+                  gsl::narrow_cast<int>(leftBorder),
+                  gsl::narrow_cast<int>(topBorder),
+                  gsl::narrow_cast<int>(W),
+                  gsl::narrow_cast<int>(W * H),
+                  fdm_YW,
+                  fdm_YHW,
+                  reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                  Y->Shape().Size());
 
   return Status::OK();
 }

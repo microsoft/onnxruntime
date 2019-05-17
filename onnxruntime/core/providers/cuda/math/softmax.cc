@@ -41,7 +41,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudnnTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(CudnnHandle(), CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
+  auto exec_queue_id = GetExecQueueId();
+  CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(GetCudnnHandle(exec_queue_id), CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, x_data, &beta, output_tensor, y_data));
 
   return Status::OK();
 }

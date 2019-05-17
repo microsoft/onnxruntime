@@ -50,7 +50,9 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, X->Shape());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
+  auto execution_stream = GetExecutionStream();
   ImageScalerImpl<CudaT>(
+      execution_stream,
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       scale_,
       b_data_.get(),

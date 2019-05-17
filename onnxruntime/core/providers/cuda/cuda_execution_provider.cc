@@ -5,7 +5,6 @@
 #include "cuda_execution_provider.h"
 #include "core/framework/memcpy.h"
 #include "cuda_fence.h"
-#include "cuda_allocator.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
 
@@ -39,27 +38,31 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-thread_local std::shared_ptr<CUDAExecutionProvider::PerThreadContext> CUDAExecutionProvider::per_thread_context_;
-thread_local AllocatorPtr CUDAExecutionProvider::per_thread_default_allocator_;
+//thread_local std::shared_ptr<CUDAExecutionProvider::PerThreadContext> CUDAExecutionProvider::per_thread_context_;
+//thread_local AllocatorPtr CUDAExecutionProvider::per_thread_default_allocator_;
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id) {
+PerThreadContext::PerThreadContext(int device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
 }
 
-CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
+PerThreadContext::~PerThreadContext() {
   CUBLAS_CALL_THROW(cublasDestroy(cublas_handle_));
   CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_context_pool_(info.device_id), cuda_stream_id_pos_(0), cuda_stream_ids_(kTotalCudaStreams - 2), default_allocator_pool_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
+  for (int i = kCudaStreamCopyIn; i < kTotalCudaStreams; ++i) {
+    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[i], cudaStreamNonBlocking));
+  }
+
+  int start = kCudaStreamCopyOut + 1;
+  std::iota(cuda_stream_ids_.begin(), cuda_stream_ids_.end(), start);
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
       {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
@@ -91,17 +94,10 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   ReleasePerThreadStuffs();
 }
 
-void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
-  if (per_thread_default_allocator_) {
-    std::lock_guard<OrtMutex> lock(default_allocator_pool_mutex_);
-    default_allocator_pool_.push_back(per_thread_default_allocator_);
-    per_thread_default_allocator_.reset();
-  }
-  if (per_thread_context_) {
-    std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    context_pool_.push_back(per_thread_context_);
-    per_thread_context_.reset();
-  }
+void CUDAExecutionProvider::ReleasePerThreadStuffs() {
+  auto stream_id = GetQueueIDByThreadId(std::this_thread::get_id());
+  default_allocator_pool_.ReleaseCudaResource(stream_id);
+  cuda_context_pool_.ReleasePerThreadContext(stream_id);
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -109,19 +105,9 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
   // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
   // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
-    if (!per_thread_default_allocator_) {
-      std::lock_guard<OrtMutex> lock(default_allocator_pool_mutex_);
-      if (default_allocator_pool_.empty()) {
-        DeviceAllocatorRegistrationInfo default_allocator_info(
-            {OrtMemTypeDefault,
-             [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
-        per_thread_default_allocator_ = CreateAllocator(default_allocator_info, device_id_);
-      } else {
-        per_thread_default_allocator_ = default_allocator_pool_.back();
-        default_allocator_pool_.pop_back();
-      }
-    }
-    return per_thread_default_allocator_;
+    auto stream_id = const_cast<CUDAExecutionProvider*>(this)->GetQueueIDByThreadId(std::this_thread::get_id());
+    auto per_thread_default_allocator = const_cast<CUDAExecutionProvider*>(this)->default_allocator_pool_.GetCudaResource(stream_id, id);
+    return per_thread_default_allocator;
   } else {
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
@@ -136,7 +122,10 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
-  auto current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
+  auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
+  auto per_thread_context = cuda_context_pool_.GetPerThreadContext(queue_id);
+  auto current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
+
   if (current_deferred_release_event) {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
@@ -149,45 +138,46 @@ Status CUDAExecutionProvider::OnRunStart() {
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
-    if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
+  {
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    auto it = deferred_release_cpu_ptr_.begin();
+    while (it != deferred_release_cpu_ptr_.end()) {
+      auto& e = it->first;
+      auto& v = it->second;
+      // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
+      if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
+        for (auto p : v.cpu_ptrs) {
+          cpu_alloc->Free(p);
+        }
+        cudaEvent_t expired_event = it->first;
+        it = deferred_release_cpu_ptr_.erase(it);
+        CUDA_RETURN_IF_ERROR(cudaEventDestroy(expired_event));
+      } else {
+        ++it;
       }
-      cudaEvent_t expired_event = it->first;
-      it = deferred_release_cpu_ptr_.erase(it);
-      CUDA_RETURN_IF_ERROR(cudaEventDestroy(expired_event));
-    } else {
-      ++it;
     }
   }
   // start a new per_thread context, store in TLS
-  {
-    std::lock_guard<OrtMutex> ctx_lock(context_pool_mutex_);
-    if (context_pool_.empty()) {
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    } else {
-      per_thread_context_ = context_pool_.back();
-      context_pool_.pop_back();
-    }
-  }
-  auto& current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
+  auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
+  auto per_thread_context = cuda_context_pool_.GetPerThreadContext(queue_id);
+
+  auto& current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
+
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd() {
-  ORT_RETURN_IF_NOT(per_thread_context_ != nullptr);
+  auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
+
+  auto per_thread_context = cuda_context_pool_.GetPerThreadContext(queue_id);
+  ORT_RETURN_IF_NOT(per_thread_context != nullptr);
   // record deferred release event on default stream, and release per_thread_context
-  auto current_deferred_release_event = per_thread_context_->GetCurrentDeferredReleaseEvent();
+  auto current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
   ReleasePerThreadStuffs();
+
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
   return Status::OK();
@@ -864,14 +854,14 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
       }
     }
 
-    if ("GRU" == op_type &&
-        "linear_before_reset" == attr_name &&
-        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
-      // cudnn GRU only support linear_before_reset = 1
-      if (1 != attr_value.i()) {
-        return true;
-      }
-    }
+    //if ("GRU" == op_type &&
+    //    "linear_before_reset" == attr_name &&
+    //    ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
+    //  // cudnn GRU only support linear_before_reset = 1
+    //  if (1 != attr_value.i()) {
+    //    return true;
+    //  }
+    //}
   }
 
   if ("LSTM" == op_type) {

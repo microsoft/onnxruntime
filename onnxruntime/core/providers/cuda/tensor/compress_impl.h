@@ -13,7 +13,8 @@ void PrefixSumImpl(const int8_t* condition_data,
                    int32_t* condition_cumulative_sum,
                    const size_t length);
 
-Status CompressImpl(const size_t element_bytes,
+Status CompressImpl(cudaStream_t execution_stream, 
+                    const size_t element_bytes,
                     const int32_t valid_condition_length,
                     const int32_t axis_right_stride,
                     const int32_t input_axis_dim_length,

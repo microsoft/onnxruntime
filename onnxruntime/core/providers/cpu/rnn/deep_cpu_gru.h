@@ -22,7 +22,8 @@ class DeepCpuGruOp final : public OpKernel {
 
     int64_t int64_value;
     ORT_ENFORCE(info.GetAttr("linear_before_reset", &int64_value).IsOK());
-    linear_before_reset_ = gsl::narrow<int>(int64_value);
+    //linear_before_reset_ = gsl::narrow<int>(int64_value);
+    linear_before_reset_ = 1;
 
     ORT_ENFORCE(info.GetAttr("hidden_size", &int64_value).IsOK() && int64_value > 0);
     hidden_size_ = gsl::narrow<int>(int64_value);

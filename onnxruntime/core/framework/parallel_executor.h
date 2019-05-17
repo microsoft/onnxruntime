@@ -35,10 +35,10 @@ class ParallelExecutor : public IExecutor {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
 
-  void RunNodeAsync(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
-  void RunNodeAsyncInternal(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
+  void RunNodeAsync(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger, int exec_queue_id);
+  void RunNodeAsyncInternal(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger, int exec_queue_id);
 
-  void EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
+  void EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger, int exec_queue_id);
 
   void FinishNodeRun() {
     bool finished = false;
@@ -63,5 +63,6 @@ class ParallelExecutor : public IExecutor {
   const bool& terminate_flag_;
   // TODO: Temporary threadpool for the executor.  This is a costly way to handle the problem.
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> executor_pool_;
+  IExecutionProvider* cuda_exec_provider_;
 };
 }  // namespace onnxruntime

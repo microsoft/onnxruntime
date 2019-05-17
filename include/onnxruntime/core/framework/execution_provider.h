@@ -154,6 +154,10 @@ class IExecutionProvider {
   virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
                                  std::string& dll_path);
 
+  virtual const int GetQueueID() { return 0; };
+
+  virtual void ReleaseQueueID(int queue_id) { (queue_id); };
+
  private:
   const std::string type_;
   AllocatorMap allocators_;

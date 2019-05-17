@@ -31,40 +31,41 @@ __global__ void _SliceKernel(const int32_t dimension_count,
   output_data[id] = input_data[input_index];
 }
 
-Status SliceImpl(const size_t element_size,
-               const int32_t dimension_count,
-               const int64_t* starts,
-               const int64_t* input_strides,
-               const fast_divmod* output_div_strides,
-               const void* input_data,
-               void* output_data,
-               const size_t N) {
+Status SliceImpl(cudaStream_t execution_stream,
+                 const size_t element_size,
+                 const int32_t dimension_count,
+                 const int64_t* starts,
+                 const int64_t* input_strides,
+                 const fast_divmod* output_div_strides,
+                 const void* input_data,
+                 void* output_data,
+                 const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
   switch (element_size) {
     case sizeof(int8_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           dimension_count, starts, input_strides, output_div_strides,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           dimension_count, starts, input_strides, output_div_strides,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           dimension_count, starts, input_strides, output_div_strides,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           dimension_count, starts, input_strides, output_div_strides,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),

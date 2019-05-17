@@ -19,14 +19,15 @@ namespace cuda {
 
 #define UNARY_ELEMENTWISE_IMPL(name)         \
   UNARY_ELEMENTWISE_IMPL_DECLARATION(name) { \
-    UnaryElementWiseImpl(input_data,         \
+    UnaryElementWiseImpl(execution_stream,      \
+                         input_data,         \
                          output_data,        \
                          OP_##name<T>(),     \
                          count);             \
   }
 
 #define SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, T) \
-  template void Impl_##name<T>(const T* input_data, T* output_data, size_t count);
+  template void Impl_##name<T>(cudaStream_t execution_stream, const T* input_data, T* output_data, size_t count);
 
 #define UNARY_OP_NAME_EXPR(name, expr) \
   OP(name, expr)                       \
@@ -100,17 +101,19 @@ struct OP_Cast {
 
 template <typename InT, typename OutT>
 void Impl_Cast(
+    cudaStream_t execution_stream,
     const InT* input_data,
     OutT* output_data,
     size_t count) {
-  UnaryElementWiseImpl(input_data,
+  UnaryElementWiseImpl(execution_stream,
+                       input_data,
                        output_data,
                        OP_Cast<InT, OutT>(),
                        count);
 }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
-  template void Impl_Cast<InT, OutT>(const InT* input_data, OutT* output_data, size_t count);
+  template void Impl_Cast<InT, OutT>(cudaStream_t execution_stream, const InT* input_data, OutT* output_data, size_t count);
 
 #define SPECIALIZED_CAST_FROM(T)      \
   SPECIALIZED_CAST_IMPL2(T, half)     \

@@ -66,7 +66,8 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   split_sizes_range_gpu.CopyToGpu();
 
   size_t element_size = input_tensor->DataType()->Size();
-  ORT_RETURN_IF_ERROR(SplitImpl(element_size,
+  ORT_RETURN_IF_ERROR(SplitImpl(GetExecutionStream(),
+                                element_size,
                                 block_size_including_axis_dim,
                                 block_size_inside_axis_dim,
                                 split_sizes_gpu.GpuPtr(),

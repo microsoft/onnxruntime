@@ -52,9 +52,15 @@ class OpKernel {
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }
 
+  int GetExecQueueId() const { return exec_queue_id_; }
+
+  void ExecQueueId(int queue_id) { exec_queue_id_ = queue_id; }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
+  // execution command queue id, 0 for default queue in execution provider
+  int exec_queue_id_ = 0;
 };
 
 class OpKernelContext {

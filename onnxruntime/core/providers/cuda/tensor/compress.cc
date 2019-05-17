@@ -64,16 +64,18 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  ORT_RETURN_IF_ERROR(CompressImpl(element_bytes,
-                                           gsl::narrow_cast<int32_t>(valid_condition_length),
-                                           gsl::narrow_cast<int32_t>(axis_right_stride),
-                                           has_axis_ ? gsl::narrow_cast<int32_t>(input_dimensions[axis_]) : gsl::narrow_cast<int32_t>(input_size),
-                                           gsl::narrow_cast<int32_t>(positive_condition_count),
-                                           condition_cumulative_sum,
-                                           condition_data,
-                                           input_tensor->DataRaw(),
-                                           output_tensor->MutableDataRaw(),
-                                           input_size));
+  auto execution_stream = GetExecutionStream();
+  ORT_RETURN_IF_ERROR(CompressImpl(execution_stream,
+                                   element_bytes,
+                                   gsl::narrow_cast<int32_t>(valid_condition_length),
+                                   gsl::narrow_cast<int32_t>(axis_right_stride),
+                                   has_axis_ ? gsl::narrow_cast<int32_t>(input_dimensions[axis_]) : gsl::narrow_cast<int32_t>(input_size),
+                                   gsl::narrow_cast<int32_t>(positive_condition_count),
+                                   condition_cumulative_sum,
+                                   condition_data,
+                                   input_tensor->DataRaw(),
+                                   output_tensor->MutableDataRaw(),
+                                   input_size));
 
   return Status::OK();
 }

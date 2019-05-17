@@ -8,7 +8,9 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "shared_inc/cuda_utils.h"
+#include "cuda_allocator.h"
 #include <deque>
+#include <thread>
 
 namespace onnxruntime {
 
@@ -21,7 +23,170 @@ enum CUDAStreamType : int {
   kCudaStreamDefault = 0,
   kCudaStreamCopyIn,
   kCudaStreamCopyOut,
-  kTotalCudaStreams,
+  kTotalCudaStreams = 30,
+};
+
+// T could be a cublas_handle_ or cudnn_handle_
+//template <typename T>
+//class HandleLockWrapper {
+// public:
+//  CudnnHandle(OrtMutex* mutex, const T& handle) : mutex_(mutex), handle_(handle) { mutex_->lock(); }
+//  ~CudnnHandle() { mutex_->unlock(); }
+//
+//  T Handle() const { return handle_; }
+//
+// private:
+//  OrtMutex* mutex_;
+//  T handle_;
+//};
+
+class CublasHandle {
+ public:
+  CublasHandle(OrtMutex* mutex, const cublasHandle_t& handle) : mutex_(mutex), handle_(handle) { mutex_->lock(); }
+  ~CublasHandle() { mutex_->unlock(); }
+
+  cublasHandle_t Handle() const { return handle_; }
+
+ private:
+  OrtMutex* mutex_;
+  cublasHandle_t handle_;
+};
+
+class PerThreadContext final {
+ public:
+  PerThreadContext(int device_id);
+  ~PerThreadContext();
+
+  cublasHandle_t GetCublasHandle(const cudaStream_t& stream) {
+    cublasSetStream(cublas_handle_, stream);
+    return cublas_handle_;
+  }
+
+  cudnnHandle_t GetCudnnHandle(const cudaStream_t& stream) {
+    cudnnSetStream(cudnn_handle_, stream);
+    return cudnn_handle_;
+  }
+
+  cudaEvent_t& GetCurrentDeferredReleaseEvent() {
+    return current_deferred_release_event_;
+  }
+
+  template <typename T>
+  const T* GetConstOnes(size_t count) {
+    if (std::is_same<T, float>::value) {
+      if (!constant_ones_float_) {
+        constant_ones_float_ = cuda::CreateConstantOnes<float>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
+    } else if (std::is_same<T, double>::value) {
+      if (!constant_ones_double_) {
+        constant_ones_double_ = cuda::CreateConstantOnes<double>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
+    } else if (std::is_same<T, half>::value) {
+      if (!constant_ones_half_) {
+        constant_ones_half_ = cuda::CreateConstantOnes<half>();
+      }
+      return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+    } else {
+      return nullptr;
+    }
+  }
+
+ private:
+  cublasHandle_t cublas_handle_ = nullptr;
+  cudnnHandle_t cudnn_handle_ = nullptr;
+  OrtMutex cublas_handle_mutex_;
+  OrtMutex cudnn_handle_mutex_;
+
+  // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
+  // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
+  // so the ownership is passed to deferred_release_cpu_ptr_
+  cudaEvent_t current_deferred_release_event_ = nullptr;
+
+  std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
+  std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
+  std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+};
+
+class CudaContextPool {
+ public:
+  CudaContextPool(int device_id) : device_id_(device_id) {}
+
+  std::shared_ptr<PerThreadContext> GetPerThreadContext(int exec_id) {
+    auto find = context_in_use_.find(exec_id);
+    if (find != context_in_use_.end()) {
+      return context_in_use_[exec_id];
+    }
+
+    std::lock_guard<OrtMutex> ctx_lock(context_pool_mutex_);
+    if (context_available_.empty()) {
+      auto per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
+      context_in_use_[exec_id] = per_thread_context_;
+    } else {
+      context_in_use_[exec_id] = context_available_.back();
+      context_available_.pop_back();
+    }
+
+    return context_in_use_[exec_id];
+  }
+
+  void ReleasePerThreadContext(int exec_id) {
+    std::lock_guard<OrtMutex> ctx_lock(context_pool_mutex_);
+    if (context_in_use_.find(exec_id) == context_in_use_.end()) {
+      return;
+    }
+    context_available_.push_back(context_in_use_[exec_id]);
+    context_in_use_.erase(exec_id);
+  }
+
+ private:
+  std::deque<std::shared_ptr<PerThreadContext>> context_available_;
+  // map<stream_id, PerThreadContext>
+  std::unordered_map<int, std::shared_ptr<PerThreadContext>> context_in_use_;
+  OrtMutex context_pool_mutex_;
+  int device_id_;
+};
+
+class CudaResourcePool {
+ public:
+  CudaResourcePool(int device_id) : device_id_(device_id) {}
+
+  AllocatorPtr GetCudaResource(int stream_id, int id) {
+    auto find = in_used_resource_.find(stream_id);
+    if (find != in_used_resource_.end()) {
+      return in_used_resource_[stream_id];
+    }
+
+    std::lock_guard<OrtMutex> lock(cuda_resource_mutex_);
+    if (available_resources_.empty()) {
+      DeviceAllocatorRegistrationInfo default_allocator_info(
+          {OrtMemTypeDefault,
+           [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
+      in_used_resource_[stream_id] = CreateAllocator(default_allocator_info, device_id_);
+    } else {
+      in_used_resource_[stream_id] = available_resources_.back();
+      available_resources_.pop_back();
+    }
+
+    return in_used_resource_[stream_id];
+  }
+
+  void ReleaseCudaResource(int stream_id) {
+    std::lock_guard<OrtMutex> ctx_lock(cuda_resource_mutex_);
+    if (in_used_resource_.find(stream_id) == in_used_resource_.end()) {
+      return;
+    }
+    available_resources_.push_back(in_used_resource_[stream_id]);
+    in_used_resource_.erase(stream_id);
+  }
+
+ private:
+  std::deque<AllocatorPtr> available_resources_;
+  // map<stream_id, AllocatorPtr>
+  std::unordered_map<int, AllocatorPtr> in_used_resource_;
+  OrtMutex cuda_resource_mutex_;
+  int device_id_;
 };
 
 // Logical device representation.
@@ -47,32 +212,30 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  cublasHandle_t PerThreadCublasHandle() {
+  cublasHandle_t PerThreadCublasHandle(int execution_id) {
     // Assure each thread has its TLS context.
-    if (!per_thread_context_)
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    return per_thread_context_->CublasHandle();
+    auto execution_stream = GetStream(execution_id);
+    auto per_thread_context = cuda_context_pool_.GetPerThreadContext(execution_id);
+    if (!per_thread_context)
+      per_thread_context = std::make_shared<PerThreadContext>(device_id_);
+    return per_thread_context->GetCublasHandle(execution_stream);
   }
 
-  cudnnHandle_t PerThreadCudnnHandle() {
+  cudnnHandle_t PerThreadCudnnHandle(int execution_id) {
     // Assure each thread has its TLS context.
     // TODO: improve its performance when calling cuda functions from multiple threads.
-    if (!per_thread_context_)
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    return per_thread_context_->CudnnHandle();
-  }
-
-  cudaStream_t GetStream(int queue_id) const {
-    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
-    return streams_[queue_id];
+    auto execution_stream = GetStream(execution_id);
+    auto per_thread_context = cuda_context_pool_.GetPerThreadContext(execution_id);
+    return per_thread_context->GetCudnnHandle(execution_stream);
   }
 
   template <typename T>
-  const T* GetConstOnes(size_t count) {
+  const T* GetConstOnes(int exec_queue_id, size_t count) {
     // Assure each thread has its TLS context.
-    if (!per_thread_context_)
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    return per_thread_context_->template GetConstOnes<T>(count);
+    auto per_thread_context = cuda_context_pool_.GetPerThreadContext(exec_queue_id);
+    if (!per_thread_context)
+      per_thread_context = std::make_shared<PerThreadContext>(device_id_);
+    return per_thread_context->template GetConstOnes<T>(count);
   }
 
   void AddDeferredReleaseCPUPtr(void* p);
@@ -90,9 +253,41 @@ class CUDAExecutionProvider : public IExecutionProvider {
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
+
+  cudaStream_t GetStream(int queue_id) const {
+    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
+    return streams_[queue_id];
+  }
+
+  virtual const int GetQueueID() override {
+    std::lock_guard<OrtMutex> lock(thread_queue_id_map_mutex_);
+    cuda_stream_id_pos_ = cuda_stream_id_pos_ % cuda_stream_ids_.size();
+    return cuda_stream_ids_.at(cuda_stream_id_pos_++);
+  }
+
+  virtual void ReleaseQueueID(int queue_id) override {
+    default_allocator_pool_.ReleaseCudaResource(queue_id);
+    cuda_context_pool_.ReleasePerThreadContext(queue_id);
+  }
+
+ private:
+
+  int GetQueueIDByThreadId(std::thread::id& thread_id) {
+    std::lock_guard<OrtMutex> lock(thread_queue_id_map_mutex_);
+    auto queue_id = thead_id_2_queue_id_.find(thread_id);
+    if (queue_id == thead_id_2_queue_id_.end()) {
+      auto new_queue_id = GetQueueID();
+      thead_id_2_queue_id_.emplace(thread_id, new_queue_id);
+    }
+    return thead_id_2_queue_id_[thread_id];
+  }
+
  private:
   cudaStream_t streams_[kTotalCudaStreams];
+  std::vector<int> cuda_stream_ids_;
+  int cuda_stream_id_pos_;
   int device_id_;
+  mutable OrtMutex queue_ids_mutex_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -101,74 +296,20 @@ class CUDAExecutionProvider : public IExecutionProvider {
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
-  class PerThreadContext final {
-   public:
-    PerThreadContext(int device_id);
-    ~PerThreadContext();
-
-    cublasHandle_t CublasHandle() const {
-      return cublas_handle_;
-    }
-
-    cudnnHandle_t CudnnHandle() const {
-      return cudnn_handle_;
-    }
-
-    cudaEvent_t& GetCurrentDeferredReleaseEvent() {
-      return current_deferred_release_event_;
-    }
-
-    template <typename T>
-    const T* GetConstOnes(size_t count) {
-      if (std::is_same<T, float>::value) {
-        if (!constant_ones_float_) {
-          constant_ones_float_ = cuda::CreateConstantOnes<float>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
-      } else if (std::is_same<T, double>::value) {
-        if (!constant_ones_double_) {
-          constant_ones_double_ = cuda::CreateConstantOnes<double>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
-      } else if (std::is_same<T, half>::value) {
-        if (!constant_ones_half_) {
-          constant_ones_half_ = cuda::CreateConstantOnes<half>();
-        }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
-      } else {
-        return nullptr;
-      }
-    }
-
-   private:
-    cublasHandle_t cublas_handle_ = nullptr;
-    cudnnHandle_t cudnn_handle_ = nullptr;
-
-    // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
-    // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
-    // so the ownership is passed to deferred_release_cpu_ptr_
-    cudaEvent_t current_deferred_release_event_ = nullptr;
-
-    std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
-    std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
-    std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
-  };
-
-  // thread local context during execution
-  static thread_local std::shared_ptr<PerThreadContext> per_thread_context_;
-
-  // thread local GPU memory allocator. could be used before execution
-  static thread_local AllocatorPtr per_thread_default_allocator_;
-
   // reuse thread local GPU memory allocator for memory pattern
-  mutable std::deque<AllocatorPtr> default_allocator_pool_;
-  mutable OrtMutex default_allocator_pool_mutex_;
+  CudaResourcePool default_allocator_pool_;
+  //mutable OrtMutex default_allocator_pool_mutex_;
 
   // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
-  mutable OrtMutex context_pool_mutex_;
+  CudaContextPool cuda_context_pool_;
+  //mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
+  //mutable OrtMutex context_pool_mutex_;
 
-  void ReleasePerThreadStuffs() const;
+  // mapping from thread id to queue id, use for scenario that cuda execution provide code executed in multi-thread RunStart/End
+  std::unordered_map<std::thread::id, int> thead_id_2_queue_id_;
+  OrtMutex thread_queue_id_map_mutex_;
+
+  void ReleasePerThreadStuffs();
 
   bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
   bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) const;

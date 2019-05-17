@@ -110,6 +110,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
     Prepare(context, 0, &prepare);                                                                               \
     ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
+        GetExecutionStream(),                                                                                    \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         prepare.lhs_padded_strides.GpuPtr(),                                                                     \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
@@ -211,10 +212,12 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
     }
     Tensor* output_tensor = context->Output(0, output_shape);
     BinaryElementwisePreparation prepare(this);
+    auto execution_stream = GetExecutionStream();
     if (input_count == 2) {
       // special case for 2 tensors to avoid memset zero
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, context->Input<Tensor>(0), context->Input<Tensor>(1), output_tensor, &prepare));
       Impl_Add<CudaT>(
+          execution_stream,
           prepare.output_rank_or_simple_broadcast,
           prepare.lhs_padded_strides.GpuPtr(),
           reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -231,6 +234,7 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
       for (int index = 0; index < input_count; index++) {
         ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
         Impl_Add<CudaT>(
+            execution_stream,
             prepare.output_rank_or_simple_broadcast,
             prepare.lhs_padded_strides.GpuPtr(),
             reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -271,10 +275,12 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
     Tensor* output_tensor = context->Output(0, output_shape);
     BinaryElementwisePreparation prepare(this);
 
+    auto execution_stream = GetExecutionStream();
     // More than 2 inputs, set output to 0, add input0 to output, so that input0 can be broadcast with output shape correctly
     CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(0), output_tensor, &prepare));
     Impl_Add<CudaT>(
+        execution_stream,
         prepare.output_rank_or_simple_broadcast,
         prepare.lhs_padded_strides.GpuPtr(),
         reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -288,6 +294,7 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
     for (int index = 1; index < input_count; index++) {
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
       Impl_Max<CudaT>(
+          execution_stream,
           prepare.output_rank_or_simple_broadcast,
           prepare.lhs_padded_strides.GpuPtr(),
           reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -321,8 +328,10 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare(this);
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
 
+  auto execution_stream = GetExecutionStream();
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
   Impl_Greater<CudaT>(
+      execution_stream,
       prepare.output_rank_or_simple_broadcast,
       prepare.lhs_padded_strides.GpuPtr(),
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -335,6 +344,7 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
       output_size);
 
   Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
+      execution_stream,
       reinterpret_cast<CudaT*>(output_buffer.get()),
       reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
       output_size);

@@ -47,6 +47,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
 #define CASE(TP_TYPE, DstT)                                                                        \
   case TP_TYPE:                                                                                    \
     Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
+        GetExecutionStream(),                                                                      \
         x_data,                                                                                    \
         reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->template MutableData<DstT>()), \
         count);                                                                                    \

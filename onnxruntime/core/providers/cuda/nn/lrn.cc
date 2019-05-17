@@ -61,8 +61,9 @@ Status LRN<T>::ComputeInternal(OpKernelContext* context) const {
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
+  auto exec_queue_id = GetExecQueueId();
   CUDNN_RETURN_IF_ERROR(cudnnLRNCrossChannelForward(
-      CudnnHandle(),
+      GetCudnnHandle(exec_queue_id),
       norm_desc_,
       CUDNN_LRN_CROSS_CHANNEL_DIM1,
       &one,

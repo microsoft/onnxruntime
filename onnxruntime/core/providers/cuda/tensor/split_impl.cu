@@ -46,7 +46,8 @@ __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div
   reinterpret_cast<T*>(output_ptr[output_index])[output_pos] = input_data[id];
 }
 
-Status SplitImpl(const size_t element_size,
+Status SplitImpl(cudaStream_t execution_stream,
+                 const size_t element_size,
                  const int block_size_including_axis_dim,
                  const int block_size_inside_axis_dim,
                  const int64_t* split_sizes,
@@ -62,7 +63,7 @@ Status SplitImpl(const size_t element_size,
 
   switch (element_size) {
     case sizeof(int8_t):
-      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
@@ -70,7 +71,7 @@ Status SplitImpl(const size_t element_size,
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
@@ -78,7 +79,7 @@ Status SplitImpl(const size_t element_size,
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
@@ -86,7 +87,7 @@ Status SplitImpl(const size_t element_size,
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
           split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),

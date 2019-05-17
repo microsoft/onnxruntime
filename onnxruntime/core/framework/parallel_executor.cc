@@ -16,10 +16,12 @@
 #include "core/framework/utils.h"
 #include "core/platform/threadpool.h"
 
+#include <cuda_runtime.h>
+
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_{terminate_flag} {
+    : out_standings_(0), terminate_flag_{terminate_flag}, cuda_exec_provider_(const_cast<IExecutionProvider*>(session_state.GetExecutionProviders().Get(kCudaExecutionProvider))) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
@@ -45,19 +47,26 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
   root_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                                  fetch_allocators, session_state);
   //std::cout << "start nodes:" << std::endl;
+  std::unordered_map<int, bool> queue_ids;
   for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
     auto p_op_kernel = session_state.GetKernel(node_index);
     if (!p_op_kernel)
       continue;
 
+    int exec_queue_id = cuda_exec_provider_ ? cuda_exec_provider_->GetQueueID() : 0;
+    queue_ids.emplace(exec_queue_id, true);
     //std::cout << "\t" << p_op_kernel->Node().Name() << std::endl;
-    EnqueueNode(node_index, session_state, logger);
+    EnqueueNode(node_index, session_state, logger, exec_queue_id);
   }
 
   // Wait for finish.
   {
     std::unique_lock<OrtMutex> lock(complete_mutex_);
     while (out_standings_ > 0) complete_cv_.wait(lock);
+    for (auto it : queue_ids) {
+      cuda_exec_provider_->ReleaseQueueID(it.first);
+    }
+    cudaDeviceSynchronize();
   }
 
   VLOGS(logger, 1) << "Fetching output.";
@@ -92,9 +101,10 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
 
 void ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                     const SessionState& session_state,
-                                    const logging::Logger& logger) {
+                                    const logging::Logger& logger,
+                                    int exec_queue_id) {
   try {
-    RunNodeAsyncInternal(p_node_index, session_state, logger);
+    RunNodeAsyncInternal(p_node_index, session_state, logger, exec_queue_id);
   } catch (...) {
     FinishNodeRun();
     throw;
@@ -103,7 +113,8 @@ void ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
 void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
                                             const SessionState& session_state,
-                                            const logging::Logger& logger) {
+                                            const logging::Logger& logger,
+                                            int exec_queue_id) {
   LOGS(logger, INFO) << "Begin execution";
 
   size_t node_index = p_node_index;
@@ -181,6 +192,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
     // Execute the kernel.
+    const_cast<OpKernel*>(p_op_kernel)->ExecQueueId(exec_queue_id);
     auto status = p_op_kernel->Compute(&op_kernel_context);
     if (!status.IsOK()) {
       ORT_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
@@ -237,7 +249,8 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
             node_index = idx;
             keep_running = true;
           } else {
-            EnqueueNode(idx, session_state, logger);
+            int sub_exec_queue_id = cuda_exec_provider_ ? cuda_exec_provider_->GetQueueID() : 0;
+            EnqueueNode(idx, session_state, logger, sub_exec_queue_id);
           }
         }
 
@@ -248,18 +261,22 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     }
   }
 
+  if (cuda_exec_provider_) {
+    cuda_exec_provider_->ReleaseQueueID(exec_queue_id);
+  }
+
   FinishNodeRun();
 }
 
-void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger) {
+void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger, int exec_queue_id) {
   {
     std::unique_lock<OrtMutex> lock(complete_mutex_);
     out_standings_++;
   }
 
-  executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
+  executor_pool_->Schedule([this, p_node_index, &session_state, &logger, exec_queue_id]() {
     try {
-      ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
+      ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger), exec_queue_id);
     } catch (...) {
       // catch node processing failure exceptions here to prevent app crash.
     }

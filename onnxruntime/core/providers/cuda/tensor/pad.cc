@@ -53,7 +53,9 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(upper_pads.CopyToGpu());
   ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
+  auto execution_stream = GetExecutionStream();
   PadImpl(
+      execution_stream,
       dimension_count,
       input_dims.GpuPtr(),
       input_strides.GpuPtr(),

@@ -27,23 +27,32 @@ __global__ void _CropKernel(
 }
 
 template <typename T>
-void CropImpl(
-    const T* input_data,
-    const int src_start_x,
-    const int src_start_y,
-    const int src_w,
-    const int src_hw,
-    const fast_divmod& fdm_dst_w,
-    const fast_divmod& fdm_dst_hw,
-    T* output_data,
-    const size_t N) {
+void CropImpl(cudaStream_t execution_stream,
+              const T* input_data,
+              const int src_start_x,
+              const int src_start_y,
+              const int src_w,
+              const int src_hw,
+              const fast_divmod& fdm_dst_w,
+              const fast_divmod& fdm_dst_hw,
+              T* output_data,
+              const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _CropKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _CropKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
       input_data, src_start_x, src_start_y, src_w, src_hw, fdm_dst_w, fdm_dst_hw, output_data, (CUDA_LONG)N);
 }
 
-#define SPECIALIZED_IMPL(T) \
-  template void CropImpl<T>(const T* input_data, const int src_start_x, const int src_start_y, const int src_w, const int src_hw, const fast_divmod& fdm_dst_w, const fast_divmod& fdm_dst_hw, T* output_data, const size_t N);
+#define SPECIALIZED_IMPL(T)                                 \
+  template void CropImpl<T>(cudaStream_t execution_stream,  \
+                            const T* input_data,            \
+                            const int src_start_x,          \
+                            const int src_start_y,          \
+                            const int src_w,                \
+                            const int src_hw,               \
+                            const fast_divmod& fdm_dst_w,   \
+                            const fast_divmod& fdm_dst_hw,  \
+                            T* output_data,                 \
+                            const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

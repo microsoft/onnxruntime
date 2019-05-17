@@ -19,7 +19,8 @@ namespace cuda {
 
 #define BINARY_ELEMENTWISE_IMPL(name)                      \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {              \
-    BinaryElementWiseImpl(output_rank_or_simple_broadcast, \
+    BinaryElementWiseImpl(execution_stream,                \
+                          output_rank_or_simple_broadcast, \
                           lhs_padded_strides,              \
                           lhs_data,                        \
                           rhs_padded_strides,              \
@@ -32,8 +33,17 @@ namespace cuda {
                           count);                          \
   }
 
-#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, T) \
-  template void Impl_##x<T>(size_t output_rank, const int64_t* lhs_padded_strides, const T* lhs_data, const int64_t* rhs_padded_strides, const T* rhs_data, const fast_divmod* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, T)                   \
+  template void Impl_##x<T>(cudaStream_t execution_stream,          \
+                            size_t output_rank,                     \
+                            const int64_t* lhs_padded_strides,      \
+                            const T* lhs_data,                      \
+                            const int64_t* rhs_padded_strides,      \
+                            const T* rhs_data,                      \
+                            const fast_divmod* fdm_output_strides,  \
+                            const fast_divmod& fdm_H,               \
+                            const fast_divmod& fdm_C,               \
+                            T* output_data, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, uint32_t)     \

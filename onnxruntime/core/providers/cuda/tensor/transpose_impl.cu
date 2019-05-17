@@ -31,6 +31,7 @@ __global__ void _TransposeKernel(
 
 template <typename T>
 void TransposeImpl(
+    cudaStream_t execution_stream,
     const size_t shape_rank,
     const int64_t* input_strides,
     const int64_t* perm,
@@ -39,13 +40,14 @@ void TransposeImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
       shape_rank, input_strides, perm, input_data,
       fdm_output_strides, output_data, N);
 }
 
 #define SPECIALIZED_IMPL(T)                  \
   template void TransposeImpl<T>(            \
+      const cudaStream_t execution_stream,   \
       const size_t shape_rank,               \
       const int64_t* input_strides,          \
       const int64_t* perm,                   \

@@ -11,7 +11,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-void ResizeImpl(const onnxruntime::UpsampleMode upsample_mode,
+void ResizeImpl(cudaStream_t execution_stream,
+                const onnxruntime::UpsampleMode upsample_mode,
                 const size_t rank,
                 const int64_t input_dim2,
                 const int64_t* input_pitches,

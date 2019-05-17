@@ -93,14 +93,15 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   size_t element_size = input_tensor->DataType()->Size();
 
-  ORT_RETURN_IF_ERROR(SliceImpl(element_size,
-                              gsl::narrow_cast<int32_t>(dimension_count),
-                              starts_buffer.GpuPtr(),
-                              input_strides.GpuPtr(),
-                              div_strides.GpuPtr(),
-                              input_tensor->DataRaw(),
-                              output_tensor->MutableDataRaw(),
-                              output_size));
+  ORT_RETURN_IF_ERROR(SliceImpl(GetExecutionStream(),
+                                element_size,
+                                gsl::narrow_cast<int32_t>(dimension_count),
+                                starts_buffer.GpuPtr(),
+                                input_strides.GpuPtr(),
+                                div_strides.GpuPtr(),
+                                input_tensor->DataRaw(),
+                                output_tensor->MutableDataRaw(),
+                                output_size));
 
   return Status::OK();
 }

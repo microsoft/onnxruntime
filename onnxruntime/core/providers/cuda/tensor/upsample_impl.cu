@@ -91,7 +91,8 @@ __global__ void _UpampleBilinearKernel(const int64_t input_dim2,
 }
 
 template <typename T>
-void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
+void UpampleImpl(cudaStream_t execution_stream,
+                 const onnxruntime::UpsampleMode upsample_mode,
                  const size_t rank,
                  const int64_t input_dim2,
                  const int64_t* input_pitches,
@@ -102,18 +103,19 @@ void UpampleImpl(const onnxruntime::UpsampleMode upsample_mode,
                  const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   if (onnxruntime::UpsampleMode::NN == upsample_mode) {
-    _UpampleNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _UpampleNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
         rank, input_pitches, output_div_pitches, scales_div,
         input_data, output_data, N);
   } else if (onnxruntime::UpsampleMode::LINEAR == upsample_mode) {
-    _UpampleBilinearKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _UpampleBilinearKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, execution_stream>>>(
         input_dim2, input_pitches, output_div_pitches, scales_div,
         input_data, output_data, N);
   }
 }
 
 #define SPECIALIZED_IMPL(T)                                                     \
-  template void UpampleImpl<T>(const onnxruntime::UpsampleMode upsample_mode,   \
+  template void UpampleImpl<T>(cudaStream_t execution_stream,                   \
+                               const onnxruntime::UpsampleMode upsample_mode,   \
                                const size_t rank,                               \
                                const int64_t input_dim2,                        \
                                const int64_t* input_pitches,                    \

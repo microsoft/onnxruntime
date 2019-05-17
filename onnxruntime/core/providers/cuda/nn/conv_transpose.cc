@@ -39,6 +39,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
 
   CudaT* y_data = nullptr;
 
+  auto exec_queue_id = GetExecQueueId();
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
@@ -93,7 +94,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
         cudnnConvolutionBwdDataAlgoPerf_t perf;
         int algo_count = 1;
         CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
-            CudnnHandle(),
+            GetCudnnHandle(exec_queue_id),
             s_.filter_desc,
             w_data,
             s_.x_tensor,
@@ -128,7 +129,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
 
   CUDNN_RETURN_IF_ERROR(
       cudnnConvolutionBackwardData(
-          CudnnHandle(),
+          GetCudnnHandle(exec_queue_id),
           &alpha,
           s_.filter_desc,
           w_data,
@@ -145,7 +146,7 @@ Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
   if (has_bias) {
     const Tensor* B = context->Input<Tensor>(2);
     auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(GetCudnnHandle(exec_queue_id), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
   }
 
   return Status::OK();
