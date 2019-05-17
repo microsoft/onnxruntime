@@ -1,5 +1,6 @@
 variables:
   DisableContribOps: ON
+  TestDataUrlNoContribOps : https://onnxruntimetestdata.blob.core.windows.net/models/20181113.zip
 
 jobs:
 - job: Linux_CI_Dev
@@ -30,7 +31,7 @@ jobs:
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url https://onnxruntimetestdata.blob.core.windows.net/models/20181113.zip
+        arguments: --test_data_url $(TestDataUrlNoContribOps)
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
 
