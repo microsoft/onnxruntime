@@ -30,13 +30,13 @@ class FunctionKernel : public OpKernel {
     }
   }
 
-  virtual ~FunctionKernel() {
+  ~FunctionKernel() override {
     if (release_func_ && func_state_) {
       release_func_(func_state_);
     }
   }
 
-  virtual Status Compute(OpKernelContext* context) const override {
+  Status Compute(OpKernelContext* context) const override {
     std::vector<ONNXRunTimeTensor> input_tensors;
     for (int i = 0; static_cast<size_t>(i) < num_inputs_; i++) {
       const Tensor* input = context->Input<Tensor>(i);

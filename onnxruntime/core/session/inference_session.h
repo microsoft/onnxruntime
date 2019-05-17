@@ -93,25 +93,25 @@ struct ModelMetadata {
 };
 
 /**
-  * @brief This is the main class used to Run a model.
-  * Sample simple usage:
-  *  CPUExecutionProviderInfo epi;
-  *  ProviderOption po{"CPUExecutionProvider", epi};
-  *  SessionOptions so(vector<ProviderOption>{po});
-  *  InferenceSession session_object{so};
-  *  common::Status status = session_object.Load(MODEL_URI);
-  *  common::Status status = session_object.Initialize();
-  *
-  *  NameMLValMap feeds;
-  *  feeds.insert({});
-  *  ...
-  *  std::vector<std::string> output_names;
-  *  output_names.insert(...);
-  *  ...
-  *  std::vector<MLValue> fetches;
-  *  common::Status status = session_object.Run(run_options, feeds, output_names, &fetches);
-  *  process the output here...
-  */
+ * @brief This is the main class used to Run a model.
+ * Sample simple usage:
+ *  CPUExecutionProviderInfo epi;
+ *  ProviderOption po{"CPUExecutionProvider", epi};
+ *  SessionOptions so(vector<ProviderOption>{po});
+ *  InferenceSession session_object{so};
+ *  common::Status status = session_object.Load(MODEL_URI);
+ *  common::Status status = session_object.Initialize();
+ *
+ *  NameMLValMap feeds;
+ *  feeds.insert({});
+ *  ...
+ *  std::vector<std::string> output_names;
+ *  output_names.insert(...);
+ *  ...
+ *  std::vector<OrtValue> fetches;
+ *  common::Status status = session_object.Run(run_options, feeds, output_names, &fetches);
+ *  process the output here...
+ */
 
 class InferenceSession {
  public:
@@ -202,11 +202,9 @@ class InferenceSession {
     */
   common::Status Initialize();
 
-  common::Status Run(const RunOptions& run_options,
-                     const std::vector<std::string>& feed_names,
-                     const std::vector<MLValue>& feeds,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>* p_fetches);
+  common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
+                     const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches);
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -218,19 +216,16 @@ class InferenceSession {
     *        This should not be changed during execution of this function.
     * @return OK if success.
     */
-  common::Status Run(const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>* p_fetches);
+  common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches);
 
   /**
-    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<MLValue>* p_fetches)
-    * for details.
-    * @param run_options use this to tune the Run call to your needs.
-    */
-  common::Status Run(const RunOptions& run_options,
-                     const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>* p_fetches);
+   * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
+   * for details.
+   * @param run_options use this to tune the Run call to your needs.
+   */
+  common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
+                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches);
 
   /**
   * Creates a new binding object for binding inputs and outputs.
@@ -364,11 +359,9 @@ class InferenceSession {
 
   static common::Status CheckTypes(MLDataType actual, MLDataType expected);
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<MLValue>& feeds);
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
-                                 const std::vector<MLValue>* p_fetches);
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 

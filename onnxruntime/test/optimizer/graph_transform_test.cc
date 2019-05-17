@@ -116,7 +116,7 @@ TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
   RunOptions run_options;
 
   std::vector<std::string> output_names = {"output"};
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 }
@@ -359,7 +359,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   NameMLValMap feeds;
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
-  MLValue ml_value_x;
+  OrtValue ml_value_x;
 
   auto x_f = MLFloat16(math::floatToHalf(1.0));
   std::vector<int64_t> dims_x = {1, 1, 3, 3};
@@ -373,7 +373,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   std::vector<std::string> output_names;
   output_names.push_back("PROD");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
