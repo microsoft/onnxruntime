@@ -316,11 +316,11 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 4*hidden_size, hidden_size]
 
   // optional
-  const auto* B = context.Input<Tensor>(3);              // bias. [num_directions, 8*hidden_size]
-  const auto* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
-  const auto* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
-  const auto* initial_c = context.Input<Tensor>(6);      // initial cell. [num_directions, batch_size, hidden_size]
-  const auto* P = context.Input<Tensor>(7);              // peephole weights. [num_directions, 3*hidden_size]
+  const Tensor* B = context.Input<Tensor>(3);              // bias. [num_directions, 8*hidden_size]
+  const Tensor* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
+  const Tensor* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
+  const Tensor* initial_c = context.Input<Tensor>(6);      // initial cell. [num_directions, batch_size, hidden_size]
+  const Tensor* P = context.Input<Tensor>(7);              // peephole weights. [num_directions, 3*hidden_size]
 
   auto& X_shape = X.Shape();
 
@@ -999,7 +999,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
     // std::string row_str = " row[" + std::to_string(row + b) + "]";
 
     // check that we have hidden_size_x4 left starting at cur_out + b * hidden_size_x4, and get a raw pointer to that
-    auto* pi = SafeRawPointer<T>(out + b * hidden_size_x4, out_end, hidden_size_x4);
+    float* pi = SafeRawPointer<T>(out + b * hidden_size_x4, out_end, hidden_size_x4);
     float* po = pi + hidden_size_;
     float* pf = po + hidden_size_;
     float* pc = pf + hidden_size_;
@@ -1007,7 +1007,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
 #ifdef PREVIOUS_BROKEN_VERSION
     float* pCprev_hidden_size = SafeRawPointer<T>(C_prev, C_prev_end, hidden_size_);
 #else
-    auto* pCprev_hidden_size = SafeRawPointer<T>(C_prev + b * hidden_size_, C_prev_end, hidden_size_);
+    float* pCprev_hidden_size = SafeRawPointer<T>(C_prev + b * hidden_size_, C_prev_end, hidden_size_);
 #endif
 
     // DumpMatrix("C_prev" + row_str, pCprev_hidden_size, 1, hidden_size_);
@@ -1069,8 +1069,8 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
     // DumpMatrix("o" + row_str, po, 1, hidden_size_);
 
     // calculate 'Ht'
-    auto* pH =
-        SafeRawPointer<T>(batched_output + row * hidden_size_ + b * hidden_size_, batched_output_end, hidden_size_);
+    float* pH = SafeRawPointer<T>(batched_output + row * hidden_size_ + b * hidden_size_,
+                                  batched_output_end, hidden_size_);
 
     // the C_prev_clipped location is not actually used as input - it's temporary storage for writing
     // the clipped Ct value to, before calling h(). As such a) it could just be a local variable
@@ -1079,7 +1079,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
 #ifdef PREVIOUS_BROKEN_VERSION
     float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped, C_prev_clipped_end, hidden_size_);
 #else
-    auto* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + b * hidden_size_, C_prev_clipped_end, hidden_size_);
+    float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + b * hidden_size_, C_prev_clipped_end, hidden_size_);
 #endif
 
     activation_h_.func(pC_cur, pC_prev_clipped, po, pH, hidden_size_, activation_h_.alpha, activation_h_.beta);
