@@ -341,7 +341,7 @@ This test is to ensure, we do not have cyclic dependent sub-graphs.
 Example: Sub-Graph-1{1,2,3,5} is invalid because the output of this cluster is input to UnSupportedOp whose output is again input to the same cluster.
 
 */
-TEST(NGraphExecutionProviderTest, Independent_SubGraphs) {
+TEST(NGraphExecutionProviderTest, DISABLED_Independent_SubGraphs) {
   NameMLValMap feeds;
   add_feeds(feeds, "A", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
 
