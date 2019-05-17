@@ -79,7 +79,7 @@ class UpsampleBase {
   }
 
   void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
-    const float* scale_data = scale->template Data<float>();
+    const auto* scale_data = scale->template Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
     if (scales.empty()) {

@@ -49,7 +49,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
                       const std::vector<int64_t>& axes_,
                       bool keepdims_,
                       bool check_no_transpose = false) {
-  const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
+  const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& input = *input_tensor_ptr;
 
@@ -400,7 +400,7 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
   Tensor* reduced;
   PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
 
-  int64_t* output_data = reduced->template MutableData<int64_t>();
+  auto* output_data = reduced->template MutableData<int64_t>();
 
   Eigen::MatrixXf::Index maxIndex;
   auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);
@@ -420,7 +420,7 @@ Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
   Tensor* reduced;
   PrepareForReduce<T>(ctx, transposedInputData, &reduced, block_size, blocks, axes_, keepdims_);
 
-  int64_t* output_data = reduced->template MutableData<int64_t>();
+  auto* output_data = reduced->template MutableData<int64_t>();
 
   Eigen::MatrixXf::Index minIndex;
   auto matrixData = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks);

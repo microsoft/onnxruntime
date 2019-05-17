@@ -233,7 +233,7 @@ void TreeEnsembleClassifier<T>::Initialize() {
     int64_t id1 = std::get<1>(leafnodedata_[i]);
     if (id0 != field0 || id1 != field1) {
       int64_t id = id0 * kOffset_ + id1;
-      int64_t position = static_cast<int64_t>(i);
+      auto position = static_cast<int64_t>(i);
       auto p3 = std::make_pair(id, position);
       leafdata_map_.insert(p3);
       field0 = id;
@@ -249,13 +249,13 @@ void TreeEnsembleClassifier<T>::Initialize() {
   for (size_t i = 0, end = nodes_treeids_.size(); i < end; ++i) {
     // make an index to look up later
     int64_t id = nodes_treeids_[i] * kOffset_ + nodes_nodeids_[i];
-    int64_t position = static_cast<int64_t>(i);
+    auto position = static_cast<int64_t>(i);
     auto p3 = std::make_pair(id, position);
     indices.insert(p3);
     it = parents.find(id);
     if (it == parents.end()) {
       // start counter at 0
-      int64_t b = (int64_t)0L;
+      auto b = (int64_t)0L;
       auto p1 = std::make_pair(id, b);
       parents.insert(p1);
     }
@@ -436,7 +436,7 @@ common::Status TreeEnsembleClassifier<T>::ProcessTreeNode(std::map<int64_t, floa
                                                           const T* x_data,
                                                           int64_t feature_base) const {
   // walk down tree to the leaf
-  NODE_MODE mode = static_cast<NODE_MODE>(nodes_modes_[treeindex]);
+  auto mode = static_cast<NODE_MODE>(nodes_modes_[treeindex]);
   int64_t loopcount = 0;
   int64_t root = treeindex;
   while (mode != NODE_MODE::LEAF) {
