@@ -109,8 +109,8 @@ def quantize_data(data, quantize_range, mode=DataQuantizationMode.Linear_NonScal
             S: scale
             z: zero point
     '''
-    rmin = min(data)
-    rmax = max(data)
+    rmin = min(min(data), 0)
+    rmax = max(max(data), 0)
 
     if mode == DataQuantizationMode.Linear_Scaled:
         max_range = max(abs(rmin), abs(rmax))

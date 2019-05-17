@@ -9,7 +9,7 @@ from quantize import quantize, QuantizationMode
 # Load the onnx model
 model = onnx.load('path/to/the/model.onnx')
 # Quantize
-quantized_model = quantize(model, per_channel=False, quantization_mode=QuantizationMode.IntegerOps_Dynamic)
+quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps_Dynamic)
 # Save the quantized model
 onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
 ```
@@ -19,25 +19,45 @@ onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
 The following quantization modes are supported.
 - **QuantizationMode.IntegerOps_Static**:
     Quantize using integer ops. Only [ConvInteger](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvInteger) and [MatMulInteger](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MatMulInteger) ops are supported now.
-    Inputs/activations are quantized using static scale and zero point values.
-    These values are specified through "input_quantization_params" option.
+    Inputs/activations are quantized using static scale and zero point values which are specified through "input_quantization_params" option.
+    ```python
+    quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps_Static,
+                               input_quantization_params={
+                                    'input_1': [np.uint8(113), np.float32(0.05)]
+                               })
+    ```
 
 - **QuantizationMode.IntegerOps_Dynamic**:
     Quantize using integer ops. Only ConvInteger and MatMulInteger ops are supported now.
-    Inputs/activations are quantized using dynamic scale and zero point values.
-    These values are computed while running the model.
+    Inputs/activations are quantized using dynamic scale and zero point values which are computed while running the model.
+    ```python
+    quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps_Dynamic)
+    ```
 
 - **QuantizationMode.QLinearOps_Static**:
     Quantize using QLinear ops. Only [QLinearConv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#qlinearconv) and [QLinearMatMul](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QLinearMatMul) ops are supported now.
-    Inputs/activations are quantized using static scale and zero point values.
-    These values are specified through "input_quantization_params" option.
-    In this mode, output scale and zero point values need to be specified using "output_quantization_params" option.
+    Inputs/activations are quantized using static scale and zero point values which are specified through "input_quantization_params" option.
+    Output scale and zero point values have to be specified using "output_quantization_params" option.
+    ```python
+    quantized_model = quantize(model, quantization_mode=QuantizationMode.QLinearOps_Static,
+                               input_quantization_params={
+                                    'input_1': [np.uint8(113), np.float32(0.05)]
+                               },
+                               output_quantization_params={
+                                    'output_1': [np.uint8(113), np.float32(0.05)]
+                               })
+    ```
 
 - **QuantizationMode.QLinearOps_Dynamic**:
     Quantize using QLinear ops. Only QLinearConv and QLinearMatMul ops are supported now.
-    Inputs/activations are quantized using dynamic scale and zero point values.
-    These values are computed while running the model.
-    In this mode, output scale and zero point values need to be specified using "output_quantization_params" option.
+    Inputs/activations are quantized using dynamic scale and zero point values which are computed while running the model.
+    Output scale and zero point values have to be specified using "output_quantization_params" option.
+    ```python
+    quantized_model = quantize(model, quantization_mode=QuantizationMode.QLinearOps_Dynamic,
+                               output_quantization_params={
+                                    'output_1': [np.uint8(113), np.float32(0.05)]
+                               })
+    ```
 
 ## Options
 
