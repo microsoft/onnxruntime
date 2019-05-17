@@ -111,10 +111,10 @@ static const SessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 template <typename T>
-void AddNonTensor(onnxruntime::MLValue& val, vector<py::object>& pyobjs) {
+void AddNonTensor(OrtValue& val, vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
-void AddNonTensorAsPyObj(onnxruntime::MLValue& val, vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
     AddNonTensor<MapStringToString>(val, pyobjs);
@@ -149,7 +149,7 @@ void AddNonTensorAsPyObj(onnxruntime::MLValue& val, vector<py::object>& pyobjs) 
   }
 }
 
-void AddTensorAsPyObj(onnxruntime::MLValue& val, vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
@@ -489,7 +489,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
-          MLValue ml_value;
+          OrtValue ml_value;
           CreateGenericMLValue(GetAllocator(), _.first, _.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
@@ -507,7 +507,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           feeds.insert(std::make_pair(_.first, ml_value));
         }
 
-        std::vector<MLValue> fetches;
+        std::vector<OrtValue> fetches;
         common::Status status;
 
         {

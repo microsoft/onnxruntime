@@ -8,14 +8,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__global__ void _TransposeKernel(
-    const size_t shape_rank,
-    const int64_t* input_strides,
-    const int64_t* perm,
-    const T* input_data,
-    const fast_divmod* fdm_output_strides,
-    T* output_data,
-    const size_t N) {
+__global__ void _TransposeKernel(size_t shape_rank, const int64_t* input_strides, const size_t* perm,
+                                 const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, size_t N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
@@ -30,29 +24,18 @@ __global__ void _TransposeKernel(
 }
 
 template <typename T>
-void TransposeImpl(
-    const size_t shape_rank,
-    const int64_t* input_strides,
-    const int64_t* perm,
-    const T* input_data,
-    const fast_divmod* fdm_output_strides,
-    T* output_data,
-    const size_t N) {
+void TransposeImpl(size_t shape_rank, const int64_t* input_strides, const size_t* perm, const T* input_data,
+                   const fast_divmod* fdm_output_strides, T* output_data, size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       shape_rank, input_strides, perm, input_data,
       fdm_output_strides, output_data, N);
 }
 
-#define SPECIALIZED_IMPL(T)                  \
-  template void TransposeImpl<T>(            \
-      const size_t shape_rank,               \
-      const int64_t* input_strides,          \
-      const int64_t* perm,                   \
-      const T* input_data,                   \
-      const fast_divmod* fdm_output_strides, \
-      T* output_data,                        \
-      const size_t N);
+#define SPECIALIZED_IMPL(T)                                                                                  \
+  template void TransposeImpl<T>(size_t shape_rank, const int64_t* input_strides, const size_t* perm,        \
+                                 const T* input_data, const fast_divmod* fdm_output_strides, T* output_data, \
+                                 size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

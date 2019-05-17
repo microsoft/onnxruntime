@@ -113,7 +113,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
     output_names = env_->GetModelOutputNames();
   }
 
-  std::vector<onnxruntime::MLValue> outputs(output_names.size());
+  std::vector<OrtValue> outputs(output_names.size());
 
   // Run
   OrtRunOptions run_options{};

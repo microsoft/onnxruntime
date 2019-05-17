@@ -30,15 +30,15 @@ class FunctionKernel : public OpKernel {
     }
   }
 
-  virtual ~FunctionKernel() {
+  ~FunctionKernel() override {
     if (release_func_ && func_state_) {
       release_func_(func_state_);
     }
   }
 
-  virtual Status Compute(OpKernelContext* context) const override {
+  Status Compute(OpKernelContext* context) const override {
     std::vector<ONNXRunTimeTensor> input_tensors;
-    for (int i = 0; i < num_inputs_; i++) {
+    for (int i = 0; static_cast<size_t>(i) < num_inputs_; i++) {
       const Tensor* input = context->Input<Tensor>(i);
       auto& shape = input->Shape();
       auto& dims = shape.GetDims();
@@ -56,7 +56,7 @@ class FunctionKernel : public OpKernel {
     if (ret != 0)
       return Status(common::ONNXRUNTIME, common::FAIL, "FuncKernel call failed with error code: " + std::to_string(ret));
 
-    for (int i = 0; i < num_outputs_; i++) {
+    for (int i = 0; static_cast<size_t>(i) < num_outputs_; i++) {
       TensorShape output_shape(std::vector<int64_t>(output_tensors[i].shape, output_tensors[i].shape + output_tensors[i].ndim));
       Tensor* output = context->Output(i, output_shape);
       auto data = output->MutableDataRaw();

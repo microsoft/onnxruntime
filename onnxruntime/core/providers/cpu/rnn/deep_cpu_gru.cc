@@ -164,26 +164,14 @@ namespace detail {
 template <typename T>
 class UniDirectionalGru {
  public:
-  UniDirectionalGru(AllocatorPtr allocator,
-                    const int seq_length,
-                    const int batch_size,
-                    const int input_size,
-                    const int hidden_size,
-                    const bool linear_before_reset,
-                    Direction direction,
-                    const gsl::span<const T>& bias,
-                    const gsl::span<const T>& initial_hidden_state,
-                    const ActivationFuncs::Entry& activation_func_f,
-                    const ActivationFuncs::Entry& activation_func_g,
-                    const float clip);
+  UniDirectionalGru(AllocatorPtr allocator, int seq_length, int batch_size, int input_size, int hidden_size,
+                    bool linear_before_reset, Direction direction, const gsl::span<const T>& bias,
+                    const gsl::span<const T>& initial_hidden_state, const ActivationFuncs::Entry& activation_func_f,
+                    const ActivationFuncs::Entry& activation_func_g, float clip);
 
-  void Compute(const gsl::span<const T>& inputs,
-               const gsl::span<const int>& sequence_lengths,
-               const int num_directions,
-               const gsl::span<const T>& input_weights,
-               const gsl::span<const T>& recurrent_weights,
-               gsl::span<T>& outputs,
-               gsl::span<T>& final_hidden_state);
+  void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
+               const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state);
 
   ~UniDirectionalGru() = default;
 
@@ -807,7 +795,8 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
       std::fill_n(final_hidden_state_dst, hidden_size_, T{});
       continue;
-    } else if (output_sequence) {
+    }
+    if (output_sequence) {
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);

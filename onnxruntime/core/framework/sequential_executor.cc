@@ -22,12 +22,10 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-Status SequentialExecutor::Execute(const SessionState& session_state,
-                                   const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<MLValue>& feeds,
-                                   const std::vector<int>& fetch_mlvalue_idxs,
-                                   std::vector<MLValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                   std::vector<OrtValue>& fetches,
+                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
   TimePoint tp;
@@ -205,9 +203,9 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger) {
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
-    auto mlvalue_idx = seq_exec_plan.to_be_freed[i];
-    VLOGS(logger, 1) << "Releasing mlvalue with index: " << mlvalue_idx;
-    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
+    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }
 
   return Status::OK();

@@ -222,8 +222,8 @@ void TreeEnsembleClassifier<T>::Initialize() {
   std::sort(std::begin(leafnodedata_), std::end(leafnodedata_), [](auto const& t1, auto const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
-    else
-      return std::get<1>(t1) < std::get<1>(t2);
+
+    return std::get<1>(t1) < std::get<1>(t2);
   });
   // make an index so we can find the leafnode data quickly when evaluating
   int64_t field0 = -1;
@@ -344,7 +344,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
       }
     } else  // binary case
     {
-      maxweight = classes.size() > 0 ? classes[0] : 0.f;  // only 1 class
+      maxweight = !classes.empty() ? classes[0] : 0.f;  // only 1 class
       if (using_strings_) {
         auto* y_data = Y->template MutableData<std::string>();
         if (classlabels_strings_.size() == 2 &&

@@ -18,7 +18,7 @@ void release_helper_func(void* allocator, void* p) {
 DType ORT_type_to_c_type(MLDataType type) {
   if (type == DataTypeImpl::GetType<float>())
     return DType::TFloat32;
-  else if (type == DataTypeImpl::GetType<double>())
+  if (type == DataTypeImpl::GetType<double>())
     return DType::TDouble;
   else if (type == DataTypeImpl::GetType<int32_t>())
     return DType::TInt32;

@@ -108,8 +108,10 @@ Status upsampleLiner(const T* input,
     return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
-    std::vector<int64_t> val1, val2;
-    std::vector<float> d1, d2;
+    std::vector<int64_t> val1;
+    std::vector<int64_t> val2;
+    std::vector<float> d1;
+    std::vector<float> d2;
     size_t cur_idx = i;
     //val1, vla2, d1, d2 are in reverse order
     for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
@@ -253,8 +255,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       if (dims.size() != 4)
         return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
 
-      const int64_t batch_size = dims[0], num_channels = dims[1];
-      const int64_t input_height = dims[2], input_width = dims[3];
+      const int64_t batch_size = dims[0];
+      const int64_t num_channels = dims[1];
+      const int64_t input_height = dims[2];
+      const int64_t input_width = dims[3];
 
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
