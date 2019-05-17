@@ -963,7 +963,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
           // No such output_arg matching this input_arg.
           // This input arg should be fed when running evaluation.
           // See if it's present in the outer scope. If so it will be 'fed' by the execution frame
-          // providing access to the MLValue from the outer scope. Pass the name back up so nodes can
+          // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
           // be linked correctly at that level.
           if (outer_scope_node_args.find(input_arg->Name()) != outer_scope_node_args.cend()) {
             outer_scope_node_args_consumed.push_back(input_arg->Name());

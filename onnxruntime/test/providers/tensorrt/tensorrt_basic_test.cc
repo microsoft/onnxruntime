@@ -14,8 +14,7 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
-void VerifyOutputs(const std::vector<MLValue>& fetches,
-                   const std::vector<int64_t>& expected_dims,
+void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
@@ -62,11 +61,11 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value_x;
+  OrtValue ml_value_x;
   CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
-  MLValue ml_value_y;
+  OrtValue ml_value_y;
   CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
-  MLValue ml_value_z;
+  OrtValue ml_value_z;
   CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -76,7 +75,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("M");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};

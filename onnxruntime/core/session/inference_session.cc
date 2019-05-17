@@ -31,7 +31,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/mlvalue_name_idx_map.h"
+#include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
@@ -521,7 +521,7 @@ common::Status InferenceSession::CheckTypes(MLDataType actual, MLDataType expect
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
-                                                const std::vector<MLValue>& feeds) {
+                                                const std::vector<OrtValue>& feeds) {
   if (feed_names.size() != feeds.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Size mismatch: feed_names has ",
@@ -554,7 +554,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 }
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
-                                                 const std::vector<MLValue>* p_fetches) {
+                                                 const std::vector<OrtValue>* p_fetches) {
   if (!p_fetches) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
@@ -585,11 +585,9 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
-Status InferenceSession::Run(const RunOptions& run_options,
-                             const std::vector<std::string>& feed_names,
-                             const std::vector<MLValue>& feeds,
-                             const std::vector<std::string>& output_names,
-                             std::vector<MLValue>* p_fetches) {
+Status InferenceSession::Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
+                             const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+                             std::vector<OrtValue>* p_fetches) {
   auto tp = session_profiler_.StartTime();
   Status retval = Status::OK();
 
@@ -652,18 +650,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
   return retval;
 }
 
-common::Status InferenceSession::Run(const NameMLValMap& feeds,
-                                     const std::vector<std::string>& output_names,
-                                     std::vector<MLValue>* p_fetches) {
+common::Status InferenceSession::Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+                                     std::vector<OrtValue>* p_fetches) {
   return Run(RunOptions(), feeds, output_names, p_fetches);
 }
 
-common::Status InferenceSession::Run(const RunOptions& run_options,
-                                     const NameMLValMap& feeds_map,
-                                     const std::vector<std::string>& output_names,
-                                     std::vector<MLValue>* p_fetches) {
+common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
+                                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches) {
   std::vector<std::string> feed_names;
-  std::vector<MLValue> feeds;
+  std::vector<OrtValue> feeds;
 
   auto num_feeds = feeds_map.size();
   feed_names.reserve(num_feeds);

@@ -64,7 +64,7 @@ ONNX_NAMESPACE::OpSchema GetUnSupportedOpSchema() {
 }
 
 void add_feeds(NameMLValMap& feeds, std::string name, std::vector<int64_t> dims, std::vector<float> value) {
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, value, &ml_value);
   feeds.insert(std::make_pair(name, ml_value));
 }
@@ -104,7 +104,7 @@ void RunTest(const std::string& model_path, const NameMLValMap& feeds, const std
   run_options.run_tag = "nGraph EP test tag";
   run_options.run_log_verbosity_level = 1;
 
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
   status = session_object.Run(run_options, feeds, output_names, &fetches);
 
   if (!status.IsOK()) {

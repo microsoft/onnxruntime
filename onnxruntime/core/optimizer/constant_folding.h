@@ -27,10 +27,9 @@ class ConstantFolding : public GraphTransformer {
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
 
-  /** Create a TensorProto that has the same value as the given MLValue 
+  /** Create a TensorProto that has the same value as the given OrtValue
   and the same type and dimensions as the given NodeArg. */
-  void BuildTensorProtoForInitializer(const MLValue& mlvalue,
-                                      const NodeArg& constant_node_arg,
+  void BuildTensorProtoForInitializer(const OrtValue& ort_value, const NodeArg& constant_node_arg,
                                       ONNX_NAMESPACE::TensorProto& tensorproto) const;
 };
 
