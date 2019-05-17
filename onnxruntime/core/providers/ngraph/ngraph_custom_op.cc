@@ -96,7 +96,7 @@ void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* con
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
-      ort.ReleaseTensorTypeAndShape(tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
       for (size_t dim = 0; dim < tensor_shape.size(); dim++) {
         g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
@@ -170,7 +170,8 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       const auto& dtype = ng_result->get_element_type();
       const auto& shape = ng_result->get_shape();
 
-      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, shape.data(), shape.size());
+      std::vector<int64_t> ort_shape{shape.begin(), shape.end()};
+      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_shape.data(), ort_shape.size());
       void* output_data = ort.GetTensorMutableData<void*>(output_tensor);
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
     }
