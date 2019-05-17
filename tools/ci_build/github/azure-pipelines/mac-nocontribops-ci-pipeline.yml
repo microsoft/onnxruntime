@@ -18,13 +18,13 @@ jobs:
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --azure_region centralus
+        arguments: --test_data_url https://onnxruntimetestdata.blob.core.windows.net/models/20181113.zip --azure_region centralus
         pythonInterpreter: '/usr/local/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
     - script: |
         sudo python3 -m pip install numpy==1.15.0
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --disable_contrib_ops --config Debug Release
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --enable_onnx_tests --skip_submodule_sync --parallel --build_shared_lib --disable_contrib_ops --config Debug Release
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
