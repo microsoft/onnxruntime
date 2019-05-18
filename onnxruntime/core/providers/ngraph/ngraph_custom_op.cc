@@ -171,7 +171,7 @@ Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* cont
       const auto& shape = ng_result->get_shape();
 
       std::vector<int64_t> ort_shape{shape.begin(), shape.end()};
-      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_shape.data(), ort_shape.size());
+      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index++, ort_shape.data(), ort_shape.size());
       void* output_data = ort.GetTensorMutableData<void>(output_tensor);
       ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
     }
