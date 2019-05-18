@@ -928,9 +928,8 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           "Constrain indice type to int32 or int64")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-		/*
         if (!hasNInputShapes(ctx, 2)) {
-          fail_shape_inference("GatherND requires two tensor inputs.");
+			return;
         }		
         auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
@@ -955,7 +954,6 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
                ->mutable_shape()
                ->add_dim() = data_shape.dim(i);
         }
-		*/
       })
       .SetDoc(R"DOC(
 Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
