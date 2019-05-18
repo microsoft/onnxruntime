@@ -298,7 +298,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
       output_dim_sizes[bindingIndex] = dim_size;
 
-      const auto& graph_output = model_proto.graph().output();//slx
+      const auto& graph_output = model_proto.graph().output();  //slx
       const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
       if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
         output_shapes[bindingIndex].pop_back();
@@ -357,7 +357,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
-        ort.ReleaseTensorTypeAndShape(tensor_info);
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         const float* input = ort.GetTensorData<float>(input_tensor);
 
         const int input_batch_size = tensor_shape[0];
