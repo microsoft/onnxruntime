@@ -252,7 +252,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       }
       TestResultStat per_case_stat;
       std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, env ,sf);
+      TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
       RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
       stat += per_case_stat;
     });
@@ -321,10 +321,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"flatten_default_axis", "disable reason"},
       {"gemm_broadcast", "disable reason"},
       {"gemm_nobroadcast", "disable reason"},
-      {"greater", "disable reason"},
-      {"greater_bcast", "disable reason"},
-      {"less", "disable reason"},
-      {"less_bcast", "disable reason"},
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
