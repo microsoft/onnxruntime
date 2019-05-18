@@ -285,7 +285,7 @@ static void RunSession(InferenceSession& session_object,
                        std::vector<int64_t>& dims_y,
                        std::vector<double>& values_y) {
   // prepare inputs
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X1", ml_value));
@@ -293,7 +293,7 @@ static void RunSession(InferenceSession& session_object,
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("Y4");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // Now run
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);

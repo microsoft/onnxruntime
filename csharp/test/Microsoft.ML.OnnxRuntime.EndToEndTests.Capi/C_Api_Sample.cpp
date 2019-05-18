@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
     printf("Input %zu : type=%d\n", i, type);
 
     // print input shapes/dims
-    size_t num_dims = OrtGetNumOfDimensions(tensor_info);
+    size_t num_dims = OrtGetDimensionsCount(tensor_info);
     printf("Input %zu : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);

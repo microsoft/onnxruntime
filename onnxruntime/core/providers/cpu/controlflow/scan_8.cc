@@ -108,8 +108,8 @@ class Scan8Impl {
   Status AllocateOutputTensors();
   Status CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& loop_state_variables);
 
-  using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const MLValue>::Iterator>;
-  using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<MLValue>::Iterator>;
+  using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>;
+  using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<OrtValue>::Iterator>;
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
@@ -129,7 +129,7 @@ class Scan8Impl {
   std::vector<std::string> subgraph_output_names_;
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
 
-  std::unordered_map<std::string, const MLValue*> implicit_inputs_;
+  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 };
 
 template <>
@@ -212,9 +212,9 @@ static const Tensor& GetSubgraphInputTensor(const OpKernelContext& context, int 
   return *context.Input<Tensor>(index + 1);
 }
 
-// get the Scan input that is used in a call to the subgraph as an MLValue,
+// get the Scan input that is used in a call to the subgraph as an OrtValue,
 // skipping over the optional arg to the Scan operator
-static const MLValue& GetSubgraphInputMLValue(const OpKernelContextInternal& context, int index) {
+static const OrtValue& GetSubgraphInputMLValue(const OpKernelContextInternal& context, int index) {
   // skip the optional sequence_lens input
   return *context.GetInputMLValue(index + 1);
 }
@@ -294,8 +294,8 @@ Status Scan8Impl::ValidateInput() {
     auto d = sequence_lens_tensor_->DataAsSpan<int64_t>();
     sequence_lens_.assign(d.cbegin(), d.cend());
 
-    if (std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
-                    [this](int64_t value) { return value > 0 && value <= max_sequence_len_; }) == false) {
+    if (!std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
+                     [this](int64_t value) { return value > 0 && value <= max_sequence_len_; })) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid entries in sequence_lens. Max sequence length was ", max_sequence_len_);
     }
@@ -341,17 +341,17 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
   // 2. For each batch item, create the LoopStateVariable instances that can be used to pass state between
   //    each iteration of the subgraph. This minimizes copying of data during each iteration.
 
-  std::vector<MLValueTensorSlicer<const MLValue>::Iterator> loop_state_input_iterators;
+  std::vector<MLValueTensorSlicer<const OrtValue>::Iterator> loop_state_input_iterators;
   loop_state_input_iterators.reserve(num_loop_state_variables_);
 
   // create the input and output slice iterator for each loop state variable.
   for (int i = 0; i < num_loop_state_variables_; ++i) {
-    const MLValue& mlvalue = GetSubgraphInputMLValue(context_, i);
-    MLValue* p_mlvalue = context_.GetOutputMLValue(i);
+    const OrtValue& ort_value = GetSubgraphInputMLValue(context_, i);
+    OrtValue* p_mlvalue = context_.GetOutputMLValue(i);
 
-    ORT_ENFORCE(p_mlvalue, "Output MLValue has not been created for loop state variable output ", i);
+    ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_input_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue).begin());
+    loop_state_input_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
   }
 
   batch_loop_state_variables.clear();
@@ -370,7 +370,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
       auto& input_iter = loop_state_input_iterators[i];
       auto& output_iter = *output_iterators_[i];
 
-      variables.push_back(LoopStateVariable(*input_iter, *output_iter, sequence_lens_[b], alloc));
+      variables.emplace_back(*input_iter, *output_iter, sequence_lens_[b], alloc);
 
       ++input_iter;
       ++output_iter;
@@ -397,19 +397,19 @@ Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* c
   for (int64_t b = 0; b < batch_size_; ++b) {
     auto sequence_len = sequence_lens_[b];
 
-    // Setup input MLValue streams
-    std::vector<MLValueTensorSlicer<const MLValue>::Iterator> scan_input_stream_iterators;
+    // Setup input OrtValue streams
+    std::vector<MLValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
     scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
 
     for (int i = num_loop_state_variables_, end = num_variadic_inputs_; i < end; ++i) {
-      const auto& mlvalue = GetSubgraphInputMLValue(context_, i);
+      const auto& ort_value = GetSubgraphInputMLValue(context_, i);
 
       // forward
       if (directions_[i - num_loop_state_variables_] == static_cast<int64_t>(ScanDirection::kForward)) {
         // the iterator is self contained, so we don't need to keep the MLValueTensorSlicer instance around
-        scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue, 1, b).begin());
+        scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).begin());
       } else {  // reverse
-        scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue, 1, b).rbegin());
+        scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).rbegin());
         // need to skip past the empty entries at the end of the input if sequence length is short
         auto offset = max_sequence_len_ - sequence_len;
         if (offset > 0) {
