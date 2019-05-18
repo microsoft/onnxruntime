@@ -592,6 +592,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   addOpSchemaSubmodule(m);
+
+  auto providerFactory = onnxruntime::CreateExecutionProviderFactory_CPU(0);
+  auto provider = providerFactory->CreateProvider();
+  auto kernelRegistry = provider->GetKernelRegistry();
 #endif
 
 }
