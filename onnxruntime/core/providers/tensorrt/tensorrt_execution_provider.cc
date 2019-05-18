@@ -216,65 +216,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       output_map[output_defs[i]->Name()] = i;
     }
 
-    // Reconstruct graph from fused node's function body
+    // Reconstruct graph proto from fused node's function body
     const auto* func_body = fused_node->GetFunctionBody();
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
     onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
-    onnxruntime::Graph& graph = model.MainGraph();
-
-    for (const auto& graph_body_node : graph_body.Nodes()) {
-      graph.AddNode(graph_body_node);
-    }
-
-    ORT_ENFORCE(graph.Resolve().IsOK());
-
-    // Add initializer to graph
-    const auto& init_tensors = graph_body.GetAllInitializedTensors();
-    for (const auto& tensor : init_tensors) {
-      graph.AddInitializedTensor(*(tensor.second));
-    }
-
-    // Add fused node's outputs to graph's outputs if the outputs are not included yet
-    // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    const auto& graph_output = model_proto.graph().output();
-    std::unordered_set<string> graph_outputs_set;
-    graph_outputs_set.reserve(graph_output.size());
-    for (int i = 0, end = graph_output.size(); i < end; ++i) {
-      graph_outputs_set.insert(graph_output[i].name());
-    }
-
-    const auto& graph_value_info = model_proto.graph().value_info();
-    std::vector<int> output_to_add;
-    std::vector<int> location;
-    int num_defs = output_defs.size();
-    for (int i = num_defs - 1; i >= 0; --i) {
-      const std::string& output_name = output_defs[i]->Name();
-      if (graph_outputs_set.find(output_name) == graph_outputs_set.end()) {
-        for (int j = 0, end = graph_value_info.size(); j < end; ++j) {
-          if (output_name == graph_value_info[j].name()) {
-            output_to_add.push_back(j);
-            location.push_back(num_defs - 1 - i);
-          }
-        }
-      }
-    }
-
-    // Add outputs and move them to the right places
-    auto* mutable_output = model_proto.mutable_graph()->mutable_output();
-    for (int i = 0, end = output_to_add.size(); i < end; ++i) {
-      *(mutable_output->Add()) = graph_value_info[output_to_add[i]];
-      int start_index = (*mutable_output).size() - 1;
-      int end_index = start_index - location[i];
-      for (int j = start_index; j > end_index; --j) {
-        mutable_output->SwapElements(j, j - 1);
-      }
-    }
-
-    // Set version
+    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Create TensorRT engine
@@ -348,8 +298,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
       output_dim_sizes[bindingIndex] = dim_size;
 
-      const auto& tensor_type = graph_output[i].type().tensor_type();
-      const auto& tensor_shape = tensor_type.shape();
+      const auto& graph_output = model_proto.graph().output();//slx
+      const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
       if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
         output_shapes[bindingIndex].pop_back();
       }

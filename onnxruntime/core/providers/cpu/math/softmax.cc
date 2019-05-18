@@ -15,7 +15,7 @@ Status Softmax<float>::Compute(OpKernelContext* ctx) const {
   const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
-  const TensorShape input_shape{X.Shape()};
+  const TensorShape& input_shape{X.Shape()};
 
   VLOGS(ctx->Logger(), 2) << "Input tensor shape: " << input_shape;
 

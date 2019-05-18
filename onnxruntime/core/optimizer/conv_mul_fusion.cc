@@ -24,17 +24,27 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   if (!Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
       !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
       conv_W_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
-      conv_W_tensor_proto->dims_size() < 4 ||
-      !(mul_B_tensor_proto->dims_size() == 0 ||
-        (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1 &&
-         conv_W_tensor_proto->dims(0) == mul_B_tensor_proto->dims(0)))) {
+      conv_W_tensor_proto->dims_size() < 4) {
     return Status::OK();
   }
 
-  // The dimensions of mul_B should be equal to 1 except first dimension.
   if (mul_B_tensor_proto->dims_size() != 0) {
-    for (int i = 1; i < mul_B_tensor_proto->dims_size(); i++) {
-      if (mul_B_tensor_proto->dims(i) != 1) {
+    int axis;
+    if (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size()) {
+      // Test for broadcast multiply such as 1xCx1x1 for a 2D convolution.
+      axis = 1;
+    } else if (mul_B_tensor_proto->dims_size() == conv_W_tensor_proto->dims_size() - 1) {
+      // Test for broadcast multiply such as Cx1x1 for a 2D convolution.
+      axis = 0;
+    } else {
+      return Status::OK();
+    }
+    if (mul_B_tensor_proto->dims(axis) != conv_W_tensor_proto->dims(0)) {
+      return Status::OK();
+    }
+    // The dimensions of mul_B should be equal to 1 except axis dimension.
+    for (int i = 0; i < mul_B_tensor_proto->dims_size(); i++) {
+      if (i != axis && mul_B_tensor_proto->dims(i) != 1) {
         return Status::OK();
       }
     }
@@ -54,7 +64,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != mul_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
-        (mul_B_tensor_proto->dims_size() != 0 && conv_B_tensor_proto->dims(0) != mul_B_tensor_proto->dims(0))) {
+        conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
     conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
@@ -102,14 +112,9 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node) {
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
-      next_node.GetInputEdgesCount() != 1 ||
-      graph.IsNodeOutputsInGraphOutputs(next_node) ||
-      next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
-    return false;
-  }
-
-  return true;
+  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
+           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+           next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
 }
 
 }  // namespace onnxruntime

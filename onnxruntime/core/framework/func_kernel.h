@@ -32,7 +32,7 @@ class FunctionKernel : public OpKernel {
     }
   }
 
-  virtual ~FunctionKernel() {
+  ~FunctionKernel() override {
     if (release_func_ && func_state_) {
       release_func_(func_state_);
     }

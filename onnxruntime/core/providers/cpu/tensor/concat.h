@@ -25,7 +25,7 @@ class ConcatBase {
       int64_t axis_pitch;
     };
     std::vector<InputInfo> inputs;
-    size_t output_num_elements;
+    int64_t output_num_elements;
     int64_t output_axis_pitch;
     Tensor* output_tensor;
   };

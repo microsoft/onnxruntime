@@ -51,7 +51,8 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 #pragma omp parallel for
 #endif
   for (int64_t index = 0; index < M * N; ++index) {
-    int64_t batch = index / N, i = index % N;
+    int64_t batch = index / N;
+    int64_t i = index % N;
 
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
@@ -93,7 +94,8 @@ Status Gather::Compute(OpKernelContext* context) const {
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
     return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
-  } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
+  }
+  if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
     return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }

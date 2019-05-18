@@ -32,11 +32,11 @@ struct FeedsFetchesInfo {
       : feed_names{feed_names_in}, output_names{output_names_in} {}
 
   static Status MapNamesToMLValueIdxs(const std::vector<std::string>& names,
-                                      const MLValueNameIdxMap& mlvalue_name_idx_map,
-                                      std::vector<int>& mlvalue_idxs);
+                                      const MLValueNameIdxMap& ort_value_name_idx_map,
+                                      std::vector<int>& ort_value_idxs);
 
-  // set the mlvalue_idxs for the current values in feed_names and output_names
-  Status SetMLValueIdxs(const MLValueNameIdxMap& mlvalue_name_idx_map);
+  // set the ort_value_idxs for the current values in feed_names and output_names
+  Status SetMLValueIdxs(const MLValueNameIdxMap& ort_value_name_idx_map);
 
   std::vector<std::string> feed_names;
   std::vector<std::string> output_names;
@@ -53,9 +53,8 @@ class FeedsFetchesManager {
     const IExecutionProvider* copy_provider = nullptr;
   };
 
-  static Status Create(const std::vector<std::string>& feed_names,
-                       const std::vector<std::string>& output_names,
-                       const MLValueNameIdxMap& mlvalue_name_idx_map,
+  static Status Create(const std::vector<std::string>& feed_names, const std::vector<std::string>& output_names,
+                       const MLValueNameIdxMap& ort_value_name_idx_map,
                        std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
   FeedsFetchesManager(FeedsFetchesInfo&& info) : feeds_fetches_info_{info} {}
