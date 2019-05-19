@@ -114,29 +114,31 @@ class NchwcConvPoolTransformer : public GraphTransformer {
 
         // process conv inputs.
         if (do_nchwc_conv) {
-          std::vector<Node::EdgeEnd> input_edges;
-          for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
-            input_edges.push_back(*it);
-          }
-          for (auto& edge : input_edges) {
-            graph.RemoveEdge(edge.GetNode().Index(), node.Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
-          }
+          if (do_reorder_input) {
+            std::vector<Node::EdgeEnd> input_edges;
+            for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
+              input_edges.push_back(*it);
+            }
+            for (auto& edge : input_edges) {
+              graph.RemoveEdge(edge.GetNode().Index(), node.Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
+            }
 
-          // Insert a ReorderInput node if input X is not from a reordered output,
-          // otherwise both ReorderInput and ReorderOutput nodes are eliminated, no need to insert reorder nodes.
-          if (!reordered_inputs[0]) {
-            auto input_original_arg = conv_inputs[0];
-            std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
-            auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
-            Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderInput"),
-                                                     "ReorderInput",
-                                                     "ReorderInput",
-                                                     std::vector<NodeArg*>{input_original_arg},
-                                                     std::vector<NodeArg*>{input_reorder_arg},
-                                                     nullptr,
-                                                     kMSDomain);
-            reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
-            conv_inputs[0] = input_reorder_arg;
+            // Insert a ReorderInput node if input X is not from a reordered output,
+            // otherwise both ReorderInput and ReorderOutput nodes are eliminated, no need to insert reorder nodes.
+            if (!reordered_inputs[0]) {
+              auto input_original_arg = conv_inputs[0];
+              std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
+              auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
+              Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderInput"),
+                                                       "ReorderInput",
+                                                       "ReorderInput",
+                                                       std::vector<NodeArg*>{input_original_arg},
+                                                       std::vector<NodeArg*>{input_reorder_arg},
+                                                       nullptr,
+                                                       kMSDomain);
+              reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
+              conv_inputs[0] = input_reorder_arg;
+            }
           }
         } else {  //Don't do nchwc conv, so insert a ReorderOutput node for each input that comes from a reordered output
           for (int i : reordered_inputs) {
@@ -487,8 +489,8 @@ class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
-        for (auto iter = node.InputEdgesBegin(); iter != node.InputEdgesEnd(); ++iter) {
-          auto input_edge = *iter;
+        if (node.InputEdgesBegin() != node.InputEdgesEnd()) {
+          auto input_edge = *node.InputEdgesBegin();
           auto& input_node = *graph.GetNode(input_edge.GetNode().Index());
           const auto& attrs = input_node.GetAttributes();
 
