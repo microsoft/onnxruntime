@@ -249,7 +249,7 @@ class NchwcConvPoolTransformer : public GraphTransformer {
 
           // Create the replacement Nchwc Pool node.
           std::string nchwc_pool_name = graph.GenerateNodeName("NchwcMaxPool");
-          Node& nchwc_pool_node = graph.AddNode(node.Name() + "_nchwc",
+          Node& nchwc_pool_node = graph.AddNode(pool_outputs[0]->Name() + "_nchwc",
                                                 "NchwcMaxPool",
                                                 nchwc_pool_name,
                                                 pool_inputs,
@@ -524,7 +524,7 @@ class NchwcConvReluFusion : public onnxruntime::GraphTransformer {
 
     return Status::OK();
   }
-};
+};  // namespace onnxruntime
 
 NchwcTransformer::NchwcTransformer() noexcept : onnxruntime::GraphTransformer("NchwcTransformer"), graph_transformer_mgr_{50} {
   // As implemented, these transforms can require a large number of steps to
