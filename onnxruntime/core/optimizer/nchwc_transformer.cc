@@ -140,22 +140,20 @@ class NchwcConvPoolTransformer : public GraphTransformer {
               conv_inputs[0] = input_reorder_arg;
             }
           }
-        } else {  //Don't do nchwc conv, so insert a ReorderOutput node for each input that comes from a reordered output
-          for (int i : reordered_inputs) {
-            if (reordered_inputs[i]) {
-              NodeArg* input_original_arg = conv_inputs[i];
-              std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
-              auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
-              Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
-                                                       "ReorderOutput",
-                                                       "ReorderOutput",
-                                                       std::vector<NodeArg*>{input_original_arg},
-                                                       std::vector<NodeArg*>{input_reorder_arg},
-                                                       nullptr,
-                                                       kMSDomain);
-              reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
-              conv_inputs[i] = input_reorder_arg;
-            }
+        } else {  //Don't do nchwc conv, so insert a ReorderOutput node for input X that comes from a reordered output
+          if (reordered_inputs[0]) {
+            NodeArg* input_original_arg = conv_inputs[0];
+            std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
+            auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
+            Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
+                                                     "ReorderOutput",
+                                                     "ReorderOutput",
+                                                     std::vector<NodeArg*>{input_original_arg},
+                                                     std::vector<NodeArg*>{input_reorder_arg},
+                                                     nullptr,
+                                                     kMSDomain);
+            reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
+            conv_inputs[0] = input_reorder_arg;
           }
         }
 
@@ -297,19 +295,16 @@ class NchwcConvPoolTransformer : public GraphTransformer {
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
         bool all_inputs_reorder_output = true;
-        bool no_input_reorder_output = true;
-        Node::EdgeSet reordered_edges;
+        Node::EdgeSet to_reorder_inputs;
         for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
           Node::EdgeEnd corresponding_output_edge(node, (*it).GetSrcArgIndex(), (*it).GetDstArgIndex());
           if (reordered_output_edges.find(corresponding_output_edge) == reordered_output_edges.end()) {
             all_inputs_reorder_output = false;
-            reordered_edges.insert(corresponding_output_edge);
           } else {
-            no_input_reorder_output = false;
+            to_reorder_inputs.insert(corresponding_output_edge);
             reordered_output_edges.erase(corresponding_output_edge);
           }
         }
-        if (no_input_reorder_output) continue;
 
         if (all_inputs_reorder_output) {
           //move reorder node from inputs to outputs
@@ -333,10 +328,10 @@ class NchwcConvPoolTransformer : public GraphTransformer {
           }
         } else {
           // Insert ReorderOutput
-          for (Node::EdgeEnd edge : reordered_edges) {
+          for (Node::EdgeEnd edge : to_reorder_inputs) {
             auto nodearg_index = edge.GetDstArgIndex();
             NodeArg* input_original_arg = node.MutableInputDefs()[nodearg_index];
-            std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
+            std::string input_reorder_def_name = graph.GenerateNodeArgName("ReorderOutput");
             auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
             Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
                                                      "ReorderOutput",
