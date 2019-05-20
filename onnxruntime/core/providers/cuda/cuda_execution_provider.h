@@ -260,7 +260,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   virtual const int GetQueueID() override {
-    std::lock_guard<OrtMutex> lock(thread_queue_id_map_mutex_);
+    std::lock_guard<OrtMutex> lock(queue_ids_mutex_);
     cuda_stream_id_pos_ = cuda_stream_id_pos_ % cuda_stream_ids_.size();
     return cuda_stream_ids_.at(cuda_stream_id_pos_++);
   }
