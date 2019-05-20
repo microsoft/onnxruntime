@@ -600,7 +600,7 @@ if (onnxruntime_BUILD_SERVER)
 
   onnxruntime_protobuf_generate(
           APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/server/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf
-          PROTOS ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto 
+          PROTOS ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto ${ONNXRUNTIME_ROOT}/server/protobuf/onnx-ml.proto
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
@@ -610,6 +610,12 @@ if (onnxruntime_BUILD_SERVER)
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/server_test
     COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_integration_test_server_src}
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
+      COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_CURRENT_BINARY_DIR}/onnx_ml_pb2.py
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_CURRENT_BINARY_DIR}/predict_pb2.py
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
   )
 
