@@ -3,6 +3,7 @@
 
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_allocator.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
@@ -297,7 +298,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
       output_dim_sizes[bindingIndex] = dim_size;
 
-      const auto& graph_output = model_proto.graph().output();//slx
+      const auto& graph_output = model_proto.graph().output();  //slx
       const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
       if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
         output_shapes[bindingIndex].pop_back();
@@ -334,15 +335,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     };
 
     // Create compute function
-    compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
-      ORT_UNUSED_PARAMETER(num_inputs);
-      ORT_UNUSED_PARAMETER(num_outputs);
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+      Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& input_dim_sizes = (trt_state->input_info)[1];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
       const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
       std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
+
       int num_binding_inputs = input_indexes.size();
       int num_binding_outputs = output_indexes.size();
       int total_bindings = num_binding_inputs + num_binding_outputs;
@@ -353,15 +354,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        const auto& tensor_input = input_tensors[input_indexes[i]];
-        const auto& tensor_shape = tensor_input.shape;
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
+        auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+        const float* input = ort.GetTensorData<float>(input_tensor);
+
         const int input_batch_size = tensor_shape[0];
         if (i > 0 && batch_size != input_batch_size) {
           ORT_THROW("Input batch size is inconsistent");
         }
         batch_size = input_batch_size;
 
-        const float* input = static_cast<float*>(tensor_input.data);
         CHECK_CUDA(cudaMalloc(&buffers[i], input_batch_size * input_dim_sizes[i] * sizeof(float)));
         CHECK_CUDA(cudaMemcpy(buffers[i], input, input_batch_size * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
       }
@@ -377,18 +381,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Copy TRT outputs to output tensors
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        // Setup output tensor property
         int output_index = output_indexes[i];
         output_shapes[i].insert(output_shapes[i].begin(), batch_size);
-        output_tensors[output_index].dtype = input_tensors[0].dtype;
-        // TODO: shape inference
-        const auto& shape_size = output_shapes[i].size();
-        output_tensors[output_index].ndim = shape_size;
-        output_tensors[output_index].shape = new int64_t[shape_size];
-        memcpy(output_tensors[output_index].shape, &output_shapes[i][0], sizeof(int64_t) * shape_size);
-        output_tensors[output_index].data = (*(trt_state->test_allocate_func))(trt_state->allocator, 64, sizeof(double) * batch_size * output_dim_sizes[i]);
-
-        CHECK_CUDA(cudaMemcpy(output_tensors[output_index].data, buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
+        CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
       }
 
       // Sync stream

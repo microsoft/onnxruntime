@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime
                 int width = 0;
                 _onnxValueHandle = onnxValueHandle;
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(onnxValueHandle, out typeAndShape));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
                 TensorElementType elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
                 TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
 
