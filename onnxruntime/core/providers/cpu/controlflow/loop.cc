@@ -114,6 +114,8 @@ class LoopImpl {
 
   int64_t max_trip_count_;
   bool condition_;
+  size_t init_iter_num_rank_;
+  size_t init_condition_rank_;
 
   int num_loop_carried_vars_;
   int num_subgraph_inputs_;
@@ -156,9 +158,11 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
       implicit_inputs_{context_.GetImplicitInputs()} {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
+  init_iter_num_rank_ = max_trip_count_tensor->Shape().NumDimensions();
 
   auto cond_tensor = context.Input<Tensor>(1);
   condition_ = cond_tensor ? *cond_tensor->Data<bool>() : true;
+  init_condition_rank_ = cond_tensor->Shape().NumDimensions();
 
   num_loop_carried_vars_ = context.InputCount() - 2;  // skip 'M' and 'cond'
   num_subgraph_inputs_ = num_loop_carried_vars_ + 2;  // iter_num, cond, loop carried vars
@@ -166,10 +170,10 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
 }
 
 template <typename T>
-static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value) {
+static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
-                                                              TensorShape({1}),
+                                                              is_1d ? TensorShape({1}) : TensorShape({}),
                                                               allocator);
 
   *p_tensor->MutableData<T>() = value;
@@ -202,12 +206,18 @@ Status LoopImpl::Initialize() {
                            " but has ", num_subgraph_outputs);
   }
 
+  if (init_condition_rank_ >= 2 || init_iter_num_rank_ >= 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "'Loop' input 'M' and 'cond' should be a scalar tensor, but have ranks of ",
+                           init_condition_rank_, " and ", init_iter_num_rank_);
+  }
+
   AllocatorPtr allocator;
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_);
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, init_condition_rank_);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, init_iter_num_rank_);
 
   subgraph_input_names_.reserve(num_subgraph_inputs_);
   for (int i = 0; i < num_subgraph_inputs_; ++i) {
