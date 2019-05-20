@@ -256,6 +256,16 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             if(auto_pad == "" || auto_pad == "SAME_LOWER" || auto_pad == "SAME_UPPER"){
                 return result;
             }
+
+            auto dilations_ints = attributes["dilations"].ints();
+            if(dilations_ints.size() != 0){
+                if(dilations_ints[0] > 1)
+                    return result;
+            }
+
+            auto ceil_mode = attributes["ceil_mode"].i();
+            if(ceil_mode != 0)
+                return result;
             if(node->OutputDefs().size() > 1){
                 return result;
             }
