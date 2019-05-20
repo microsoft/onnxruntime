@@ -12,7 +12,7 @@
 #include "ngraph_custom_op.h"
 
 #if defined(_MSC_VER)
-#pragma warning(disable:4244 4245)
+#pragma warning(disable : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -20,7 +20,7 @@
 #include <ngraph/ngraph.hpp>
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
-#pragma warning(default:4244 4245)
+#pragma warning(default : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -326,7 +326,7 @@ static std::vector<NodeIndex> GetUnsupportedNodeIndices(const GraphViewer& graph
 }
 
 /* Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
-   supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph 
+   supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by nGraph
 */
 static std::vector<std::vector<NodeIndex>> GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
   std::vector<std::vector<NodeIndex>> ng_clusters;
@@ -458,21 +458,19 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     std::for_each(graph_viewer.GetInputs().begin(), graph_viewer.GetInputs().end(),
                   [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
 
-    /* In scenarios, when there are no inputs or all inputs being initializers, 
+    /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
     if (inputs.empty()) {
       return result;
     }
 
+    //Initializers need to be part of meta_def->inputs
+    std::for_each(ng_required_initializers.begin(), ng_required_initializers.end(),
+                  [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
+
     //Fill outputs with names
     std::for_each(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end(),
                   [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
-
-    // Remove initializers from inputs if they are in ng_required_initializers
-    inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [&ng_required_initializers](const std::string& name) -> bool {
-                   return ng_required_initializers.count(name);
-                 }),
-                 inputs.end());
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), graph_viewer, inputs, outputs, ng_required_initializers, result);

@@ -70,7 +70,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   ORT_ENFORCE(nodes_id_size == nodes_modes_.size());
   ORT_ENFORCE(nodes_id_size == nodes_truenodeids_.size());
   ORT_ENFORCE(nodes_id_size == nodes_falsenodeids_.size());
-  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (0 == nodes_hitrates_.size()));
+  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (nodes_hitrates_.empty()));
 
   max_tree_depth_ = 1000;
   offset_ = four_billion_;
@@ -81,8 +81,8 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   std::sort(begin(leafnode_data_), end(leafnode_data_), [](auto const& t1, auto const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
-    else
-      return std::get<1>(t1) < std::get<1>(t2);
+
+    return std::get<1>(t1) < std::get<1>(t2);
   });
   //make an index so we can find the leafnode data quickly when evaluating
   int64_t field0 = -1;
@@ -147,7 +147,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
 }
 
 template <typename T>
-common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map<int64_t, float>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const {
+common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < int64_t, std::tuple<float, float, float>>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const {
   //walk down tree to the leaf
   ::onnxruntime::ml::NODE_MODE mode = static_cast<::onnxruntime::ml::NODE_MODE>(nodes_modes_[treeindex]);
   int64_t loopcount = 0;
@@ -197,9 +197,13 @@ common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map<int6
       float weight = std::get<3>(leafnode_data_[index]);
       auto it_classes = classes.find(classid);
       if (it_classes != classes.end()) {
-        it_classes->second += weight;
+        auto& tuple = it_classes->second;
+        std::get<0>(tuple) += weight;
+        if (weight < std::get<1>(tuple)) std::get<1>(tuple) = weight;
+        if (weight > std::get<2>(tuple)) std::get<2>(tuple) = weight;
       } else {
-        auto p1 = std::make_pair(classid, weight);
+        std::tuple<float, float, float> tuple = std::make_tuple(weight, weight, weight);
+        auto p1 = std::make_pair(classid, tuple);
         classes.insert(p1);
       }
       index++;
@@ -232,7 +236,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
   for (int64_t i = 0; i < N; i++)  //for each class
   {
     int64_t current_weight_0 = i * stride;
-    std::unordered_map<int64_t, float> scores;
+    std::unordered_map<int64_t, std::tuple<float, float, float>> scores; // sum, min, max
     //for each tree
     for (size_t j = 0; j < roots_.size(); j++) {
       //walk each tree from its root
@@ -246,13 +250,13 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       float val = base_values_.size() == (size_t)n_targets_ ? base_values_[j] : 0.f;
       if (it_scores != scores.end()) {
         if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::AVERAGE) {
-          val += scores[j] / roots_.size();
+          val += std::get<0>(scores[j]) / roots_.size();   //first element of tuple is already a sum
         } else if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::SUM) {
-          val += scores[j];
+          val += std::get<0>(scores[j]);
         } else if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::MIN) {
-          if (scores[j] < val) val = scores[j];
+          val += std::get<1>(scores[j]);  // second element of tuple is min
         } else if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::MAX) {
-          if (scores[j] > val) val = scores[j];
+          val += std::get<2>(scores[j]);  // third element of tuple is max
         }
       }
       outputs.push_back(val);

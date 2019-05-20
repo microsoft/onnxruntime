@@ -79,7 +79,7 @@ class OpKernelContext {
 
   template <typename T>
   const T* Input(int index) const {
-    const MLValue* p_ml_value = GetInputMLValue(index);
+    const OrtValue* p_ml_value = GetInputMLValue(index);
     try {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
     } catch (const std::exception& /*e*/) {
@@ -93,7 +93,7 @@ class OpKernelContext {
     if (index < 0 || index >= OutputCount())
       return nullptr;
 
-    MLValue* p_ml_value = nullptr;
+    OrtValue* p_ml_value = nullptr;
     ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
@@ -107,14 +107,17 @@ class OpKernelContext {
     return *logger_;
   }
 
+  // always >= 0
   int InputCount() const {
     return static_cast<int>(kernel_->Node().InputDefs().size());
   }
 
+  // always >= 0
   int ImplicitInputCount() const {
     return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
   }
 
+  // always >= 0
   int OutputCount() const {
     return static_cast<int>(kernel_->Node().OutputDefs().size());
   }
@@ -128,39 +131,39 @@ class OpKernelContext {
   /**
   Return the fence of current node's input.
   @param index The index of the input.
-  @returns Point to the Fence of the input MLValue.
-  It is null if the input MLValue doesn't have fence or the input is optional.
+  @returns Point to the Fence of the input OrtValue.
+  It is null if the input OrtValue doesn't have fence or the input is optional.
   */
   Fence_t InputFence(int index) const;
 
   /**
   Return the fence of current node's implicit input.
   @param index The index of the implicit input.
-  @returns Point to the Fence of the implicit input MLValue.
-  It is null if the input MLValue doesn't have fence or the input is optional.
+  @returns Point to the Fence of the implicit input OrtValue.
+  It is null if the input OrtValue doesn't have fence or the input is optional.
   */
   Fence_t ImplicitInputFence(int index) const;
 
   /**
   Return the fence of current node's output identifed by index.
   @param index The index of the output.
-  @returns Point to the Fence of the output MLValue.
-  It is null if the output MLValue doesn't have fence or the output is optional.
+  @returns Point to the Fence of the output OrtValue.
+  It is null if the output OrtValue doesn't have fence or the output is optional.
   */
   Fence_t OutputFence(int index) const;
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 
-  const MLValue* GetInputMLValue(int index) const;
-  const MLValue* GetImplicitInputMLValue(int index) const;
-  MLValue* GetOutputMLValue(int index);
-  MLValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the MLValue* based on the shape, if it does not exist
+  const OrtValue* GetInputMLValue(int index) const;
+  const OrtValue* GetImplicitInputMLValue(int index) const;
+  OrtValue* GetOutputMLValue(int index);
+  OrtValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the OrtValue* based on the shape, if it does not exist
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
 
-  Status GetOrCreateOutputMLValue(int index, MLValue*& value);
+  Status GetOrCreateOutputMLValue(int index, OrtValue*& value);
 
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;
@@ -179,7 +182,7 @@ class OpKernelContext {
 // Fetching output tensor without shape is not allowed except when it already exists
 template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
-  MLValue* p_ml_value = GetOutputMLValue(index);
+  OrtValue* p_ml_value = GetOutputMLValue(index);
   ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
   return p_ml_value->GetMutable<Tensor>();
 }

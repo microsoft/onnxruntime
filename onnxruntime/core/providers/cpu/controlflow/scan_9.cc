@@ -130,8 +130,8 @@ class ScanImpl {
   Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
   Status TransposeOutput();
 
-  using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const MLValue>::Iterator>;
-  using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<MLValue>::Iterator>;
+  using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>;
+  using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<OrtValue>::Iterator>;
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
@@ -152,12 +152,12 @@ class ScanImpl {
   std::vector<int64_t> input_axes_;
 
   // inputs for graph. either original input value or transposed input if an axis other than 0 was specified
-  std::vector<MLValue> inputs_;
+  std::vector<OrtValue> inputs_;
 
   std::vector<std::string> subgraph_output_names_;
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
 
-  std::unordered_map<std::string, const MLValue*> implicit_inputs_;
+  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 };
 
 template <>
@@ -345,7 +345,7 @@ Status ScanImpl::SetupInputs() {
       auto& input_tensor = *context_.Input<Tensor>(i + num_loop_state_variables_);
       const auto& input_shape = input_tensor.Shape();
 
-      std::vector<int64_t> permutations;
+      std::vector<size_t> permutations;
       std::vector<int64_t> new_shape;
       CalculateTransposedShapeForInput(input_shape, sequence_dim, permutations, new_shape);
 
@@ -354,7 +354,7 @@ Status ScanImpl::SetupInputs() {
         ORT_RETURN_IF_ERROR(status);
       }
 
-      MLValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
+      OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
       status = TransposeBase::DoTranspose(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
       ORT_RETURN_IF_ERROR(status);
@@ -410,11 +410,11 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
   loop_state_variables.reserve(num_loop_state_variables_);
 
   for (int i = 0; i < num_loop_state_variables_; ++i) {
-    const MLValue& input_mlvalue = *context_.GetInputMLValue(i);
-    MLValue* output_mlvalue = context_.GetOutputMLValue(i);
-    ORT_ENFORCE(output_mlvalue, "Output MLValue has not been created for loop state variable output ", i);
+    const OrtValue& input_mlvalue = *context_.GetInputMLValue(i);
+    OrtValue* output_mlvalue = context_.GetOutputMLValue(i);
+    ORT_ENFORCE(output_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_variables.push_back(LoopStateVariable(input_mlvalue, *output_mlvalue, sequence_len_, alloc));
+    loop_state_variables.emplace_back(input_mlvalue, *output_mlvalue, sequence_len_, alloc);
   }
 
   return status;
@@ -433,19 +433,19 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   status = CreateLoopStateVariables(loop_state_variables);
   ORT_RETURN_IF_ERROR(status);
 
-  // Setup input MLValue streams
-  std::vector<MLValueTensorSlicer<const MLValue>::Iterator> scan_input_stream_iterators;
+  // Setup input OrtValue streams
+  std::vector<MLValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
   scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
 
   for (int i = 0, end = num_scan_inputs_; i < end; ++i) {
-    const auto& mlvalue = inputs_[i];
+    const auto& ort_value = inputs_[i];
 
     // forward
     if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
       // the iterator is self contained, so we don't need to keep the MLValueTensorSlicer instance around
-      scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue).begin());
+      scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
     } else {  // reverse
-      scan_input_stream_iterators.push_back(MLValueTensorSlicer<const MLValue>::Create(mlvalue).rbegin());
+      scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value).rbegin());
     }
   }
 
@@ -469,7 +469,7 @@ Status ScanImpl::TransposeOutput() {
 
     if (axis != 0) {
       auto output_index = i + num_loop_state_variables_;
-      const MLValue& temporary_output_mlvalue = output_iterators_[output_index]->GetOutput();
+      const OrtValue& temporary_output_mlvalue = output_iterators_[output_index]->GetOutput();
       const Tensor& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
 
       int64_t output_rank = temporary_output_tensor.Shape().NumDimensions();
@@ -481,7 +481,7 @@ Status ScanImpl::TransposeOutput() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
                                " of ", axis, ". Output tensor rank was ", output_rank);
 
-      std::vector<int64_t> permutations;
+      std::vector<size_t> permutations;
       std::vector<int64_t> new_shape;
       CalculateTransposedShapeForOutput(temporary_output_tensor.Shape(), axis, permutations, new_shape);
 

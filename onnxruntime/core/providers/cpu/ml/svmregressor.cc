@@ -21,7 +21,7 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
   ORT_ENFORCE(info.GetAttrs<float>("rho", rho_).IsOK());
   ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
-  ORT_ENFORCE(coefficients_.size() > 0);
+  ORT_ENFORCE(!coefficients_.empty());
 
   int64_t onec = info.GetAttrOrDefault<int64_t>("one_class", 0);
   one_class_ = (onec != 0);

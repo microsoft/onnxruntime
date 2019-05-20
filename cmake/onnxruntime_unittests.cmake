@@ -49,6 +49,8 @@ function(AddTest)
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
+    target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
 
   set(TEST_ARGS)
@@ -238,6 +240,9 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
 #with auto initialize onnxruntime
 add_library(onnxruntime_test_utils_for_framework ${onnxruntime_test_utils_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils_for_framework onnxruntime_framework gtest gsl onnx onnx_proto)
+if (onnxruntime_USE_FULL_PROTOBUF)
+  target_compile_definitions(onnxruntime_test_utils_for_framework PRIVATE USE_FULL_PROTOBUF=1)
+endif()
 if (onnxruntime_USE_MKLDNN)
   target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_MKLDNN=1)
 endif()
@@ -250,6 +255,9 @@ set_target_properties(onnxruntime_test_utils_for_framework PROPERTIES FOLDER "ON
 #without auto initialize onnxruntime
 add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework gtest gsl onnx onnx_proto)
+if (onnxruntime_USE_FULL_PROTOBUF)
+  target_compile_definitions(onnxruntime_test_utils PRIVATE USE_FULL_PROTOBUF=1)
+endif()
 if (onnxruntime_USE_MKLDNN)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_MKLDNN=1)
 endif()
@@ -413,6 +421,7 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/runner.cc
   ${onnx_test_runner_src_dir}/TestCase.cc
   ${onnx_test_runner_src_dir}/TestCase.h
+  ${onnx_test_runner_src_dir}/onnxruntime_event.h
   ${onnx_test_runner_src_dir}/sync_api.h
   ${onnx_test_runner_src_dir}/sync_api.cc)
 
@@ -423,8 +432,6 @@ if(WIN32)
   set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
   set(GETOPT_LIB_WIDE win_getopt_wide)
-else()
-  set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs} ${onnx_test_runner_src_dir}/onnxruntime_event.h ${onnx_test_runner_src_dir}/simple_thread_pool.h)
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
@@ -589,7 +596,12 @@ if (onnxruntime_BUILD_SERVER)
   onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock gsl onnx onnx_proto server_proto)
   add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core PRIVATE ${ONNXRUNTIME_ROOT} )
+  if(UNIX)
+    target_compile_options(onnxruntime_test_utils_for_server PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+  endif()
   target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES})
+
 
   AddTest(
     TARGET onnxruntime_server_tests

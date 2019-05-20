@@ -48,9 +48,8 @@ struct GraphEdge {
 static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge& output_edge) {
   // we treat the explicit and implicit inputs as sequential, so if the destination arg index of an output edge
   // is past the valid range for the node's explicit inputs, it is for an implicit input
-  const auto num_explicit_inputs = (*graph.GetNode(output_edge.dst_node)).InputDefs().size();
-  bool is_implicit_input = output_edge.dst_arg_index >= num_explicit_inputs;
-  return is_implicit_input;
+  const size_t num_explicit_inputs = (*graph.GetNode(output_edge.dst_node)).InputDefs().size();
+  return static_cast<size_t>(output_edge.dst_arg_index) >= num_explicit_inputs;
 }
 
 /** Checks if new_output_name can be used to replace removed_output_name in the subgraph input.
@@ -234,7 +233,7 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
     auto output_node = graph.GetNode(output_edge.dst_node);
     ORT_ENFORCE(output_node, "Outgoing node could not be found.");
 
-    auto dst_arg_idx = output_edge.dst_arg_index;
+    size_t dst_arg_idx = static_cast<size_t>(output_edge.dst_arg_index);
     if (dst_arg_idx < output_node->InputDefs().size()) {
       output_node->MutableInputDefs()[output_edge.dst_arg_index] = input_def;
     } else if (dst_arg_idx < output_node->InputDefs().size() + output_node->ImplicitInputDefs().size()) {
@@ -255,13 +254,15 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
 
 const std::string& GetNodeInputName(const Node& node, int index) {
   const auto& inputs = node.InputDefs();
-  ORT_ENFORCE(index < inputs.size(), "Attempting to get an input that does not exist.");
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < inputs.size(),
+              "Attempting to get an input that does not exist.");
   return inputs[index]->Name();
 }
 
 const std::string& GetNodeOutputName(const Node& node, int index) {
   const auto& outputs = node.OutputDefs();
-  assert(index < outputs.size());
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < outputs.size(),
+              "Attempting to get an output that does not exist.");
   return outputs[index]->Name();
 }
 
@@ -287,12 +288,8 @@ bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
 
 bool IsSupportedProvider(const Node& node,
                          const std::unordered_set<std::string>& compatible_providers) {
-  if (!compatible_providers.empty() &&
-      compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end()) {
-    return false;
-  }
-
-  return true;
+  return !(!compatible_providers.empty() &&
+           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
 Status ForAllMutableSubgraphs(Graph& graph, std::function<Status(Graph&)> func) {
@@ -342,9 +339,7 @@ Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> f
 }
 
 bool IsSingleInSingleOutNode(const Node& node) {
-  return node.InputDefs().size() == 1 &&
-         node.ImplicitInputDefs().size() == 0 &&
-         node.OutputDefs().size() == 1;
+  return node.InputDefs().size() == 1 && node.ImplicitInputDefs().empty() && node.OutputDefs().size() == 1;
 }
 
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
@@ -353,19 +348,44 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. */
+static bool IsOnlyOneOutputUsed(const Node& node) {
+  if (node.GetOutputEdgesCount() > 1) {
+    const int unassigned = -1;
+    int first_output = unassigned;
+    for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+      if (first_output == unassigned) {
+        first_output = it->GetSrcArgIndex();
+      } else if (first_output != it->GetSrcArgIndex()) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsOutputUsed(const Node& node, int index) {
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetSrcArgIndex() == index) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool RemoveNode(Graph& graph, Node& node) {
-  // Cannot remove a node with implicit inputs, with multiple output NodeArgs (multiple output edges is fine),
-  // or whose output is also a graph output.
-  if (node.ImplicitInputDefs().size() > 0 ||
-      node.OutputDefs().size() != 1 ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  // Cannot remove a node with implicit inputs, whose output is also a graph output,
+  // or with more than one of its outputs as input to downstream Operators.
+  if (!node.ImplicitInputDefs().empty() ||
+      graph.IsNodeOutputsInGraphOutputs(node) || !IsOnlyOneOutputUsed(node)) {
     return false;
   }
 
   if (node.GetInputEdgesCount() == 1) {
     // If there is a single input edge from another node (initializers are not connected with edges to nodes).
     return RemoveNodeWithSingleNodeIn(graph, node);
-  } else if (node.InputDefs().size() == 1) {
+  }
+  if (node.InputDefs().size() == 1) {
     // If a single initializer is the only input.
     return RemoveNodeWithSingleInitializerIn(graph, node);
   } else {

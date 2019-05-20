@@ -44,7 +44,7 @@ class PadBase {
     }
   }
 
-  ~PadBase() {}
+  ~PadBase() = default;
 
   Mode mode_{Mode::Constant};
   std::vector<int64_t> pads_;    // After construction, only >=0 values are in here

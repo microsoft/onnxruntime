@@ -222,8 +222,8 @@ void TreeEnsembleClassifier<T>::Initialize() {
   std::sort(std::begin(leafnodedata_), std::end(leafnodedata_), [](auto const& t1, auto const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
-    else
-      return std::get<1>(t1) < std::get<1>(t2);
+
+    return std::get<1>(t1) < std::get<1>(t2);
   });
   // make an index so we can find the leafnode data quickly when evaluating
   int64_t field0 = -1;
@@ -295,6 +295,7 @@ void TreeEnsembleClassifier<T>::Initialize() {
 
 void get_max_weight(const std::map<int64_t, float>& classes, int64_t& maxclass, float& maxweight) {
   maxclass = -1;
+  maxweight = 0.f;
   for (auto& classe : classes) {
     if (maxclass == -1 || classe.second > maxweight) {
       maxclass = classe.first;

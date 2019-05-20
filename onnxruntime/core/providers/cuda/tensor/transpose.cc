@@ -29,8 +29,8 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t rank = input_dims.size();
 
   std::vector<int64_t> output_dims(rank);
-  std::vector<int64_t> default_perm(rank);
-  const std::vector<int64_t>* p_perm = nullptr;
+  std::vector<size_t> default_perm(rank);
+  const std::vector<size_t>* p_perm = nullptr;
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;
@@ -39,7 +39,7 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, output_shape);
   int device_id = 0;
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
-  CudaAsyncBuffer<int64_t> perm(this, device_id, *p_perm);
+  CudaAsyncBuffer<size_t> perm(this, device_id, *p_perm);
   CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);
   ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
   ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));

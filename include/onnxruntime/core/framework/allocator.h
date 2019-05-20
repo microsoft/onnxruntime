@@ -32,10 +32,6 @@ struct OrtAllocatorInfo {
         type(type_) {
   }
 
-  inline bool operator==(const OrtAllocatorInfo& other) const {
-    return mem_type == other.mem_type && type == other.type && id == other.id && strcmp(name, other.name) == 0;
-  }
-
   // To make OrtAllocatorInfo become a valid key in std map
   inline bool operator<(const OrtAllocatorInfo& other) const {
     if (type != other.type)
@@ -59,6 +55,13 @@ struct OrtAllocatorInfo {
     return ostr.str();
   }
 };
+
+inline bool operator==(const OrtAllocatorInfo& left, const OrtAllocatorInfo& other) {
+  return left.mem_type == other.mem_type && left.type == other.type && left.id == other.id &&
+         strcmp(left.name, other.name) == 0;
+}
+
+inline bool operator!=(const OrtAllocatorInfo& lhs, const OrtAllocatorInfo& rhs) { return !(lhs == rhs); }
 
 std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info);
 
