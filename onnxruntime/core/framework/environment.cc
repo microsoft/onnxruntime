@@ -12,10 +12,10 @@
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "core/training/gradient_builder_registry.h"
-#include "core/training/gradient_schema_defs.h"
-#include "core/training/loss_function_registry.h"
-#include "core/training/training_optimizer.h"
+#include "core/graph/training/gradient_schema_defs.h"
+#include "core/graph/training/gradient_builder_registry.h"
+#include "core/graph/training/loss_function_registry.h"
+#include "core/graph/training/in_graph_training_optimizer.h"
 #endif
 
 namespace onnxruntime {

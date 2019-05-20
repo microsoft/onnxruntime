@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/training/loss_func/mean_squared_error.h"
+#include "core/graph/training/loss_func/mean_squared_error.h"
 #include <vector>
 
 namespace onnxruntime {

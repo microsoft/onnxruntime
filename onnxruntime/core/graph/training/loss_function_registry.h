@@ -5,9 +5,9 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
-#include "core/training/graph_augmenter.h"
-#include "core/training/generic_registry.h"
-#include "core/training/loss_func/loss_func_common.h"
+#include "graph_augmenter.h"
+#include "generic_registry.h"
+#include "loss_func/loss_func_common.h"
 
 namespace onnxruntime {
 namespace training {

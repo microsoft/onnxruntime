@@ -6,7 +6,7 @@
 #include <vector>
 #include <utility>
 #include "core/graph/graph.h"
-#include "core/training/loss_function_registry.h"
+#include "core/graph/training/loss_function_registry.h"
 
 namespace onnxruntime {
 namespace training {

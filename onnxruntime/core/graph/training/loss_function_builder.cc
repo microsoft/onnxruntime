@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/training/loss_function_builder.h"
+#include "core/graph/training/loss_function_builder.h"
 #include "core/training/training_session.h"
 
 // TODO: solve the op version issue in the entire training framework
 // Here is to reference GRADIENT_OP_VERSION temporarily for global version control.
-#include "core/training/gradient_op_schema.h"
+#include "core/graph/training/gradient_op_schema.h"
 
 namespace onnxruntime {
 namespace training {

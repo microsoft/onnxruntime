@@ -3,7 +3,7 @@
 #pragma once
 
 #include <string>
-#include "core/training/graph_augmenter.h"
+#include "core/graph/training/graph_augmenter.h"
 
 namespace onnxruntime {
 namespace training {

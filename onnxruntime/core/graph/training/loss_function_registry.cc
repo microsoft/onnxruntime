@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 #include <unordered_map>
 #include <mutex>
-#include "core/training/loss_function_builder.h"
-#include "core/training/loss_func/mean_squared_error.h"
+#include "loss_function_builder.h"
+#include "loss_func/mean_squared_error.h"
 
 namespace onnxruntime {
 namespace training {

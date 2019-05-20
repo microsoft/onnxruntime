@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/training/graph_augmenter.h"
+#include "graph_augmenter.h"
 using namespace std;
 
 namespace onnxruntime {

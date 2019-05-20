@@ -3,7 +3,7 @@
 #pragma once
 
 #include <string>
-#include "core/training/loss_func/loss_func_common.h"
+#include "core/graph/training/loss_func/loss_func_common.h"
 
 namespace onnxruntime {
 namespace training {

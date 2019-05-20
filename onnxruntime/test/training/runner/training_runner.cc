@@ -6,10 +6,10 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/environment.h"
-#include "test/training/runner/training_runner.h"
-#include "test/training/runner/training_util.h"
 #include "core/training/training_optimizer.h"
 #include "core/training/weight_updater.h"
+#include "test/training/runner/training_runner.h"
+#include "test/training/runner/training_util.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"

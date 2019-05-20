@@ -7,8 +7,8 @@
 #include <string>
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/training/graph_augmenter.h"
-#include "core/training/attr_proto_util.h"
+#include "core/graph/training/graph_augmenter.h"
+#include "core/graph/training/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {

@@ -5,8 +5,8 @@
 
 #include <unordered_map>
 #include <functional>
-#include "core/training/gradient_builder_base.h"
-#include "core/training/generic_registry.h"
+#include "gradient_builder_base.h"
+#include "generic_registry.h"
 
 namespace onnxruntime {
 namespace training {

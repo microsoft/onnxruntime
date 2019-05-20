@@ -16,9 +16,9 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/training/gradient_builder_base.h"
-#include "core/training/gradient_schema_defs.h"
-#include "core/training/training_optimizer.h"
+#include "core/graph/training/gradient_schema_defs.h"
+#include "core/graph/training/gradient_builder_base.h"
+#include "core/graph/training/in_graph_training_optimizer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 
 namespace onnxruntime {

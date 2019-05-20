@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
-#include "core/training/gradient_builder_base.h"
+#include "gradient_builder_base.h"
 
 namespace onnxruntime {
 namespace training {

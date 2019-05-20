@@ -8,7 +8,7 @@
 
 // TODO: replace this with ONNX version of attr_proto_util.h when ONNX dependency version is updated
 // TODO: update attributes type to AttributeProtoWrapper when ONNX version is ready
-#include "core/training//attr_proto_util.h"
+#include "core/graph/training/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace test {

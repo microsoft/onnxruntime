@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/onnx_protobuf.h"
-#include "core/training/attr_proto_util.h"
+#include "attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {

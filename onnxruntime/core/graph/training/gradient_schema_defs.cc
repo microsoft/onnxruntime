@@ -1,7 +1,7 @@
-#include "core/graph/contrib_ops/contrib_defs.h"
-#include "core/training/gradient_schema_defs.h"
-#include "core/training/gradient_op_schema.h"
 #include "core/graph/op.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
+#include "gradient_schema_defs.h"
+#include "gradient_op_schema.h"
 
 namespace onnxruntime {
 namespace training {

@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/graph/model.h"
-#include "core/training/gradient_graph_builder.h"
-#include "core/training/loss_function_builder.h"
+#include "core/graph/training/loss_function_builder.h"
+#include "core/graph/training/in_graph_training_optimizer.h"
 #include "core/training/training_optimizer.h"
-#include "core/training/training_session.h"
 #include "core/training/weight_updater.h"
+#include "core/training/gradient_graph_builder.h"
+#include "core/training/training_session.h"
 
 using namespace std;
 

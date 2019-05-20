@@ -7,6 +7,7 @@
 #include <functional>
 #include <unordered_map>
 #include <memory>
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace training {

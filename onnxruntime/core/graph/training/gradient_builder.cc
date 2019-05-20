@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/training/gradient_builder.h"
-#include "core/training/gradient_builder_registry.h"
-#include "core/training/graph_augmenter.h"
-#include "core/training/attr_proto_util.h"
+#include "core/graph/training/gradient_builder.h"
+#include "core/graph/training/gradient_builder_registry.h"
+#include "core/graph/training/graph_augmenter.h"
+#include "core/graph/training/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {

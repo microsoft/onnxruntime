@@ -9,7 +9,7 @@
 #include "core/common/logging/logging.h"
 #include "core/graph/op.h"
 #include "core/graph/schema_registry.h"
-#include "core/training/gradient_builder_registry.h"
+#include "core/graph/training/gradient_builder_registry.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/optimizer/insert_output_rewriter.h"
 
