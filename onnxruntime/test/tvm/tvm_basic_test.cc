@@ -229,12 +229,13 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         for (auto i = 0; i < num_inputs; i++) {
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+          auto tensor_type = ort.GetTensorElementType(tensor_info);
           input_shapes.emplace_back(ort.GetTensorShape(tensor_info));
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
           tvm_type_codes[i] = kNDArrayContainer;
           dl_tensors[i].ctx = cpu_context;
-          dl_tensors[i].dtype = GetDataType(ort.GetTensorElementType(tensor_info));
+          dl_tensors[i].dtype = GetDataType(tensor_type);
           dl_tensors[i].strides = nullptr;
           dl_tensors[i].byte_offset = 0;
           dl_tensors[i].data = const_cast<double*>(ort.GetTensorData<double>(input_tensor));
@@ -249,12 +250,12 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
           output_shapes.push_back(input_shapes[i]);
           OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, output_shapes[i].data(), output_shapes[i].size());
           auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
-          auto type = ort.GetTensorElementType(tensor_info);
+          auto tensor_type = ort.GetTensorElementType(tensor_info);
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
           tvm_type_codes[num_inputs + i] = kNDArrayContainer;
           dl_tensors[num_inputs + i].ctx = cpu_context;
-          dl_tensors[num_inputs + i].dtype = GetDataType(type);
+          dl_tensors[num_inputs + i].dtype = GetDataType(tensor_type);
           dl_tensors[num_inputs + i].strides = nullptr;
           dl_tensors[num_inputs + i].byte_offset = 0;
           dl_tensors[num_inputs + i].data = ort.GetTensorMutableData<double>(output_tensor);
