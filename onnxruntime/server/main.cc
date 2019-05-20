@@ -5,6 +5,7 @@
 #include "http_server.h"
 #include "predict_request_handler.h"
 #include "server_configuration.h"
+#include "grpc/grpc_app.h"
 
 namespace beast = boost::beast;
 namespace http = beast::http;
@@ -41,6 +42,16 @@ int main(int argc, char* argv[]) {
     LOGS(logger, VERBOSE) << "Initialize Session Successfully!";
   }
 
+  //Setup GRPC Server
+  auto const grpc_address = config.address;
+  auto const grpc_port = config.grpc_port;
+  
+  server::GRPCApp grpc_app{env, grpc_address, grpc_port};
+
+  LOGS(logger, INFO) << "GRPC Listening at: "
+                          << grpc_address << ":" << grpc_port;
+
+  //Setup HTTP Server
   auto const boost_address = boost::asio::ip::make_address(config.address);
   server::App app{};
 
