@@ -244,6 +244,8 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       std::lock_guard<OrtMutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
         auto idx = (*it).GetNode().Index();
+        auto p_op_kernel = session_state.GetKernel(idx);
+        const_cast<OpKernel*>(p_op_kernel)->SetParentExecQueueIds(exec_queue_id);
         if ((--node_refs_[idx]) == 0) {
           if (!keep_running) {
             node_index = idx;
@@ -252,9 +254,6 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
             int sub_exec_queue_id = cuda_exec_provider_ ? cuda_exec_provider_->GetQueueID() : 0;
             EnqueueNode(idx, session_state, logger, sub_exec_queue_id);
           }
-        } else {
-          auto p_op_kernel_not_ready = session_state.GetKernel(idx);
-          const_cast<OpKernel*>(p_op_kernel_not_ready)->SetParentExecQueueIds(exec_queue_id);
         }
 
         // std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: "

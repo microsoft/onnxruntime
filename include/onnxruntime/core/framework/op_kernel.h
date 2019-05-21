@@ -57,11 +57,20 @@ class OpKernel {
   void ExecQueueId(int queue_id) { exec_queue_id_ = queue_id; }
 
   void SetParentExecQueueIds(int queue_id) {
-    parent_exec_queue_ids_.push_back(queue_id);
+    if (queue_id == exec_queue_id_) {
+      return;
+    }
+    parent_exec_queue_ids_.emplace(queue_id, true);
   }
 
   std::vector<int> GetParentExecQueueIds() const {
-    return parent_exec_queue_ids_;
+    std::vector<int> parent_exec_queue_ids;
+    for (auto it : parent_exec_queue_ids_) {
+      if (it.first != exec_queue_id_) {
+        parent_exec_queue_ids.push_back(it.first);
+      }
+    }
+    return parent_exec_queue_ids;
   }
 
  private:
@@ -69,7 +78,7 @@ class OpKernel {
   OpKernelInfo op_kernel_info_;
   // execution command queue id, 0 for default queue in execution provider
   int exec_queue_id_ = 0;
-  std::vector<int> parent_exec_queue_ids_;
+  std::unordered_map<int, bool> parent_exec_queue_ids_;
 };
 
 class OpKernelContext {
