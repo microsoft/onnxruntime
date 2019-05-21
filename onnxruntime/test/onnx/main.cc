@@ -339,8 +339,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"operator_pow", "disable reason"},
       {"operator_rnn", "disable reason"},
       {"operator_rnn_single_layer", "disable reason"},
-      {"prelu_broadcast", "disable reason"},
-      {"prelu_example", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
