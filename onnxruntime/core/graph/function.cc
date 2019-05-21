@@ -10,9 +10,9 @@ namespace onnxruntime {
 // Auto inferred and generate an opschema for stand-alone functions
 // TODO: revisit to see if we can eliminate typeconstraint step
 void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto_,
-                          std::unique_ptr<ONNX_NAMESPACE::OpSchema>& op_schema_,
-                          const std::unordered_map<std::string, int>& input_name_idx_map,
-                          const std::unordered_map<std::string, int>& output_name_idx_map) {
+                            std::unique_ptr<ONNX_NAMESPACE::OpSchema>& op_schema_,
+                            const std::unordered_map<std::string, int>& input_name_idx_map,
+                            const std::unordered_map<std::string, int>& output_name_idx_map) {
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto_->input_size());
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto_->output_size());
   std::unordered_map<std::string, std::vector<std::string>> type_constraint_map;
@@ -71,7 +71,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto* onnx_func_proto
     op_schema_->Output(i, output.first, "", output.second);
     ++i;
   }
-  
+
   for (auto& tc : type_constraint_map) {
     op_schema_->TypeConstraint(tc.first, tc.second, "");
   }
@@ -86,6 +86,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            std::unique_ptr<IndexedSubGraph> customized_func)
     : parent_graph_(&graph), onnx_func_proto_{nullptr} {
   customized_func_body_ = std::move(customized_func);
+
+  // Construct body.
+  body_ = std::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+                                               IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+                                               graph.DomainToVersionMap());
+  auto& sub_graph = body_->MainGraph();
+
   auto meta_def = customized_func_body_->GetMetaDef();
   op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(meta_def->name);
@@ -93,24 +100,29 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->SetDoc(meta_def->doc_string);
   op_schema_->SinceVersion(meta_def->since_version);
   int i = 0;
+  std::vector<const NodeArg*> sub_graph_inputs;
+  sub_graph_inputs.resize(meta_def->inputs.size());
   for (auto& input : meta_def->inputs) {
-    auto input_type = parent_graph_->GetNodeArg(input)->Type();
-    op_schema_->Input(i, input, "", *input_type);
+    auto input_arg = parent_graph_->GetNodeArg(input);
+    auto& sub_graph_input_arg = sub_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+    sub_graph_inputs[i] = &sub_graph_input_arg;
+    op_schema_->Input(i, input, "", *input_arg->Type());
     ++i;
   }
   i = 0;
+  std::vector<const NodeArg*> sub_graph_outputs;
+  sub_graph_outputs.resize(meta_def->outputs.size());
   for (auto& output : meta_def->outputs) {
-    auto output_type = parent_graph_->GetNodeArg(output)->Type();
-    op_schema_->Output(i, output, "", *output_type);
+    auto output_arg = parent_graph_->GetNodeArg(output);
+    auto& sub_graph_output_arg = sub_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+    sub_graph_outputs[i] = &sub_graph_output_arg;
+    op_schema_->Output(i, output, "", *output_arg->Type());
     ++i;
   }
   op_schema_->Finalize();
-  //construct body
-  body_ = std::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-                                               IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-                                               graph.DomainToVersionMap());
 
-  auto& sub_graph = body_->MainGraph();
+  sub_graph.SetInputs(sub_graph_inputs);
+  sub_graph.SetOutputs(sub_graph_outputs);
   //Add node and node args
   //TODO: for better performance, we could try to transfer the nodes in parent graph to sub-graph directly,
   //instead of create new nodes.
@@ -168,9 +180,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     auto type_constraint_params = cached_op_schema->typeConstraintParams();
     for (auto& type_constraint_param : type_constraint_params) {
       op_schema_->TypeConstraint(
-        type_constraint_param.type_param_str, 
-        type_constraint_param.allowed_type_strs, 
-        type_constraint_param.description);
+          type_constraint_param.type_param_str,
+          type_constraint_param.allowed_type_strs,
+          type_constraint_param.description);
     }
     int i = 0;
     for (auto& input : cached_op_schema->inputs()) {
@@ -189,13 +201,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
   if (!cached_op_schema || !cached_op_schema->has_type_and_shape_inference_function()) {
     op_schema_->TypeAndShapeInferenceFunction(
-      [this](ONNX_NAMESPACE::InferenceContext& ctx) {
-      auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-      const ONNX_NAMESPACE::FunctionProto* func_ptr = this->GetFuncProto();
-      if (nullptr != func_ptr) {
-        ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(func_ptr, schema_registry, ctx);
-      }
-    });
+        [this](ONNX_NAMESPACE::InferenceContext& ctx) {
+          auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+          const ONNX_NAMESPACE::FunctionProto* func_ptr = this->GetFuncProto();
+          if (nullptr != func_ptr) {
+            ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(func_ptr, schema_registry, ctx);
+          }
+        });
   } else {
     op_schema_->TypeAndShapeInferenceFunction(cached_op_schema->GetTypeAndShapeInferenceFunction());
   }

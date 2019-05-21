@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace server {
 namespace test {
 
-void CreateMLValueBool(AllocatorPtr alloc, const std::vector<int64_t>& dims, const bool* value, MLValue* p_mlvalue);
+void CreateMLValueBool(AllocatorPtr alloc, const std::vector<int64_t>& dims, const bool* value, OrtValue* p_mlvalue);
 
 IExecutionProvider* TestCPUExecutionProvider() {
   static CPUExecutionProviderInfo info;
@@ -91,7 +91,7 @@ TEST(MLValueToTensorProtoTests, FloatToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -130,7 +130,7 @@ TEST(MLValueToTensorProtoTests, FloatToFloatData) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -165,7 +165,7 @@ TEST(MLValueToTensorProtoTests, Int32ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -204,7 +204,7 @@ TEST(MLValueToTensorProtoTests, Int32ToInt32Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -239,7 +239,7 @@ TEST(MLValueToTensorProtoTests, UInt8ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -278,7 +278,7 @@ TEST(MLValueToTensorProtoTests, UInt8ToInt32Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -315,7 +315,7 @@ TEST(MLValueToTensorProtoTests, Int8ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -354,7 +354,7 @@ TEST(MLValueToTensorProtoTests, Int8ToInt32Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int8_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -391,7 +391,7 @@ TEST(MLValueToTensorProtoTests, UInt16ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -430,7 +430,7 @@ TEST(MLValueToTensorProtoTests, UInt16ToInt32Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -467,7 +467,7 @@ TEST(MLValueToTensorProtoTests, Int16ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -506,7 +506,7 @@ TEST(MLValueToTensorProtoTests, Int16ToInt32Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int16_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -543,7 +543,7 @@ TEST(MLValueToTensorProtoTests, BoolToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -582,7 +582,7 @@ TEST(MLValueToTensorProtoTests, BoolToInt32Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValueBool(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -625,7 +625,7 @@ TEST(MLValueToTensorProtoTests, Float16ToRaw) {
       onnxruntime::MLFloat16(4),
       onnxruntime::MLFloat16(5),
       onnxruntime::MLFloat16(6)};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -670,7 +670,7 @@ TEST(MLValueToTensorProtoTests, FloatToInt32Data) {
       onnxruntime::MLFloat16(4),
       onnxruntime::MLFloat16(5),
       onnxruntime::MLFloat16(6)};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<onnxruntime::MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -713,7 +713,7 @@ TEST(MLValueToTensorProtoTests, BFloat16ToRaw) {
       onnxruntime::BFloat16(4.0f),
       onnxruntime::BFloat16(5.0f),
       onnxruntime::BFloat16(6.0f)};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -758,7 +758,7 @@ TEST(MLValueToTensorProtoTests, BFloatToInt32Data) {
       onnxruntime::BFloat16(4.0f),
       onnxruntime::BFloat16(5.0f),
       onnxruntime::BFloat16(6.0f)};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<onnxruntime::BFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -795,7 +795,7 @@ TEST(MLValueToTensorProtoTests, StringToStringData) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<std::string> values_mul_x{"A", "BC", "DEF", "123", "45", "6"};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::AllocateMLValue<std::string>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, &ml_value);
 
   Tensor* mutable_tensor = ml_value.GetMutable<Tensor>();
@@ -837,7 +837,7 @@ TEST(MLValueToTensorProtoTests, Int64ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -876,7 +876,7 @@ TEST(MLValueToTensorProtoTests, Int64ToInt64Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -911,7 +911,7 @@ TEST(MLValueToTensorProtoTests, UInt32ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -950,7 +950,7 @@ TEST(MLValueToTensorProtoTests, UInt32ToUint64Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -988,7 +988,7 @@ TEST(MLValueToTensorProtoTests, UInt64ToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -1027,7 +1027,7 @@ TEST(MLValueToTensorProtoTests, UInt64ToInt64Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<uint64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -1062,7 +1062,7 @@ TEST(MLValueToTensorProtoTests, DoubleToRaw) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -1101,7 +1101,7 @@ TEST(MLValueToTensorProtoTests, DoubleToInt64Data) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  MLValue ml_value;
+  OrtValue ml_value;
   onnxruntime::test::CreateMLValue<double>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value);
 
   onnx::TensorProto tp;
@@ -1131,10 +1131,7 @@ TEST(MLValueToTensorProtoTests, DoubleToInt64Data) {
   }
 }
 
-void CreateMLValueBool(AllocatorPtr alloc,
-                       const std::vector<int64_t>& dims,
-                       const bool* value,
-                       MLValue* p_mlvalue) {
+void CreateMLValueBool(AllocatorPtr alloc, const std::vector<int64_t>& dims, const bool* value, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<bool>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,

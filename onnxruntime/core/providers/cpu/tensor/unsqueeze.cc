@@ -16,7 +16,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Unsqueeze);
 
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto* X = ctx->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
   auto& input_tensor = *X;
 

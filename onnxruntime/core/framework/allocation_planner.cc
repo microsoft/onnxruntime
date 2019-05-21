@@ -100,14 +100,10 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
 
 class PlannerImpl {
  public:
-  PlannerImpl(const Node* parent_node,
-              const onnxruntime::GraphViewer& graph_viewer,
-              const std::vector<const NodeArg*>& outer_scope_node_args,
-              const ExecutionProviders& providers,
-              const KernelRegistryManager& kernel_registry,
-              const MLValueNameIdxMap& mlvalue_name_idx_map,
-              const ISequentialPlannerContext& context,
-              SequentialExecutionPlan& plan)
+  PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
+              const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
+              const KernelRegistryManager& kernel_registry, const MLValueNameIdxMap& ort_value_name_idx_map,
+              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_{context},
         plan_{plan},
         parent_node_{parent_node},
@@ -115,8 +111,7 @@ class PlannerImpl {
         outer_scope_node_args_{outer_scope_node_args},
         execution_providers_{providers},
         kernel_registry_{kernel_registry},
-        mlvalue_name_idx_map_{mlvalue_name_idx_map} {
-  }
+        ort_value_name_idx_map_{ort_value_name_idx_map} {}
 
   Status CreatePlan();
 
@@ -130,9 +125,9 @@ class PlannerImpl {
   const ExecutionProviders& execution_providers_;
 
   const KernelRegistryManager& kernel_registry_;
-  const MLValueNameIdxMap& mlvalue_name_idx_map_;
+  const MLValueNameIdxMap& ort_value_name_idx_map_;
 
-  // MLValueInfo: Auxiliary information about an MLValue used only during plan-generation:
+  // MLValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct MLValueInfo {
     const onnxruntime::NodeArg* p_def_site;  // the (unique) NodeArg corresponding to the MLValue
     int usecount = 0;                        // static reference-count
@@ -149,7 +144,8 @@ class PlannerImpl {
     // deallocate_point is an index into the execution-plan; thus, ml_value becomes free after
     // this step in the execution-plan is completed.
     size_t deallocate_point;
-    FreeBufferInfo(MLValueIndex mlvalue, size_t dealloc_point) : ml_value(mlvalue), deallocate_point(dealloc_point) {}
+    FreeBufferInfo(MLValueIndex ort_value, size_t dealloc_point)
+        : ml_value(ort_value), deallocate_point(dealloc_point) {}
   };
   // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
   // they became free (more recently freed earlier in the list).
@@ -157,7 +153,7 @@ class PlannerImpl {
 
   MLValueIndex Index(const MLValueName& name) {
     MLValueIndex result;
-    auto status = mlvalue_name_idx_map_.GetIdx(name, result);
+    auto status = ort_value_name_idx_map_.GetIdx(name, result);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return result;
   }
@@ -191,7 +187,7 @@ class PlannerImpl {
     info.p_def_site = p_def_site;
   }
 
-  // Reuse/Alias/Share between two MLValue indexes
+  // Reuse/Alias/Share between two OrtValue indexes
   void Reuse(MLValueIndex reused, MLValueIndex reused_for, AllocKind alloc_kind) {
     ORT_ENFORCE(reused != reused_for);
     // find original buffer underlying ml-value we want to reuse:
@@ -628,7 +624,7 @@ class PlannerImpl {
 Status PlannerImpl::CreatePlan() {
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
-  int num_ml_values = mlvalue_name_idx_map_.MaxIdx() + 1;
+  int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
 
   Initialize(p_graph_nodes.size(), static_cast<size_t>(num_ml_values));
 
@@ -650,19 +646,17 @@ Status PlannerImpl::CreatePlan() {
   return Status::OK();
 }
 
-Status SequentialPlanner::CreatePlan(const Node* parent_node,
-                                     const onnxruntime::GraphViewer& graph_viewer,
+Status SequentialPlanner::CreatePlan(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
                                      const std::vector<const NodeArg*>& outer_scope_node_args,
-                                     const ExecutionProviders& providers,
-                                     const KernelRegistryManager& kernel_registry,
-                                     const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                     const ExecutionProviders& providers, const KernelRegistryManager& kernel_registry,
+                                     const MLValueNameIdxMap& ort_value_name_idx_map,
                                      const ISequentialPlannerContext& context,
                                      std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
   plan = std::make_unique<SequentialExecutionPlan>();
 
-  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args,
-                      providers, kernel_registry, mlvalue_name_idx_map, context, *plan);
+  PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers, kernel_registry,
+                      ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
 }

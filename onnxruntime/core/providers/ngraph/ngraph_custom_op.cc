@@ -6,52 +6,24 @@
 #include <string>
 
 #if defined(_MSC_VER)
-#pragma warning(disable:4244 4245)
+#pragma warning(disable : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #if defined(_MSC_VER)
-#pragma warning(default:4244 4245)
+#pragma warning(default : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
 
 #include "ngraph_custom_op.h"
 #include "core/common/logging/logging.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace ngraph_ep {
-
-static DType GetDataType(const ngraph::element::Type& ng_type) {
-  switch (ng_type.get_type_enum()) {
-    case ngraph::element::Type_t::f32:
-      return DType::TFloat32;
-    case ngraph::element::Type_t::f64:
-      return DType::TDouble;
-    case ngraph::element::Type_t::boolean:
-      return DType::TBool;
-    case ngraph::element::Type_t::u8:
-      return DType::TUint8;
-    case ngraph::element::Type_t::i8:
-      return DType::TInt8;
-    case ngraph::element::Type_t::u16:
-      return DType::TUint16;
-    case ngraph::element::Type_t::i16:
-      return DType::TInt16;
-    case ngraph::element::Type_t::u32:
-      return DType::TUint32;
-    case ngraph::element::Type_t::i32:
-      return DType::TInt32;
-    case ngraph::element::Type_t::u64:
-      return DType::TUint64;
-    case ngraph::element::Type_t::i64:
-      return DType::TInt64;
-    default:
-      throw "Unsupported DataType";
-  }
-}
 
 static bool check_ngraph_dump_ops() {
 #ifdef _WIN32
@@ -85,8 +57,11 @@ NGRAPHCustomOp::~NGRAPHCustomOp() {
 }
 
 //This method gets called in critical path of execution: Optimize
-void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const size_t& num_inputs) const {
+void NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const {
+  Ort::CustomOpApi ort{*api};
   LOGS_DEFAULT(INFO) << "nGraph compiling customOp: " << name_;
+
+  size_t num_inputs = ort.KernelContext_GetInputCount(context);
 
   //Key for ng_exe_map
   std::string uniq_input_shape;
@@ -95,9 +70,14 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
   uniq_input_shape.reserve(4 * sizeof(int64_t) * num_inputs + num_inputs);
 
   for (size_t i = 0; i < num_inputs; i++) {
-    const auto& ndim = input_tensors[i].ndim;
+    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+    auto tensor_shape = ort.GetTensorShape(tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+    const auto ndim = tensor_shape.size();
     uniq_input_shape.append(reinterpret_cast<const char*>(&ndim), sizeof(ndim));
-    uniq_input_shape.append(reinterpret_cast<const char*>(input_tensors[i].shape), ndim * sizeof(int64_t));
+    uniq_input_shape.append(reinterpret_cast<const char*>(tensor_shape.data()), ndim * sizeof(int64_t));
   }
 
   auto it = ng_exe_map_.insert({uniq_input_shape, nullptr});  //TODO: Limit the size of map with configurable size.
@@ -113,8 +93,13 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
       auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
       g_in_shape->clear_dim();
 
-      for (size_t dim = 0; dim < input_tensors[i].ndim; dim++) {
-        g_in_shape->add_dim()->set_dim_value(input_tensors[i].shape[dim]);
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+      for (size_t dim = 0; dim < tensor_shape.size(); dim++) {
+        g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
       }
     }
 
@@ -149,14 +134,14 @@ void NGRAPHCustomOp::Initialize(const ONNXRunTimeTensor* input_tensors, const si
 }  // namespace ngraph_ep
 
 //This method gets called in critical path of execution: Optimize
-Status NGRAPHCustomOp::Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs, ONNXRunTimeTensor* const output_tensors, const size_t num_outputs) const {
-  ORT_UNUSED_PARAMETER(num_outputs);
+Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
+  Ort::CustomOpApi ort{*api};
 
   //TODO: Minimize locked region
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Initialize nGraph function if it is not already initialized.
-  Initialize(input_tensors, num_inputs);
+  Initialize(api, context);
 
   ORT_ENFORCE(ng_curr_exe_ != nullptr);
 
@@ -165,9 +150,11 @@ Status NGRAPHCustomOp::Compute(const ONNXRunTimeTensor* input_tensors, const siz
 
   // Write ONNXR input data to nGraph input tensors.
   try {
-    auto& in_tensor = input_tensors;
+    unsigned input_index = 0;
     for (const auto& ng_param : ng_curr_exe_->get_parameters()) {
-      ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), (in_tensor++)->data));
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index++);
+      void* input_data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+      ng_inputs.emplace_back(ng_backend_->create_tensor(ng_param->get_output_element_type(0), ng_param->get_output_shape(0), input_data));
     }
   } catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception while copying input data to nGraph: " + std::string(exp.what()));
@@ -178,25 +165,15 @@ Status NGRAPHCustomOp::Compute(const ONNXRunTimeTensor* input_tensors, const siz
   // Initialize output tensors
   try {
     //TODO: Optimize
-    auto onxr_output = output_tensors;
+    unsigned output_index = 0;
     for (auto& ng_result : ng_curr_exe_->get_results()) {
       const auto& dtype = ng_result->get_element_type();
       const auto& shape = ng_result->get_shape();
 
-      onxr_output->dtype = GetDataType(dtype);
-      onxr_output->ndim = shape.size();
-      onxr_output->shape = new int64_t[onxr_output->ndim];
-
-      size_t num_elements = 1;
-      for (size_t dim = 0; dim < shape.size(); dim++) {
-        num_elements *= shape[dim];
-        onxr_output->shape[dim] = shape[dim];
-      }
-
-      onxr_output->data = (*(allocate_func_))(allocator_, 64, num_elements * sizeof(onxr_output->dtype));
-
-      ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, onxr_output->data));
-      ++onxr_output;
+      std::vector<int64_t> ort_shape{shape.begin(), shape.end()};
+      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index++, ort_shape.data(), ort_shape.size());
+      void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+      ng_outputs.emplace_back(ng_backend_->create_tensor(dtype, shape, output_data));
     }
   } catch (const std::exception& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception while creating nGraph output Tensor: " + std::string(exp.what()));

@@ -3,6 +3,7 @@
 
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_allocator.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
@@ -21,13 +22,13 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
-#define CHECK_CUDA(call)                         \
-  do {                                           \
-    cudaError_t status = call;                   \
-    if(status != cudaSuccess) {                  \
-      return -1;                                 \
-    }                                            \
-  } while(0)
+#define CHECK_CUDA(call)         \
+  do {                           \
+    cudaError_t status = call;   \
+    if (status != cudaSuccess) { \
+      return -1;                 \
+    }                            \
+  } while (0)
 
 TensorrtExecutionProvider::TensorrtExecutionProvider()
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider} {
@@ -83,7 +84,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
-      std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+      std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
       std::unordered_set<const NodeArg*> erased;
       int input_order = 0;
       int output_order = 0;
@@ -146,7 +147,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
 
       // Sort inputs and outputs by the order they were added
-      std::multimap<int, const NodeArg *> inputs, outputs;
+      std::multimap<int, const NodeArg*> inputs, outputs;
 
       for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
         inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
@@ -215,65 +216,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       output_map[output_defs[i]->Name()] = i;
     }
 
-    // Reconstruct graph from fused node's function body
+    // Reconstruct graph proto from fused node's function body
     const auto* func_body = fused_node->GetFunctionBody();
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
     onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
-    onnxruntime::Graph& graph = model.MainGraph();
-
-    for (const auto& graph_body_node : graph_body.Nodes()) {
-      graph.AddNode(graph_body_node);
-    }
-
-    ORT_ENFORCE(graph.Resolve().IsOK());
-
-    // Add initializer to graph
-    const auto& init_tensors = graph_body.GetAllInitializedTensors();
-    for (const auto& tensor : init_tensors) {
-      graph.AddInitializedTensor(*(tensor.second));
-    }
-
-    // Add fused node's outputs to graph's outputs if the outputs are not included yet
-    // for the case that node's output is connected to more than one EdgeEnd nodes and some of them don't belong to the graph
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    const auto& graph_output = model_proto.graph().output();
-    std::unordered_set<string> graph_outputs_set;
-    graph_outputs_set.reserve(graph_output.size());
-    for (int i = 0, end = graph_output.size(); i < end; ++i) {
-      graph_outputs_set.insert(graph_output[i].name());
-    }
-
-    const auto& graph_value_info = model_proto.graph().value_info();
-    std::vector<int> output_to_add;
-    std::vector<int> location;
-    int num_defs = output_defs.size();
-    for (int i = num_defs - 1; i >= 0; --i) {
-      const std::string& output_name = output_defs[i]->Name();
-      if (graph_outputs_set.find(output_name) == graph_outputs_set.end()) {
-        for (int j = 0, end = graph_value_info.size(); j < end; ++j) {
-          if (output_name == graph_value_info[j].name()) {
-            output_to_add.push_back(j);
-            location.push_back(num_defs - 1 - i);
-          }
-        }
-      }
-    }
-
-    // Add outputs and move them to the right places
-    auto* mutable_output = model_proto.mutable_graph()->mutable_output();
-    for (int i = 0, end = output_to_add.size(); i < end; ++i) {
-      *(mutable_output->Add()) = graph_value_info[output_to_add[i]];
-      int start_index = (*mutable_output).size() - 1;
-      int end_index = start_index - location[i];
-      for (int j = start_index; j > end_index; --j) {
-        mutable_output->SwapElements(j, j - 1);
-      }
-    }
-
-    // Set version
+    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Create TensorRT engine
@@ -290,14 +241,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     if (batch_env) {
       const int max_batch_size = atoi(batch_env);
       SetMaxBatchSize(max_batch_size);
-    }    
-    
+    }
+
     const char* workspace_env = getenv("ORT_TENSORRT_MAX_WORKSPACE_SIZE");
     if (workspace_env) {
       const size_t max_workspace_size = atoi(workspace_env);
       SetMaxWorkspaceSize(max_workspace_size);
-    } 
-    
+    }
+
     trt_builder->setMaxBatchSize(max_batch_size_);
     trt_builder->setMaxWorkspaceSize(max_workspace_size_);
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildCudaEngine(*trt_network.get()));
@@ -347,6 +298,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
       output_dim_sizes[bindingIndex] = dim_size;
 
+      const auto& graph_output = model_proto.graph().output();  //slx
       const auto& tensor_shape = graph_output[i].type().tensor_type().shape();
       if (tensor_shape.dim_size() == 1 && output_shapes[bindingIndex].back() == 1) {
         output_shapes[bindingIndex].pop_back();
@@ -383,15 +335,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     };
 
     // Create compute function
-    compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
-      ORT_UNUSED_PARAMETER(num_inputs);
-      ORT_UNUSED_PARAMETER(num_outputs);
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+      Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& input_dim_sizes = (trt_state->input_info)[1];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
       const std::vector<int>& output_dim_sizes = (trt_state->output_info)[1];
       std::vector<std::vector<int64_t>> output_shapes = trt_state->output_shapes;
+
       int num_binding_inputs = input_indexes.size();
       int num_binding_outputs = output_indexes.size();
       int total_bindings = num_binding_inputs + num_binding_outputs;
@@ -402,15 +354,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Get batch size and allocate cuda memory for inputs
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        const auto& tensor_input = input_tensors[input_indexes[i]];
-        const auto& tensor_shape = tensor_input.shape;
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
+        auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+        const float* input = ort.GetTensorData<float>(input_tensor);
+
         const int input_batch_size = tensor_shape[0];
         if (i > 0 && batch_size != input_batch_size) {
           ORT_THROW("Input batch size is inconsistent");
         }
         batch_size = input_batch_size;
 
-        const float* input = static_cast<float*>(tensor_input.data);
         CHECK_CUDA(cudaMalloc(&buffers[i], input_batch_size * input_dim_sizes[i] * sizeof(float)));
         CHECK_CUDA(cudaMemcpy(buffers[i], input, input_batch_size * input_dim_sizes[i] * sizeof(float), cudaMemcpyHostToDevice));
       }
@@ -426,18 +381,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Copy TRT outputs to output tensors
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
-        // Setup output tensor property
         int output_index = output_indexes[i];
         output_shapes[i].insert(output_shapes[i].begin(), batch_size);
-        output_tensors[output_index].dtype = input_tensors[0].dtype;
-        // TODO: shape inference
-        const auto& shape_size = output_shapes[i].size();
-        output_tensors[output_index].ndim = shape_size;
-        output_tensors[output_index].shape = new int64_t[shape_size];
-        memcpy(output_tensors[output_index].shape, &output_shapes[i][0], sizeof(int64_t) * shape_size);
-        output_tensors[output_index].data = (*(trt_state->test_allocate_func))(trt_state->allocator, 64, sizeof(double) * batch_size * output_dim_sizes[i]);
-
-        CHECK_CUDA(cudaMemcpy(output_tensors[output_index].data, buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
+        OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
+        CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
       }
 
       // Sync stream
@@ -459,4 +406,3 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
   return Status::OK();
 }
 }  // namespace onnxruntime
-

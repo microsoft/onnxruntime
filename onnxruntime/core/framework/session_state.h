@@ -20,7 +20,7 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
 #include "core/common/callback.h"
-#include "core/framework/mlvalue_name_idx_map.h"
+#include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
@@ -64,23 +64,23 @@ class SessionState {
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
-  const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return mlvalue_name_idx_map_; }
-  MLValueNameIdxMap& GetMLValueNameIdxMap() noexcept { return mlvalue_name_idx_map_; }
+  const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
+  MLValueNameIdxMap& GetMLValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
 
   // initialized tensors
   /**
-  * Adds an initialized tensor (weight) so that it can be used by the
-  * execution frame to setup the appropriate MLValue vectors.
-  * This function will take a shallow copy of d if d is not NULL
-  */
-  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d);
+   * Adds an initialized tensor (weight) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * This function will take a shallow copy of d if d is not NULL
+   */
+  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d);
 
   /**
-  * Gets the list of all initialized tensors (weights) so that it can be used by the
-  * execution frame to setup the appropriate MLValue vectors.
-  * The lifetime of returned MLValues are limited by this SessionState object.
-  */
-  const std::unordered_map<int, MLValue>& GetInitializedTensors() const;
+   * Gets the list of all initialized tensors (weights) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * The lifetime of returned MLValues are limited by this SessionState object.
+   */
+  const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
@@ -188,10 +188,10 @@ class SessionState {
   std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
-  MLValueNameIdxMap mlvalue_name_idx_map_;
+  MLValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensorset
-  std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
+  std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
   // This data structure is for unintializing string tensors and
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;

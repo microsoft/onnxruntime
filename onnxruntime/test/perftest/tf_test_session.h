@@ -113,7 +113,7 @@ class TensorflowTestSession : public TestSession {
     ORT_THROW_ON_ERROR(OrtGetTensorMutableData(const_cast<OrtValue*>(value), &input_buffer));
     assert(input_buffer != nullptr);
     OrtTensorTypeAndShapeInfo* shape = nullptr;
-    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &shape));
+    ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(value, &shape));
     size_t buffer_length = 0;
     std::vector<int64_t> dims;
     size_t dim_count = OrtGetDimensionsCount(shape);

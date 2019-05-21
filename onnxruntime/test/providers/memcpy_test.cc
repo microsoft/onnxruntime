@@ -54,10 +54,10 @@ TEST(MemcpyTest, copy1) {
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
   float data[] = {1.f, 1.f, 0.f, 1.f, 1.f, 1.f};
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-  MLValue input =
-      MLValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  OrtValue input =
+      OrtValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 
-  MLValue output;
+  OrtValue output;
   st = utils::CopyOneInputAcrossDevices(s, "X", input, output);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }

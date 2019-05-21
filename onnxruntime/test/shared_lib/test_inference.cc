@@ -44,7 +44,7 @@ void RunSession(OrtAllocator* env, OrtSession* session_object,
   std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
   {
     OrtTensorTypeAndShapeInfo* shape_info_ptr;
-    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(output_tensor, &shape_info_ptr));
+    ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(output_tensor, &shape_info_ptr));
     shape_info.reset(shape_info_ptr);
   }
   size_t rtensor_dims = OrtGetDimensionsCount(shape_info.get());
@@ -167,18 +167,9 @@ INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorShapeAndType(value);
-    auto dimensionCount = ort.GetDimensionCount(info);
-    resize(dimensionCount);
-    ort.GetDimensions(info, data(), dimensionCount);
+    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
+    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
     ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-
-  size_t ElementCount() const {
-    int64_t count = 1;
-    for (size_t i = 0; i < size(); i++)
-      count *= (*this)[i];
-    return count;
   }
 };
 
@@ -188,12 +179,6 @@ constexpr size_t countof(T (&)[N]) { return N; }
 
 struct MyCustomKernel {
   MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
-  }
-
-  void GetOutputShape(OrtKernelContext* context, size_t /*output_index*/, OrtTensorTypeAndShapeInfo* info) {
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    OrtTensorDimensions dimensions(ort_, input_X);
-    ort_.SetDimensions(info, dimensions.data(), dimensions.size());
   }
 
   void Compute(OrtKernelContext* context) {
@@ -208,7 +193,7 @@ struct MyCustomKernel {
     OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
     float* out = ort_.GetTensorMutableData<float>(output);
 
-    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorShapeAndType(output);
+    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
     int64_t size = ort_.GetTensorShapeElementCount(output_info);
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
@@ -275,7 +260,7 @@ TEST_F(CApiTest, create_tensor) {
     std::unique_ptr<OrtTensorTypeAndShapeInfo> shape_info;
     {
       OrtTensorTypeAndShapeInfo* shape_info_ptr;
-      ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(tensor.get(), &shape_info_ptr));
+      ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(tensor.get(), &shape_info_ptr));
       shape_info.reset(shape_info_ptr);
     }
     int64_t len = OrtGetTensorShapeElementCount(shape_info.get());

@@ -68,7 +68,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
 }  // namespace isinf_internal
 
 Status IsInf::Compute(OpKernelContext* context) const {
-  const Tensor* X_ptr = context->Input<Tensor>(0);
+  const auto* X_ptr = context->Input<Tensor>(0);
   const auto& X = *X_ptr;
   const auto& shape = X.Shape();
   auto& Y = *context->Output(0, shape);

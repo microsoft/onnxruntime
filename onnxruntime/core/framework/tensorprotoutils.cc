@@ -363,7 +363,7 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 }
 
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                            const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, MLValue& value,
+                            const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
