@@ -106,9 +106,9 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   const Tensor& R = *ctx->Input<Tensor>(2);
 
   // optional inputs
-  const Tensor* B = ctx->Input<Tensor>(3);
-  const Tensor* sequence_lens = ctx->Input<Tensor>(4);
-  const Tensor* initial_h = ctx->Input<Tensor>(5);
+  const auto* B = ctx->Input<Tensor>(3);
+  const auto* sequence_lens = ctx->Input<Tensor>(4);
+  const auto* initial_h = ctx->Input<Tensor>(5);
 
   int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
   int64_t seq_length = X.Shape()[0];
@@ -132,7 +132,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   // X * W^t, each direction has shape of [seq_length, batch_size, hidden_size]
   auto x_matmul_data = alloc->Alloc(sizeof(float) * seq_length * batch_size * hidden_size_);
   BufferUniquePtr x_matmul_buffer(x_matmul_data, BufferDeleter(alloc));
-  float* x_matmul_w_buffer_data = static_cast<float*>(x_matmul_buffer.get());
+  auto* x_matmul_w_buffer_data = static_cast<float*>(x_matmul_buffer.get());
 
   float* Y_buffer_data;
   void* Y_data;

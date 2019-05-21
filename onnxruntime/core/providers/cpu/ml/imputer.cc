@@ -72,7 +72,7 @@ common::Status ComputeByType(OpKernelContext* context,
     return Status(ONNXRUNTIME, FAIL, "Empty value of imputed values.");
   }
 
-  const Tensor* tensor_pointer = context->Input<Tensor>(0);
+  const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& x_shape = X.Shape();
@@ -113,7 +113,7 @@ common::Status ComputeByType(OpKernelContext* context,
 }
 
 common::Status ImputerOp::Compute(OpKernelContext* context) const {
-  const Tensor* input_tensor_ptr = context->Input<Tensor>(0);
+  const auto* input_tensor_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   auto input_type = input_tensor_ptr->DataType();
   if (input_type == DataTypeImpl::GetType<float>()) {

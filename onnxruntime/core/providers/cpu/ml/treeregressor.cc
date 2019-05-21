@@ -149,7 +149,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < int64_t, std::tuple<float, float, float>>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const {
   //walk down tree to the leaf
-  ::onnxruntime::ml::NODE_MODE mode = static_cast<::onnxruntime::ml::NODE_MODE>(nodes_modes_[treeindex]);
+  auto mode = static_cast<::onnxruntime::ml::NODE_MODE>(nodes_modes_[treeindex]);
   int64_t loopcount = 0;
   int64_t root = treeindex;
   while (mode != ::onnxruntime::ml::NODE_MODE::LEAF) {
@@ -219,7 +219,7 @@ common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < in
 
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   if (X->Shape().NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
