@@ -33,7 +33,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, std::random_device& 
                                                const TestModelInfo* m)
     : rand_engine_(rd()), input_names_(m->GetInputCount()), input_length_(m->GetInputCount()) {
   SessionOptionsWrapper sf(env);
-  const bool enable_cpu_mem_arena = true;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
@@ -70,10 +69,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(OrtEnv* env, std::random_device& 
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 
-  if (enable_cpu_mem_arena)
+  if (performance_test_config.run_config.enable_cpu_mem_arena)
     sf.EnableCpuMemArena();
   else
     sf.DisableCpuMemArena();
+  if (performance_test_config.run_config.enable_memory_pattern &&
+      performance_test_config.run_config.enable_sequential_execution)
+    sf.EnableMemPattern();
+  else
+    sf.DisableMemPattern();
   if (performance_test_config.run_config.enable_sequential_execution)
     sf.EnableSequentialExecution();
   else
