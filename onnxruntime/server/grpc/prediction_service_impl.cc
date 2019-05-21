@@ -19,10 +19,10 @@ PredictionServiceImpl::PredictionServiceImpl(const std::shared_ptr<onnxruntime::
   return ::grpc::Status::OK;
 }
 
-std::string PredictionServiceImpl::SetRequestContext(::grpc::ServerContext* context){
+std::string PredictionServiceImpl::SetRequestContext(::grpc::ServerContext* context) {
   auto metadata = context->client_metadata();
   auto search = metadata.find("x-ms-client-request-id");
-  if ( search != metadata.end()) {
+  if (search != metadata.end()) {
     std::string id{search->second.data(), search->second.length()};
     context->AddInitialMetadata("x-ms-client-request-id", id);
   }
@@ -30,7 +30,6 @@ std::string PredictionServiceImpl::SetRequestContext(::grpc::ServerContext* cont
   context->AddInitialMetadata("x-request-id", request_id);
   return request_id;
 }
-
 
 }  // namespace grpc
 }  // namespace server

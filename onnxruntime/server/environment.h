@@ -29,7 +29,6 @@ class ServerEnvironment {
   common::Status InitializeModel(const std::string& model_path);
   const std::vector<std::string>& GetModelOutputNames() const;
 
-
  private:
   const logging::Severity severity_;
   const std::string logger_id_;

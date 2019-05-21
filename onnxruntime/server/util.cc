@@ -11,9 +11,9 @@
 // See: https://github.com/boostorg/random/issues/49
 #define BOOST_PENDING_INTEGER_LOG2_HPP
 #include <boost/integer/integer_log2.hpp>
-#include <boost/uuid/uuid.hpp>           
-#include <boost/uuid/uuid_generators.hpp> 
-#include <boost/uuid/uuid_io.hpp>  
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 namespace onnxruntime {
 namespace server {
@@ -52,11 +52,11 @@ protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& o
   return protobufutil::Status(code, oss.str());
 }
 
-namespace internal{
-  std::string InternalRequestId(){
-    return boost::uuids::to_string(boost::uuids::random_generator()());
-  }
+namespace internal {
+std::string InternalRequestId() {
+  return boost::uuids::to_string(boost::uuids::random_generator()());
 }
+}  // namespace internal
 
 }  // namespace server
 }  // namespace onnxruntime

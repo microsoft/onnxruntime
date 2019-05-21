@@ -17,4 +17,3 @@ class LogSink : public onnxruntime::logging::OStreamSink {
 };
 }  // namespace server
 }  // namespace onnxruntime
-

@@ -45,11 +45,11 @@ int main(int argc, char* argv[]) {
   //Setup GRPC Server
   auto const grpc_address = config.address;
   auto const grpc_port = config.grpc_port;
-  
+
   server::GRPCApp grpc_app{env, grpc_address, grpc_port};
 
   LOGS(logger, INFO) << "GRPC Listening at: "
-                          << grpc_address << ":" << grpc_port;
+                     << grpc_address << ":" << grpc_port;
 
   //Setup HTTP Server
   auto const boost_address = boost::asio::ip::make_address(config.address);

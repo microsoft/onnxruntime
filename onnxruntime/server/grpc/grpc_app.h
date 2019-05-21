@@ -10,7 +10,8 @@ class GRPCApp {
   GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env, std::string host, const unsigned short port);
   ~GRPCApp() = default;
   GRPCApp(GRPCApp const& other) = delete;
-  GRPCApp(GRPCApp && other) = default;
+  GRPCApp(GRPCApp&& other) = default;
+
  private:
   grpc::PredictionServiceImpl m_service;
   std::unique_ptr<::grpc::Server> m_server;

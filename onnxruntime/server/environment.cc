@@ -11,13 +11,13 @@ namespace onnxruntime {
 namespace server {
 
 ServerEnvironment::ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type, bool env_init) : severity_(severity),
-                                                                     logger_id_("ServerApp"),
-                                                                     default_logging_manager_(
-                                                                         std::unique_ptr<logging::ISink>{new LogSink{}},
-                                                                         severity,
-                                                                         /* default_filter_user_data */ false,
-                                                                         instance_type,
-                                                                         &logger_id_) {
+                                                                                                                                       logger_id_("ServerApp"),
+                                                                                                                                       default_logging_manager_(
+                                                                                                                                           std::unique_ptr<logging::ISink>{new LogSink{}},
+                                                                                                                                           severity,
+                                                                                                                                           /* default_filter_user_data */ false,
+                                                                                                                                           instance_type,
+                                                                                                                                           &logger_id_) {
   if (env_init) {
     auto status = onnxruntime::Environment::Create(runtime_environment_);
   }

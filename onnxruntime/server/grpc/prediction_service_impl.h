@@ -10,12 +10,12 @@ namespace grpc {
 class PredictionServiceImpl final : public onnxruntime::server::PredictionService::Service {
  public:
   PredictionServiceImpl(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env);
+  ::grpc::Status Predict(::grpc::ServerContext* context, const ::onnxruntime::server::PredictRequest* request, ::onnxruntime::server::PredictResponse* response);
 
  private:
   std::shared_ptr<onnxruntime::server::ServerEnvironment> m_env;
 
-  ::grpc::Status Predict(::grpc::ServerContext* context, const ::onnxruntime::server::PredictRequest* request, ::onnxruntime::server::PredictResponse* response);
-  std::string SetRequestContext(::grpc::ServerContext * context);
+  std::string SetRequestContext(::grpc::ServerContext* context);
 };
 }  // namespace grpc
 }  // namespace server
