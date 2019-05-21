@@ -55,8 +55,9 @@ add_custom_command(
 add_library(server_grpc ${grpc_srcs} ${onnx_runtime_server_grpc_srcs})
 target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 set(grpc_reflection -Wl,--whole-archive libgrpc++_reflection.a -Wl,--no-whole-archive)
-target_link_libraries(server_grpc libgrpc++.a libgpr.a libgrpc.a libgrpcpp_channelz.a ${grpc_reflection})
-target_link_directories(server_grpc PRIVATE "/usr/local/lib")
+set(grpc_static_libs libgrpc++.a libgpr.a libgrpc.a libgrpcpp_channelz.a) #TODO: stuff for Windows.
+target_link_libraries(server_grpc ${grpc_static_libs} ${grpc_reflection})
+target_link_directories(server_grpc PRIVATE "/usr/local/lib") #TODO: figure out how to make work without preinstalled.
 add_dependencies(server_grpc server_proto)
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
