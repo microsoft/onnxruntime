@@ -312,9 +312,6 @@ class InferenceSession {
   // if they need.
   std::shared_ptr<onnxruntime::Model> model_;
 
-  // Immutable state for each op in the model. Shared by all executors.
-  SessionState session_state_;
-
   // names of model outputs used for quick validation.
   std::unordered_set<std::string> model_output_names_;
 
@@ -391,6 +388,12 @@ class InferenceSession {
 
   ExecutionProviders execution_providers_;
 
+ protected:
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  SessionState session_state_;
+
+ private:
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 
@@ -417,6 +420,5 @@ class InferenceSession {
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
-
 };
 }  // namespace onnxruntime

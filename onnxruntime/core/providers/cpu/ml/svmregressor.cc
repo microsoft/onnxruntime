@@ -23,7 +23,7 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
   ORT_ENFORCE(!coefficients_.empty());
 
-  int64_t onec = info.GetAttrOrDefault<int64_t>("one_class", 0);
+  auto onec = info.GetAttrOrDefault<int64_t>("one_class", 0);
   one_class_ = (onec != 0);
 
   if (vector_count_ > 0) {
@@ -38,7 +38,7 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
 
 template <typename T>
 Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto* X = ctx->Input<Tensor>(0);
 
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];

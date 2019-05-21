@@ -287,7 +287,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   const auto& per_iteration_dims = per_iteration_shape.GetDims();
 
   // prepend number of iterations to the dimensions
-  int64_t num_iterations = gsl::narrow_cast<int64_t>(per_iteration_output.size());
+  auto num_iterations = gsl::narrow_cast<int64_t>(per_iteration_output.size());
   std::vector<int64_t> dims{num_iterations};
   std::copy(per_iteration_dims.cbegin(), per_iteration_dims.cend(), std::back_inserter(dims));
   TensorShape output_shape{dims};

@@ -103,7 +103,7 @@ int _set_score_svm(Tensor* Y, float max_weight, const int64_t maxclass, const in
 
 template <typename T>
 Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto* X = ctx->Input<Tensor>(0);
 
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];

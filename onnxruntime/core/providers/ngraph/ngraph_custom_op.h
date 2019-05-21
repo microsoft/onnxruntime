@@ -4,18 +4,19 @@
 #pragma once
 
 #if defined(_MSC_VER)
-#pragma warning(disable:4244 4245)
+#pragma warning(disable : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 #include <ngraph/ngraph.hpp>
 #if defined(_MSC_VER)
-#pragma warning(default:4244 4245)
+#pragma warning(default : 4244 4245)
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
 
+#include "core/session/onnxruntime_c_api.h"
 #include "core/framework/func_api.h"
 #include "core/graph/onnx_protobuf.h"
 
@@ -26,13 +27,12 @@ class NGRAPHCustomOp {
  public:
   NGRAPHCustomOp(const ComputeContext* context, const ONNX_NAMESPACE::ModelProto& model_proto, const std::shared_ptr<ngraph::runtime::Backend>& ng_backend);
 
-  Status Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs, ONNXRunTimeTensor* const output_tensors, const size_t num_outputs) const;
+  Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const;
 
   ~NGRAPHCustomOp();
 
  private:
-
-  void Initialize(const ONNXRunTimeTensor* input_tensors, const size_t& num_inputs) const;
+  void Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const;
 
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 

@@ -57,9 +57,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
                                                 string[] inputNames,
                                                 IntPtr[] /* (OrtValue*[])*/ inputValues,
-                                                ulong inputCount,  /* TODO: size_t, make it portable for x86 arm */
+                                                UIntPtr inputCount,
                                                 string[] outputNames,
-                                                ulong outputCount,  /* TODO: size_t, make it portable for x86 and arm */
+                                                UIntPtr outputCount,
 
                                                 [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 5 /*index of outputCount*/)][In, Out]
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
@@ -69,25 +69,25 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionGetInputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
-                                                out ulong /* TODO: size_t */ count);
+                                                out UIntPtr count);
 
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionGetOutputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
-                                                out ulong /*TODO: size_t port*/ count);
+                                                out UIntPtr count);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputName(
                                                 IntPtr /*(OrtSession*)*/ session,
-                                                ulong index,  //TODO: port size_t 
+                                                UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetOutputName(
                                                 IntPtr /*(OrtSession*)*/ session,
-                                                ulong index,  //TODO: port size_t 
+                                                UIntPtr index, 
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
 
@@ -95,14 +95,14 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
-                                                ulong index, //TODO: port for size_t
+                                                UIntPtr index,
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
 
         // release the typeinfo using OrtReleaseTypeInfo
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/OrtSessionGetOutputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
-                                                ulong index, //TODO: port for size_t
+                                                UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -265,9 +265,9 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /* OrtStatus */ OrtCreateTensorWithDataAsOrtValue(
                                                         IntPtr /* (const OrtAllocatorInfo*) */ allocatorInfo,
                                                         IntPtr /* (void*) */dataBufferHandle,
-                                                        ulong dataLength,   //size_t, TODO: make it portable for x86, arm
-                                                        ulong[] shape,   //size_t* or size_t[], TODO: make it portable for x86, arm
-                                                        ulong shapeLength, //size_t,  TODO: make it portable for x86, arm
+                                                        UIntPtr dataLength,
+                                                        long[] shape,
+                                                        UIntPtr shapeLength,
                                                         TensorElementType type,
                                                         out IntPtr /* OrtValue** */ outputValue);
 
@@ -280,19 +280,20 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtGetStringTensorContent(
                                                         IntPtr /*(OrtValue*)*/ value,
                                                         IntPtr /*(void*)*/  dst_buffer,
-                                                        ulong dst_buffer_len,  //size_t,  TODO: make it portable for x86, arm
+                                                        UIntPtr dst_buffer_len,
                                                         IntPtr offsets,
-                                                        ulong offsets_len);    //size_t,  TODO: make it portable for x86, arm
+                                                        UIntPtr offsets_len);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtGetStringTensorDataLength(IntPtr /*(OrtValue*)*/ value, out ulong /*(size_t*)*/ len);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtGetStringTensorDataLength(IntPtr /*(OrtValue*)*/ value,
+                                                        out UIntPtr /*(size_t*)*/ len);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/
                                 OrtCastTypeInfoToTensorInfo(IntPtr /*(struct OrtTypeInfo*)*/ typeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorShapeAndType(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtGetTensorTypeAndShape(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -302,13 +303,13 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern TensorElementType OrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern ulong /*TODO: port for size_t */OrtGetDimensionsCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
+        public static extern UIntPtr OrtGetDimensionsCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void OrtGetDimensions(
                             IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
                             long[] dim_values,
-                            ulong dim_values_length);
+                            UIntPtr dim_values_length);
 
         /**
          * How many elements does this tensor have.
