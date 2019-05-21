@@ -8,6 +8,11 @@
 #include "TestResultStat.h"
 
 namespace {
+
+void operator << (std::ostringstream& oss, const std::pair<std::string, int64_t>& p) {
+    oss << p.first << " opset: " << p.second;
+}
+
 template <typename T1>
 std::string containerToStr(const T1& input) {
   std::ostringstream oss;

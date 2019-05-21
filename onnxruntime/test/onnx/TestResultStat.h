@@ -33,12 +33,12 @@ class TestResultStat {
     failed_kernels.insert(s);
   }
 
-  void AddFailedTest(const std::string& s) {
+  void AddFailedTest(const std::pair<std::string,size_t>& p) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
-    failed_test_cases.insert(s);
+    failed_test_cases.push_back(p);
   }
 
-  std::unordered_set<std::string> GetFailedTest() {
+  const std::vector< std::pair<std::string, int64_t> >& GetFailedTest() {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
     return failed_test_cases;
   }
@@ -61,11 +61,11 @@ class TestResultStat {
     }
 
     for(const auto& s:result.failed_kernels) {
-        AddNotImplementedKernels(s);
+        AddFailedKernels(s);
     }
 
-    for(const auto& s:result.failed_test_cases) {
-        AddNotImplementedKernels(s);
+    for(const auto& p:result.failed_test_cases) {
+        AddFailedTest(p);
     }
 
     return *this;
@@ -75,5 +75,5 @@ class TestResultStat {
   onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
-  std::unordered_set<std::string> failed_test_cases;
+  std::vector< std::pair<std::string, int64_t> > failed_test_cases;
 };
