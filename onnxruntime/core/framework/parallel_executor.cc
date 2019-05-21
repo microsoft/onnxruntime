@@ -252,6 +252,9 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
             int sub_exec_queue_id = cuda_exec_provider_ ? cuda_exec_provider_->GetQueueID() : 0;
             EnqueueNode(idx, session_state, logger, sub_exec_queue_id);
           }
+        } else {
+          auto p_op_kernel_not_ready = session_state.GetKernel(idx);
+          const_cast<OpKernel*>(p_op_kernel_not_ready)->SetParentExecQueueIds(exec_queue_id);
         }
 
         // std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: "

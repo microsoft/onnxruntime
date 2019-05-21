@@ -32,8 +32,12 @@ class CudaKernel : public OpKernel {
         // Is this OK to have a non-const execution provider?
         provider_(const_cast<CUDAExecutionProvider*>(dynamic_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
-
+ 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
+    auto parent_stream_ids = GetParentExecQueueIds();
+    auto current_stream_id = GetExecQueueId();
+    provider_->StreamSync(current_stream_id, parent_stream_ids);
+
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())

@@ -189,6 +189,24 @@ class CudaResourcePool {
   int device_id_;
 };
 
+class CudaEventPool {
+ public:
+  CudaEventPool() {}
+  ~CudaEventPool();
+  cudaEvent_t GetCudaEvent();
+  void ReleaseCudaEvent();
+  Status StreamSync(cudaStream_t stream, std::vector<cudaStream_t> dep_stream_ids);
+
+ private:
+  cudaEvent_t GetOrCreateCudaEvent();
+
+ private:
+  std::deque<cudaEvent_t> available_events_;
+  // map<event, event_recorded>
+  std::unordered_map<cudaEvent_t, bool> in_used_events_;
+  OrtMutex event_mutex_;
+};
+
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
@@ -270,8 +288,23 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cuda_context_pool_.ReleasePerThreadContext(queue_id);
   }
 
- private:
+  Status StreamSync(int stream_id, std::vector<int> dep_stream_ids) {
+    if (0 == stream_id || dep_stream_ids.size() < 1) {
+      return Status::OK();
+    }
+    auto stream = GetStream(stream_id);
+    std::vector<cudaStream_t> dep_streams(dep_stream_ids.size());
+    for (int i = 0; i < dep_stream_ids.size(); ++i) {
+      dep_streams[i] = GetStream(dep_stream_ids[i]);
+    }
+    return cuda_event_pool_.StreamSync(stream, dep_streams);
+  }
 
+  void TryReleaseCudaEvent() {
+    cuda_event_pool_.ReleaseCudaEvent();
+  }
+
+ private:
   int GetQueueIDByThreadId(std::thread::id& thread_id) {
     std::lock_guard<OrtMutex> lock(thread_queue_id_map_mutex_);
     auto queue_id = thead_id_2_queue_id_.find(thread_id);
@@ -308,6 +341,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // mapping from thread id to queue id, use for scenario that cuda execution provide code executed in multi-thread RunStart/End
   std::unordered_map<std::thread::id, int> thead_id_2_queue_id_;
   OrtMutex thread_queue_id_map_mutex_;
+
+  CudaEventPool cuda_event_pool_;
 
   void ReleasePerThreadStuffs();
 

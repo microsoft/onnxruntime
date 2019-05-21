@@ -52,6 +52,66 @@ PerThreadContext::~PerThreadContext() {
   CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
 }
 
+cudaEvent_t CudaEventPool::GetCudaEvent() {
+  std::lock_guard<OrtMutex> lock(event_mutex_);
+  return GetOrCreateCudaEvent();
+}
+
+cudaEvent_t CudaEventPool::GetOrCreateCudaEvent() {
+  cudaEvent_t cuda_event;
+  if (available_events_.size() > 0) {
+    cuda_event = available_events_.back();
+    in_used_events_.emplace(cuda_event, false);
+    available_events_.pop_back();
+  } else {
+    CUDA_CALL_THROW(cudaEventCreate(&cuda_event, cudaEventDisableTiming));
+    in_used_events_.emplace(cuda_event, false);
+  }
+  return cuda_event;
+}
+
+void CudaEventPool::ReleaseCudaEvent() {
+  std::lock_guard<OrtMutex> lock(event_mutex_);
+  std::vector<cudaEvent_t> to_be_removed_from_map;
+  for (auto in_used_event : in_used_events_) {
+    // The event is recored and query status is success which mean event is triggered.
+    if (in_used_event.second && cudaSuccess == cudaEventQuery(in_used_event.first)) {
+      available_events_.push_back(in_used_event.first);
+      to_be_removed_from_map.emplace_back(in_used_event.first);
+    }
+  }
+
+  for (auto it : to_be_removed_from_map) {
+    in_used_events_.erase(it);
+  }
+}
+
+Status CudaEventPool::StreamSync(cudaStream_t stream, std::vector<cudaStream_t> dep_stream_ids) {
+  std::lock_guard<OrtMutex> lock(event_mutex_);
+  for (auto it : dep_stream_ids) {
+    auto cuda_event = GetOrCreateCudaEvent();
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(cuda_event, it));
+    CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, cuda_event, 0));
+    in_used_events_[cuda_event] = true;
+  }
+
+  return Status::OK();
+}
+
+CudaEventPool::~CudaEventPool() {
+  std::lock_guard<OrtMutex> lock(event_mutex_);
+  for (auto it : in_used_events_) {
+    available_events_.push_back(it.first);
+  }
+  available_events_.clear();
+
+  for (auto it : available_events_) {
+    cudaEventDestroy(it);
+  }
+  available_events_.clear();
+
+}
+
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_context_pool_(info.device_id), cuda_stream_id_pos_(0), cuda_stream_ids_(kTotalCudaStreams - 2), default_allocator_pool_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -88,8 +148,9 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
     CUDA_CALL_THROW(cudaEventDestroy(e));
     it = deferred_release_cpu_ptr_.erase(it);
   }
-  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
-  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
+  for (int i = kCudaStreamCopyIn; i < kTotalCudaStreams; ++i) {
+    CUDA_CALL_THROW(cudaStreamDestroy(streams_[i]));
+  }
 
   ReleasePerThreadStuffs();
 }
@@ -177,6 +238,7 @@ Status CUDAExecutionProvider::OnRunEnd() {
   auto current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
   ReleasePerThreadStuffs();
+  TryReleaseCudaEvent();
 
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;

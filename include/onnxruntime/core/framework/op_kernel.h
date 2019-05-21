@@ -56,11 +56,20 @@ class OpKernel {
 
   void ExecQueueId(int queue_id) { exec_queue_id_ = queue_id; }
 
+  void SetParentExecQueueIds(int queue_id) {
+    parent_exec_queue_ids_.push_back(queue_id);
+  }
+
+  std::vector<int> GetParentExecQueueIds() const {
+    return parent_exec_queue_ids_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   OpKernelInfo op_kernel_info_;
   // execution command queue id, 0 for default queue in execution provider
   int exec_queue_id_ = 0;
+  std::vector<int> parent_exec_queue_ids_;
 };
 
 class OpKernelContext {
