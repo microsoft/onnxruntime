@@ -13,14 +13,14 @@ ONNX_CPU_OPERATOR_KERNEL(
     Compress);
 
 Status Compress::Compute(OpKernelContext* ctx) const {
-  const Tensor* input_tensor = ctx->Input<Tensor>(0);
+  const auto* input_tensor = ctx->Input<Tensor>(0);
   size_t rank = input_tensor->Shape().NumDimensions();
   auto& input_dimensions = input_tensor->Shape().GetDims();
   if (has_axis_) {
     ORT_ENFORCE(axis_ < static_cast<int64_t>(rank), "axis greater than input data dimension!");
   }
 
-  const Tensor* condition = ctx->Input<Tensor>(1);
+  const auto* condition = ctx->Input<Tensor>(1);
   auto condition_length = condition->Shape().Size();
   auto condition_data = condition->template Data<bool>();
 
@@ -50,8 +50,8 @@ Status Compress::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  const uint8_t* input_data = static_cast<const uint8_t*>(input_tensor->DataRaw());
-  uint8_t* output_data = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
+  const auto* input_data = static_cast<const uint8_t*>(input_tensor->DataRaw());
+  auto* output_data = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   auto element_bytes = input_tensor->DataType()->Size();
   bool is_string_type = input_tensor->DataType() == DataTypeImpl::GetType<std::string>();
   int64_t output_index = 0;
@@ -63,7 +63,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
       axes_left_stride *= input_dimensions[i];
     }
 
-    for (size_t i = static_cast<size_t>(axis_ + 1); i < rank; ++i) {
+    for (auto i = static_cast<size_t>(axis_ + 1); i < rank; ++i) {
       axes_right_stride *= input_dimensions[i];
     }
     int64_t axes_included_right_stride = axes_right_stride * input_dimensions[axis_];

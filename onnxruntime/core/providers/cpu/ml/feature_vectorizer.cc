@@ -32,7 +32,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(input_count >= 0 && static_cast<size_t>(input_count) == input_dimensions_.size(), "Number of inputs (",
               input_count, ") does not match number of inputdimensions values (", input_dimensions_.size(), ").");
 
-  const Tensor* tensor_pointer = context->Input<Tensor>(0);
+  const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const auto& x_dims = X.Shape().GetDims();
@@ -53,7 +53,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
   // for each feature, write out its data in one pass
   for (int index = 0; index < input_count; ++index) {
-    const Tensor* input_tensor_ptr = context->Input<Tensor>(index);
+    const auto* input_tensor_ptr = context->Input<Tensor>(index);
     ORT_ENFORCE(input_tensor_ptr != nullptr);
     auto& input_tensor = *input_tensor_ptr;
 

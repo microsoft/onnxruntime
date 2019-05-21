@@ -268,9 +268,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 3*hidden_size, hidden_size]
 
   // optional
-  const Tensor* B = context.Input<Tensor>(3);              // bias. [num_directions, 6*hidden_size]
-  const Tensor* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
-  const Tensor* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
+  const auto* B = context.Input<Tensor>(3);              // bias. [num_directions, 6*hidden_size]
+  const auto* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
+  const auto* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
 
   auto& X_shape = X.Shape();
 
