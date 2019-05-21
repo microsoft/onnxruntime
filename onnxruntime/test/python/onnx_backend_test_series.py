@@ -36,6 +36,17 @@ backend_test = OrtBackendTest(c2, __name__)
 # Type not supported
 backend_test.exclude(r'(FLOAT16)')
 
+'''
+if onnx.__version__ == "1.2.3":
+    backend_test.exclude(...)
+elif onnx.__version__ == "1.3.0":
+    backend_test.exclude(...)
+elif onnx.__version__ == "1.4.1":
+    backend_test.exclude(...)
+elif onnx.__version__ == "1.5.0":
+    backend_test.exclude(...)
+'''
+
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
 '|^test_cast_FLOAT_to_DOUBLE_cpu.*'
