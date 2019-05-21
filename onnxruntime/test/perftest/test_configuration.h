@@ -41,6 +41,8 @@ struct RunConfig {
   size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
   bool f_verbose{false};
+  bool enable_memory_pattern{true};
+  bool enable_cpu_mem_arena{true};
   bool enable_sequential_execution{true};
   int session_thread_pool_size{0};
   uint32_t optimization_level{2};
