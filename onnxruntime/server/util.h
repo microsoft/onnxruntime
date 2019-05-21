@@ -6,6 +6,7 @@
 #include <google/protobuf/stubs/status.h>
 
 #include "core/common/status.h"
+       
 
 namespace onnxruntime {
 namespace server {
@@ -40,6 +41,10 @@ class MemBufferArray {
 
 // Generate protobuf status from ONNX Runtime status
 google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message);
+
+namespace internal{
+std::string InternalRequestId();
+}
 
 }  // namespace server
 }  // namespace onnxruntime

@@ -15,6 +15,7 @@ class PredictionServiceImpl final : public onnxruntime::server::PredictionServic
   std::shared_ptr<onnxruntime::server::ServerEnvironment> m_env;
 
   ::grpc::Status Predict(::grpc::ServerContext* context, const ::onnxruntime::server::PredictRequest* request, ::onnxruntime::server::PredictResponse* response);
+  std::string SetRequestContext(::grpc::ServerContext * context);
 };
 }  // namespace grpc
 }  // namespace server

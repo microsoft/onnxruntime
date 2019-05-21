@@ -54,7 +54,9 @@ add_custom_command(
 
 add_library(server_grpc ${grpc_srcs} ${onnx_runtime_server_grpc_srcs})
 target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
-target_link_libraries(server_grpc /usr/local/lib/libgrpc++.a /usr/local/lib/libgpr.a /usr/local/lib/libgrpc.a)
+set(grpc_reflection -Wl,--whole-archive libgrpc++_reflection.a -Wl,--no-whole-archive)
+target_link_libraries(server_grpc libgrpc++.a libgpr.a libgrpc.a libgrpcpp_channelz.a ${grpc_reflection})
+target_link_directories(server_grpc PRIVATE "/usr/local/lib")
 add_dependencies(server_grpc server_proto)
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
@@ -156,6 +158,7 @@ target_include_directories(${SERVER_APP_NAME} PRIVATE
     ${ONNXRUNTIME_ROOT}
     ${ONNXRUNTIME_ROOT}/server/http
 )
+
 
 target_link_libraries(${SERVER_APP_NAME} PRIVATE
     onnxruntime_server_http_core_lib
