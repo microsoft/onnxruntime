@@ -56,7 +56,7 @@ add_library(server_grpc ${grpc_srcs} ${onnx_runtime_server_grpc_srcs})
 target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 set(grpc_reflection -Wl,--whole-archive libgrpc++_reflection.a -Wl,--no-whole-archive)
 set(grpc_static_libs libgrpc++.a libgpr.a libgrpc.a libgrpcpp_channelz.a) #TODO: stuff for Windows.
-target_link_libraries(server_grpc ${grpc_static_libs} ${grpc_reflection})
+target_link_libraries(server_grpc ${grpc_static_libs})
 target_link_directories(server_grpc PRIVATE "/usr/local/lib") #TODO: figure out how to make work without preinstalled.
 add_dependencies(server_grpc server_proto)
 # Include generated *.pb.h files
@@ -164,5 +164,6 @@ target_include_directories(${SERVER_APP_NAME} PRIVATE
 target_link_libraries(${SERVER_APP_NAME} PRIVATE
     onnxruntime_server_http_core_lib
     onnxruntime_server_lib
+    ${grpc_reflection} #Note that this will break the tests if we try to link it to the normal lib.
 )
 
