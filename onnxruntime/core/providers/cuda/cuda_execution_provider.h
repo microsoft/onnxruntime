@@ -47,6 +47,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
+  int GetDeviceId() const override { return device_id_; }
+
   cublasHandle_t PerThreadCublasHandle() {
     // Assure each thread has its TLS context.
     if (!per_thread_context_)
@@ -90,6 +92,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
+
  private:
   cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;

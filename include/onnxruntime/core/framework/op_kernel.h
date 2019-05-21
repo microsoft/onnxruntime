@@ -151,6 +151,13 @@ class OpKernelContext {
   */
   Fence_t OutputFence(int index) const;
 
+  /**
+  Return the device id that current kernel runs on.
+  */
+  int GetDeviceId() const {
+    return kernel_->Info().GetExecutionProvider()->GetDeviceId();
+  }
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
 

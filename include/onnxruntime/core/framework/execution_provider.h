@@ -85,6 +85,11 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
 
   /**
+	Get the device id of current excution provider
+  */
+  virtual int GetDeviceId() const { return -1; };
+
+  /**
    * Copy tensor between execution providers.  It's always a deep copy
    * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
    */

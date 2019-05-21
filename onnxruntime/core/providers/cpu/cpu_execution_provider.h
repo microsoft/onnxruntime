@@ -57,7 +57,6 @@ class CPUExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-
  private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
