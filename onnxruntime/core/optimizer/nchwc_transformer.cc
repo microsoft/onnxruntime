@@ -307,6 +307,7 @@ class NchwcConvPoolTransformer : public GraphTransformer {
         }
 
         if (all_inputs_reorder_output) {
+          if (node.InputEdgesBegin() == node.InputEdgesEnd()) continue;  //no input edge
           //move reorder node from inputs to outputs
           if (node.GetOutputEdgesCount() == 0) {  //this node output is graph output, insert an output node
             auto& outputs = node.MutableOutputDefs();
