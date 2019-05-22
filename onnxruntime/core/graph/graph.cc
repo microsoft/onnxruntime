@@ -46,9 +46,8 @@ static Status MergeShapeInfo(const std::string& output_name,
 }
 
 static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
-  return graph_proto && (graph_proto->input_size() != 0 ||
-                         graph_proto->output_size() != 0 ||
-                         graph_proto->value_info_size() != 0);
+  return graph_proto && (graph_proto->node_size() != 0 ||
+                         graph_proto->output_size() != 0);
 }
 
 NodeArg::NodeArg(const std::string& name,
@@ -1321,8 +1320,9 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-      subgraph_inputs = &required_subgraph_inputs;
-      num_subgraph_inputs = num_required_subgraph_inputs;
+    
+    subgraph_inputs = &required_subgraph_inputs;
+    num_subgraph_inputs = num_required_subgraph_inputs;
   }
 
   // apply type/shape info to the subgraph's inputs
