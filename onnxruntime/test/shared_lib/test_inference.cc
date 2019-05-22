@@ -225,6 +225,7 @@ struct MyCustomKernel {
 struct MyCustomOp : onnxruntime::CustomOpBase<MyCustomOp, MyCustomKernel> {
   void* CreateKernel(onnxruntime::CustomOpApi api, const OrtKernelInfo* info) { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; };
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
