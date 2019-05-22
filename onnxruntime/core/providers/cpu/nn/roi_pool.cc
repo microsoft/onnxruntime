@@ -13,8 +13,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <>
 Status RoiPool<float>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* R = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* R = context->Input<Tensor>(1);
   if (X == nullptr || R == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
   int batch_size = static_cast<int>(X->Shape()[0]);
@@ -30,10 +30,10 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-  const float* Xdata = X->template Data<float>();
-  const float* rois = R->template Data<float>();
+  const auto* Xdata = X->template Data<float>();
+  const auto* rois = R->template Data<float>();
 
-  float* Ydata = Y->template MutableData<float>();
+  auto* Ydata = Y->template MutableData<float>();
 
   for (int n = 0; n < num_rois; n++) {
     int roi_batch_id = static_cast<int>(rois[0]);

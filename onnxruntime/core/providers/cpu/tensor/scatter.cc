@@ -47,17 +47,17 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   const auto input_elements = input_data_shape.Size();
   const auto total_input_bytes = data_input->Size();
 
-  const Tdata* src_base = static_cast<const Tdata*>(data_input->DataRaw());
-  Tdata* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
+  const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
+  auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
   bool is_string_type = data_input->DataType() == DataTypeImpl::GetType<std::string>();
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy
   if (src_base != dst_base) {
     if (is_string_type) {
-      const std::string* str_begin = data_input->template Data<std::string>();
+      const auto* str_begin = data_input->template Data<std::string>();
       const std::string* str_end = str_begin + input_elements;
-      std::string* dst = data_output->template MutableData<std::string>();
+      auto* dst = data_output->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
       memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);
@@ -104,12 +104,12 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   if (num_dims > 1) {
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
-    for (int64_t i = int64_t(num_dims - 2); i >= 0; --i) {
+    for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
       dim_block_size[i] = input_data_shape[i + 1] * dim_block_size[i + 1];
     }
   }
 
-  const Tdata* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
+  const auto* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
   // For every update we compute the destination offset and copy it there
   for (int64_t index = 0; index < num_indices;) {
     const Tin axis_idx = indices_data[index];
@@ -133,7 +133,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
     }
     // Increment counters
     // See comments for dim_counters above
-    for (int64_t i = int64_t(num_dims - 1); i >= 0; --i) {
+    for (auto i = int64_t(num_dims - 1); i >= 0; --i) {
       auto v = ++dim_counters[i];
       assert(v <= upd_shape[i]);
       if (v < upd_shape[i]) {

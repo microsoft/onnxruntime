@@ -9,6 +9,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/logging/logging.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
@@ -74,8 +75,8 @@ class UnionSet {
   std::vector<int> farthers_;
 };
 
-static DLDataType GetDataType(DType type) {
-  if (type == DType::TDouble) {
+static DLDataType GetDataType(ONNXTensorElementDataType type) {
+  if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
     return {kDLFloat, 64, 1};
   } else
     ORT_THROW("not implement.");
@@ -209,48 +210,57 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
       };
 
       //we use lambda to capture the tvm model, so we can use it to get the funciton.
-      compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
+      compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+        Ort::CustomOpApi ort{*api};
+
         TVMFuncState* tvm_state = reinterpret_cast<TVMFuncState*>(state);
+
+        std::vector<std::vector<int64_t>> input_shapes;
+        std::vector<std::vector<int64_t>> output_shapes;
 
         auto eval_func_name = "func";
         DLContext cpu_context = {kDLCPU, 0};
+        size_t num_inputs = ort.KernelContext_GetInputCount(context);
+        size_t num_outputs = ort.KernelContext_GetOutputCount(context);
         size_t n_args = num_inputs + num_outputs;
         std::vector<DLTensor> dl_tensors(n_args);
         std::vector<TVMValue> tvm_values(n_args);
         std::vector<int> tvm_type_codes(n_args);
         for (auto i = 0; i < num_inputs; i++) {
+          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+          auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+          auto tensor_type = ort.GetTensorElementType(tensor_info);
+          input_shapes.emplace_back(ort.GetTensorShape(tensor_info));
+          ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
           tvm_type_codes[i] = kNDArrayContainer;
           dl_tensors[i].ctx = cpu_context;
-          dl_tensors[i].dtype = GetDataType(input_tensors[i].dtype);
+          dl_tensors[i].dtype = GetDataType(tensor_type);
           dl_tensors[i].strides = nullptr;
           dl_tensors[i].byte_offset = 0;
-          dl_tensors[i].data = input_tensors[i].data;
-          dl_tensors[i].ndim = input_tensors[i].ndim;
-          dl_tensors[i].shape = input_tensors[i].shape;
+          dl_tensors[i].data = const_cast<double*>(ort.GetTensorData<double>(input_tensor));
+          dl_tensors[i].ndim = input_shapes.back().size();
+          dl_tensors[i].shape = input_shapes.back().data();
           tvm_values[i].v_handle = &dl_tensors[i];
         }
 
         for (auto i = 0; i < num_outputs; i++) {
           //setup output tensor property
           //todo: type should be set by framework.
-          output_tensors[i].dtype = input_tensors[0].dtype;
-          //todo: shape inference
-          output_tensors[i].ndim = input_tensors[0].ndim;
-          output_tensors[i].shape = new int64_t[output_tensors[i].ndim];
-          memcpy(output_tensors[i].shape, input_tensors[0].shape, sizeof(int64_t) * output_tensors[i].ndim);
-          int64_t size = 1;
-          for (auto j = 0; j < output_tensors[i].ndim; j++)
-            size *= output_tensors[i].shape[j];
-          output_tensors[i].data = (*(tvm_state->test_allocate_func))(tvm_state->allocator, sizeof(double) * size, 64);
+          output_shapes.push_back(input_shapes[i]);
+          OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, output_shapes[i].data(), output_shapes[i].size());
+          auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
+          auto tensor_type = ort.GetTensorElementType(tensor_info);
+          ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
           tvm_type_codes[num_inputs + i] = kNDArrayContainer;
           dl_tensors[num_inputs + i].ctx = cpu_context;
-          dl_tensors[num_inputs + i].dtype = GetDataType(output_tensors[i].dtype);
+          dl_tensors[num_inputs + i].dtype = GetDataType(tensor_type);
           dl_tensors[num_inputs + i].strides = nullptr;
           dl_tensors[num_inputs + i].byte_offset = 0;
-          dl_tensors[num_inputs + i].data = output_tensors[i].data;
-          dl_tensors[num_inputs + i].ndim = output_tensors[i].ndim;
-          dl_tensors[num_inputs + i].shape = output_tensors[i].shape;
+          dl_tensors[num_inputs + i].data = ort.GetTensorMutableData<double>(output_tensor);
+          dl_tensors[num_inputs + i].ndim = output_shapes.back().size();
+          dl_tensors[num_inputs + i].shape = output_shapes.back().data();
           tvm_values[num_inputs + i].v_handle = &dl_tensors[num_inputs + i];
         }
 

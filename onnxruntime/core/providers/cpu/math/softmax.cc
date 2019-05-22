@@ -12,7 +12,7 @@ namespace onnxruntime {
 
 template <>
 Status Softmax<float>::Compute(OpKernelContext* ctx) const {
-  const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
+  const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& input_shape{X.Shape()};
@@ -26,7 +26,7 @@ Status Softmax<float>::Compute(OpKernelContext* ctx) const {
   size_t N = input_shape.SizeToDimension(axis);
   size_t D = input_shape.SizeFromDimension(axis);
 
-  float* Ydata = Y->template MutableData<float>();
+  auto* Ydata = Y->template MutableData<float>();
 
   std::vector<float> scale_(N);
   std::vector<float> rowmax_(N);
