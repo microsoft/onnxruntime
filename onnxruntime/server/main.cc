@@ -87,5 +87,7 @@ int main(int argc, char* argv[]) {
       .NumThreads(config.num_http_threads)
       .Run();
 
+  grpc_app.Run();
+
   return EXIT_SUCCESS;
 }

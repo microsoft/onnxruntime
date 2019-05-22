@@ -27,6 +27,7 @@ protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& o
     case onnxruntime::common::StatusCode::MODEL_LOADED:
       code = protobufutil::error::Code::OK;
       break;
+    case onnxruntime::common::StatusCode::FAIL:
     case onnxruntime::common::StatusCode::INVALID_ARGUMENT:
     case onnxruntime::common::StatusCode::INVALID_PROTOBUF:
     case onnxruntime::common::StatusCode::INVALID_GRAPH:
@@ -39,7 +40,6 @@ protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& o
     case onnxruntime::common::StatusCode::NOT_IMPLEMENTED:
       code = protobufutil::error::Code::UNIMPLEMENTED;
       break;
-    case onnxruntime::common::StatusCode::FAIL:
     case onnxruntime::common::StatusCode::RUNTIME_EXCEPTION:
       code = protobufutil::error::Code::INTERNAL;
       break;
@@ -56,6 +56,8 @@ namespace internal {
 std::string InternalRequestId() {
   return boost::uuids::to_string(boost::uuids::random_generator()());
 }
+const char* REQUEST_HEADER = "x-ms-request-id";
+const char* CLIENT_REQUEST_HEADER = "x-ms-client-request-id";
 }  // namespace internal
 
 }  // namespace server

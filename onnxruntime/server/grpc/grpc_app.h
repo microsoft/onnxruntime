@@ -12,6 +12,9 @@ class GRPCApp {
   GRPCApp(GRPCApp const& other) = delete;
   GRPCApp(GRPCApp&& other) = default;
 
+  //Block until the server shuts down.
+  void Run();
+
  private:
   grpc::PredictionServiceImpl m_service;
   std::unique_ptr<::grpc::Server> m_server;

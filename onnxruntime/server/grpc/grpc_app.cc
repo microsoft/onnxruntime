@@ -20,5 +20,9 @@ GRPCApp::GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& 
   m_server.swap(server);
   m_server->GetHealthCheckService()->SetServingStatus(PredictionService::service_full_name(), true);
 }
+
+void GRPCApp::Run() {
+  m_server->Wait();
+}
 }  // namespace server
 }  // namespace onnxruntime

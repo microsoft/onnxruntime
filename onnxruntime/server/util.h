@@ -43,6 +43,8 @@ google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common:
 
 namespace internal {
 std::string InternalRequestId();
+extern const char* REQUEST_HEADER;
+extern const char* CLIENT_REQUEST_HEADER;
 }
 
 }  // namespace server

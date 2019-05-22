@@ -21,13 +21,16 @@ PredictionServiceImpl::PredictionServiceImpl(const std::shared_ptr<onnxruntime::
 
 std::string PredictionServiceImpl::SetRequestContext(::grpc::ServerContext* context) {
   auto metadata = context->client_metadata();
-  auto search = metadata.find("x-ms-client-request-id");
+  auto request_id = internal::InternalRequestId();
+  context->AddInitialMetadata(internal::REQUEST_HEADER, request_id);
+  auto logger = m_env->GetLogger(request_id);
+  auto search = metadata.find(internal::CLIENT_REQUEST_HEADER);
   if (search != metadata.end()) {
     std::string id{search->second.data(), search->second.length()};
-    context->AddInitialMetadata("x-ms-client-request-id", id);
+    context->AddInitialMetadata(internal::CLIENT_REQUEST_HEADER, id);
+    LOGS(*logger, INFO) << internal::CLIENT_REQUEST_HEADER << ": [" << id << "]";
   }
-  auto request_id = internal::InternalRequestId();
-  context->AddInitialMetadata("x-request-id", request_id);
+
   return request_id;
 }
 
