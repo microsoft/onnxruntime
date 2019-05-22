@@ -202,9 +202,9 @@ Status LoopImpl::Initialize() {
                            " but has ", num_subgraph_outputs);
   }
 
-  auto* max_trip_count_tensor = context.Input<Tensor>(0);
+  auto* max_trip_count_tensor = context_.Input<Tensor>(0);
   auto iter_num_rank = max_trip_count_tensor ? max_trip_count_tensor->Shape().NumDimensions() : 0;
-  auto* cond_tensor = context.Input<Tensor>(1);
+  auto* cond_tensor = context_.Input<Tensor>(1);
   auto condition_rank = cond_tensor ? cond_tensor->Shape().NumDimensions() : 0;
 
   if (condition_rank >= 2 || iter_num_rank >= 2) {
