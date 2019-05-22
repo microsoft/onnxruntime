@@ -114,8 +114,6 @@ class LoopImpl {
 
   int64_t max_trip_count_;
   bool condition_;
-  size_t init_iter_num_rank_;
-  size_t init_condition_rank_;
 
   int num_loop_carried_vars_;
   int num_subgraph_inputs_;
