@@ -4,7 +4,6 @@
 
 # build docker image for CPU
 
-#TODO: Get this working, not tested yet
 set -x
 
 SOURCE_ROOT=$1
