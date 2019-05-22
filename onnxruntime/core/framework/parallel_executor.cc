@@ -21,7 +21,8 @@
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_{terminate_flag}, cuda_exec_provider_(const_cast<IExecutionProvider*>(session_state.GetExecutionProviders().Get(kCudaExecutionProvider))) {
+    : out_standings_(0), terminate_flag_{terminate_flag}
+    , cuda_exec_provider_(const_cast<IExecutionProvider*>(session_state.GetExecutionProviders().Get(kCudaExecutionProvider))) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
@@ -66,7 +67,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
     for (auto it : queue_ids) {
       cuda_exec_provider_->ReleaseQueueID(it.first);
     }
-    cudaDeviceSynchronize();
+    //cuda_exec_provider_->Sync();
   }
 
   VLOGS(logger, 1) << "Fetching output.";
@@ -148,6 +149,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       sync_time_begin = session_state.Profiler().StartTime();
     }
     // sync before compute
+    /*
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
 
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
@@ -178,6 +180,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
         fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
       }
     }
+    */
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
@@ -206,6 +209,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       sync_time_begin = session_state.Profiler().StartTime();
     }
     // sync after compute for outputs
+    /*
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
       if (fence) {
@@ -225,7 +229,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       if (fence) {
         fence->AfterUsedAsOutput(queue_id);
       }
-    }
+    }*/
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_after",

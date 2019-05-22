@@ -58,6 +58,7 @@ cudaEvent_t CudaEventPool::GetCudaEvent() {
 }
 
 cudaEvent_t CudaEventPool::GetOrCreateCudaEvent() {
+  std::lock_guard<OrtMutex> lock(event_mutex_);
   cudaEvent_t cuda_event;
   if (available_events_.size() > 0) {
     cuda_event = available_events_.back();
@@ -118,7 +119,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
   for (int i = kCudaStreamCopyIn; i < kTotalCudaStreams; ++i) {
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[i], cudaStreamNonBlocking));
+    //CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[i], cudaStreamDefault));
+    CUDA_CALL_THROW(cudaStreamCreate(&streams_[i]));
   }
 
   int start = kCudaStreamCopyOut + 1;
@@ -161,16 +163,16 @@ void CUDAExecutionProvider::ReleasePerThreadStuffs() {
   cuda_context_pool_.ReleasePerThreadContext(stream_id);
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr CUDAExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
   // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
   // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
   // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
     auto stream_id = const_cast<CUDAExecutionProvider*>(this)->GetQueueIDByThreadId(std::this_thread::get_id());
-    auto per_thread_default_allocator = const_cast<CUDAExecutionProvider*>(this)->default_allocator_pool_.GetCudaResource(stream_id, id);
+    auto per_thread_default_allocator = const_cast<CUDAExecutionProvider*>(this)->default_allocator_pool_.GetCudaResource(stream_id);
     return per_thread_default_allocator;
   } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    return IExecutionProvider::GetAllocator(device_id, mem_type);
   }
 }
 
@@ -270,19 +272,14 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, streams_[exec_queue_id]));
     } else if (strcmp(src.Location().name, CUDA) == 0) {
       // copying between GPU, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, streams_[kCudaStreamDefault]));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, streams_[exec_queue_id]));
     } else {
       // copy from other CPU memory to GPU, this is blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
     }
-  } else if (strcmp(src.Location().name, CUDA) == 0) {
-    if (strcmp(dst.Location().name, CUDA_PINNED) == 0) {
-      // copying from GPU to pinned memory, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, streams_[exec_queue_id]));
-    } else {
-      // copying from GPU to CPU memory, this is blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
-    }
+  } else if (strcmp(src.Location().name, CUDA) == 0) {  // Device to hose
+    // copying from GPU to CPU memory, this is blocking
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);

@@ -32,6 +32,9 @@ class CUDAPinnedAllocator : public IDeviceAllocator {
   virtual void Free(void* p) override;
   virtual const OrtAllocatorInfo& Info() const override;
   virtual FencePtr CreateFence(const SessionState* session_state) override;
+
+ private:
+  OrtMutex alloc_mutex_;
 };
 
 }  // namespace onnxruntime

@@ -48,8 +48,8 @@ class CudaKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(int id, size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(id, OrtMemTypeCPU);
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(int device_id, size_t count_or_bytes) const {
+    AllocatorPtr allocator = provider_->GetAllocator(device_id, OrtMemTypeCPU);
     if (!allocator)
       return nullptr;
     return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
@@ -83,8 +83,8 @@ class CudaKernel : public OpKernel {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
-    void AllocCpuPtr(int id, size_t count) {
-      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(id, count);
+    void AllocCpuPtr(int device_id, size_t count) {
+      cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(device_id, count);
       if (cpu_pinned_copy_ == nullptr)
         throw std::runtime_error("alloc failed");
       count_ = count;

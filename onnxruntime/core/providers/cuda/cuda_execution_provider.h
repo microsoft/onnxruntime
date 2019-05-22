@@ -152,13 +152,14 @@ class CudaResourcePool {
  public:
   CudaResourcePool(int device_id) : device_id_(device_id) {}
 
-  AllocatorPtr GetCudaResource(int stream_id, int id) {
+  AllocatorPtr GetCudaResource(int stream_id) {
+    std::lock_guard<OrtMutex> lock(cuda_resource_mutex_);
+
     auto find = in_used_resource_.find(stream_id);
     if (find != in_used_resource_.end()) {
       return in_used_resource_[stream_id];
     }
 
-    std::lock_guard<OrtMutex> lock(cuda_resource_mutex_);
     if (available_resources_.empty()) {
       DeviceAllocatorRegistrationInfo default_allocator_info(
           {OrtMemTypeDefault,

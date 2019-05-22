@@ -47,6 +47,7 @@ FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
 }
 
 void* CUDAPinnedAllocator::Alloc(size_t size) {
+  std::lock_guard<OrtMutex> lock(alloc_mutex_);
   void* p = nullptr;
   if (size > 0) {
     CUDA_CALL_THROW(cudaMallocHost((void**)&p, size));
@@ -55,15 +56,18 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
 }
 
 void CUDAPinnedAllocator::Free(void* p) {
+  std::lock_guard<OrtMutex> lock(alloc_mutex_);
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 
 const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
+  std::lock_guard<OrtMutex> lock(const_cast<OrtMutex&>(alloc_mutex_));
   static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
   return cuda_allocator_info;
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {
+  std::lock_guard<OrtMutex> lock(alloc_mutex_);
   return std::make_shared<CUDAFence>(GetCUDAExecutionProvider(session_state));
 }
 
