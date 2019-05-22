@@ -158,11 +158,9 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
       implicit_inputs_{context_.GetImplicitInputs()} {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
-  init_iter_num_rank_ = max_trip_count_tensor->Shape().NumDimensions();
 
   auto cond_tensor = context.Input<Tensor>(1);
   condition_ = cond_tensor ? *cond_tensor->Data<bool>() : true;
-  init_condition_rank_ = cond_tensor->Shape().NumDimensions();
 
   num_loop_carried_vars_ = context.InputCount() - 2;  // skip 'M' and 'cond'
   num_subgraph_inputs_ = num_loop_carried_vars_ + 2;  // iter_num, cond, loop carried vars
@@ -206,18 +204,23 @@ Status LoopImpl::Initialize() {
                            " but has ", num_subgraph_outputs);
   }
 
-  if (init_condition_rank_ >= 2 || init_iter_num_rank_ >= 2) {
+  auto* max_trip_count_tensor = context.Input<Tensor>(0);
+  auto iter_num_rank = max_trip_count_tensor ? max_trip_count_tensor->Shape().NumDimensions() : 0;
+  auto* cond_tensor = context.Input<Tensor>(1);
+  auto condition_rank = cond_tensor ? cond_tensor->Shape().NumDimensions() : 0;
+
+  if (condition_rank >= 2 || iter_num_rank >= 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "'Loop' input 'M' and 'cond' should be a scalar tensor, but have ranks of ",
-                           init_condition_rank_, " and ", init_iter_num_rank_);
+                           condition_rank, " and ", iter_num_rank);
   }
 
   AllocatorPtr allocator;
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, init_condition_rank_);
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, init_iter_num_rank_);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, condition_rank);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, iter_num_rank);
 
   subgraph_input_names_.reserve(num_subgraph_inputs_);
   for (int i = 0; i < num_subgraph_inputs_; ++i) {
