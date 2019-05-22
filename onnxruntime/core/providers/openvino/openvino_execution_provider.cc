@@ -192,21 +192,18 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 }
             }
 
-            if(device_id == "GPU"){
 
+            auto iter = node->OutputNodesBegin();
 
-                auto iter = node->OutputNodesBegin();
+            if(iter == node->OutputNodesEnd()){
+                return result;
+            }
 
-                if(iter == node->OutputNodesEnd()){
+            for(auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it){
+                auto out_node = graph_viewer.GetNode((*it).Index());
+
+                if(out_node->OpType() != "Add"){
                     return result;
-                }
-
-                for(auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it){
-                    auto out_node = graph_viewer.GetNode((*it).Index());
-
-                    if(out_node->OpType() != "Add"){
-                        return result;
-                    }
                 }
             }
 
@@ -317,7 +314,9 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                     return result;
                 }
             }
-
+            const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
+            if(type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+                return result;
         }
 
         if(node->OpType() == "Reshape"){
