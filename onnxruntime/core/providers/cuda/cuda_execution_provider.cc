@@ -58,7 +58,6 @@ cudaEvent_t CudaEventPool::GetCudaEvent() {
 }
 
 cudaEvent_t CudaEventPool::GetOrCreateCudaEvent() {
-  std::lock_guard<OrtMutex> lock(event_mutex_);
   cudaEvent_t cuda_event;
   if (available_events_.size() > 0) {
     cuda_event = available_events_.back();
@@ -66,6 +65,9 @@ cudaEvent_t CudaEventPool::GetOrCreateCudaEvent() {
     available_events_.pop_back();
   } else {
     CUDA_CALL_THROW(cudaEventCreate(&cuda_event, cudaEventDisableTiming));
+    if (!cuda_event) {
+      ORT_THROW("Failed to create Cuda event");
+    }
     in_used_events_.emplace(cuda_event, false);
   }
   return cuda_event;
