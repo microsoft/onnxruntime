@@ -39,14 +39,18 @@ void ConvertData(const vector<vector<float>>& images,
                  const vector<vector<float>>& labels,
                  const vector<int64_t>& image_dims,
                  const vector<int64_t>& label_dims,
-                 DataSet& data_set) {
+                 DataSet& data_set,
+                 size_t shard_index = 0,
+                 size_t total_shard = 1) {
   for (int i = 0; i < images.size(); ++i) {
-    MLValue imageMLValue;
-    TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), image_dims, images[i], &imageMLValue);
-    MLValue labelMLValue;
-    TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), label_dims, labels[i], &labelMLValue);
+    if (i % total_shard == shard_index) {
+      MLValue imageMLValue;
+      TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), image_dims, images[i], &imageMLValue);
+      MLValue labelMLValue;
+      TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), label_dims, labels[i], &labelMLValue);
 
-    data_set.AddData(make_unique<vector<MLValue>>(vector<MLValue>{imageMLValue, labelMLValue}));
+      data_set.AddData(make_unique<vector<MLValue>>(vector<MLValue>{imageMLValue, labelMLValue}));
+    }
   }
 }
 
@@ -54,20 +58,22 @@ void PrepareMNISTData(const string& data_folder,
                       const vector<int64_t>& image_dims,
                       const vector<int64_t>& label_dims,
                       DataSet& training_data,
-                      DataSet& test_data) {
+                      DataSet& test_data,
+                      size_t shard_index,
+                      size_t total_shard) {
+  ORT_ENFORCE(shard_index < total_shard, "shard_index must be 0~", total_shard - 1);
+
   printf("Loading MNIST data ...\n");
   mnist::MNIST_dataset<std::vector, Image, Label> dataset =
       mnist::read_dataset<std::vector, std::vector, uint8_t, uint8_t>(data_folder);
 
-  printf("#training images = %d \n", static_cast<int>(dataset.training_images.size()));
-  printf("#training labels = %d \n", static_cast<int>(dataset.training_labels.size()));
-  printf("#test images = %d \n", static_cast<int>(dataset.test_images.size()));
-  printf("#test labels = %d \n", static_cast<int>(dataset.test_labels.size()));
-
   printf("Preparing data ...\n");
   auto training_images_labels = NormalizeData(dataset.training_images, dataset.training_labels);
   auto test_images_labels = NormalizeData(dataset.test_images, dataset.test_labels);
-  ConvertData(training_images_labels.first, training_images_labels.second, image_dims, label_dims, training_data);
-  ConvertData(test_images_labels.first, test_images_labels.second, image_dims, label_dims, test_data);
+  ConvertData(training_images_labels.first, training_images_labels.second, image_dims, label_dims, training_data,
+              shard_index, total_shard);
+  ConvertData(test_images_labels.first, test_images_labels.second, image_dims, label_dims, test_data);  // use full test set
   printf("Preparing data: done\n");
+  printf("#training set size = %d \n", static_cast<int>(training_data.NumSamples()));
+  printf("#test set size = %d \n", static_cast<int>(test_data.NumSamples()));
 }

@@ -84,9 +84,23 @@ Status DataLoader::AddData(const vector<ONNX_NAMESPACE::TensorProto>& inputs) {
   return data_set_->AddData(std::move(sample));
 }
 
-Status DataLoader::Load(const PATH_STRING_TYPE& dir_path) {
+Status DataLoader::Load(const PATH_STRING_TYPE& dir_path, size_t shard_index, size_t total_shard) {
   unordered_map<PATH_STRING_TYPE, vector<PATH_STRING_TYPE>> sample_inputs_map;
   GetDataFiles(dir_path, sample_inputs_map);
+
+  // If only need to load partial data for data-parallelism training
+  if (total_shard > 1) {
+    ORT_RETURN_IF_NOT(shard_index < total_shard, "shard_index must be 0~", total_shard - 1);
+
+    unordered_map<PATH_STRING_TYPE, vector<PATH_STRING_TYPE>> partial_inputs_map;
+    int count = 0;
+    for (const auto& kv : sample_inputs_map) {
+      if ((count++ % total_shard) == shard_index) {
+        partial_inputs_map[kv.first] = kv.second;
+      }
+    }
+    swap(partial_inputs_map, sample_inputs_map);
+  }
 
   unordered_map<PATH_STRING_TYPE, vector<ONNX_NAMESPACE::TensorProto>> sample_tensor_map;
   for (const auto& kv : sample_inputs_map) {

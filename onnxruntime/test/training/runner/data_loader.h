@@ -33,7 +33,13 @@ typedef std::basic_string<PATH_CHAR_TYPE> PATH_STRING_TYPE;
 
 class DataLoader {
  public:
-  common::Status Load(const PATH_STRING_TYPE& dir);
+  /**
+   Load the dataset from a directory.
+   @dir directory to load from
+   @shard_index the shard to be loaded, used when loading partial data for data-parallelism training
+   @total_shard total number of shards, used when loading partial data for data-parallelism training
+  */
+  common::Status Load(const PATH_STRING_TYPE& dir, size_t shard_index = 0, size_t total_shard = 1);
   ~DataLoader();
 
   DataSet& MutableDataSet() {

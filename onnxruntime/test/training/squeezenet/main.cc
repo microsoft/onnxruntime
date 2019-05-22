@@ -41,6 +41,8 @@ int main(int /*argc*/, char* /*args*/[]) {
   ORT_ENFORCE(Environment::Create(env).IsOK());
 
   DataLoader training_data_loader;
+  // Uncomment below line to load only shard-0 training data (total shards = 3), for data parallelism.
+  // training_data_loader.Load(TRAINING_DATA_PATH, 0, 3);
   training_data_loader.Load(TRAINING_DATA_PATH);
   DataLoader test_data_loader;
   test_data_loader.Load(TEST_DATA_PATH);

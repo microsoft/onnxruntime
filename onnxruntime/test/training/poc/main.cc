@@ -47,6 +47,8 @@ int main(int argc, char* args[]) {
 
   DataSet trainingData({"X", "labels"});
   DataSet testData({"X", "labels"});
+  // Uncomment below line to load only shard-0 training data (total shards = 3), for data parallelism.
+  // PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData, 0, 3);
   PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData);
 
   TrainingRunner::Parameters params;
