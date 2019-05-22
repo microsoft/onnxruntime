@@ -1,7 +1,7 @@
 variables:
   DisableContribOps: ON
   PlatformTarget: x86
-  TestDataUrlNoContribOps : https://onnxruntimetestdata.blob.core.windows.net/models/20181113.zip
+  TestDataUrlNoContribOps : https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
 
 jobs:
 - job: Linux_CI_Dev
