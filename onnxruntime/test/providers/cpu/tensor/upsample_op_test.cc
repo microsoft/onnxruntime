@@ -101,7 +101,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
       7, 7, 7, 9, 9, 9};
 
   test.AddOutput<uint8_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();//TensorRT: unsupported data type
+  test.Run();
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest) {
@@ -174,7 +174,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest222XTest) {
   };
 
   test.AddOutput<float>("Y", {N*2, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();//TensorRT parser: Assertion failed: scales[0] == 1 && scales[1] == 1
+  test.Run();
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest15XTest) {
@@ -267,7 +267,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
       7.0f, 7.5f, 8.0f, 8.5f, 9.0f, 9.0f, 9.0f, 9.0f};
 
   test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();//TensorRT parser:Assertion failed:  mode == "nearest"
+  test.Run();
 }
 
 TEST(UpsampleOpTest, UpsampleOpBilinearTest2) {
@@ -298,7 +298,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest2) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();//TensorRT parser:Assertion failed:  mode == "nearest"
+  test.Run();
 }
 
 TEST(UpsampleOpTest, UpsampleOpBilinearTest_int32) {
@@ -329,7 +329,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest_int32) {
       7, 7, 8, 8, 9, 9, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();//TensorRT parser:Assertion failed:  mode == "nearest"
+  test.Run();
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_1D) {
@@ -351,7 +351,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_1D) {
       5.0f, 5.0f};
 
   test.AddOutput<float>("Y", {10}, Y);
-  test.Run();//TensorRT parser:Assertion failed: tensor.getDimensions().nbDims == 3
+  test.Run();
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
@@ -382,7 +382,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_opset9) {
       7, 7, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();//TensorRT parser:Assertion failed: scales_input.is_weights()
+  test.Run();
 }
 }  // namespace test
 }  // namespace onnxruntime

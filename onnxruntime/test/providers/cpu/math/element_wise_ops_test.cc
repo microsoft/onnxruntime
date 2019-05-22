@@ -23,7 +23,7 @@ TEST(MathOpTest, Add_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 2, 3});
   test.AddInput<int64_t>("B", {3}, {4, 5, 6});
   test.AddOutput<int64_t>("C", {3}, {5, 7, 9});
-  test.Run();  //TensorRT: INT64 is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Add) {
@@ -69,7 +69,7 @@ TEST(MathOpTest, Add_Broadcast_0x0) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {}, {12.0f});
-  test.Run();  //TensorRT: dynamic shape is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Add_Broadcast_0x1) {
@@ -78,7 +78,7 @@ TEST(MathOpTest, Add_Broadcast_0x1) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {1}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
-  test.Run();  //TensorRT: dynamic shape is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Add_Broadcast_1x0) {
@@ -87,7 +87,7 @@ TEST(MathOpTest, Add_Broadcast_1x0) {
   test.AddInput<float>("A", {1}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
-  test.Run();  //TensorRT: dynamic shape is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Add_Broadcast_1x1) {
@@ -170,7 +170,7 @@ TEST(MathOpTest, Sub_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 5, 6});
   test.AddInput<int64_t>("B", {3}, {4, 5, 3});
   test.AddOutput<int64_t>("C", {3}, {-3, 0, 3});
-  test.Run();  //TensorRT: INT64 is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Sub) {
@@ -203,7 +203,7 @@ TEST(MathOpTest, Sub_Broadcast_Scalar) {
                         {-4.0f, -3.0f, -6.0f,
                          -5.0f, -3.5f, -105.0f,
                          -10.4f, 4.3f, -10'005.0f});
-  test.Run();  //TensorRT: dynamic shape is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Mul_int32) {
@@ -219,7 +219,7 @@ TEST(MathOpTest, Mul_int64) {
   test.AddInput<int64_t>("A", {3}, {3, 6, -3});
   test.AddInput<int64_t>("B", {3}, {4, -3, -2});
   test.AddOutput<int64_t>("C", {3}, {12, -18, 6});
-  test.Run();  //TensorRT: INT64 is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Mul) {
@@ -253,7 +253,7 @@ TEST(MathOpTest, Div_int64) {
   test.AddInput<int64_t>("A", {3}, {4, 8, 8});
   test.AddInput<int64_t>("B", {3}, {2, 3, 4});
   test.AddOutput<int64_t>("C", {3}, {2, 2, 2});
-  test.Run();  //TensorRT: INT64 is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Div) {
@@ -284,7 +284,7 @@ TEST(MathOpTest, Abs_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, 2, -1, -5});
   test.AddOutput<int8_t>("Y", dims, {1, 2, 1, 5});
-  test.Run(); //Tensorrt: Int8 is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Abs_int32) {
@@ -312,7 +312,7 @@ TEST(MathOpTest, Neg_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
-  test.Run(); //Tensorrt: Int8 is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Neg_int32) {
@@ -393,7 +393,7 @@ TEST(MathOpTest, Pow_Broadcast_Scalar0) {
   test.AddInput<float>("X", {}, {2.0f});
   test.AddInput<float>("Y", dims, {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("Z", dims, {2.0f, 4.0f, 8.0f});
-  test.Run();  //TensorRT: dynamic shape is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Pow_Broadcast_Scalar1) {
@@ -403,7 +403,7 @@ TEST(MathOpTest, Pow_Broadcast_Scalar1) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
   test.AddInput<float>("Y", {}, {2.0f});
   test.AddOutput<float>("Z", dims, {1.0f, 4.0f, 9.0f});
-  test.Run();  //TensorRT: dynamic shape is not supported. Fallback to other EP.
+  test.Run();
 }
 
 TEST(MathOpTest, Exp) {
