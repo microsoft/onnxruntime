@@ -37,7 +37,10 @@ backend_test = OrtBackendTest(c2, __name__)
 backend_test.exclude(r'(FLOAT16)')
 
 if onnx.__version__ == "1.4.1":
-    backend_test.exclude(r'(^test_shrink_cpu.*)')
+    backend_test.exclude(r'(^test_shrink_cpu.*|^test_constantofshape_*.*)');
+
+if onnx.__version__ == "1.5.0":
+    backend_test.exclude(r'(^test_constantofshape_*.*)');
 
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
@@ -46,7 +49,6 @@ backend_test.exclude(r'('
 '|^test_cast_STRING_to_FLOAT_cpu.*'
 '|^test_convtranspose_1d_cpu.*'
 '|^test_convtranspose_3d_cpu.*'
-'|^test_constantofshape_*.*'
 '|^test_dequantizelinear_cpu.*'
 '|^test_AvgPool1d_cpu.*'
 '|^test_AvgPool1d_stride_cpu.*'
