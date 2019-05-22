@@ -522,7 +522,7 @@ void OnnxTestCase::LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std
             if (!HasExtensionOf(filename_str, ORT_TSTR("pb"))) return true;
             const std::basic_string<PATH_CHAR_TYPE> file_prefix =
                 is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
-            if (!filename_str.compare(0, file_prefix.length(), file_prefix.c_str())) {
+            if (!filename_str.compare(0, file_prefix.length(), file_prefix)) {
               std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str);
               test_data_pb_files.push_back(p);
             }

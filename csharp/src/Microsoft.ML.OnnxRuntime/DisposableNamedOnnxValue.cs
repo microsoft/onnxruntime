@@ -76,7 +76,7 @@ namespace Microsoft.ML.OnnxRuntime
             TensorElementType elemType = TensorElementType.DataTypeMax;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(nativeOnnxValue, out typeAndShape));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValue, out typeAndShape));
                 elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
             }
             finally
@@ -164,7 +164,7 @@ namespace Microsoft.ML.OnnxRuntime
                     TensorElementType elemType = TensorElementType.DataTypeMax;
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 0, allocator, out nativeOnnxValueMapKeys));
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 1, allocator, out nativeOnnxValueMapValues));
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(nativeOnnxValueMapKeys, out typeAndShape));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValueMapKeys, out typeAndShape));
 
                     elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
                     if (typeAndShape != IntPtr.Zero)

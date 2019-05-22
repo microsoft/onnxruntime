@@ -17,7 +17,7 @@ namespace logging = logging;
 
 class ServerEnvironment {
  public:
-  explicit ServerEnvironment(logging::Severity severity);
+  explicit ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type = logging::LoggingManager::Default, bool env_init = true);
   ~ServerEnvironment() = default;
   ServerEnvironment(const ServerEnvironment&) = delete;
 

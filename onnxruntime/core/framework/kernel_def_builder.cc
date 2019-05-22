@@ -27,7 +27,8 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
     return false;
-  int start = 0, end = 0;
+  int start = 0;
+  int end = 0;
   other.SinceVersion(&start, &end);
   if (!AreIntervalsOverlap(op_since_version_start_, op_since_version_end_, start, end))
     return false;

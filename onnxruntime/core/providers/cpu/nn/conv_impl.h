@@ -28,8 +28,8 @@ template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
 
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(1);
   const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];

@@ -69,8 +69,8 @@ jobs:
       displayName: 'Clean untagged docker images'
       inputs:
         script: |
-          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
-          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
+          docker container prune -f
+          docker image prune -f
         workingDirectory: $(Build.BinariesDirectory)
       continueOnError: true
       condition: always()

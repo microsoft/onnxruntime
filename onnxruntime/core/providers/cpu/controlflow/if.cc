@@ -79,7 +79,7 @@ class IfImpl {
 
   int num_outputs_;
   std::vector<std::string> subgraph_output_names_;
-  std::unordered_map<std::string, const MLValue*> implicit_inputs_;
+  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 
   enum class AllocationType {
     Delayed,  // allocation of If output will be done by subgraph execution
@@ -87,7 +87,7 @@ class IfImpl {
   };
 
   // track where the fetches provided to subgraph execution were allocated.
-  std::vector<std::pair<AllocationType, MLValue>> outputs_;
+  std::vector<std::pair<AllocationType, OrtValue>> outputs_;
 };
 
 Status If::Compute(OpKernelContext* ctx) const {
@@ -124,9 +124,9 @@ IfImpl::IfImpl(OpKernelContextInternal& context,
 
 Status IfImpl::Initialize() {
   auto& graph_outputs = subgraph_.GetOutputs();
-  auto num_subgraph_outputs = graph_outputs.size();
+  size_t num_subgraph_outputs = graph_outputs.size();
 
-  if (num_subgraph_outputs != num_outputs_) {
+  if (num_subgraph_outputs != static_cast<size_t>(num_outputs_)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'If' node has ", num_outputs_,
                            " outputs which doesn't match the subgraph's ", num_subgraph_outputs, " outputs.");
   }
@@ -158,7 +158,7 @@ Status IfImpl::AllocateOutputTensors() {
 
     TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
 
-    // if size < 0 we have a symbolic dimension and need to use a temporary MLValue in the subgraph execution
+    // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
     if (output_shape.Size() < 0) {
       // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
       outputs_.push_back({AllocationType::Delayed, {}});
@@ -168,7 +168,7 @@ Status IfImpl::AllocateOutputTensors() {
       if (!tensor)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
 
-      outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
+      outputs_.emplace_back(AllocationType::IfOutput, *context_.GetOutputMLValue(index));
     }
 
     ++index;
@@ -185,7 +185,7 @@ Status IfImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& f
   ffi.feed_names.reserve(num_inputs);
   ffi.feeds_mlvalue_idxs.reserve(num_inputs);
 
-  auto& mlvalue_name_idx_map = session_state_.GetMLValueNameIdxMap();
+  auto& ort_value_name_idx_map = session_state_.GetMLValueNameIdxMap();
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
@@ -193,15 +193,15 @@ Status IfImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& f
     // alternatively we could track implicit inputs on a per-attribute basis in the node, but that
     // would make that tracking a bit more complicated.
     int idx;
-    if (mlvalue_name_idx_map.GetIdx(entry.first, idx).IsOK()) {
+    if (ort_value_name_idx_map.GetIdx(entry.first, idx).IsOK()) {
       ffi.feed_names.push_back(entry.first);
       ffi.feeds_mlvalue_idxs.push_back(idx);
     }
   }
 
   ffi.output_names = subgraph_output_names_;
-  ORT_RETURN_IF_ERROR(FeedsFetchesInfo::MapNamesToMLValueIdxs(ffi.output_names, mlvalue_name_idx_map,
-                                                              ffi.fetches_mlvalue_idxs));
+  ORT_RETURN_IF_ERROR(
+      FeedsFetchesInfo::MapNamesToMLValueIdxs(ffi.output_names, ort_value_name_idx_map, ffi.fetches_mlvalue_idxs));
 
   ffm = std::make_unique<FeedsFetchesManager>(std::move(ffi));
 
@@ -212,7 +212,7 @@ Status IfImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cach
   Status status = Status::OK();
 
   auto num_inputs = implicit_inputs_.size();
-  std::vector<MLValue> feeds;
+  std::vector<OrtValue> feeds;
   feeds.reserve(num_inputs);
 
   // pass in implicit inputs as feeds.
@@ -220,13 +220,12 @@ Status IfImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cach
   auto& feed_names = cached_ffm ? cached_ffm->GetFeedsFetchesInfo().feed_names : ffm->GetFeedsFetchesInfo().feed_names;
   for (auto& feed_name : feed_names) {
     const auto* feed_mlvalue = implicit_inputs_[feed_name];
-    ORT_ENFORCE(feed_mlvalue, "All implicit inputs should have MLValue instances by now. ",
-                feed_name, " did not.");
+    ORT_ENFORCE(feed_mlvalue, "All implicit inputs should have OrtValue instances by now. ", feed_name, " did not.");
 
     feeds.push_back(*feed_mlvalue);
   }
 
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
   std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
   fetches.reserve(num_outputs_);
@@ -236,18 +235,16 @@ Status IfImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cach
     if (outputs_[i].first == AllocationType::Delayed) {
       // functor to forward the allocation request from the subgraph to the If node's context so that the
       // allocation plan for the If node's output is used.
-      fetch_allocators[i] =
-          [this, i](const TensorShape& shape, MLValue& mlvalue) {
-            // allocate
-            auto* tensor = context_.Output(i, shape);
+      fetch_allocators[i] = [this, i](const TensorShape& shape, OrtValue& ort_value) {
+        // allocate
+        auto* tensor = context_.Output(i, shape);
 
-            if (!tensor)
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
+        if (!tensor) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);
 
-            // return MLValue for allocated tensor
-            mlvalue = *context_.GetOutputMLValue(i);
-            return Status::OK();
-          };
+        // return OrtValue for allocated tensor
+        ort_value = *context_.GetOutputMLValue(i);
+        return Status::OK();
+      };
     }
   }
 

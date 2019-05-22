@@ -47,7 +47,7 @@ void TraverseFormalParametersWithTypeProto(const Node& node,
   }
 
   // process outputs:
-  auto& actual_outputs = node.OutputDefs();
+  auto actual_outputs = node.OutputDefs();
   const auto num_actual_outputs = actual_outputs.size();
   const auto last_formal = op_schema.outputs().size() - 1;
   for (size_t i = 0; i != num_actual_outputs; ++i) {
@@ -142,7 +142,8 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   }
 
   // check if version matches
-  int kernel_start_version, kernel_end_version;
+  int kernel_start_version;
+  int kernel_end_version;
   kernel_def.SinceVersion(&kernel_start_version, &kernel_end_version);
 
   int node_since_version = node.Op()->since_version();
@@ -240,8 +241,8 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
 }
 
 Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, MLValue>& initialized_tensors,
-                                       const MLValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
+                                       const std::unordered_map<int, OrtValue>& initialized_tensors,
+                                       const MLValueNameIdxMap& ort_value_name_idx_map, const FuncManager& funcs_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
@@ -249,12 +250,8 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExe
     return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
   }
 
-  OpKernelInfo kernel_info(node,
-                           *kernel_create_info->kernel_def,
-                           execution_provider,
-                           initialized_tensors,
-                           mlvalue_name_idx_map,
-                           funcs_mgr);
+  OpKernelInfo kernel_info(node, *kernel_create_info->kernel_def, execution_provider, initialized_tensors,
+                           ort_value_name_idx_map, funcs_mgr);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }

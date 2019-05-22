@@ -214,7 +214,7 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
   test.AddAttribute("kernel_shape", vector<int64_t>{3});
   test.AddAttribute("dilations", vector<int64_t>{3});
 

@@ -6,6 +6,8 @@
 #include <sstream>
 
 #include "core/framework/mem_pattern_planner.h"
+#include "core/framework/execution_plan_base.h"
+#include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
@@ -16,55 +18,52 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<MLValue>& feeds,
-                                 const std::unordered_map<int, MLValue>& initializers,
-                                 const std::vector<int>& fetch_mlvalue_idxs,
-                                 const std::vector<MLValue>& fetches,
-                                 const MLValueNameIdxMap& mlvalue_idx_map,
-                                 const NodeIndexInfo& node_index_info)
+IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                                 const std::unordered_map<int, OrtValue>& initializers,
+                                 const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+                                 const MLValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs.size());
 
-  Init(feed_mlvalue_idxs, feeds, initializers, fetch_mlvalue_idxs, fetches, mlvalue_idx_map);
+  Init(feed_mlvalue_idxs, feeds, initializers, fetch_mlvalue_idxs, fetches, ort_value_idx_map);
 }
 
 IExecutionFrame::~IExecutionFrame() = default;
 
 // Return nullptr if index map to an value that is an unused optional input/output
-const MLValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
-  int mlvalue_idx = GetNodeIdxToMLValueIdx(index);
-  return mlvalue_idx != NodeIndexInfo::kInvalidEntry ? &all_values_[mlvalue_idx] : nullptr;
+const OrtValue* IExecutionFrame::GetNodeInputOrOutputMLValue(int index) const {
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+  return ort_value_idx != NodeIndexInfo::kInvalidEntry ? &all_values_[ort_value_idx] : nullptr;
 }
 
-MLValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
-  return const_cast<MLValue*>(GetNodeInputOrOutputMLValue(index));
+OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
+  return const_cast<OrtValue*>(GetNodeInputOrOutputMLValue(index));
 }
 
 // TO DO: make it thread safe
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
-Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, MLValue*& p_mlvalue) {
+Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value) {
   auto status = Status::OK();
-  int mlvalue_idx = GetNodeIdxToMLValueIdx(index);
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
 
   // return nullptr if it is optional
-  if (mlvalue_idx == NodeIndexInfo::kInvalidEntry) {
-    p_mlvalue = nullptr;
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    p_ort_value = nullptr;
   } else {
-    p_mlvalue = &all_values_[mlvalue_idx];
+    p_ort_value = &all_values_[ort_value_idx];
 
-    if (p_mlvalue->IsAllocated()) {
+    if (p_ort_value->IsAllocated()) {
       // already allocated. verify shape matches if tensor.
-      if (p_mlvalue->IsTensor()) {
-        const Tensor& tensor = p_mlvalue->Get<Tensor>();
+      if (p_ort_value->IsTensor()) {
+        const Tensor& tensor = p_ort_value->Get<Tensor>();
         ORT_ENFORCE(shape && tensor.Shape() == *shape,
-                    "MLValue shape verification failed. Current shape:", tensor.Shape(),
+                    "OrtValue shape verification failed. Current shape:", tensor.Shape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {
-      status = CreateNodeOutputMLValueImpl(*p_mlvalue, mlvalue_idx, shape);
+      status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape);
     }
   }
 
@@ -75,51 +74,47 @@ AllocatorPtr IExecutionFrame::GetAllocator(const OrtAllocatorInfo& info) const {
   return GetAllocatorImpl(info);
 }
 
-Status IExecutionFrame::ReleaseMLValue(int mlvalue_idx) {
-  return ReleaseMLValueImpl(mlvalue_idx);
-}
+Status IExecutionFrame::ReleaseMLValue(int ort_value_idx) { return ReleaseMLValueImpl(ort_value_idx); }
 
-Status IExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
-  if (mlvalue_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(mlvalue_idx) >= all_values_.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", mlvalue_idx);
+Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
   // If fence is available, check whether async read has completed or not.
-  Fence_t fence = GetMLValue(mlvalue_idx).Fence();
+  Fence_t fence = GetMLValue(ort_value_idx).Fence();
   if (fence && !fence->CanRelease())
   {
       // Async data reading is not done yet, defer mem release until Session.run() end.
       return Status::OK();
   }
-  
-  all_values_[mlvalue_idx] = MLValue();
+
+  all_values_[ort_value_idx] = OrtValue();
   return Status::OK();
 }
 
 int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
-  int mlvalue_idx = node_index_info_.GetMLValueIndex(index);
-  ORT_ENFORCE(mlvalue_idx == NodeIndexInfo::kInvalidEntry ||
-              (mlvalue_idx >= 0 && static_cast<size_t>(mlvalue_idx) < all_values_.size()));
+  int ort_value_idx = node_index_info_.GetMLValueIndex(index);
+  ORT_ENFORCE(ort_value_idx == NodeIndexInfo::kInvalidEntry ||
+              (ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < all_values_.size()));
 
-  return mlvalue_idx;
+  return ort_value_idx;
 }
 
-void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs,
-                           const std::vector<MLValue>& feeds,
-                           const std::unordered_map<int, MLValue>& initializers,
-                           const std::vector<int>& fetch_mlvalue_idxs,
-                           const std::vector<MLValue>& fetches,
-                           const MLValueNameIdxMap& mlvalue_idx_map) {
+void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                           const std::unordered_map<int, OrtValue>& initializers,
+                           const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+                           const MLValueNameIdxMap& ort_value_idx_map) {
   // 1. resize the all_value_ vector
-  all_values_.resize(mlvalue_idx_map.MaxIdx() + 1);
+  all_values_.resize(ort_value_idx_map.MaxIdx() + 1);
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
     auto num_fetches = fetch_mlvalue_idxs.size();
 
     for (size_t idx = 0; idx < num_fetches; ++idx) {
-      int mlvalue_idx = fetch_mlvalue_idxs[idx];
-      all_values_[mlvalue_idx] = fetches[idx];
+      int ort_value_idx = fetch_mlvalue_idxs[idx];
+      all_values_[ort_value_idx] = fetches[idx];
     }
   }
 
@@ -127,23 +122,23 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs,
   // We do this after the fetches to handle an edge case (possibly dubious) where a Constant is an output.
   // The Constant gets lifted to an initializer so there's no Node producing the value as an output during Graph
   // execution (i.e. Graph execution won't write the value to all_values_).
-  // A non-empty fetches vector will overwrite the actual weight in all_values_[mlvalue_idx] if we did this earlier.
+  // A non-empty fetches vector will overwrite the actual weight in all_values_[ort_value_idx] if we did this earlier.
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
   for (const auto& entry : initializers) {
-    int mlvalue_index = entry.first;
-    all_values_[mlvalue_index] = entry.second;
+    int ort_value_index = entry.first;
+    all_values_[ort_value_index] = entry.second;
   }
 
   // 4. handle feed in values. these can override initializer values so must be last
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
-    int mlvalue_idx = feed_mlvalue_idxs[idx];
+    int ort_value_idx = feed_mlvalue_idxs[idx];
     // we are sharing the underline tensor/object for MLValue
-    all_values_[mlvalue_idx] = feeds[idx];
+    all_values_[ort_value_idx] = feeds[idx];
   }
 }
 
-Status IExecutionFrame::GetOutputs(std::vector<MLValue>& fetches) {
+Status IExecutionFrame::GetOutputs(std::vector<OrtValue>& fetches) {
   auto num_fetches = fetch_mlvalue_idxs_.size();
 
   if (fetches.empty()) {
@@ -164,14 +159,12 @@ Status IExecutionFrame::GetOutputs(std::vector<MLValue>& fetches) {
   return Status::OK();
 }
 
-bool IExecutionFrame::IsOutput(int mlvalue_idx) const {
-  return std::find(fetch_mlvalue_idxs_.begin(), fetch_mlvalue_idxs_.end(), mlvalue_idx) != fetch_mlvalue_idxs_.end();
+bool IExecutionFrame::IsOutput(int ort_value_idx) const {
+  return std::find(fetch_mlvalue_idxs_.begin(), fetch_mlvalue_idxs_.end(), ort_value_idx) != fetch_mlvalue_idxs_.end();
 }
 
-ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
-                               const std::vector<MLValue>& feeds,
-                               const std::vector<int>& fetch_mlvalue_idxs,
-                               const std::vector<MLValue>& fetches,
+ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                               const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
@@ -179,14 +172,14 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
       session_state_{session_state},
       mem_patterns_{nullptr},
       planner_{nullptr} {
-  // map the custom allocators to mlvalue_idx entries
+  // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
     for (size_t idx = 0, end = fetch_mlvalue_idxs.size(); idx < end; ++idx) {
-      int mlvalue_idx = fetch_mlvalue_idxs[idx];
+      int ort_value_idx = fetch_mlvalue_idxs[idx];
 
       auto custom_alloc_entry = fetch_allocators.find(idx);
       if (custom_alloc_entry != fetch_allocators.cend()) {
-        custom_allocators_[mlvalue_idx] = custom_alloc_entry->second;
+        custom_allocators_[ort_value_idx] = custom_alloc_entry->second;
       }
     }
   }
@@ -230,22 +223,18 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
 
 ExecutionFrame::~ExecutionFrame() = default;
 
-Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(MLValue& mlvalue,
-                                                          int mlvalue_index,
-                                                          MLDataType element_type,
-                                                          const OrtAllocatorInfo& location,
-                                                          const TensorShape& shape,
-                                                          bool create_fence) {
-  return AllocateMLValueTensorSelfOwnBufferHelper(mlvalue, mlvalue_index, element_type, location, shape, create_fence);
+Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
+                                                          MLDataType element_type, const OrtAllocatorInfo& location,
+                                                          const TensorShape& shape, bool create_fence) {
+  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape,
+                                                  create_fence);
 }
 
-Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue,
-                                                                int mlvalue_index,
+Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
                                                                 MLDataType element_type,
                                                                 const OrtAllocatorInfo& location,
-                                                                const TensorShape& shape,
-                                                                bool create_fence) {
-  if (mlvalue_index == NodeIndexInfo::kInvalidEntry) {
+                                                                const TensorShape& shape, bool create_fence) {
+  if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
 
@@ -262,20 +251,20 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue
 
   // create fence if needed
   if (create_fence) {
-    ORT_ENFORCE(mlvalue.Fence() == nullptr);
+    ORT_ENFORCE(ort_value.Fence() == nullptr);
     FencePtr f = alloc->CreateFence(&session_state_);
     // it is OK to have fence been nullptr if the execution provider has no async execution,
     // and allocator::CreateFence returns nullptr
-    mlvalue.SetFence(f);
+    ort_value.SetFence(f);
   }
 
-  // if we have pre-calculated memory pattern, and the mlvalue is not output mlvalue
+  // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
-  const auto& per_alloc_plan = GetAllocationPlan(mlvalue_index);
+  const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
   if (mem_patterns_ && per_alloc_plan.alloc_kind != AllocKind::kAllocateOutput) {
     auto pattern = mem_patterns_->GetPatterns(location);
     if (pattern) {
-      auto block = pattern->GetBlock(mlvalue_index);
+      auto block = pattern->GetBlock(ort_value_index);
       // if block not found, fall back to default behavior
       if (block) {
         auto it = buffers_.find(location);
@@ -283,16 +272,17 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue
         if (it != buffers_.end() && block->size_ == size) {
           void* buffer = it->second.get();
           auto status = AllocateTensorWithPreAllocateBufferHelper(
-              mlvalue, static_cast<void*>(static_cast<char*>(buffer) + block->offset_),
-              element_type, location, shape);
+              ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
+              shape);
           return status;
         }
         if (block->size_ != size) {
-          LOGS_DEFAULT(WARNING) << "For mlvalue with index: " << mlvalue_index << ", block in memory pattern size is: "
-                                << block->size_ << " but the actually size is: " << size
+          LOGS_DEFAULT(WARNING) << "For ort_value with index: " << ort_value_index
+                                << ", block in memory pattern size is: " << block->size_
+                                << " but the actually size is: " << size
                                 << ", fall back to default allocation behavior";
         } else if (it == buffers_.end()) {
-          LOGS_DEFAULT(WARNING) << "For mlvalue with index: " << mlvalue_index
+          LOGS_DEFAULT(WARNING) << "For ort_value with index: " << ort_value_index
                                 << ", block not found in target location. fall back to default allocation behavior";
         }
       }
@@ -301,84 +291,77 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue
   //no memory pattern, or the pattern is not correct.
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
 
-  mlvalue.Init(p_tensor.release(),
-               DataTypeImpl::GetType<Tensor>(),
-               DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
   // placement new, we don't support it in memory pattern optimization.
   if (element_type != DataTypeImpl::GetType<std::string>()) {
-    TraceAllocate(mlvalue_index, size);
+    TraceAllocate(ort_value_index, size);
   }
 
   return Status::OK();
 }
 
-Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(MLValue& mlvalue,
-                                                              int mlvalue_index_reuse,
-                                                              MLDataType element_type,
-                                                              const OrtAllocatorInfo& location,
-                                                              const TensorShape& shape,
-                                                              bool create_fence) {
-  MLValue& mlvalue_reuse = GetMutableMLValue(mlvalue_index_reuse);
+Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
+                                                              MLDataType element_type, const OrtAllocatorInfo& location,
+                                                              const TensorShape& shape, bool create_fence) {
+  OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
-  auto* reuse_tensor = mlvalue_reuse.GetMutable<Tensor>();
+  auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
   void* reuse_buffer = reuse_tensor->MutableDataRaw();
 
-  // create fence on reused mlvalue if needed
+  // create fence on reused ort_value if needed
   // TODO: differentiate reuse and alias, by add AllocKind::kAlias?
-  if (create_fence && mlvalue_reuse.Fence() == nullptr) {
+  if (create_fence && ort_value_reuse.Fence() == nullptr) {
     FencePtr f = GetAllocator(location)->CreateFence(&session_state_);
-    mlvalue_reuse.SetFence(f);
+    ort_value_reuse.SetFence(f);
   }
 
-  // reused MLValue share the same fence
-  mlvalue.ShareFenceWith(mlvalue_reuse);
-  return AllocateTensorWithPreAllocateBufferHelper(mlvalue, reuse_buffer, element_type, location, shape);
+  // reused OrtValue share the same fence
+  ort_value.ShareFenceWith(ort_value_reuse);
+  return AllocateTensorWithPreAllocateBufferHelper(ort_value, reuse_buffer, element_type, location, shape);
 }
 
-Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(MLValue& mlvalue,
-                                                                 void* pBuffer,
+Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer,
                                                                  MLDataType element_type,
                                                                  const OrtAllocatorInfo& location,
                                                                  const TensorShape& shape) {
   auto p_tensor = std::make_unique<Tensor>(element_type, shape, pBuffer, location);
-  mlvalue.Init(p_tensor.release(),
-               DataTypeImpl::GetType<Tensor>(),
-               DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   return Status::OK();
 }
 
-static Status AllocateTraditionalMLValue(MLValue& mlvalue, const NonTensorTypeBase& type) {
+static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTypeBase& type) {
   auto creator = type.GetCreateFunc();
-  mlvalue.Init(creator(), &type, type.GetDeleteFunc());
+  ort_value.Init(creator(), &type, type.GetDeleteFunc());
   return Status::OK();
 }
 
 // This method is not thread safe!
-Status ExecutionFrame::AllocateAsPerAllocationPlan(MLValue& mlvalue, int mlvalue_index, const TensorShape* shape) {
-  // if there is a custom allocator for this mlvalue_index, call it to do the allocation
-  auto custom_alloc_entry = custom_allocators_.find(mlvalue_index);
+Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
+  // if there is a custom allocator for this ort_value_index, call it to do the allocation
+  auto custom_alloc_entry = custom_allocators_.find(ort_value_index);
   if (custom_alloc_entry != custom_allocators_.cend()) {
     ORT_ENFORCE(shape, "We don't expect custom allocators for non-tensor types, so a shape is mandatory here.");
-    return (custom_alloc_entry->second)(*shape, mlvalue);
+    return (custom_alloc_entry->second)(*shape, ort_value);
   }
 
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index < alloc_plan.size());
-  const auto& per_alloc_plan = alloc_plan[mlvalue_index];
+  ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
+  const auto& per_alloc_plan = alloc_plan[ort_value_index];
 
   auto alloc_info = per_alloc_plan.location;
   auto ml_type = per_alloc_plan.value_type;
   if (ml_type == nullptr)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Tried to allocate without valid type information, mlvalue index=" + std::to_string(mlvalue_index));
+    return Status(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
 
   if (!ml_type->IsTensorType()) {
-    return AllocateTraditionalMLValue(mlvalue, *static_cast<const NonTensorTypeBase*>(ml_type));
+    return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
 
   ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
@@ -392,21 +375,20 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(MLValue& mlvalue, int mlvalue
     // In the future we may want to have different way to handle it.
     case AllocKind::kAllocateOutput:
     case AllocKind::kAllocate: {
-      ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(mlvalue, mlvalue_index, ml_data_type, alloc_info, *shape,
-                                                             per_alloc_plan.create_fence_if_async));
+      ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
+                                                             *shape, per_alloc_plan.create_fence_if_async));
       break;
     }
     case AllocKind::kReuse: {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(mlvalue, reuse_mlvalue_index,
-                                                                 ml_data_type, alloc_info, *shape,
-                                                                 per_alloc_plan.create_fence_if_async));
+      ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+          ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
       break;
     }
     case AllocKind::kShare: {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      // copy at the MLValue level so the shared_ptr for the data is shared between the two MLValue instances
-      mlvalue = GetMutableMLValue(reuse_mlvalue_index);
+      // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
+      ort_value = GetMutableMLValue(reuse_mlvalue_index);
       break;
     }
     default: {
@@ -425,41 +407,42 @@ AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& info) cons
 
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
-Status ExecutionFrame::CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue_idx, const TensorShape* shape) {
-  return AllocateAsPerAllocationPlan(mlvalue, mlvalue_idx, shape);
+Status ExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) {
+  return AllocateAsPerAllocationPlan(ort_value, ort_value_idx, shape);
 }
 
-Status ExecutionFrame::ReleaseMLValueImpl(int mlvalue_idx) {
-  ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(mlvalue_idx));
-  TraceFree(mlvalue_idx);
+Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
+  ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(ort_value_idx));
+  TraceFree(ort_value_idx);
   return Status::OK();
 }
 
-const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int mlvalue_idx) {
+const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(mlvalue_idx != NodeIndexInfo::kInvalidEntry && mlvalue_idx < alloc_plan.size());
-  return alloc_plan[mlvalue_idx];
+  ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
+  return alloc_plan[ort_value_idx];
 }
 
-void ExecutionFrame::TraceAllocate(int mlvalue_idx, size_t size) {
+void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
   if (planner_) {
     // don't trace the output tensors.
-    auto& allocation_plan = GetAllocationPlan(mlvalue_idx);
+    auto& allocation_plan = GetAllocationPlan(ort_value_idx);
     if (allocation_plan.alloc_kind == AllocKind::kAllocateOutput) return;
-    auto status = planner_->TraceAllocation(mlvalue_idx, size);
+    auto status = planner_->TraceAllocation(ort_value_idx, size);
     if (!status.IsOK())
-      LOGS(session_state_.Logger(), WARNING) << "TraceAllocation for mlvalue_idx=" << mlvalue_idx << " size=" << size
-                                             << " failed: " << status.ErrorMessage();
+      LOGS(session_state_.Logger(), WARNING) << "TraceAllocation for ort_value_idx=" << ort_value_idx
+                                             << " size=" << size << " failed: " << status.ErrorMessage();
   }
 }
 
-void ExecutionFrame::TraceFree(int mlvalue_idx) {
+void ExecutionFrame::TraceFree(int ort_value_idx) {
   // don't trace free on output tensors.
-  if (planner_ && !IsOutput(mlvalue_idx)) {
+  if (planner_ && !IsOutput(ort_value_idx)) {
     const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
     const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-    const auto& per_alloc_plan = alloc_plan.at(mlvalue_idx);
+    ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
+    const auto& per_alloc_plan = alloc_plan[ort_value_idx];
 
     // only trace tensors
     auto ml_type = per_alloc_plan.value_type;
@@ -468,10 +451,10 @@ void ExecutionFrame::TraceFree(int mlvalue_idx) {
       auto ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       // don't trace string tensors
       if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        auto status = planner_->TraceFree(mlvalue_idx);
+        auto status = planner_->TraceFree(ort_value_idx);
         if (!status.IsOK()) {
-          LOGS(session_state_.Logger(), WARNING) << "TraceFree for mlvalue_idx=" << mlvalue_idx
-                                                 << " failed: " << status.ErrorMessage();
+          LOGS(session_state_.Logger(), WARNING)
+              << "TraceFree for ort_value_idx=" << ort_value_idx << " failed: " << status.ErrorMessage();
         }
       }
     }

@@ -46,7 +46,7 @@ else()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
-set(gemmlowp_src ${ONNXRUNTIME_ROOT}/../cmake/external/gemmlowp)
+set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
 add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -68,6 +68,8 @@ if (onnxruntime_USE_CUDA)
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})

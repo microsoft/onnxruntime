@@ -4,15 +4,9 @@
 import os
 import sys
 import shutil
-
-import onnx
-import onnxruntime
 import json
 
 from google.protobuf.json_format import MessageToJson
-
-import predict_pb2
-import onnx_ml_pb2
 
 # Current models only have one input and one output
 def get_io_name(model_file_name):
@@ -44,7 +38,7 @@ def gen_output_pb(pb_full_path, output_name, response_file_path):
 
 
 def tensor2dict(full_path):
-  t = onnx.TensorProto()
+  t = onnx_ml_pb2.TensorProto()
   with open(full_path, 'rb') as f:
     t.ParseFromString(f.read())
 
@@ -82,7 +76,11 @@ def gen_output_json(pb_full_path, output_name, json_file_path):
     json.dump(resp, outfile)
 
 
-def gen_req_resp(model_zoo, test_data, copy_model=True):
+def gen_req_resp(model_zoo, test_data, copy_model=False):
+  skip_list = [
+    ('opset8', 'mxnet_arcface') # REASON: Known issue
+  ]
+
   opsets = [name for name in os.listdir(model_zoo) if os.path.isdir(os.path.join(model_zoo, name))]
   for opset in opsets:
     os.makedirs(os.path.join(test_data, opset), exist_ok=True)
@@ -92,15 +90,35 @@ def gen_req_resp(model_zoo, test_data, copy_model=True):
 
     models = [name for name in os.listdir(current_model_folder) if os.path.isdir(os.path.join(current_model_folder, name))]
     for model in models:
+      print("Working on Opset: {0}, Model: {1}".format(opset, model))
+      if (opset, model) in skip_list:
+        print("  SKIP!!")
+        continue
+
       os.makedirs(os.path.join(current_data_folder, model), exist_ok=True)
 
       src_folder = os.path.join(current_model_folder, model)
       dst_folder = os.path.join(current_data_folder, model)
 
-      if copy_model:
-        shutil.copy2(os.path.join(src_folder, 'model.onnx'), dst_folder)
+      onnx_file_path = ''
+      for fname in os.listdir(src_folder):
+        if not fname.startswith(".") and fname.endswith(".onnx") and os.path.isfile(os.path.join(src_folder, fname)):
+          onnx_file_path = os.path.join(src_folder, fname)
+          break
 
-      iname, oname = get_io_name(os.path.join(src_folder, 'model.onnx'))
+      if onnx_file_path == '':
+        raise FileNotFoundError('Could not find any *.onnx file in {0}'.format(src_folder))
+
+      if copy_model:
+        # Copy model file
+        target_file_path = os.path.join(dst_folder, "model.onnx")
+        shutil.copy2(onnx_file_path, target_file_path)
+
+        for fname in os.listdir(src_folder):
+          if not fname.endswith(".onnx") and os.path.isfile(os.path.join(src_folder, fname)):
+            shutil.copy2(os.path.join(src_folder, fname), dst_folder)
+
+      iname, oname = get_io_name(onnx_file_path)
       model_test_data = [name for name in os.listdir(src_folder) if os.path.isdir(os.path.join(src_folder, name))]
       for test in model_test_data:
         src = os.path.join(src_folder, test)
@@ -116,5 +134,13 @@ if __name__ == '__main__':
   model_zoo = os.path.realpath(sys.argv[1])
   test_data = os.path.realpath(sys.argv[2])
 
+  sys.path.append(os.path.realpath(sys.argv[3]))
+  sys.path.append(os.path.realpath(sys.argv[4]))
+
+  import onnxruntime
+  import predict_pb2
+  import onnx_ml_pb2
+
   os.makedirs(test_data, exist_ok=True)
   gen_req_resp(model_zoo, test_data)
+  
