@@ -489,12 +489,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         int output_index = output_indexes[i];
         output_shapes[i].insert(output_shapes[i].begin(), batch_size);
 
-        // If output tensor type is INT64, TensorRT processes data as INT32 and the output will be converted to INT64.
+        int output_size = batch_size * output_dim_sizes[i];
         OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, output_shapes[i].data(), output_shapes[i].size());
-        if (output_types[i] == TensorProto::FLOAT) {        
-          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(float), cudaMemcpyDeviceToHost));
+        // If output tensor type is INT64, TensorRT processes data as INT32 and the output will be converted to INT64.
+        if (output_types[i] == TensorProto::FLOAT) {
+          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<float>(output_tensor), buffers[i + num_binding_inputs], output_size * sizeof(float), cudaMemcpyDeviceToHost));
         } else if (output_types[i] == TensorProto::INT64) {
-          CHECK_CUDA(cudaMemcpy(ort.GetTensorMutableData<int64_t>(output_tensor), buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(int), cudaMemcpyDeviceToHost));
+          int* output = new int[output_size];
+          CHECK_CUDA(cudaMemcpy(output, buffers[i + num_binding_inputs], output_size * sizeof(int), cudaMemcpyDeviceToHost));
+          for (int j = 0; j < output_size; ++j) {
+            ort.GetTensorMutableData<int64_t>(output_tensor)[j] = output[j];
+          }
+          delete[] output;
         } else {
           Status(common::ONNXRUNTIME, common::FAIL, "Output type is not supported by TensorRT");
         }
