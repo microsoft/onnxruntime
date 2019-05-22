@@ -18,7 +18,6 @@ IF NOT DEFINED IsReleaseBuild (
 )
 
 SET CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
-SET CurrentOnnxRuntimeVersion=0.4.0-dev-f39a8d1f
 @ECHO %CurrentOnnxRuntimeVersion%
 
 PUSHD test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi
