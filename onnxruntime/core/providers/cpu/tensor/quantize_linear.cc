@@ -50,7 +50,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const T zero_point = *(x_zero_point.template Data<T>());
   const float scale = *(x_scale.template Data<float>());
   const T* input = x.template Data<T>();
-  float* output = y.template MutableData<float>();
+  auto* output = y.template MutableData<float>();
   const auto num_of_elements = x_shape.Size();
 
   for (int i = 0; i < num_of_elements; ++i) {
@@ -104,8 +104,8 @@ Status QuantizeLinear<float>::Compute(OpKernelContext* ctx) const {
   
   const uint8_t zero_point = *(y_zero_point.template Data<uint8_t>());
   const float scale = *(y_scale.template Data<float>());
-  const float* input = x.template Data<float>();
-  uint8_t* output = y.template MutableData<uint8_t>();
+  const auto* input = x.template Data<float>();
+  auto* output = y.template MutableData<uint8_t>();
   const auto num_of_elements = x_shape.Size();
 
   for (int i = 0; i < num_of_elements; ++i) {

@@ -108,19 +108,19 @@ Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShap
   const_cast<int64_t&>(num_classes_) = scores_dims[1];
   const_cast<int64_t&>(num_boxes_) = boxes_dims[1];
 
-  const Tensor* max_output_boxes_per_class_tensor = ctx->Input<Tensor>(2);
+  const auto* max_output_boxes_per_class_tensor = ctx->Input<Tensor>(2);
   if (max_output_boxes_per_class_tensor != nullptr) {
     max_output_boxes_per_class = *(max_output_boxes_per_class_tensor->Data<int64_t>());
     max_output_boxes_per_class = max_output_boxes_per_class > 0 ? max_output_boxes_per_class : 0;
   }
 
-  const Tensor* iou_threshold_tensor = ctx->Input<Tensor>(3);
+  const auto* iou_threshold_tensor = ctx->Input<Tensor>(3);
   if (iou_threshold_tensor != nullptr) {
     iou_threshold = *(iou_threshold_tensor->Data<float>());
     ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1), "iou_threshold must be in range [0, 1].");
   }
 
-  const Tensor* score_threshold_tensor = ctx->Input<Tensor>(4);
+  const auto* score_threshold_tensor = ctx->Input<Tensor>(4);
   if (score_threshold_tensor != nullptr) {
     has_score_threshold = true;
     score_threshold = *(score_threshold_tensor->Data<float>());
@@ -130,9 +130,9 @@ Status NonMaxSuppression::ParepareCompute(OpKernelContext* ctx, const TensorShap
 }
 
 Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
-  const Tensor* boxes = ctx->Input<Tensor>(0);
+  const auto* boxes = ctx->Input<Tensor>(0);
   ORT_ENFORCE(boxes);
-  const Tensor* scores = ctx->Input<Tensor>(1);
+  const auto* scores = ctx->Input<Tensor>(1);
   ORT_ENFORCE(scores);
 
   auto& boxes_shape = boxes->Shape();
@@ -153,8 +153,8 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  const float* boxes_data = boxes->Data<float>();
-  const float* scores_data = scores->Data<float>();
+  const auto* boxes_data = boxes->Data<float>();
+  const auto* scores_data = scores->Data<float>();
 
   struct ScoreIndexPair {
     float score;
@@ -206,7 +206,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     }    //for class_index
   }      //for batch_index
 
-  int32_t num_selected = static_cast<int32_t>(tmp_selected_indices.size());
+  auto num_selected = static_cast<int32_t>(tmp_selected_indices.size());
   Tensor* selected_indices = ctx->Output(0, {num_selected, 3});
   ORT_ENFORCE(selected_indices);
   memcpy(selected_indices->MutableData<int64_t>(), tmp_selected_indices.data(), num_selected * sizeof(selected_index));
