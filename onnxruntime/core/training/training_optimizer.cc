@@ -46,14 +46,14 @@ NameMLValMap GradientDescent::CalculateNewWeights(const NameMLValMap& original_w
       throw new NotImplementedException("bad gradiant name");
     }
     const Tensor& grad_tensor = grad_it->second.Get<Tensor>();
-
+		
     auto shape = grad_tensor.Shape();
     void* buffer = param_.allocator_ptr_->Alloc(element_type->Size() * shape.Size());
     memset(buffer, 0, element_type->Size() * shape.Size());
     auto p_tensor = new Tensor(element_type,
                                shape,
                                buffer,
-                               param_.allocator_ptr_->Info());
+                               param_.allocator_ptr_->Info());	
 
     auto outputGradArrayMap = MakeEigenArrayMap<float>(p_tensor);
     outputGradArrayMap += MakeEigenArrayMap<float>(grad_tensor);

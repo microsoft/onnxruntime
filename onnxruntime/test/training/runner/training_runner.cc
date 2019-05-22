@@ -39,7 +39,7 @@ Status TrainingRunner::Initialize() {
 
   // Add loss func
   ORT_RETURN_IF_ERROR(session_.AddLossFuncion(params_.loss_func_info_));
-  if (!params_.model_with_loss_func_path_.empty()) {
+  if (params_.world_rank_ == 0 && !params_.model_with_loss_func_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_loss_func_path_,
                                       TrainingSession::SaveOption::NO_RELOAD));
   }
@@ -71,14 +71,14 @@ Status TrainingRunner::Initialize() {
 
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name_, opt_info));
-  if (!params_.model_with_training_graph_path_.empty()) {
+  if (params_.world_rank_ == 0 && !params_.model_with_training_graph_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_training_graph_path_,
                                       TrainingSession::SaveOption::NO_RELOAD));
   }
 
 #ifdef USE_CUDA
   if (params_.use_cuda_) {
-    CUDAExecutionProviderInfo xp_info;
+    CUDAExecutionProviderInfo xp_info{params_.world_rank_};
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
@@ -87,7 +87,7 @@ Status TrainingRunner::Initialize() {
 }
 
 Status TrainingRunner::Run() {
-  if (!params_.model_actual_running_graph_path_.empty()) {
+  if (params_.world_rank_ == 0 && !params_.model_actual_running_graph_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD));
   }
 
@@ -169,6 +169,11 @@ Status TrainingRunner::TrainingLoop() {
 }
 
 Status TrainingRunner::EndTraining() {
+  if (params_.world_rank_ != 0) {
+    printf("Skipping end-training on Device #%d, as it's not the root.", params_.world_rank_);
+    return Status::OK();
+  }
+
   // Test the in-memory model before saving.
   printf("\nEvaluateing the final model on the test set.\n");
   ORT_RETURN_IF_ERROR(Evaluate(session_, true));
@@ -194,6 +199,11 @@ Status TrainingRunner::EndTraining() {
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
+  if (params_.world_rank_ != 0) {
+    printf("Skipping evaluation on Device #%d, as it's not the root.", params_.world_rank_);
+    return Status::OK();
+  }
+
   // A static batch index representing current test batch
   static size_t current_batch = 0;
 

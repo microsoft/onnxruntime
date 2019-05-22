@@ -58,6 +58,8 @@ class TrainingRunner {
     // TODO: support a list of providers.
     bool use_cuda_ = false;
 #endif
+
+    int world_rank_ = 0;
   };
 
   TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params);

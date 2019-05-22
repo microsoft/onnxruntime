@@ -28,7 +28,7 @@ int main(int argc, char* args[]) {
   if (argc < 2) {
     printf("Incorrect command line for %s\n", args[0]);
 #ifdef USE_CUDA
-    printf("usage: exe_name model_name [gpu]\n");
+    printf("usage: exe_name model_name [gpu] [optional:world_rank]\n");
 #else
     printf("usage: exe_name model_name\n");
 #endif
@@ -71,12 +71,12 @@ int main(int argc, char* args[]) {
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+  // Uncomment following line to enable in-graph optimizer, which currently only when in GPU
+  params.in_graph_optimizer_name_ = "SGDOptimizer";
 #else
   params.learning_rate_ = LEARNING_RATE;
 #endif
   params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
-  // Uncomment following line to enable in-graph optimizer, which currently only when in GPU
-  //params.in_graph_optimizer_name_ = "SGDOptimizer";
 
   int true_count = 0;
   float total_loss = 0.0f;
@@ -124,6 +124,11 @@ int main(int argc, char* args[]) {
 
 #ifdef USE_CUDA
   params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
+
+  if (params.use_cuda_ && argc > 3) {
+    params.world_rank_ = stoi(string(args[3]));
+  }
+  printf("Using cuda device #%d \n", params.world_rank_);
 #endif
 
   TrainingRunner runner(trainingData, testData, params);
