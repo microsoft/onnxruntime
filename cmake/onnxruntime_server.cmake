@@ -108,11 +108,11 @@ if(NOT WIN32)
   endif()
 endif()
 
-set(onnxruntime_SERVER_VERSION "local-build" CACHE STRING "Local build only")
+set(onnxruntime_SERVER_VERSION "local-build" CACHE STRING "Sever version")
 add_definitions(-DSRV_VERSION="${onnxruntime_SERVER_VERSION}")
 message(STATUS "ONNX Runtime Server version set to: ${onnxruntime_SERVER_VERSION}")
 
-set(onnxruntime_LATEST_COMMIT_ID "default" CACHE STRING "Local build only")
+set(onnxruntime_LATEST_COMMIT_ID "default" CACHE STRING "The latest commit id")
 add_definitions(-DLATEST_COMMIT_ID="${onnxruntime_LATEST_COMMIT_ID}")
 message(STATUS "ONNX Runtime Server latest commit id is: ${onnxruntime_LATEST_COMMIT_ID}")
 
