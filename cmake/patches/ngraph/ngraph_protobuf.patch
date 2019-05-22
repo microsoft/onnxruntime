@@ -1,9 +1,3 @@
-From 698b4ba80e1af2599ae7946278d453dbddcecb98 Mon Sep 17 00:00:00 2001
-From: Junfeng Dong <junfeng.dong@intel.com>
-Date: Wed, 8 May 2019 14:11:32 -0700
-Subject: [PATCH] enable nGraph Debug mode.
-
----
  cmake/external_protobuf.cmake                  | 28 +++++++++++++++-----------
  src/ngraph/frontend/onnx_import/CMakeLists.txt |  4 ++--
  2 files changed, 18 insertions(+), 14 deletions(-)
@@ -47,8 +41,7 @@ index 32217f5d..ba72d112 100644
 +            optimized ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.lib)
 +    else()
 +        target_link_libraries(libprotobuf INTERFACE
-+            debug ${Protobuf_INSTALL_PREFIX}/lib/libprotobufd.a
-+            optimized ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.a)
++            ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.a)
 +    endif()
 +    set_target_properties(libprotobuf PROPERTIES
 +        INTERFACE_INCLUDE_DIRECTORIES "${Protobuf_INCLUDE_DIR}")
