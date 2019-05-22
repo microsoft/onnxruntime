@@ -371,10 +371,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"})
+  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests({"tiny_yolov2", "temporarily disable due to graph resolve failure."});
-  broken_tests({"operator_repeat_dim_overflow", "temporarily disable due to graph resolve failure."});
+  broken_tests.insert({"tiny_yolov2", "temporarily disable due to graph resolve failure."});
+  broken_tests.insert({"operator_repeat_dim_overflow", "temporarily disable due to graph resolve failure."});
 #endif
 
 #ifdef USE_CUDA
