@@ -190,6 +190,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
   if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
     std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
+    // Reserve mem to avoid re-allocation.
+    input_shapes.reserve(feeds.size());
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
         all_tensors = false;
