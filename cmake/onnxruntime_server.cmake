@@ -109,11 +109,11 @@ if(NOT WIN32)
 endif()
 
 set(onnxruntime_SERVER_VERSION "local-build" CACHE STRING "Sever version")
-add_definitions(-DSRV_VERSION="${onnxruntime_SERVER_VERSION}")
+target_compile_definitions(${SERVER_APP_NAME} PUBLIC SRV_VERSION="${onnxruntime_SERVER_VERSION}")
 message(STATUS "ONNX Runtime Server version set to: ${onnxruntime_SERVER_VERSION}")
 
 set(onnxruntime_LATEST_COMMIT_ID "default" CACHE STRING "The latest commit id")
-add_definitions(-DLATEST_COMMIT_ID="${onnxruntime_LATEST_COMMIT_ID}")
+target_compile_definitions(${SERVER_APP_NAME} PUBLIC LATEST_COMMIT_ID="${onnxruntime_LATEST_COMMIT_ID}")
 message(STATUS "ONNX Runtime Server latest commit id is: ${onnxruntime_LATEST_COMMIT_ID}")
 
 onnxruntime_add_include_to_target(${SERVER_APP_NAME} onnxruntime_session onnxruntime_server_lib gsl onnx onnx_proto server_proto)
