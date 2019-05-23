@@ -19,7 +19,7 @@ class OnnxRuntimeTestSession : public TestSession {
       test_inputs_.resize(test_data_id + 1);
     }
     if (test_inputs_.at(test_data_id).size() == 0) {
-      for (size_t i = 0; i < input_length_; i++)
+      for (int i = 0; i < input_length_; i++)
         test_inputs_[test_data_id].emplace_back(nullptr);
     }
     test_inputs_[test_data_id][input_id] = Ort::Value{value};
