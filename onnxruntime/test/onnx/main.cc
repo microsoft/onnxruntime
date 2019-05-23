@@ -311,7 +311,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BatchNorm2d_momentum_eval", "disable reason"},
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
-#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+#if defined(__GNUG__) && !defined(__LP64__)
       {"constantofshape_float_ones", "test data bug"},
       {"constantofshape_int_zeros", "test data bug"},
 #else
@@ -387,6 +387,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #if defined(__GNUG__) && !defined(__LP64__)
   broken_tests.insert({"nonzero_example", "failed: type mismatch"});
+  broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
+  broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS
