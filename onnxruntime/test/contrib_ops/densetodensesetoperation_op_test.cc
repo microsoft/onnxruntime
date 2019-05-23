@@ -7,6 +7,22 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(DenseToDenseSetOperation, DenseSet_Int64_5) {
+  OpTester test("DenseToDenseSetOperation", 1, onnxruntime::kMSDomain);
+  test.AddInput<int64_t>("x", {5}, {3, 2, 0, 0, 1});
+  test.AddInput<int64_t>("y", {5}, {1, 2, 0, 0, 0});
+  test.AddOutput<int64_t>("z", {2}, {1, 2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(DenseToDenseSetOperation, DenseSet_Int64_1_5) {
+  OpTester test("DenseToDenseSetOperation", 1, onnxruntime::kMSDomain);
+  test.AddInput<int64_t>("x", {1, 5}, {3, 2, 1, 0, 0});
+  test.AddInput<int64_t>("y", {1, 4}, {1, 2, 0, 0});
+  test.AddOutput<int64_t>("z", {1, 2}, {1, 2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(DenseToDenseSetOperation, DenseSet_Int32_2_2_4) {
   OpTester test("DenseToDenseSetOperation", 1, onnxruntime::kMSDomain);
   test.AddInput<int32_t>("x", {2, 2, 4}, {1, 2, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 5, 6, 9, 0});
@@ -47,7 +63,6 @@ TEST(DenseToDenseSetOperation, DenseSet_Int64_2_2_4_empty_inputs) {
   test.AddOutput<int64_t>("z", {2, 2, 0}, {});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -52,7 +52,6 @@ Status DenseToDenseSetOperation<T>::Compute(OpKernelContext* ctx) const {
   const T* x_data = x->Data<T>();
   const T* y_data = y->Data<T>();
   auto x_size = x->Shape().Size();
-  //auto y_size = y->Shape().Size();
 
   auto x_lastdim = x->Shape()[x_rank - 1];
   auto y_lastdim = y->Shape()[y_rank - 1];
@@ -65,7 +64,6 @@ Status DenseToDenseSetOperation<T>::Compute(OpKernelContext* ctx) const {
 
   for (int64_t x_pos = 0; x_pos < x_size; x_pos += x_lastdim) {
     std::unordered_map<T, bool> x_set;
-    std::vector<T> v(z_lastdim);
     z_sets.resize(z_index + 1);
 
     // store all elements of x subset in map
@@ -101,8 +99,8 @@ Status DenseToDenseSetOperation<T>::Compute(OpKernelContext* ctx) const {
 
   for (int64_t i = 0, z_pos = 0; i < z_size / z_lastdim; i += 1) {
     // copy intersections
-    for (auto it = z_sets[i].begin(); it != z_sets[i].end(); ++it)
-      z_data[z_pos++] = *it;
+    for (auto& val : z_sets[i])
+      z_data[z_pos++] = val;
     // pad with default value
     for (auto j = 0; j < z_lastdim - z_sets[i].size(); j++)
       z_data[z_pos++] = dv;
