@@ -207,6 +207,24 @@ if (onnxruntime_USE_NGRAPH)
   endif()
 endif()
 
+if (onnxruntime_USE_NNAPI)
+  add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
+  file(GLOB_RECURSE
+    onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
+  add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_nnapi
+    # dnnlibrary
+    onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_providers_internal.cmake)
 endif()
