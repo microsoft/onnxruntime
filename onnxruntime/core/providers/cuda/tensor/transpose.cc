@@ -44,12 +44,13 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
   ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
 
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(perm.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  auto stream = GetExecutionStream();
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu(stream));
+  ORT_RETURN_IF_ERROR(perm.CopyToGpu(stream));
+  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu(stream));
 
   TransposeImpl(
-      GetExecutionStream(),
+      stream,
       rank,
       input_strides.GpuPtr(),
       perm.GpuPtr(),

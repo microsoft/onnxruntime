@@ -67,7 +67,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state,
     for (auto it : queue_ids) {
       cuda_exec_provider_->ReleaseQueueID(it.first);
     }
-    //cuda_exec_provider_->Sync();
+    cuda_exec_provider_->Sync();
   }
 
   VLOGS(logger, 1) << "Fetching output.";

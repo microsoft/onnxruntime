@@ -54,12 +54,13 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   for (size_t i = 0; i < input_shape.size(); ++i)
     fdm_input_shape_span[i] = fast_divmod(gsl::narrow_cast<int>(input_shape[i]));
 
-  ORT_RETURN_IF_ERROR(fdm_input_shape.CopyToGpu());
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  auto execution_stream = GetExecutionStream();
+  ORT_RETURN_IF_ERROR(fdm_input_shape.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu(execution_stream));
 
   TileImpl(
-      GetExecutionStream(),
+      execution_stream,
       rank,
       fdm_input_shape.GpuPtr(),
       input_strides.GpuPtr(),

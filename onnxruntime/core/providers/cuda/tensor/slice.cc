@@ -76,11 +76,12 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   for (int i = 0; i < dimension_count; ++i) {
     starts_buffer_span[i] = starts[i];
   }
-  starts_buffer.CopyToGpu();
+  auto exec_stream = GetExecutionStream();
+  starts_buffer.CopyToGpu(exec_stream);
 
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
   ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
-  input_strides.CopyToGpu();
+  input_strides.CopyToGpu(exec_stream);
 
   TensorPitches output_pitches(output_dims);
 
@@ -89,7 +90,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   for (int i = 0; i < dimension_count; ++i) {
     div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
   }
-  div_strides.CopyToGpu();
+  div_strides.CopyToGpu(exec_stream);
 
   size_t element_size = input_tensor->DataType()->Size();
 

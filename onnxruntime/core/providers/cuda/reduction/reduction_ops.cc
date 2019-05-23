@@ -163,7 +163,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       auto log_sum_result = GetScratchBuffer<T>(output_count).get();
       BinaryElementwisePreparation prepare(this);
       prepare.BinaryElementwiseBroadcastPrepareHelper(0, input_shape, output_shape, input_shape);
-      prepare.CopyToGpu();
+      prepare.CopyToGpu(execution_stream);
       Impl_Sub<CudaT>(execution_stream,
                       prepare.output_rank_or_simple_broadcast,
                       prepare.lhs_padded_strides.GpuPtr(),

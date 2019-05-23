@@ -46,14 +46,14 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
-  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
-  ORT_RETURN_IF_ERROR(input_dims.CopyToGpu());
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(lower_pads.CopyToGpu());
-  ORT_RETURN_IF_ERROR(upper_pads.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
-
   auto execution_stream = GetExecutionStream();
+  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  ORT_RETURN_IF_ERROR(input_dims.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(lower_pads.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(upper_pads.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu(execution_stream));
+
   PadImpl(
       execution_stream,
       dimension_count,

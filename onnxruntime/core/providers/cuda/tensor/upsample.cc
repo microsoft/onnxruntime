@@ -64,8 +64,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
     input_stride_span[i] = input_pitches[i];
     div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
   }
-  input_strides.CopyToGpu();
-  output_div_pitches.CopyToGpu();
+
+  auto execution_stream = GetExecutionStream();
+  input_strides.CopyToGpu(execution_stream);
+  output_div_pitches.CopyToGpu(execution_stream);
 
   size_t output_count = Y->Shape().Size();
 
@@ -78,10 +80,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       }
   }
 
-  auto execution_stream = GetExecutionStream();
   if (is_resize) {
     CudaAsyncBuffer<float> scales_vals(this, device_id, scales);
-    scales_vals.CopyToGpu();
+    scales_vals.CopyToGpu(execution_stream);
     ResizeImpl(execution_stream,
                mode_,
                rank,

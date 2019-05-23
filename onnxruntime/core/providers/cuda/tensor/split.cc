@@ -53,7 +53,8 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     auto output_data = output->MutableDataRaw();
     output_ptr_span[i] = output_data;
   }
-  output_ptr.CopyToGpu();
+  auto exec_stream = GetExecutionStream();
+  output_ptr.CopyToGpu(exec_stream);
 
   CudaAsyncBuffer<int64_t> split_sizes_gpu(this, device_id, split_sizes);
   split_sizes_gpu.CopyToGpu();
@@ -63,10 +64,10 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     split_sizes_range[i] += split_sizes_range[i - 1];
   }
   CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, device_id, split_sizes_range);
-  split_sizes_range_gpu.CopyToGpu();
+  split_sizes_range_gpu.CopyToGpu(exec_stream);
 
   size_t element_size = input_tensor->DataType()->Size();
-  ORT_RETURN_IF_ERROR(SplitImpl(GetExecutionStream(),
+  ORT_RETURN_IF_ERROR(SplitImpl(exec_stream,
                                 element_size,
                                 block_size_including_axis_dim,
                                 block_size_inside_axis_dim,

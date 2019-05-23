@@ -60,8 +60,8 @@ class CudaKernel : public OpKernel {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p) const {
-    provider_->AddDeferredReleaseCPUPtr(p);
+  inline void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) const {
+    provider_->AddDeferredReleaseCPUPtr(p, stream);
   }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
@@ -90,11 +90,11 @@ class CudaKernel : public OpKernel {
       count_ = count;
     }
 
-    Status CopyToGpu() {
+    Status CopyToGpu(cudaStream_t stream=nullptr) {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, stream));
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();
     }

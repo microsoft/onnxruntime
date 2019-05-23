@@ -68,11 +68,11 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
   div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
   div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
-  ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
+  auto execution_stream = GetExecutionStream();
+  ORT_RETURN_IF_ERROR(div_strides.CopyToGpu(execution_stream));
 
   MLDataType T_type = p.input_tensor->DataType();
   MLDataType Tin_type = p.indices_tensor->DataType();
-  auto execution_stream = GetExecutionStream();
 
   TYPED_FUNCTION_CALL(int8_t)
   TYPED_FUNCTION_CALL(int16_t)

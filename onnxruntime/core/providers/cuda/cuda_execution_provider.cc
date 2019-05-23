@@ -142,16 +142,16 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   auto it = deferred_release_cpu_ptr_.begin();
   while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    if (v.recorded)
-      CUDA_CALL_THROW(cudaEventSynchronize(e));
-    for (auto p : v.cpu_ptrs) {
+    auto& stream = it->first;
+    auto& cpu_ptr_obj = it->second;
+    if (cpu_ptr_obj.recorded)
+      CUDA_CALL_THROW(cudaEventSynchronize(cpu_ptr_obj.cuda_event));
+    for (auto p : cpu_ptr_obj.cpu_ptrs) {
       cpu_alloc->Free(p);
     }
-    CUDA_CALL_THROW(cudaEventDestroy(e));
-    it = deferred_release_cpu_ptr_.erase(it);
   }
+  deferred_release_cpu_ptr_.clear();
+
   for (int i = kCudaStreamCopyIn; i < kTotalCudaStreams; ++i) {
     CUDA_CALL_THROW(cudaStreamDestroy(streams_[i]));
   }
@@ -183,20 +183,16 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
+// This is called from operator threads
+void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* mem_ptr, cudaStream_t stream) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
-  auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
-  auto per_thread_context = cuda_context_pool_.GetPerThreadContext(queue_id);
-  auto current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
+  //auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
 
-  if (current_deferred_release_event) {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
-    ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
-    iter->second.cpu_ptrs.push_back(p);
-  }
+  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+  deferred_release_cpu_ptr_.emplace(stream, DeferredReleaseCPUPtrs());
+  deferred_release_cpu_ptr_[stream].cpu_ptrs.push_back(mem_ptr);
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
@@ -205,47 +201,43 @@ Status CUDAExecutionProvider::OnRunStart() {
   // note that we need to take a mutex in case of multi-threaded Run()
   {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    int i = 0;
+    std::vector<cudaStream_t> to_be_removed(deferred_release_cpu_ptr_.size());
     auto it = deferred_release_cpu_ptr_.begin();
     while (it != deferred_release_cpu_ptr_.end()) {
-      auto& e = it->first;
-      auto& v = it->second;
+      auto& cpu_ptr_obj = it->second;
       // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
-      if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
-        for (auto p : v.cpu_ptrs) {
+      if (cpu_ptr_obj.recorded && cudaSuccess == cudaEventQuery(cpu_ptr_obj.cuda_event)) {
+        for (auto p : cpu_ptr_obj.cpu_ptrs) {
           cpu_alloc->Free(p);
         }
-        cudaEvent_t expired_event = it->first;
-        it = deferred_release_cpu_ptr_.erase(it);
-        CUDA_RETURN_IF_ERROR(cudaEventDestroy(expired_event));
-      } else {
-        ++it;
+        to_be_removed[i++] = it->first;
       }
     }
-  }
-  // start a new per_thread context, store in TLS
-  auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
-  auto per_thread_context = cuda_context_pool_.GetPerThreadContext(queue_id);
 
-  auto& current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
-  deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
+    for (auto it : to_be_removed) {
+      deferred_release_cpu_ptr_.erase(it);
+    }
+  }
 
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd() {
-  auto queue_id = GetQueueIDByThreadId(std::this_thread::get_id());
+  // still can't concurrent run with one single session, need to introduce a session id
+  // Too many lock, maybe dead lock
+  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+  for (auto it : deferred_release_cpu_ptr_) {
+    auto cuda_event = cuda_event_pool_.GetCudaEvent();
+    it.second.cuda_event = cuda_event;
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(cuda_event, it.first));
+    it.second.recorded = true;
+    cuda_event_pool_.SetEventRecordFlag(cuda_event);
+  }
 
-  auto per_thread_context = cuda_context_pool_.GetPerThreadContext(queue_id);
-  ORT_RETURN_IF_NOT(per_thread_context != nullptr);
-  // record deferred release event on default stream, and release per_thread_context
-  auto current_deferred_release_event = per_thread_context->GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
   ReleasePerThreadStuffs();
   TryReleaseCudaEvent();
 
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
   return Status::OK();
 }
 

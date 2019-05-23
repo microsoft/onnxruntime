@@ -108,9 +108,10 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
     Prepare(context, 0, &prepare);                                                                               \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
+    auto stream = GetExecutionStream();                                                                          \
+    ORT_RETURN_IF_ERROR(prepare.CopyToGpu(stream));                                                              \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
-        GetExecutionStream(),                                                                                    \
+        stream,                                                                                                  \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         prepare.lhs_padded_strides.GpuPtr(),                                                                     \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \

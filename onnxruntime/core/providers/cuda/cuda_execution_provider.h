@@ -197,6 +197,12 @@ class CudaEventPool {
   cudaEvent_t GetCudaEvent();
   void ReleaseCudaEvent();
   Status StreamSync(cudaStream_t stream, std::vector<cudaStream_t> dep_stream_ids);
+  void SetEventRecordFlag(cudaEvent_t cuda_event) {
+    std::lock_guard<OrtMutex> lock(event_mutex_);
+    if (in_used_events_.find(cuda_event) != in_used_events_.end()) {
+      in_used_events_[cuda_event] = true;
+    }
+  }
 
  private:
   cudaEvent_t GetOrCreateCudaEvent();
@@ -257,7 +263,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return per_thread_context->template GetConstOnes<T>(count);
   }
 
-  void AddDeferredReleaseCPUPtr(void* p);
+  void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
@@ -293,6 +299,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (0 == stream_id || dep_stream_ids.size() < 1) {
       return Status::OK();
     }
+    cuda_event_pool_.ReleaseCudaEvent();
     auto stream = GetStream(stream_id);
     std::vector<cudaStream_t> dep_streams(dep_stream_ids.size());
     for (int i = 0; i < dep_stream_ids.size(); ++i) {
@@ -323,11 +330,13 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int device_id_;
   mutable OrtMutex queue_ids_mutex_;
 
+  // Merge the deferred_release_cpu_ptr with CudaEventPool?
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
+    cudaEvent_t cuda_event;
     std::vector<void*> cpu_ptrs;
   };
-  std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
+  std::unordered_map<cudaStream_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
   // reuse thread local GPU memory allocator for memory pattern

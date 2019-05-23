@@ -27,10 +27,10 @@ struct BinaryElementwisePreparation {
                                                               rhs_padded_strides(op_kernel),
                                                               fdm_output_strides(op_kernel) {}
 
-  Status CopyToGpu() {
-    ORT_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu());
-    ORT_RETURN_IF_ERROR(rhs_padded_strides.CopyToGpu());
-    ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  Status CopyToGpu(cudaStream_t stream = nullptr) {
+    ORT_RETURN_IF_ERROR(lhs_padded_strides.CopyToGpu(stream));
+    ORT_RETURN_IF_ERROR(rhs_padded_strides.CopyToGpu(stream));
+    ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu(stream));
     return Status::OK();
   }
 

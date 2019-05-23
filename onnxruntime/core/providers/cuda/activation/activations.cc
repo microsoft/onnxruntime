@@ -24,10 +24,12 @@ namespace cuda {
     UnaryElementwisePreparation p;                                                                         \
     UnaryElementwise::Prepare(context, &p);                                                                \
     CudaAsyncBuffer<Ctx##x> func_ctx(this, 0, MakeFuncCtx());                                              \
-    if (!std::is_same<CtxNull, Ctx##x>::value)                                                             \
-      ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                                                           \
+    auto stream = GetExecutionStream();                                                                    \
+    if (!std::is_same<CtxNull, Ctx##x>::value) {                                                           \
+      ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu(stream));                                                     \
+    }                                                                                                      \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
-        GetExecutionStream(),                                                                              \
+        stream,                                                                                            \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \
         func_ctx.GpuPtr(),                                                                                 \

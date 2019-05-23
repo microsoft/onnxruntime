@@ -66,9 +66,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+  auto execution_stream = GetExecutionStream();
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(execution_stream));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(execution_stream));
 
   // note that onnxruntime MLValue is row major, while cublas is column major,
   // so swap left/right operands
