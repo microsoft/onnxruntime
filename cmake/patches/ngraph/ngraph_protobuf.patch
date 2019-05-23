@@ -1,9 +1,9 @@
- cmake/external_protobuf.cmake                  | 28 +++++++++++++++-----------
+ cmake/external_protobuf.cmake                  | 21 ++++++++++++++-------
  src/ngraph/frontend/onnx_import/CMakeLists.txt |  4 ++--
- 2 files changed, 18 insertions(+), 14 deletions(-)
+ 2 files changed, 16 insertions(+), 9 deletions(-)
 
 diff --git a/cmake/external_protobuf.cmake b/cmake/external_protobuf.cmake
-index 32217f5d..ba72d112 100644
+index 32217f5d6..d33e9c631 100644
 --- a/cmake/external_protobuf.cmake
 +++ b/cmake/external_protobuf.cmake
 @@ -23,7 +23,7 @@ include(ExternalProject)
@@ -15,16 +15,8 @@ index 32217f5d..ba72d112 100644
  
  if (WIN32)
      ExternalProject_Add(
-@@ -77,19 +77,23 @@ endif()
- set(Protobuf_INSTALL_PREFIX ${EXTERNAL_PROJECTS_ROOT}/protobuf)
- set(Protobuf_PROTOC_EXECUTABLE ${Protobuf_INSTALL_PREFIX}/bin/protoc)
- set(Protobuf_INCLUDE_DIR ${Protobuf_INSTALL_PREFIX}/include)
--if (WIN32)
--    set(Protobuf_LIBRARY ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.lib)
--else()
--    set(Protobuf_LIBRARY ${Protobuf_INSTALL_PREFIX}/lib/libprotobuf.a)
--endif()
-+
+@@ -84,12 +84,19 @@ else()
+ endif()
  set(Protobuf_LIBRARIES ${Protobuf_LIBRARY})
  
 -if (NOT TARGET protobuf::libprotobuf)
@@ -50,7 +42,7 @@ index 32217f5d..ba72d112 100644
  
  if (NOT TARGET protobuf::protoc)
 diff --git a/src/ngraph/frontend/onnx_import/CMakeLists.txt b/src/ngraph/frontend/onnx_import/CMakeLists.txt
-index bf6e73d2..38157715 100644
+index bf6e73d2c..381577159 100644
 --- a/src/ngraph/frontend/onnx_import/CMakeLists.txt
 +++ b/src/ngraph/frontend/onnx_import/CMakeLists.txt
 @@ -194,13 +194,13 @@ add_library(onnx_import STATIC
