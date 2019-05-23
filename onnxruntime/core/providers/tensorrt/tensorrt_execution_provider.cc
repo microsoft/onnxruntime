@@ -484,7 +484,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int32_t)));
           CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyHostToDevice));
         } else {
-          Status(common::ONNXRUNTIME, common::FAIL, "Input tensor type " + std::to_string(tensor_type) + " is not supported.");
+          return 1;
         }
       }
 
@@ -497,7 +497,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           CHECK_CUDA(cudaMalloc(&buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(int32_t)));
         } else {
-          Status(common::ONNXRUNTIME, common::FAIL, "Output tensor type " + std::to_string(output_types[i]) + " is not supported.");
+          return 1;
         }
       }
 
@@ -527,7 +527,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           }
           delete[] output;
         } else {
-          Status(common::ONNXRUNTIME, common::FAIL, "Output tensor type " + std::to_string(output_types[i]) + " is not supported.");
+          return 1;
         }
       }
 
