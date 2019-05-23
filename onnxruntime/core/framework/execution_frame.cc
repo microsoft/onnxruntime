@@ -83,10 +83,9 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 
   // If fence is available, check whether async read has completed or not.
   Fence_t fence = GetMLValue(ort_value_idx).Fence();
-  if (fence && !fence->CanRelease())
-  {
-      // Async data reading is not done yet, defer mem release until Session.run() end.
-      return Status::OK();
+  if (fence && !fence->CanRelease()) {
+    // Async data reading is not done yet, defer mem release until Session.run() end.
+    return Status::OK();
   }
 
   all_values_[ort_value_idx] = OrtValue();
@@ -355,8 +354,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
 
-  auto alloc_info = per_alloc_plan.location;
-  auto ml_type = per_alloc_plan.value_type;
+  const auto& alloc_info = per_alloc_plan.location;
+  const auto* ml_type = per_alloc_plan.value_type;
   if (ml_type == nullptr)
     return Status(
         ONNXRUNTIME, INVALID_ARGUMENT,
@@ -369,7 +368,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
 
   // tensors
-  auto ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+  const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
 
   AllocKind alloc_kind = per_alloc_plan.alloc_kind;
   switch (alloc_kind) {
