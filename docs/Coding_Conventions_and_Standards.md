@@ -20,7 +20,9 @@ Google style from https://google.github.io/styleguide/cppguide.html with a few m
 
 Other
 * Qualify usages of 'auto' with 'const', '*', '&' and '&&' where applicable to more clearly express the intent
-
+* When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
+  * Use ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE initially
+  * See the other ORT_DISALLOW_* macros in https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h
 
 #### Clang-format
 
