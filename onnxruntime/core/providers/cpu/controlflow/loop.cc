@@ -166,10 +166,10 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
 }
 
 template <typename T>
-static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value) {
+static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
-                                                              TensorShape({1}),
+                                                              is_1d ? TensorShape({1}) : TensorShape({}),
                                                               allocator);
 
   *p_tensor->MutableData<T>() = value;
@@ -202,12 +202,23 @@ Status LoopImpl::Initialize() {
                            " but has ", num_subgraph_outputs);
   }
 
+  auto* max_trip_count_tensor = context_.Input<Tensor>(0);
+  auto iter_num_rank = max_trip_count_tensor ? max_trip_count_tensor->Shape().NumDimensions() : 0;
+  auto* cond_tensor = context_.Input<Tensor>(1);
+  auto condition_rank = cond_tensor ? cond_tensor->Shape().NumDimensions() : 0;
+
+  if (condition_rank >= 2 || iter_num_rank >= 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "'Loop' input 'M' and 'cond' should be a scalar tensor, but have ranks of ",
+                           condition_rank, " and ", iter_num_rank);
+  }
+
   AllocatorPtr allocator;
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_);
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, condition_rank);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, iter_num_rank);
 
   subgraph_input_names_.reserve(num_subgraph_inputs_);
   for (int i = 0; i < num_subgraph_inputs_; ++i) {
@@ -287,7 +298,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   const auto& per_iteration_dims = per_iteration_shape.GetDims();
 
   // prepend number of iterations to the dimensions
-  int64_t num_iterations = gsl::narrow_cast<int64_t>(per_iteration_output.size());
+  auto num_iterations = gsl::narrow_cast<int64_t>(per_iteration_output.size());
   std::vector<int64_t> dims{num_iterations};
   std::copy(per_iteration_dims.cbegin(), per_iteration_dims.cend(), std::back_inserter(dims));
   TensorShape output_shape{dims};

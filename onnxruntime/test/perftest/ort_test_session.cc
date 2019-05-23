@@ -33,7 +33,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, enable_cpu_mem_arena ? 1 : 0));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("MKL-DNN is not supported in this build\n");
 #endif
@@ -66,10 +66,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 
-  if (enable_cpu_mem_arena)
+  if (performance_test_config.run_config.enable_cpu_mem_arena)
     session_options.EnableCpuMemArena();
   else
     session_options.DisableCpuMemArena();
+  if (performance_test_config.run_config.enable_memory_pattern &&
+      performance_test_config.run_config.enable_sequential_execution)
+    session_options.EnableMemPattern();
+  else
+    sf.DisableMemPattern();
   if (performance_test_config.run_config.enable_sequential_execution)
     session_options.EnableSequentialExecution();
   else

@@ -975,7 +975,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
   // Turn the shape tensor data into an actual shape
-  const int64_t* p_shape = tensor_shape.template Data<int64_t>();
+  const auto* p_shape = tensor_shape.template Data<int64_t>();
   std::vector<int64_t> shape{p_shape, p_shape + tensor_shape.Shape().Size()};
 
   TBroadcasterExpand<T> bc(*context->Input<Tensor>(0), shape);

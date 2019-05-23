@@ -10,8 +10,8 @@ namespace onnxruntime {
 template <>
 Status Conv<float>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(1);
   const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
@@ -44,8 +44,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const float* Xdata = X->template Data<float>();
-  float* Ydata = Y->template MutableData<float>();
+  const auto* Xdata = X->template Data<float>();
+  auto* Ydata = Y->template MutableData<float>();
 
   const size_t kernel_rank = kernel_shape.size();
 
@@ -111,7 +111,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     auto col_data = alloc->Alloc(sizeof(float) * col_buffer_size);
     BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
-    float* col_buffer_data = static_cast<float*>(col_buffer.get());
+    auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
     TensorShape image_shape = X->Shape().Slice(1);
     std::vector<int64_t> col_buffer_shape{kernel_dim};

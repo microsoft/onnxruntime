@@ -23,8 +23,8 @@ ONNX_OPERATOR_KERNEL_EX(
     QLinearConv);
 
 Status QLinearConv::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(3);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(3);
 
   // validate scale and zero points
   auto input_scale = context->Input<Tensor>(1);
@@ -87,8 +87,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const uint8_t* Xdata = X->template Data<uint8_t>();
-  uint8_t* Ydata = Y->template MutableData<uint8_t>();
+  const auto* Xdata = X->template Data<uint8_t>();
+  auto* Ydata = Y->template MutableData<uint8_t>();
 
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
@@ -102,7 +102,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
-  uint8_t* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
+  auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
   TensorShape image_shape = X->Shape().Slice(1);
   std::vector<int64_t> col_buffer_shape{kernel_dim};
@@ -163,17 +163,15 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 }
 
 void QLinearConv::QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, int* right_shift) const {
-  uint32_t* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
+  auto* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
   auto current_exponent = (*fp_as_bits >> 23);
   // bring multiplier in [.5,1) range and calculate the shift
   auto bumped_multiplier_as_bits =
       (*fp_as_bits & UINT32_C(0x007fffff)) | UINT32_C(0x3f000000);
-  float* bumped_multiplier =
-      reinterpret_cast<float*>(&bumped_multiplier_as_bits);
+  auto* bumped_multiplier = reinterpret_cast<float*>(&bumped_multiplier_as_bits);
   auto shift = 126 - current_exponent;
   // convert to fixed point number
-  std::int64_t int_multiplier =
-      static_cast<std::int64_t>(std::round(*bumped_multiplier * (1ll << 31)));
+  auto int_multiplier = static_cast<std::int64_t>(std::round(*bumped_multiplier * (1ll << 31)));
 
   *integer_multiplier = static_cast<int32_t>(int_multiplier);
   *right_shift = shift;

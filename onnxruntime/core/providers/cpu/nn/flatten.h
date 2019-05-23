@@ -17,7 +17,7 @@ class Flatten final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
     const TensorShape& X_shape = X->Shape();

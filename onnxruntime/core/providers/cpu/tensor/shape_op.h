@@ -18,7 +18,7 @@ class Shape final : public OpKernel {
   // Takes a tensor as input and outputs an 1D int64 tensor
   // containing the shape of the input tensor.
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* input = context->Input<Tensor>(0);
+    const auto* input = context->Input<Tensor>(0);
     const TensorShape& inputShape = input->Shape();
 
     size_t nDims = inputShape.NumDimensions();

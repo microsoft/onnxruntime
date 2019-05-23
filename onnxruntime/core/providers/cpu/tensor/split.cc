@@ -24,7 +24,7 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                     std::vector<int64_t>& split_sizes) const {
   auto& input_dims = input_shape.GetDims();
-  const int64_t num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
+  const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
 

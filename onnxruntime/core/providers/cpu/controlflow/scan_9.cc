@@ -470,7 +470,7 @@ Status ScanImpl::TransposeOutput() {
     if (axis != 0) {
       auto output_index = i + num_loop_state_variables_;
       const OrtValue& temporary_output_mlvalue = output_iterators_[output_index]->GetOutput();
-      const Tensor& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
+      const auto& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
 
       int64_t output_rank = temporary_output_tensor.Shape().NumDimensions();
 

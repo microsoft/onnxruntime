@@ -623,7 +623,7 @@ if (onnxruntime_BUILD_SERVER)
     COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_integration_test_server_src}
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
-    COMMAND ${CMAKE_COMMAND} -E copy
+      COMMAND ${CMAKE_COMMAND} -E copy
       ${CMAKE_CURRENT_BINARY_DIR}/onnx_ml_pb2.py
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
     COMMAND ${CMAKE_COMMAND} -E copy

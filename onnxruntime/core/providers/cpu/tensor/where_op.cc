@@ -164,9 +164,9 @@ MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* m
 
 template <typename T>
 Status Where<T>::Compute(OpKernelContext* context) const {
-  const Tensor* const condition = context->Input<Tensor>(0);
-  const Tensor* const X = context->Input<Tensor>(1);
-  const Tensor* const Y = context->Input<Tensor>(2);
+  const auto* const condition = context->Input<Tensor>(0);
+  const auto* const X = context->Input<Tensor>(1);
+  const auto* const Y = context->Input<Tensor>(2);
   ORT_ENFORCE(condition && X && Y, "condition, X, and Y inputs are required!");
 
   // The current implementation is limited to broadcasting over two tensors at once.

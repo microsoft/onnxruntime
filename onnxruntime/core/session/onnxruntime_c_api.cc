@@ -264,7 +264,7 @@ ORT_API_STATUS_IMPL(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorIn
       return OrtCreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
     }
   }
-  std::unique_ptr<OrtValue> value = std::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   value->Init(tensor.release(),
               DataTypeImpl::GetType<Tensor>(),
               DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -330,7 +330,7 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
       return OrtCreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
     }
   }
-  std::unique_ptr<OrtValue> value = std::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   value->Init(tensor.release(),
               DataTypeImpl::GetType<Tensor>(),
               DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -531,7 +531,7 @@ ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _In_ const void* input, int input_
   if (!proto.ParseFromArray(input, input_len)) {
     return OrtCreateStatus(ORT_FAIL, "parse input tensor proto failed");
   }
-  std::unique_ptr<OrtValue> value = std::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   std::unique_ptr<OrtCallback> del = std::make_unique<OrtCallback>();
   auto status =
       utils::TensorProtoToMLValue(Env::Default(), input_file_path, proto,
@@ -750,7 +750,7 @@ static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index,
   auto& data_vec = p_ml_value->Get<T>();
   auto& data_elem = data_vec.at(index);
   auto copy_data_elem = std::make_unique<MapType>(data_elem);
-  std::unique_ptr<OrtValue> value = std::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   value->Init(copy_data_elem.release(),
               DataTypeImpl::GetType<MapType>(),
               DataTypeImpl::GetType<MapType>()->GetDeleteFunc());
@@ -939,7 +939,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(OrtValue** const in, size_t num
     vec_ptr->push_back(m);
   }
   // create OrtValue with this vector
-  std::unique_ptr<OrtValue> value = std::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   value->Init(vec_ptr.release(),
               DataTypeImpl::GetType<SeqType>(),
               DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
@@ -961,7 +961,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(OrtValue** in, size_t num_values, 
     vec_ptr->push_back(*data);
   }
   // create OrtValue with this vector
-  std::unique_ptr<OrtValue> value = std::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   value->Init(vec_ptr.release(),
               DataTypeImpl::GetType<SeqType>(),
               DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
