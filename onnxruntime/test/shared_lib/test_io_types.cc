@@ -14,12 +14,12 @@ static void TestModelInfo(const Ort::Session& session, bool is_input, const std:
   ASSERT_EQ(1, input_count);
   Ort::TypeInfo input_type_info{nullptr};
   if (is_input) {
-    session.GetInputTypeInfo(0);
+    input_type_info = session.GetInputTypeInfo(0);
   } else {
-    session.GetOutputTypeInfo(0);
+    input_type_info = session.GetOutputTypeInfo(0);
   }
-
   ASSERT_NE(nullptr, input_type_info);
+
   ONNXType otype = input_type_info.GetONNXType();
   ASSERT_EQ(ONNX_TYPE_TENSOR, otype);
 
