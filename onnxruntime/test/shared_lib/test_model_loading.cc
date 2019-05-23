@@ -82,8 +82,10 @@ TEST_F(CApiTest, model_missing_data) {
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(model_url.c_str()),
                                                                          DeleteFileFromDisk);
   Ort::SessionOptions so;
-  Ort::Session ret(env_, model_url.c_str(), so);
-  ASSERT_NE(ret, nullptr);
+  OrtSession* ret;
+  auto st = ::OrtCreateSession(env_, model_url.c_str(), so, &ret);
+  ASSERT_NE(st, nullptr);
+  OrtReleaseStatus(st);
 }
 
 TEST_F(CApiTest, model_with_external_data) {
