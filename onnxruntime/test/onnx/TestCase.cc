@@ -204,7 +204,7 @@ class OnnxModelInfo : public TestModelInfo {
     if (!model_pb.ParseFromZeroCopyStream(&f)) {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
-    model_version_ = model_pb.has_model_version() ? static_cast<int64_t>(model_pb.model_version()) : -1;
+    model_version_ = model_pb.opset_import_size() > 0 ? model_pb.opset_import(0).version(): -1; 
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();
