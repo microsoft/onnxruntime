@@ -41,7 +41,7 @@ def CreateBackendTest(testname=None):
     backend_test.exclude(r'(FLOAT16)')
 
     if testname:
-        backend_test.include('.*' + testname + '.*')
+        backend_test.include(testname + '.*')
     else:
         backend_test.exclude(r'('
         '^test_cast_DOUBLE_to_FLOAT_cpu.*'
@@ -109,7 +109,8 @@ def parse_args():
     # Add an argument to match a single test name, by adding the name to the 'include' filter.
     # Using -k with python unittest (https://docs.python.org/3/library/unittest.html#command-line-options)
     # doesn't work as it filters on the test method name (Runner._add_model_test) rather than inidividual test case names.
-    parser.add_argument('-t', '--test-name', dest='testname', type=str, help='Run one specific test only')
+    parser.add_argument('-t', '--test-name', dest='testname', type=str,
+                        help="Only run tests that match this value. Matching is regex based, and '.*' is automatically appended")
 
     # parse just our args. python unittest has its own args and arg parsing, and that runs inside unittest.main()	
     args, left = parser.parse_known_args()
