@@ -331,6 +331,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
+      {"mvn", "disable reason"},
       {"operator_add_broadcast", "disable reason"},
       {"operator_add_size1_broadcast", "disable reason"},
       {"operator_add_size1_right_broadcast", "disable reason"},
