@@ -16,6 +16,48 @@ jobs:
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --update'
         workingDirectory: "$(Build.BinariesDirectory)"
 
+    - task: CmdLine@1
+      displayName: 'Install ONNX'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '-m pip install onnx==1.2.3'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: CmdLine@1
+      displayName: 'Generate ONNX test data'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\Scripts\backend-test-tools.exe'
+        arguments: '-o $(Build.BinariesDirectory)\onnx_test_data\1.2.3'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: CmdLine@1
+      displayName: 'Install ONNX'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '-m pip install onnx==1.3.0'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: CmdLine@1
+      displayName: 'Generate ONNX test data'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\Scripts\backend-test-tools.exe'
+        arguments: '-o $(Build.BinariesDirectory)\onnx_test_data\1.3.0'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: CmdLine@1
+      displayName: 'Install ONNX 1.4.1'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '-m pip install onnx==1.4.1'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    - task: CmdLine@1
+      displayName: 'Generate ONNX test data'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\Scripts\backend-test-tools.exe'
+        arguments: '-o $(Build.BinariesDirectory)\onnx_test_data\1.4.1'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
     - task: VSBuild@1
       displayName: 'Build Debug'
       inputs:
