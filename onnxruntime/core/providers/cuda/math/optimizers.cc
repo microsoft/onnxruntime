@@ -43,7 +43,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(eta_tensor);
 
   BinaryElementwisePreparation prepare(this);
-  SetInOutIndexBeforePrepare(1, 2);
+  SetInOutIndexBeforePrepare(2, 0);
   Prepare(ctx, 0, &prepare);
   ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
 
@@ -62,7 +62,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
 
   // weights = weights - gradient - inplace update
   BinaryElementwisePreparation prepareForUpdate(this);
-  SetInOutIndexBeforePrepare(0, 1);
+  SetInOutIndexBeforePrepare(1, 2);
   Prepare(ctx, 0, &prepareForUpdate);
   ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
   Impl_Sub<typename ToCudaType<float>::MappedType>(
