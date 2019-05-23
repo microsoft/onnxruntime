@@ -10,6 +10,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/platform/env.h"
+#include "core/common/status.h"
 #include "onnx/shape_inference/implementation.h"
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
@@ -484,7 +485,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int32_t)));
           CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyHostToDevice));
         } else {
-          return 1;
+          return static_cast<int>(common::StatusCode::NOT_IMPLEMENTED);
         }
       }
 
@@ -497,7 +498,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           CHECK_CUDA(cudaMalloc(&buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(int32_t)));
         } else {
-          return 1;
+          return static_cast<int>(common::StatusCode::NOT_IMPLEMENTED);
         }
       }
 
@@ -527,7 +528,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           }
           delete[] output;
         } else {
-          return 1;
+          return static_cast<int>(common::StatusCode::NOT_IMPLEMENTED);
         }
       }
 
