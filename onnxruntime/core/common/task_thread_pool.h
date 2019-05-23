@@ -66,7 +66,7 @@ class TaskThreadPool {
     std::packaged_task<void()> no_id;
     std::packaged_task<void(std::size_t)> with_id;
 
-    task_element_t(task_element_t&& other) {
+    task_element_t(task_element_t&& other) noexcept {
       run_with_id = other.run_with_id;
       no_id = std::move(other.no_id);
       with_id = std::move(other.with_id);

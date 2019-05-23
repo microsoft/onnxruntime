@@ -188,7 +188,7 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
-ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
+ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,

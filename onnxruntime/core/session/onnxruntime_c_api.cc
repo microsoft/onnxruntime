@@ -405,11 +405,11 @@ ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* mo
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
+ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
   API_IMPL_BEGIN
-  const auto loader = [model_data, model_data_len](InferenceSession& sess) {
-    return sess.Load(model_data, model_data_len);
+  const auto loader = [model_data, model_data_length](InferenceSession& sess) {
+    return sess.Load(model_data, static_cast<int>(model_data_length));
   };
   return CreateSessionImpl(env, options, loader, out);
   API_IMPL_END

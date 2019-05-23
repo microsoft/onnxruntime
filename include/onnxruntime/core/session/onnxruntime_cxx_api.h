@@ -407,8 +407,8 @@ inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOpti
   ORT_THROW_ON_ERROR(OrtCreateSession(env, model_path, options, &p_));
 }
 
-inline Session::ession(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
-  ORT_THROW_ON_ERROR(OrtCreateSessionFromArray(env, model_data, model_data_len, options, &p_));
+inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
+  ORT_THROW_ON_ERROR(OrtCreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
