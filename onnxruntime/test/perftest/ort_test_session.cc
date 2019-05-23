@@ -29,7 +29,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo* m)
     : rand_engine_(rd()), input_names_(m->GetInputCount()), input_length_(m->GetInputCount()) {
   Ort::SessionOptions session_options;
-  const bool enable_cpu_mem_arena = true;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kMklDnnExecutionProvider) {
 #ifdef USE_MKLDNN
