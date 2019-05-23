@@ -15,6 +15,7 @@ typedef const char* PATH_TYPE;
 //empty
 static inline void ORT_API_CALL MyLoggingFunction(void*, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
 }
+
 template <bool use_customer_logger>
 class CApiTestImpl : public ::testing::Test {
  protected:
@@ -26,9 +27,6 @@ class CApiTestImpl : public ::testing::Test {
     } else {
       env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
     }
-  }
-
-  void TearDown() override {
   }
 
   // Objects declared here can be used by all tests in the test case for Foo.
