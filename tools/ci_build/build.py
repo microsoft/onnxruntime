@@ -737,7 +737,6 @@ def main():
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
-    os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.dirname(sys.executable)
     if (args.update):
         cmake_extra_args = []
         if(is_windows()):
