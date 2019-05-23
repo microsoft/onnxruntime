@@ -364,36 +364,36 @@ ORT_API_STATUS_IMPL(OrtAddCustomOpDomain, _In_ OrtSessionOptions* options, OrtCu
 }
 
 namespace {
-  template <typename Loader>
-  OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
-                               Loader loader, _Out_ OrtSession** out) {
-    auto sess = std::make_unique<::onnxruntime::InferenceSession>(
-        options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
-    Status status;
-    if (options != nullptr) {
-      if (!options->custom_op_domains_.empty()) {
-        status = sess->AddCustomOpDomains(options->custom_op_domains_);
-        if (!status.IsOK())
-          return ToOrtStatus(status);
-      }
+template <typename Loader>
+OrtStatus* CreateSessionImpl(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+                             Loader loader, _Out_ OrtSession** out) {
+  auto sess = std::make_unique<::onnxruntime::InferenceSession>(
+      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
+  Status status;
+  if (options != nullptr) {
+    if (!options->custom_op_domains_.empty()) {
+      status = sess->AddCustomOpDomains(options->custom_op_domains_);
+      if (!status.IsOK())
+        return ToOrtStatus(status);
     }
-
-    if (options != nullptr)
-      for (auto& factory : options->provider_factories) {
-        auto provider = factory->CreateProvider();
-        if (provider)
-          sess->RegisterExecutionProvider(std::move(provider));
-      }
-    status = loader(*sess);
-    if (!status.IsOK())
-      return ToOrtStatus(status);
-    status = sess->Initialize();
-    if (!status.IsOK())
-      return ToOrtStatus(status);
-    *out = reinterpret_cast<OrtSession*>(sess.release());
-    return nullptr;
   }
+
+  if (options != nullptr)
+    for (auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      if (provider)
+        sess->RegisterExecutionProvider(std::move(provider));
+    }
+  status = loader(*sess);
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+  status = sess->Initialize();
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+  *out = reinterpret_cast<OrtSession*>(sess.release());
+  return nullptr;
 }
+}  // namespace
 
 ORT_API_STATUS_IMPL(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Out_ OrtSession** out) {
@@ -416,7 +416,7 @@ ORT_API_STATUS_IMPL(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void
 }
 
 ORT_API_STATUS_IMPL(OrtRun, _In_ OrtSession* sess,
-                    _In_ OrtRunOptions* run_options,
+                    _In_ const OrtRunOptions* run_options,
                     _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                     _In_ const char* const* output_names1, size_t output_names_len, _Out_ OrtValue** output) {
   API_IMPL_BEGIN

@@ -11,27 +11,6 @@
 #include <string>
 #include <vector>
 
-#define ORT_REDIRECT_SIMPLE_FUNCTION_CALL(NAME) \
-  decltype(Ort##NAME(value.get())) NAME() {     \
-    return Ort##NAME(value.get());              \
-  }
-
-#define ORT_DEFINE_DELETER(NAME)      \
-  template <>                         \
-  struct default_delete<Ort##NAME> {  \
-    void operator()(Ort##NAME* ptr) { \
-      OrtRelease##NAME(ptr);          \
-    }                                 \
-  };
-
-namespace std {
-ORT_DEFINE_DELETER(Allocator);
-ORT_DEFINE_DELETER(TypeInfo);
-ORT_DEFINE_DELETER(RunOptions);
-ORT_DEFINE_DELETER(SessionOptions);
-ORT_DEFINE_DELETER(TensorTypeAndShapeInfo);
-}  // namespace std
-
 namespace Ort {
 
 using std::nullptr_t;
@@ -56,7 +35,7 @@ struct Exception : std::exception {
   }
 
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void Release(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { OrtRelease##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(AllocatorInfo);
@@ -70,10 +49,35 @@ ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 
 template <typename T>
+struct TypeToTensorType;
+template <>
+struct TypeToTensorType<float> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+template <>
+struct TypeToTensorType<double> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; };
+template <>
+struct TypeToTensorType<int8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; };
+template <>
+struct TypeToTensorType<int16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; };
+template <>
+struct TypeToTensorType<int32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
+template <>
+struct TypeToTensorType<int64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
+template <>
+struct TypeToTensorType<uint8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8; };
+template <>
+struct TypeToTensorType<uint16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16; };
+template <>
+struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; };
+template <>
+struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
+
+template <typename T>
 struct Base {
   Base() = default;
-  Base(T* p) : p_{p} {}
-  ~Base() { Release(p_); }
+  Base(T* p) : p_{p} {
+    if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
+  }
+  ~Base() { OrtRelease(p_); }
 
   operator T*() { return p_; }
   operator const T*() const { return p_; }
@@ -88,7 +92,7 @@ struct Base {
   Base(const Base&) = delete;
   Base(Base&& v) : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) {
-    Release(p_);
+    OrtRelease(p_);
     p_ = v.p_;
     v.p_ = nullptr;
   }
@@ -115,6 +119,7 @@ struct Value;
 struct Env : Base<OrtEnv> {
   Env(nullptr_t) {}
   Env(OrtLoggingLevel default_warning_level, _In_ const char* logid);
+  explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 };
 
 struct CustomOpDomain : Base<OrtCustomOpDomain> {
@@ -150,6 +155,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
 
+  SessionOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
+  SessionOptions& DisableProfiling();
+
   SessionOptions& EnableMemPattern();
   SessionOptions& DisableMemPattern();
 
@@ -165,8 +173,12 @@ struct Session : Base<OrtSession> {
   explicit Session(nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
 
-  std::vector<Value> Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
-                         const char* const* output_names, size_t output_names_count);
+  // Run that will allocate the output values
+  std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+                         const char* const* output_names, size_t output_count);
+  // Run for when there is a list of prealloated outputs
+  void Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+           const char* const* output_names, Value* output_values, size_t output_count);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
@@ -183,6 +195,7 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
 
   ONNXTensorElementDataType GetElementType() const;
+  size_t GetElementCount() const;
 
   size_t GetDimensionsCount() const;
   void GetDimensions(int64_t* values, size_t values_count) const;
@@ -197,8 +210,14 @@ struct TypeInfo : Base<OrtTypeInfo> {
 };
 
 struct Value : Base<OrtValue> {
-  static Value CreateTensor(const AllocatorInfo& info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
+  template <typename T>
+  static Value CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
+  template <typename T>
+  static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
@@ -215,6 +234,7 @@ struct Value : Base<OrtValue> {
   template <typename T>
   T* GetTensorMutableData();
 
+  TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 };
 
@@ -327,6 +347,16 @@ inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_
   return *this;
 }
 
+inline SessionOptions& SessionOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
+  OrtEnableProfiling(p_, profile_file_prefix);
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::DisableProfiling() {
+  OrtDisableProfiling(p_);
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::EnableMemPattern() {
   OrtEnableMemPattern(p_);
   return *this;
@@ -370,13 +400,19 @@ inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOpti
   ORT_THROW_ON_ERROR(OrtCreateSession(env, model_path, options, &p_));
 }
 
-inline std::vector<Value> Session::Run(RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
                                        const char* const* output_names, size_t output_names_count) {
   std::vector<OrtValue*> ort_input_values(input_values, input_values + input_count);
-  std::vector<OrtValue*> ort_out(output_names_count);
-  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, output_names_count, ort_out.data()));
-  std::vector<Value> out(ort_out.begin(), ort_out.end());
-  return out;
+  std::vector<OrtValue*> ort_output_values(output_names_count, nullptr);
+  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, output_names_count, ort_output_values.data()));
+  return std::vector<Value>(ort_output_values.begin(), ort_output_values.end());
+}
+
+inline void Session::Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
+                         const char* const* output_names, Value* output_values, size_t output_count) {
+  std::vector<OrtValue*> ort_input_values(input_values, input_values + input_count);
+  std::vector<OrtValue*> ort_output_values(output_values, output_values + output_count);
+  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, ort_output_values.size(), ort_output_values.data()));
 }
 
 inline size_t Session::GetInputCount() const {
@@ -419,6 +455,10 @@ inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const 
   return OrtGetTensorElementType(p_);
 }
 
+inline size_t TensorTypeAndShapeInfo::GetElementCount() const {
+  return OrtGetTensorShapeElementCount(p_);
+}
+
 inline size_t TensorTypeAndShapeInfo::GetDimensionsCount() const {
   return OrtGetDimensionsCount(p_);
 }
@@ -437,12 +477,32 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
   return Unowned<TensorTypeAndShapeInfo>{const_cast<OrtTensorTypeAndShapeInfo*>(OrtCastTypeInfoToTensorInfo(p_))};
 }
 
-inline Value Value::CreateTensor(const AllocatorInfo& info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
+template <typename T>
+static Value Value::CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len) {
+  return CreateTensor(info, p_data, p_data_len, shape, shape_len, TypeToTensorType<T>::type);
+}
+
+inline Value Value::CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
   ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_len, shape, shape_len, type, &out));
   return Value{out};
 }
+
+template <typename T>
+inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len) {
+  return CreateTensor(allocator, shape, shape_len, TypeToTensorType<T>::type);
+}
+
+inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
+  OrtValue* out;
+  ORT_THROW_ON_ERROR(OrtCreateTensorAsOrtValue(allocator, shape, shape_len, type, &out));
+  return Value{out};
+}
+
+ORT_API_STATUS(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
+               _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
+               _Out_ OrtValue** out);
 
 inline Value Value::CreateMap(Value& keys, Value& values) {
   OrtValue* out;
@@ -491,6 +551,12 @@ T* Value::GetTensorMutableData() {
   return out;
 }
 
+inline TypeInfo Value::GetTypeInfo() const {
+  OrtTypeInfo* output;
+  ORT_THROW_ON_ERROR(OrtGetTypeInfo(p_, &output));
+  return TypeInfo{output};
+}
+
 inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
   OrtTensorTypeAndShapeInfo* output;
   ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(p_, &output));
@@ -498,79 +564,6 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
 }
 
 }  // namespace Ort
-
-// Deprecated: Will be removed once all dependencies of it are removed
-#if 1
-namespace onnxruntime {
-
-class SessionOptionsWrapper {
- private:
-  std::unique_ptr<OrtSessionOptions> value;
-  OrtEnv* env_;
-  SessionOptionsWrapper(_In_ OrtEnv* env, OrtSessionOptions* p) : value(p), env_(env){};
-
- public:
-  operator OrtSessionOptions*() { return value.get(); }
-
-  //TODO: for the input arg, should we call addref here?
-  SessionOptionsWrapper(_In_ OrtEnv* env) : value(OrtCreateSessionOptions()), env_(env){};
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableSequentialExecution)
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableSequentialExecution)
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableProfiling)
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableMemPattern)
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableMemPattern)
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(EnableCpuMemArena)
-  ORT_REDIRECT_SIMPLE_FUNCTION_CALL(DisableCpuMemArena)
-  void EnableProfiling(_In_ const ORTCHAR_T* profile_file_prefix) {
-    OrtEnableProfiling(value.get(), profile_file_prefix);
-  }
-
-  void SetSessionLogId(const char* logid) {
-    OrtSetSessionLogId(value.get(), logid);
-  }
-  void SetSessionLogVerbosityLevel(uint32_t session_log_verbosity_level) {
-    OrtSetSessionLogVerbosityLevel(value.get(), session_log_verbosity_level);
-  }
-  int SetSessionGraphOptimizationLevel(uint32_t graph_optimization_level) {
-    return OrtSetSessionGraphOptimizationLevel(value.get(), graph_optimization_level);
-  }
-  void SetSessionThreadPoolSize(int session_thread_pool_size) {
-    OrtSetSessionThreadPoolSize(value.get(), session_thread_pool_size);
-  }
-
-  SessionOptionsWrapper clone() const {
-    OrtSessionOptions* p = OrtCloneSessionOptions(value.get());
-    return SessionOptionsWrapper(env_, p);
-  }
-
-  OrtSession* OrtCreateSession(_In_ const ORTCHAR_T* model_path) {
-    OrtSession* ret = nullptr;
-    ORT_THROW_ON_ERROR(::OrtCreateSession(env_, model_path, value.get(), &ret));
-    return ret;
-  }
-};
-
-inline OrtValue* OrtCreateTensorAsOrtValue(_Inout_ OrtAllocator* env, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
-  OrtValue* ret;
-  ORT_THROW_ON_ERROR(::OrtCreateTensorAsOrtValue(env, shape.data(), shape.size(), type, &ret));
-  return ret;
-}
-
-inline OrtValue* OrtCreateTensorWithDataAsOrtValue(_In_ const OrtAllocatorInfo* info, _In_ void* p_data, size_t p_data_len, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
-  OrtValue* ret;
-  ORT_THROW_ON_ERROR(::OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_len, shape.data(), shape.size(), type, &ret));
-  return ret;
-}
-
-inline std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {
-  size_t dims = OrtGetDimensionsCount(info);
-  std::vector<int64_t> ret(dims);
-  OrtGetDimensions(info, ret.data(), ret.size());
-  return ret;
-}
-
-}  // namespace onnxruntime
-#endif
 
 namespace Ort {
 struct CustomOpApi {
