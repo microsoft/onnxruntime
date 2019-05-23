@@ -96,7 +96,7 @@ TEST(PredictionServiceImplTests, Test_Set_client_request_ID_Success) {
   PredictResponse resp{};
   ::grpc::ServerContext context;
   ::grpc::testing::ServerContextTestSpouse spouse(&context);
-  spouse.AddClientMetadata("x-ms-client-request-id","client-id");
+  spouse.AddClientMetadata("x-ms-client-request-id", "client-id");
   auto status = test.Predict(&context, &request, &resp);
   auto metadata = spouse.GetInitialMetadata();
   EXPECT_NE(metadata.find("x-ms-client-request-id"), metadata.end());
@@ -113,7 +113,7 @@ TEST(PredictionServiceImplTests, Test_Set_client_request_ID_invalid_input) {
   PredictResponse resp{};
   ::grpc::ServerContext context;
   ::grpc::testing::ServerContextTestSpouse spouse(&context);
-  spouse.AddClientMetadata("x-ms-client-request-id","client-id");
+  spouse.AddClientMetadata("x-ms-client-request-id", "client-id");
   auto status = test.Predict(&context, &request, &resp);
   auto metadata = spouse.GetInitialMetadata();
   EXPECT_NE(metadata.find("x-ms-client-request-id"), metadata.end());

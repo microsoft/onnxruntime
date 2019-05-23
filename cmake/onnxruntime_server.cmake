@@ -32,6 +32,8 @@ endif()
 
 # In path
 set(_GRPC_CPP_PLUGIN_EXECUTABLE "/usr/local/bin/grpc_cpp_plugin") ##TODO: PARAMETERIZE THIS.
+set(_GRPC_PY_PLUGIN_EXECUTABLE "/usr/local/bin/grpc_python_plugin") ##TODO: PARAMETERIZE THIS.
+
 
 # Genrate GPRC stuff
 get_filename_component(grpc_proto "${ONNXRUNTIME_ROOT}/server/protobuf/prediction_service.proto" ABSOLUTE)
@@ -50,7 +52,9 @@ add_custom_command(
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
         -I ${grpc_proto_path}
         "${grpc_proto}"
-      DEPENDS "${grpc_proto}")
+      DEPENDS "${grpc_proto}"
+      COMMENT "Running ${_GRPC_CPP_PLUGIN_EXECUTABLE} on ${grpc_proto}"
+    )
 
 add_library(server_grpc ${grpc_srcs} ${onnx_runtime_server_grpc_srcs})
 target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)

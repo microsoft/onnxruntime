@@ -16,6 +16,7 @@ GRPCApp::GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& 
   ss << host << ":" << port;
   builder.RegisterService(&m_service);
   builder.AddListeningPort(ss.str(), ::grpc::InsecureServerCredentials());
+  
   auto server = builder.BuildAndStart();
   m_server.swap(server);
   m_server->GetHealthCheckService()->SetServingStatus(PredictionService::service_full_name(), true);

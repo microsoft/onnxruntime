@@ -604,6 +604,20 @@ if (onnxruntime_BUILD_SERVER)
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
+          
+  set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
+
+  add_custom_command(
+    TARGET onnxruntime_server_tests
+    COMMAND ${_PROTOBUF_PROTOC}
+    ARGS 
+      --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+      --plugin=protoc-gen-grpc="${_GRPC_PY_PLUGIN_EXECUTABLE}"
+      -I ${grpc_proto_path}
+      "${grpc_proto}"
+    DEPENDS "${grpc_proto}"
+    COMMENT "Running ${_GRPC_PY_PLUGIN_EXECUTABLE} on ${grpc_proto}"
+    )
 
   add_custom_command(
     TARGET onnxruntime_server_tests POST_BUILD
@@ -616,6 +630,9 @@ if (onnxruntime_BUILD_SERVER)
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
     COMMAND ${CMAKE_COMMAND} -E copy
       ${CMAKE_CURRENT_BINARY_DIR}/predict_pb2.py
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${grpc_py}
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
   )
 
