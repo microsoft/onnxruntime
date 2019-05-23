@@ -31,6 +31,10 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
   virtual const T* GetBuffer(size_t count) {
     if (count > count_) {
+      if (buffer_) {
+        cudaFree(buffer_);
+        buffer_ = nullptr;
+      }
       CUDA_CALL_THROW(cudaMalloc(&buffer_, count * sizeof(T)));
       count_ = count;
 
