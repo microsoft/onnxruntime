@@ -928,7 +928,7 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           "Constrain indice type to int32 or int64")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-		/*
+        /*
         if (!hasNInputShapes(ctx, 2)) {
           fail_shape_inference("GatherND requires two tensor inputs.");
         }		
@@ -1086,65 +1086,65 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-    // Type inference
-    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-    // Shape inference needs the input data shape
-    if (!hasNInputShapes(ctx, 1)) {
-      return;
-    }
-    const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-    const auto input_rank = input_shape.dim_size();
-
-    // Infer output shape if 'pads' tensor is available
-    const auto* pads_initializer = ctx.getInputData(1);
-    if (nullptr != pads_initializer) {
-      const auto& pads_shape = ctx.getInputType(1)->tensor_type().shape();
-      if ((pads_initializer->dims_size() != 1 &&
-           pads_initializer->dims_size() != 2) ||
-          (pads_initializer->dims_size() == 2 &&
-           pads_shape.dim((int)0).dim_value() != 1) ||
-          pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
-        fail_shape_inference(
-            "'pads' input must be a 1D (shape: [input_rank]) "
-            "or 2D tensor (shape: [1, input_rank]) of type int64");
-
-      // make a copy of the returned const vector - may have to resize
-      // this in next step
-      std::vector<int64_t> pads_data;
-      if (pads_initializer->has_raw_data())
-        return;
-      else
-        pads_data.insert(
-            pads_data.end(),
-            pads_initializer->int64_data().begin(),
-            pads_initializer->int64_data().end());
-
-      // fill with zeros if needed to reach appropriate size
-      if (pads_data.size() != static_cast<size_t>(2 * input_rank))
-        pads_data.resize(2 * input_rank, 0);
-
-      const auto& output_shape =
-          ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-      for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-        const auto& input_dim = input_shape.dim((int)i);
-        auto* output_dim = output_shape->add_dim();
-        if (input_dim.has_dim_value()) {
-          output_dim->set_dim_value(
-              input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
-        } else if (pads_data[i] + pads_data[i + input_rank] == 0) {
-          *output_dim = input_dim;
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference needs the input data shape
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
         }
-      }
-    } else {
-      // Infer ouput shapes' rank in any case
-      auto* output_shape_0 = getOutputShape(ctx, 0);
-      for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-        output_shape_0->add_dim();
-      }
-    }
-    return;
-    })
-    .SetDoc(R"DOC(
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        const auto input_rank = input_shape.dim_size();
+
+        // Infer output shape if 'pads' tensor is available
+        const auto* pads_initializer = ctx.getInputData(1);
+        if (nullptr != pads_initializer) {
+          const auto& pads_shape = ctx.getInputType(1)->tensor_type().shape();
+          if ((pads_initializer->dims_size() != 1 &&
+               pads_initializer->dims_size() != 2) ||
+              (pads_initializer->dims_size() == 2 &&
+               pads_shape.dim((int)0).dim_value() != 1) ||
+              pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
+            fail_shape_inference(
+                "'pads' input must be a 1D (shape: [input_rank]) "
+                "or 2D tensor (shape: [1, input_rank]) of type int64");
+
+          // make a copy of the returned const vector - may have to resize
+          // this in next step
+          std::vector<int64_t> pads_data;
+          if (pads_initializer->has_raw_data())
+            return;
+          else
+            pads_data.insert(
+                pads_data.end(),
+                pads_initializer->int64_data().begin(),
+                pads_initializer->int64_data().end());
+
+          // fill with zeros if needed to reach appropriate size
+          if (pads_data.size() != static_cast<size_t>(2 * input_rank))
+            pads_data.resize(2 * input_rank, 0);
+
+          const auto& output_shape =
+              ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+            const auto& input_dim = input_shape.dim((int)i);
+            auto* output_dim = output_shape->add_dim();
+            if (input_dim.has_dim_value()) {
+              output_dim->set_dim_value(
+                  input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
+            } else if (pads_data[i] + pads_data[i + input_rank] == 0) {
+              *output_dim = input_dim;
+            }
+          }
+        } else {
+          // Infer ouput shapes' rank in any case
+          auto* output_shape_0 = getOutputShape(ctx, 0);
+          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+            output_shape_0->add_dim();
+          }
+        }
+        return;
+      })
+      .SetDoc(R"DOC(
             Given `data` tensor, pads, mode, and value.
             Example:
             Insert 0 pads to the beginning of the second dimension.
@@ -1162,6 +1162,42 @@ Example 4:
                     ],
                     ]
             )DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DenseToDenseSetOperation)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("default_value", "", AttributeProto::INT, OPTIONAL)
+      .Input(0, "x", "N dimensional input tensor that is to be processed.", "T")
+      .Input(1, "y", "N dimensional input tensor that is to be processed. First N-1 dimensions must match x. Type must match x", "T")
+      .Output(0, "z",
+              "A  N dimensional tensor of the same type as 'x' and 'y'. "
+              "First N-1 dimensions match 'x' and 'y'. The last dimension is equal to size of largest subset intersection of 'x' and 'y' ",
+              "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
+      .SetDoc(R"DOC(
+              Finds all in deduped intersecting values in 'x' and 'y'.
+              This operator returns 1 output.
+	      The output is a densetensor containing the intersections of the subsets
+	      in the two input tensors. The first N-1 dimenstions match 'x' and 'y'.
+	      The last dimension is equal to the size of the largest subset intersection of
+	      'x' and 'y'. It is 0 if no common values are found in the subsets.
+
+              Example:
+                input_x = [[[1 2 0 0]
+						    [3 0 0 0]]
+						   [[4 0 0 0]
+						    [5 6 9 0]]]
+
+				input_y = [[[1 0 0 0]
+						    [0 0 0 0]]
+						   [[4 0 0 0]
+						    [5 6 7 8]]]
+
+                output_z = [[[1 0]
+						     [0 0]]
+						    [[4 0]
+						     [5 6]]]
+              )DOC");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
