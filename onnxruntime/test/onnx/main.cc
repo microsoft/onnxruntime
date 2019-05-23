@@ -311,8 +311,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BatchNorm2d_momentum_eval", "disable reason"},
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
+#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+      {"constantofshape_float_ones", "test data bug"},
+      {"constantofshape_int_zeros", "test data bug"},
+#else
       {"constantofshape_float_ones", "test data bug", {9,10}},
       {"constantofshape_int_zeros", "test data bug", {9,10}},
+#endif
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
       {"Linear", "disable reason"},
