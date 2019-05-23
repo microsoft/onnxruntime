@@ -20,7 +20,7 @@ static void TestModelInfo(const Ort::Session& inference_session, bool is_input, 
   }
 
   ASSERT_NE(nullptr, input_type_info);
-  ONNXType otype = input_type_info.GetOnnxType();
+  ONNXType otype = input_type_info.GetONNXType();
   ASSERT_EQ(ONNX_TYPE_TENSOR, otype);
 
   auto p = input_type_info.GetTensorTypeAndShapeInfo();
@@ -36,7 +36,7 @@ static void TestModelInfo(const Ort::Session& inference_session, bool is_input, 
 TEST_F(CApiTest, input_output_type_info) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
   Ort::SessionOptions session_options;
-  Ort::Session session(model_uri, session_options);
+  Ort::Session session(env_, model_uri, session_options);
   TestModelInfo(inference_session, true, {1, 3, 224, 224});
   TestModelInfo(inference_session, false, {1, 1000, 1, 1});
 }

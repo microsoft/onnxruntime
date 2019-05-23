@@ -217,7 +217,7 @@ TEST_F(CApiTest, custom_op_handler) {
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  Ort::Session ret(env_, model_uri, Ort::SessionOpsions{nullptr});
+  Ort::Session ret(env_, model_uri, Ort::SessionOptions{nullptr});
   ASSERT_NE(nullptr, ret);
 }
 #endif
