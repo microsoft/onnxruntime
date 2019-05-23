@@ -212,8 +212,8 @@ struct TypeInfo : Base<OrtTypeInfo> {
 
 struct Value : Base<OrtValue> {
   template <typename T>
-  static Value CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len);
-  static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
+  static Value CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
@@ -483,14 +483,14 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
 }
 
 template <typename T>
-static Value Value::CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len) {
-  return CreateTensor(info, p_data, p_data_len, shape, shape_len, TypeToTensorType<T>::type);
+inline Value Value::CreateTensor(const OrtAllocatorInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
+  return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len,
+inline Value Value::CreateTensor(const OrtAllocatorInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
-  ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_len, shape, shape_len, type, &out));
+  ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
   return Value{out};
 }
 
@@ -521,7 +521,7 @@ inline Value Value::CreateSequence(std::vector<Value>& values) {
   std::vector<OrtValue*> values_ort{values.data(), values.data() + values.size()};
   ORT_THROW_ON_ERROR(OrtCreateValue(values_ort.data(), values_ort.size(), ONNX_TYPE_SEQUENCE, &out));
   return Value{out};
-}  // namespace Ort
+}
 
 inline bool Value::IsTensor() const {
   return OrtIsTensor(p_) != 0;

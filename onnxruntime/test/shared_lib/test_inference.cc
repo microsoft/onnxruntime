@@ -28,7 +28,7 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size() * sizeof(inputs[i].values[0]), inputs[i].dims.data(), inputs[i].dims.size()));
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -251,7 +251,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   Ort::AllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   std::vector<int64_t> dims = {4};
-  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length * sizeof(float), dims.data(), dims.size());
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length, dims.data(), dims.size());
 
   float* new_pointer = tensor.GetTensorMutableData<float>();
   ASSERT_EQ(new_pointer, values);
