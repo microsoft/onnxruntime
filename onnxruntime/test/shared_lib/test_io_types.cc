@@ -12,12 +12,7 @@ static void TestModelInfo(const Ort::Session& session, bool is_input, const std:
     input_count = session.GetOutputCount();
   }
   ASSERT_EQ(1, input_count);
-  Ort::TypeInfo input_type_info{nullptr};
-  if (is_input) {
-    input_type_info = session.GetInputTypeInfo(0);
-  } else {
-    input_type_info = session.GetOutputTypeInfo(0);
-  }
+  Ort::TypeInfo input_type_info = is_input ? session.GetInputTypeInfo(0) : session.GetOutputTypeInfo(0);
   ASSERT_NE(nullptr, input_type_info);
 
   ONNXType otype = input_type_info.GetONNXType();
