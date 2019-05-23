@@ -119,6 +119,7 @@ struct Value;
 struct Env : Base<OrtEnv> {
   Env(nullptr_t) {}
   Env(OrtLoggingLevel default_warning_level, _In_ const char* logid);
+  Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 };
 
@@ -293,6 +294,10 @@ inline AllocatorInfo::AllocatorInfo(const char* name, OrtAllocatorType type, int
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ORT_THROW_ON_ERROR(OrtCreateEnv(default_warning_level, logid, &p_));
+}
+
+inline Env::Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
+  ORT_THROW_ON_ERROR(OrtCreateEnvWithCustomLogger(logging_function, logger_param, default_warning_level, logid, &p_));
 }
 
 inline CustomOpDomain::CustomOpDomain(const char* domain)

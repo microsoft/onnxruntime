@@ -74,7 +74,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       performance_test_config.run_config.enable_sequential_execution)
     session_options.EnableMemPattern();
   else
-    sf.DisableMemPattern();
+    session_options.DisableMemPattern();
   if (performance_test_config.run_config.enable_sequential_execution)
     session_options.EnableSequentialExecution();
   else

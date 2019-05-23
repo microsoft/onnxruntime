@@ -18,7 +18,7 @@ struct Input {
   std::vector<float> values;
 };
 
-void RunSession(OrtAllocator* env, Ort::Session& session_object,
+void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
                 const std::vector<Input>& inputs,
                 const char* output_name,
                 const std::vector<int64_t>& dims_y,
@@ -28,7 +28,7 @@ void RunSession(OrtAllocator* env, Ort::Session& session_object,
   std::vector<const char*> input_names;
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
-    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(env->Info(env), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size() * sizeof(inputs[i].values[0]), inputs[i].dims.data(), inputs[i].dims.size()));
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()), inputs[i].values.size() * sizeof(inputs[i].values[0]), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -40,12 +40,9 @@ void RunSession(OrtAllocator* env, Ort::Session& session_object,
     output_tensor = &ort_outputs[0];
   }
 
-  auto shape = output_tensor->GetTensorTypeAndShapeInfo().GetShape();
-  ASSERT_EQ(shape, dims_y);
-  size_t total_len = 1;
-  for (size_t i = 0; i != shape.size(); ++i) {
-    total_len *= shape[i];
-  }
+  auto type_info = output_tensor->GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), dims_y);
+  size_t total_len = type_info.GetElementCount();
   ASSERT_EQ(values_y.size(), total_len);
 
   float* f = output_tensor->GetTensorMutableData<float>();
@@ -55,13 +52,12 @@ void RunSession(OrtAllocator* env, Ort::Session& session_object,
 }
 
 template <typename T>
-void TestInference(OrtEnv* ort_env, T model_uri,
+void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<Input>& inputs,
                    const char* output_name,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<float>& expected_values_y,
                    int provider_type, OrtCustomOpDomain* custom_op_domain_ptr) {
-  Ort::Unowned<Ort::Env> env{ort_env};
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
@@ -138,7 +134,7 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr);
+  TestInference<PATH_TYPE>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr);
 }
 
 INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
@@ -215,7 +211,7 @@ TEST_F(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-  TestInference<PATH_TYPE>(env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
+  TestInference<PATH_TYPE>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS

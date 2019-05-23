@@ -18,18 +18,17 @@ static inline void ORT_API_CALL MyLoggingFunction(void*, OrtLoggingLevel, const 
 template <bool use_customer_logger>
 class CApiTestImpl : public ::testing::Test {
  protected:
-  OrtEnv* env = nullptr;
+  Ort::Env env_{nullptr};
 
   void SetUp() override {
     if (use_customer_logger) {
-      ORT_THROW_ON_ERROR(OrtCreateEnvWithCustomLogger(MyLoggingFunction, nullptr, ORT_LOGGING_LEVEL_INFO, "Default", &env));
+      env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default", MyLoggingFunction, nullptr);
     } else {
-      ORT_THROW_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_INFO, "Default", &env));
+      env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
     }
   }
 
   void TearDown() override {
-    if (env) OrtReleaseEnv(env);
   }
 
   // Objects declared here can be used by all tests in the test case for Foo.
