@@ -208,6 +208,7 @@ struct TypeInfo : Base<OrtTypeInfo> {
   explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}
 
   Unowned<TensorTypeAndShapeInfo> GetTensorTypeAndShapeInfo() const;
+  ONNXType GetONNXType() const;
 };
 
 struct Value : Base<OrtValue> {
@@ -461,7 +462,7 @@ inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const 
 }
 
 inline size_t TensorTypeAndShapeInfo::GetElementCount() const {
-  return OrtGetTensorShapeElementCount(p_);
+  return static_cast<size_t>(OrtGetTensorShapeElementCount(p_));
 }
 
 inline size_t TensorTypeAndShapeInfo::GetDimensionsCount() const {
@@ -480,6 +481,10 @@ inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
 
 inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() const {
   return Unowned<TensorTypeAndShapeInfo>{const_cast<OrtTensorTypeAndShapeInfo*>(OrtCastTypeInfoToTensorInfo(p_))};
+}
+
+inline ONNXType TypeInfo::GetONNXType() const {
+  return OrtOnnxTypeFromTypeInfo(p_);
 }
 
 template <typename T>
