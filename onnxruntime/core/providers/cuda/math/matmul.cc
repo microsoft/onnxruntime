@@ -9,20 +9,20 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      MatMul,                                                     \
-      kOnnxDomain,                                                \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      MatMul<T>);
+#define REGISTER_CUDA_MatMul_KERNEL(startver, endver, type)                        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                         \
+      MatMul,                                                                      \
+      kOnnxDomain,                                                                 \
+      startver,                                                                    \
+      endver,                                                                      \
+      type,                                                                        \
+      kCudaExecutionProvider,                                                      \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      MatMul<type>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_CUDA_MatMul_KERNEL(1, 9, float)
+REGISTER_CUDA_MatMul_KERNEL(1, 9, double)
+REGISTER_CUDA_MatMul_KERNEL(1, 9, MLFloat16)
 
 template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
