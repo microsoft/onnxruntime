@@ -2,6 +2,8 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
+#include "dnnlibrary/ModelBuilder.h"
+#include "dnnlibrary/OnnxReader.h"
 
 namespace onnxruntime {
 std::shared_ptr<KernelRegistry> NnapiExecutionProvider::GetKernelRegistry() const {
@@ -41,12 +43,15 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(),
+                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-
+    dnn::OnnxReader onnx_reader;
+    dnn::ModelBuilder model_builder;
+    onnx_reader.ReadOnnx(model_proto, model_builder);
   }
   return Status::OK();
 }
