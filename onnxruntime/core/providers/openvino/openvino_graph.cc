@@ -216,6 +216,7 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     }
   }
 
+
   network->setBatchSize(first_dim);
 
   // Prepare output blobs
@@ -301,6 +302,7 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
       }
 
       size_t input_data_size = num_input_elements * sizeof(float);
+
       // Copy input data into OpenVINO's input buffer
       std::memcpy(graph_input_buffer, input_tensors[i].data, input_data_size);
     }

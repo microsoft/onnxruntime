@@ -135,6 +135,8 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             input_arrays.push_back(temp_arr);
         }
     }
+
+
     //GPU Plugin does not support single dimensional input
     if(device_id == "GPU"){
         if(input_dims == 1 || input_dims == 5 || output_dims == 5)
@@ -181,6 +183,17 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 return result;
             }
         }
+
+        if(device_id == "MYRIAD"){
+
+            if(node->OpType() == "Reshape" || node->OpType() == "Unsqueeze" || node->OpType() == "Flatten"){
+
+                if(input_arrays[0][0] != 1) {
+                    return result;
+                }
+            }
+        }
+
 
         if(node->OpType() == "MatMul"){
 
@@ -274,7 +287,11 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 auto graph_inputs = graph_viewer.GetInputs();
                 auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
                 if(it != graph_inputs.end()){
-                    if(input_dims < 4 || input_dims > 5){
+                    if(device_id == "MYRIAD" || device_id == "HDDL"){
+                        if(input_dims != 3 || input_dims != 4)
+                            return result;
+                    }
+                    else if(input_dims < 4 || input_dims > 5){
                         return result;
                     }
                 }
