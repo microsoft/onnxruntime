@@ -879,9 +879,9 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const
   return kernel_registry;
 }
 
-bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
-                                                 const std::vector<std::string> activations_supported,
-                                                 const std::string& op_type) const {
+static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
+                                 const std::vector<std::string> activations_supported,
+                                 const std::string& op_type) {
   auto node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
@@ -935,7 +935,7 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
   return false;
 }
 
-bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node) const {
+static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
   auto node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
@@ -953,6 +953,24 @@ bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node)
           return true;
         }
       }
+    }
+  }
+
+  return false;
+}
+
+static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
+  auto node_attributes = node.GetAttributes();
+  // Check attributes
+  for (auto& attr : node_attributes) {
+    auto attr_name = attr.first;
+    auto attr_value = attr.second;
+
+    //cudnn only supports symmetric padding
+    if ("to" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
+      auto to_type = attr_value.i();
+      if (to_type != ::ONNX_NAMESPACE::TensorProto_DataType_STRING)
+        return true;
     }
   }
 
@@ -981,20 +999,30 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
     bool not_supported = false;
     bool force_outside = false;
-
+    bool force_inside = false;  // for some compute heavy ops, we'll force it to run inside CUDA
     if ("LSTM" == node.OpType()) {
       // the supported activations covers the bidirectional mode
       std::vector<std::string> activations_supported{"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
       not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
+      force_inside = !not_supported;
     } else if ("RNN" == node.OpType()) {
       std::vector<std::string> activations_supported{"tanh", "tanh"};
       not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
+      force_inside = !not_supported;
     } else if ("GRU" == node.OpType()) {
       std::vector<std::string> activations_supported{"sigmoid", "tanh", "sigmoid", "tanh"};
       not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
+      force_inside = !not_supported;
     } else if ("Conv" == node.OpType()) {
       not_supported = ConvNeedFallbackToCPU(node);
-    } else {
+      force_inside = !not_supported;
+    } else if ("Cast" == node.OpType()) {
+      not_supported = CastNeedFallbackToCPU(node);
+      // cast is not compute heavy, and may be placed outside
+    }
+
+    if (!not_supported && !force_inside) {
+      // ops that can be placed in CUDA
       node.ForEachWithIndex(
           node.OutputDefs(),
           [&](const NodeArg& def, size_t out_index) {
@@ -1019,7 +1047,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     }
 
-    if (not_supported || force_outside) {
+    if (!force_inside && (not_supported || force_outside)) {
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
       if (not_supported)
         LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
