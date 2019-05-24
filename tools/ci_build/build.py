@@ -495,8 +495,11 @@ def setup_tensorrt_vars(args):
         # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests 
         os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
 
-        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes).  
+        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)  
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"  
+
+        # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
+        os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
         
     return tensorrt_home
 
