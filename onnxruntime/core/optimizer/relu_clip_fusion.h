@@ -8,13 +8,13 @@
 namespace onnxruntime {
 
 /**
-@Class EliminateRelu
+@Class FuseReluClip
 
-Rewrite rule that eliminates a Relu operator if it is redundant due to a following Clip operator.
+Rewrite rule that merges a Relu operator with a following Clip operator.
 */
-class EliminateRelu : public RewriteRule {
+class FuseReluClip : public RewriteRule {
  public:
-  EliminateRelu() noexcept : RewriteRule("EliminateRelu") {}
+  FuseReluClip() noexcept : RewriteRule("FuseReluClip") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
     return {"Relu"};

@@ -8,7 +8,6 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/identity_elimination.h"
-#include "core/optimizer/relu_elimination.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
@@ -18,6 +17,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/relu_clip_fusion.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ml_value.h"
 #include "core/util/math.h"
@@ -420,8 +420,8 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   ASSERT_EQ(expected_values_prod, found);
 }
 
-TEST(GraphTransformationTests, ReluElimination) {
-  Model model("ReluElimination");
+TEST(GraphTransformationTests, ReluClipFusion) {
+  Model model("ReluClipFusion");
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -466,19 +466,11 @@ TEST(GraphTransformationTests, ReluElimination) {
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
 
-  Model::Save(model, "relu-elim.onnx");
-
-  //auto& proto = graph.ToGraphProto();
-
-  //string model_uri = MODEL_FOLDER + "relu-elim.onnx";
-  //std::shared_ptr<Model> model;
-  //ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
-  //Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 3);
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  rule_transformer_L1->Register(std::make_unique<EliminateRelu>());
+  rule_transformer_L1->Register(std::make_unique<FuseReluClip>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
