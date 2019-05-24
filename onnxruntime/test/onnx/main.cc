@@ -411,6 +411,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests["dynamic_slice"] = "This model uses contrib ops.";
   broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
   broken_tests["dynamic_slice_neg"] = "This model uses contrib ops.";
+  broken_tests["mvn"] = "This model uses contrib ops.";
 #endif
 
   int result = 0;
