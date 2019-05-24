@@ -38,7 +38,7 @@ class TestResultStat {
     failed_test_cases.push_back(p);
   }
 
-  const std::vector< std::pair<std::string, int64_t> >& GetFailedTest() {
+  const std::vector< std::pair<std::string, int64_t> >& GetFailedTest() const {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
     return failed_test_cases;
   }
@@ -72,7 +72,7 @@ class TestResultStat {
   }
 
  private:
-  onnxruntime::OrtMutex m_;
+  mutable onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
   std::vector< std::pair<std::string, int64_t> > failed_test_cases;
