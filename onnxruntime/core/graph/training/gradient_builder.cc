@@ -254,6 +254,29 @@ IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
+  std::vector<int64_t> bw_perm;
+  auto attributes = SrcNodeAttributes();
+  if (attributes.empty()) {
+    const TensorShapeProto& input_shape = I(0).type_proto->tensor_type().shape();
+    for (int i = input_shape.dim_size() - 1; i >= 0; --i) {
+      bw_perm.push_back(i);
+    }
+  } else {
+    auto fw_perm = RetrieveValues<int64_t>(attributes.at("perm"));
+    bw_perm.resize(fw_perm.size());
+    for (int i = 0; i < fw_perm.size(); ++i) {
+      bw_perm[fw_perm[i]] = i;
+    }
+  }
+
+  return std::vector<NodeDef>{
+      NodeDef("Transpose",
+              {GO(0)},
+              {GI(0)},
+              {MakeAttribute("perm", bw_perm)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetAveragePoolGradient) {
   return std::vector<NodeDef>{
       NodeDef("AveragePoolGrad",

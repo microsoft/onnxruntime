@@ -408,6 +408,74 @@ TEST(GradientCheckerTest, ConcatGrad) {
   }
 }
 
+TEST(GradientCheckerTest, TransposeGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Transpose"};
+
+  // default
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({4, 3, 2});
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  // perm 012
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({2, 3, 4});
+    std::vector<int64_t> perm{0, 1, 2};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  // perm 021
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({2, 4, 3});
+    std::vector<int64_t> perm{0, 2, 1};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  // perm 102
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({3, 2, 4});
+    std::vector<int64_t> perm{1, 0, 2};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  // perm 120
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({3, 4, 2});
+    std::vector<int64_t> perm{1, 2, 0};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  // perm 201
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({4, 2, 3});
+    std::vector<int64_t> perm{2, 0, 1};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  // perm 210
+  {
+    TensorShape x_shape({2, 3, 4});
+    TensorShape y_shape({4, 3, 2});
+    std::vector<int64_t> perm{2, 1, 0};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+}
+
 TEST(GradientCheckerTest, AveragePoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
