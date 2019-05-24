@@ -28,7 +28,9 @@ class MkldnnFuncKernel {
   explicit MkldnnFuncKernel(const ComputeContext* context,
                           const NodeAttributes& attributes,
                           MKLDNNExecutionProvider* provider) {
-    params_.provider = provider;
+    ORT_UNUSED_PARAMETER(context);
+
+	params_.provider = provider;
     params_.attributes = attributes;
 
     auto sub_it = attributes.find("subgraph_id");
