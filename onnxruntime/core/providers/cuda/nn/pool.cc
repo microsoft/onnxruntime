@@ -150,7 +150,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
 
   auto exec_queue_id = GetExecQueueId();
-  CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(GetCudnnHandle(exec_queue_id), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
+  auto execution_stream = GetExecutionStream();
+  CUDNN_RETURN_IF_ERROR(cudnnPoolingForward(GetCudnnHandle().Handle(execution_stream), pooling_desc, &alpha, x_tensor, x_data, &beta, y_tensor, y_data));
 
   return Status::OK();
 }

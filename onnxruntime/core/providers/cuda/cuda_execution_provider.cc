@@ -41,15 +41,20 @@ ONNX_OPERATOR_KERNEL_EX(
 //thread_local std::shared_ptr<CUDAExecutionProvider::PerThreadContext> CUDAExecutionProvider::per_thread_context_;
 //thread_local AllocatorPtr CUDAExecutionProvider::per_thread_default_allocator_;
 
-PerThreadContext::PerThreadContext(int device_id) {
-  CUDA_CALL_THROW(cudaSetDevice(device_id));
-  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+template <typename T>
+T HandleLocker<T>::Handle(const cudaStream_t&) const {
+  return handle_;
 }
 
-PerThreadContext::~PerThreadContext() {
-  CUBLAS_CALL_THROW(cublasDestroy(cublas_handle_));
-  CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
+template <>
+cublasHandle_t HandleLocker<cublasHandle_t>::Handle(const cudaStream_t& stream) const {
+  cublasSetStream(handle_, stream);
+  return handle_;
+}
+template <>
+cudnnHandle_t HandleLocker<cudnnHandle_t>::Handle(const cudaStream_t& stream) const {
+  cudnnSetStream(handle_, stream);
+  return handle_;
 }
 
 cudaEvent_t CudaEventPool::GetCudaEvent() {
@@ -112,12 +117,13 @@ CudaEventPool::~CudaEventPool() {
     cudaEventDestroy(it);
   }
   available_events_.clear();
-
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_context_pool_(info.device_id), cuda_stream_id_pos_(0), cuda_stream_ids_(kTotalCudaStreams - 2), default_allocator_pool_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_context_pool_(info.device_id), cuda_stream_id_pos_(-1), cuda_stream_ids_(kTotalCudaStreams - 1), default_allocator_pool_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
   for (int i = kCudaStreamCopyIn; i < kTotalCudaStreams; ++i) {
@@ -125,7 +131,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     CUDA_CALL_THROW(cudaStreamCreate(&streams_[i]));
   }
 
-  int start = kCudaStreamCopyOut + 1;
+  int start = 1;
   std::iota(cuda_stream_ids_.begin(), cuda_stream_ids_.end(), start);
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
@@ -147,7 +153,7 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
     if (cpu_ptr_obj.recorded)
       CUDA_CALL_THROW(cudaEventSynchronize(cpu_ptr_obj.cuda_event));
     for (auto p : cpu_ptr_obj.cpu_ptrs) {
-      cpu_alloc->Free(p);
+      //cpu_alloc->Free(p);
     }
   }
   deferred_release_cpu_ptr_.clear();
@@ -155,6 +161,9 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   for (int i = kCudaStreamCopyIn; i < kTotalCudaStreams; ++i) {
     CUDA_CALL_THROW(cudaStreamDestroy(streams_[i]));
   }
+
+  CUBLAS_CALL_THROW(cublasDestroy(cublas_handle_));
+  CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
 
   ReleasePerThreadStuffs();
 }

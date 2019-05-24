@@ -56,7 +56,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
-  auto exec_queue_id = GetExecQueueId();
+  auto execution_stream = GetExecutionStream();
   if (N == 1) {
     // when N == 1, we can treat it as spatial batch normalization in training
     // as the mean/variance would be computed from input
@@ -70,7 +70,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
     ORT_RETURN_IF_ERROR(stats_desc.Set(data_desc, CUDNN_BATCHNORM_SPATIAL));
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
-        GetCudnnHandle(exec_queue_id),
+        GetCudnnHandle().Handle(execution_stream),
         CUDNN_BATCHNORM_SPATIAL,
         &one,
         &zero,
@@ -108,7 +108,7 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
 
     // first, compute mean and variance per-instance per-channel using cudnnBatchNorm training
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
-        GetCudnnHandle(exec_queue_id),
+        GetCudnnHandle().Handle(execution_stream),
         CUDNN_BATCHNORM_SPATIAL,
         &one,
         &zero,

@@ -29,7 +29,7 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
     node_refs_[node.Index()] = node.GetInputEdgesCount();
   }
 
-  executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 32);
+  executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 15);
 }
 
 Status ParallelExecutor::Execute(const SessionState& session_state,

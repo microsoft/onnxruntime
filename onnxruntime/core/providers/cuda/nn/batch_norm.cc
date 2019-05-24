@@ -56,7 +56,6 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   BatchNormHelper::NormalizeDims(x_shape, new_dims);
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
 
-  auto exec_queue_id = GetExecQueueId();
   auto execution_stream = GetExecutionStream();
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
   if (X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
@@ -77,7 +76,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     Impl_Cast<CudaT, float>(execution_stream, var_data, f_var.get(), C);
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
-        GetCudnnHandle(exec_queue_id),
+        GetCudnnHandle().Handle(execution_stream),
         cudnn_batch_norm_mode_,
         &alpha,
         &beta,
@@ -99,7 +98,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
   CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
-      GetCudnnHandle(exec_queue_id),
+      GetCudnnHandle().Handle(execution_stream),
       cudnn_batch_norm_mode_,
       &alpha,
       &beta,

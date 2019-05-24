@@ -40,10 +40,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  auto exec_queue_id = GetExecQueueId();
+  auto exec_stream = GetExecutionStream();
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        GetCublasHandle(exec_queue_id),
+        GetCublasHandle().Handle(exec_stream),
         CUBLAS_OP_N,
         CUBLAS_OP_N,
         static_cast<int>(helper.N()),
@@ -74,7 +74,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   // note that onnxruntime MLValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
-      GetCublasHandle(exec_queue_id),
+      GetCublasHandle().Handle(exec_stream),
       CUBLAS_OP_N,
       CUBLAS_OP_N,
       static_cast<int>(helper.N()),

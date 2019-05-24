@@ -83,9 +83,8 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
     reverse_ = true;
   }
 
-  auto exec_queue_id = GetExecQueueId();
-  cudnn_dropout_desc_.Set(GetCudnnHandle(exec_queue_id));
-  ORT_RETURN_IF_ERROR(rnn_desc_.Set(GetCudnnHandle(exec_queue_id), hidden_size_, num_layers_, cudnn_dropout_desc_,
+  cudnn_dropout_desc_.Set(GetCudnnHandle().Handle());
+  ORT_RETURN_IF_ERROR(rnn_desc_.Set(GetCudnnHandle().Handle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
                                     cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
   return Status::OK();
@@ -122,8 +121,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   const T* R_data = R->template Data<T>();
   const T* B_data = B == nullptr ? nullptr : B->template Data<T>();
 
-  auto exec_queue_id = GetExecQueueId();
-  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(GetCudnnHandle(exec_queue_id), rnn_desc_, fake_x_desc, target_w_desc,
+  ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(GetCudnnHandle().Handle(), rnn_desc_, fake_x_desc, target_w_desc,
                                             target_w_data.get(), W_data, R_data, B_data));
 
   return Status::OK();
@@ -240,12 +238,11 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
   size_t workspace_bytes;
-  auto exec_queue_id = GetExecQueueId();
-  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(GetCudnnHandle(exec_queue_id), rnn_desc_, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
+  CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(GetCudnnHandle().Handle(execution_stream), rnn_desc_, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
   workspace_bytes *= num_directions_;
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
-  CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(GetCudnnHandle(exec_queue_id),
+  CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(GetCudnnHandle().Handle(execution_stream),
                                                  rnn_desc_,
                                                  gsl::narrow_cast<int>(seq_length),
                                                  x_desc.data(),

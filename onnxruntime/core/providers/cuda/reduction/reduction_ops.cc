@@ -95,7 +95,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));
 
   auto execution_stream = GetExecutionStream();
-  auto exec_queue_id = GetExecQueueId();
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
@@ -124,11 +123,11 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
   size_t workspace_bytes = 0;
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(GetCudnnHandle(exec_queue_id), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(GetCudnnHandle().Handle(execution_stream), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
   auto workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes);
 
   size_t indices_bytes = 0;
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(GetCudnnHandle(exec_queue_id), reduce_desc, input_tensor, output_tensor, &indices_bytes));
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(GetCudnnHandle().Handle(execution_stream), reduce_desc, input_tensor, output_tensor, &indices_bytes));
   auto indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes);
 
   // need to allocate a separate buffer for ArgMin/ArgMax comparsion output
@@ -150,10 +149,10 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       CudnnReduceDescriptor reduce_max_desc;
       ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
       size_t indices_bytes_max = 0;
-      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(GetCudnnHandle(exec_queue_id), reduce_max_desc, input_tensor, output_tensor, &indices_bytes_max));
+      CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(GetCudnnHandle().Handle(execution_stream), reduce_max_desc, input_tensor, output_tensor, &indices_bytes_max));
       auto indices_cuda_max = GetScratchBuffer<uint32_t>(indices_bytes);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          GetCudnnHandle(exec_queue_id), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max, workspace_cuda.get(), workspace_bytes,
+          GetCudnnHandle().Handle(execution_stream), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
 
@@ -181,7 +180,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
       // ReduceSum
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          GetCudnnHandle(exec_queue_id), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          GetCudnnHandle().Handle(execution_stream), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, exp_result,
           &zero, output_tensor, reinterpret_cast<CudaT*>(log_sum_result)));
 
@@ -203,7 +202,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     }
     if (calculate_sqt_) {
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          GetCudnnHandle(exec_queue_id), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          GetCudnnHandle().Handle(execution_stream), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, input_data,
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
     } else {
@@ -214,7 +213,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
         }
       } else {
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            GetCudnnHandle(exec_queue_id), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+            GetCudnnHandle().Handle(execution_stream), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
             &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
       }
@@ -223,13 +222,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     if (temp_X) {
       auto temp_output = GetScratchBuffer<float>(output_count);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          GetCudnnHandle(exec_queue_id), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          GetCudnnHandle().Handle(execution_stream), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, temp_X.get(),
           &zero, output_tensor, temp_output.get()));
     } else {
       auto temp_output = GetScratchBuffer<CudaT>(output_count);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          GetCudnnHandle(exec_queue_id), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          GetCudnnHandle().Handle(execution_stream), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
           &zero, output_tensor, temp_output.get()));
     }

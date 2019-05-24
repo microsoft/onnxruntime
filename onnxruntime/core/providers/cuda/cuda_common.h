@@ -104,7 +104,7 @@ class CudaKernel : public OpKernel {
     }
 
     gsl::span<T> CpuSpan() const {
-      return gsl::span<T>(CpuPtr(), count_);
+      return gsl::span<T>(cpu_pinned_copy_.get(), count_);
     }
 
     T* GpuPtr() const {
@@ -123,12 +123,12 @@ class CudaKernel : public OpKernel {
   };
 
  protected:
-  inline cublasHandle_t GetCublasHandle(int execution_id) const {
-    return provider_->PerThreadCublasHandle(execution_id);
+  inline HandleLocker<cublasHandle_t> GetCublasHandle() const {
+    return provider_->GetCublasHandleLocker();
   }
 
-  inline cudnnHandle_t GetCudnnHandle(int execution_id) const {
-    return provider_->PerThreadCudnnHandle(execution_id);
+  inline HandleLocker<cudnnHandle_t> GetCudnnHandle() const {
+    return provider_->GetCudnnHandleLocker();
   }
 
   template <typename T>
