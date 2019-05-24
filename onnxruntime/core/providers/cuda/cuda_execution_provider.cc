@@ -966,7 +966,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
     auto attr_name = attr.first;
     auto attr_value = attr.second;
 
-    //cudnn only supports symmetric padding
+    // string is not supported
     if ("to" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
       auto to_type = attr_value.i();
       if (to_type != ::ONNX_NAMESPACE::TensorProto_DataType_STRING)
@@ -1022,27 +1022,18 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
 
     if (!not_supported && !force_inside) {
-      // ops that can be placed in CUDA
-      node.ForEachWithIndex(
-          node.OutputDefs(),
-          [&](const NodeArg& def, size_t out_index) {
-            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault)
-              defs_outside_cuda.insert(&def);
-            return Status::OK();
-          });
-
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
-      bool all_non_initializer_inputs_on_cpu = true;
+      bool all_non_initializer_inputs_from_outside = true;
       node.ForEachWithIndex(
           node.InputDefs(),
           [&](const NodeArg& def, size_t) {
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def))
-              all_non_initializer_inputs_on_cpu = false;
+              all_non_initializer_inputs_from_outside = false;
             return Status::OK();
           });
-      if (all_non_initializer_inputs_on_cpu) {
+      if (all_non_initializer_inputs_from_outside) {
         force_outside = true;
       }
     }
@@ -1052,6 +1043,14 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       if (not_supported)
         LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
     } else {
+      // for nodes placed on CUDA, check if its output is on CPU
+      node.ForEachWithIndex(
+          node.OutputDefs(),
+          [&](const NodeArg& def, size_t out_index) {
+            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault)
+              defs_outside_cuda.insert(&def);
+            return Status::OK();
+          });
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       sub_graph->nodes.push_back(node.Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
