@@ -10,25 +10,22 @@
 using namespace onnxruntime;
 
 #ifdef _WIN32
-int real_main(int argc, wchar_t* argv[], OrtEnv** p_env) {
+int real_main(int argc, wchar_t* argv[]) {
 #else
-int real_main(int argc, char* argv[], OrtEnv** p_env) {
+int real_main(int argc, char* argv[]) {
 #endif
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
-  OrtEnv* env;
-  {
-    OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &env);
-    if (ost != nullptr) {
-      fprintf(stderr, "Error creating environment: %s \n", OrtGetErrorMessage(ost));
-      OrtReleaseStatus(ost);
-      return -1;
-    }
-    *p_env = env;
+  Ort::Env env{nullptr};
+  try {
+    OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
+    env = Ort::Env(logging_level, "Default");
+  } catch (const Ort::Exception& e) {
+    fprintf(stderr, "Error creating environment: %s \n", e.what());
+    return -1;
   }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
@@ -48,16 +45,12 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
-  OrtEnv* env = nullptr;
   int retval = -1;
   try {
-    retval = real_main(argc, argv, &env);
+    retval = real_main(argc, argv);
   } catch (std::exception& ex) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
-  }
-  if (env) {
-    OrtReleaseEnv(env);
   }
   return retval;
 }
