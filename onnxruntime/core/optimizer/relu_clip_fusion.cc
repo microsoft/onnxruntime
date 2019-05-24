@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 
-Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   // get the following Clip node before we delete the Relu node
   const auto& next_node = *node.OutputNodesBegin();
 
@@ -28,7 +28,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   return Status::OK();
 }
 
-bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) {
+bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
     return false;
   }
