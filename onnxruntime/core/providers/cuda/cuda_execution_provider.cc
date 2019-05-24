@@ -930,11 +930,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   std::unordered_set<const NodeArg*> defs_outside_cuda;
 
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
-    const auto& node = *graph.GetNode(node_index);
+    const auto* p_node = graph.GetNode(node_index);
+    if (p_node == nullptr)
+      continue;
+
+    const auto& node = *p_node;
     const auto* cuda_kernel_def = GetKernelRegistry()->TryFindKernel(node, Type());
-    if (cuda_kernel_def == nullptr ||
-        (!node.GetExecutionProviderType().empty() &&
-         node.GetExecutionProviderType() != Type())) {
+    if (cuda_kernel_def == nullptr || !node.GetExecutionProviderType().empty()) {
       // node is not in cuda exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
