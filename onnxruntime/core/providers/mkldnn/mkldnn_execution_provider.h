@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/mkldnn/subgraph/subgraph.h"
 
 namespace mkldnn {
 struct memory;
@@ -59,6 +60,13 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
     reordered_buffers_.push_back(std::move(buffer));
   }
 
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph,
+                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
  private:
   // mkldnn weights(filer data) memory blocks from first iteration
   // saved by weights name
@@ -66,6 +74,36 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   // Save reordered memory buffers in list so that memory is not freed.
   std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
   OrtMutex mutex_;
+
+ // SUBGRAPH
+ private:
+  bool UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
+                   const std::vector<const KernelRegistry*>& kernel_registries,
+                   std::vector<std::unique_ptr<ComputeCapability>>& result) const;
+  void CreateOrUpdateMklDnnNode(const Node* node,
+                                mkl_dnn::Subgraph::SubgraphVariables& sub_var,
+                                bool fused,
+                                std::map<std::string, int>& output_to_source_node_map,
+                                NodeAttributes& subgraph_attributes) const;
+
+  // Create MklDnn node, update inputs, outputs and parent nodes
+  // collect attribtes
+  void CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
+                     const NodeAttributes& subgraph_attributes,
+                     mkl_dnn::Subgraph::SubgraphVariables& sub_var,
+                     std::vector<std::unique_ptr<ComputeCapability>>& result) const;
+
+ public:
+  const std::shared_ptr<mkl_dnn::Subgraph> GetMklDnnSubgraph(const std::string& subgraph_id) {
+    return mkl_subgraphs_[subgraph_id];
+  }
+
+ private:
+  // supported MklDnn Operators
+  std::set<std::string> mkldnn_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
+                                       "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+
+  mutable std::unordered_map<std::string, std::shared_ptr<mkl_dnn::Subgraph>> mkl_subgraphs_;  
 };
 
 }  // namespace onnxruntime
