@@ -33,6 +33,7 @@ class MklDnnKernel {
 
   virtual void ReorderWeights(Ort::CustomOpApi ort, OrtKernelContext* context, mkldnn::engine& cpu_engine) {
     ORT_UNUSED_PARAMETER(ort);
+    ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
   }
 
