@@ -14,7 +14,7 @@ from onnx import onnx_pb as onnx_proto
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
-onnx_version = 10
+onnx_op_set_version = 10
 
 type_to_name = {
     1: "FLOAT",
@@ -217,7 +217,12 @@ def _add_initializer_if_not_present(graph, name, value, shape, type):
         graph.initializer.extend([initializer])
         graph.input.extend([value_info])
 
-def _get_qrange_for_qType(qtype):
+def _get_qrange_for_qType(qType):
+    '''
+    Helper function to get the quantization range for a type.
+        parameter qType: quantization type.
+        return: quantization range.
+    '''
     if qType == onnx_proto.TensorProto.UINT8:
         return 255  # 2^b - 1
     elif qType == onnx_proto.TensorProto.INT8:
@@ -225,6 +230,19 @@ def _get_qrange_for_qType(qtype):
     else:
         raise ValueError('unsupported quantization data type')
 
+def _find_nodes_using_initializer(graph, initializer):
+    '''
+    Helper function to find all nodes with an initializer as a input.
+        parameter graph: GraphProto.
+        parameter initializer: Initializer in TensorProto format.
+        return: List of nodes.
+    '''
+    result = []
+    for node in graph.node:
+        for node_input in node.input:
+            if node_input == initializer.name:
+                result.append(node)
+    return result
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, mode, weight_qType, input_qType,
@@ -249,6 +267,9 @@ class ONNXQuantizer:
         # In scaled mode, zero point is always zero (respresented by fixed_zero_point_name tensor)
         self.fixed_zero_zp_name = "fixed_zero_zp"
 
+        # List of weights quantized.
+        self._quantized_weights = []
+
     def quantize_model(self):
         # Create a new topologically sorted list for quantizing a model
         new_list = []
@@ -265,11 +286,14 @@ class ONNXQuantizer:
         self.model.graph.ClearField('node')
         self.model.graph.node.extend(new_list)
 
+        # Remove weights which are already quantized from graph.
+        self._remove_quantized_weights()
+
         # update opset.
         opset_info = next((opset for opset in self.model.opset_import if opset.domain == '' or opset.domain == onnx_domain), None)
         if opset_info is not None:
             self.model.opset_import.remove(opset_info)
-        self.model.opset_import.extend([onnx.helper.make_opsetid(onnx_domain, onnx_version)])
+        self.model.opset_import.extend([onnx.helper.make_opsetid(onnx_domain, onnx_op_set_version)])
 
         return self.model
 
@@ -285,6 +309,24 @@ class ONNXQuantizer:
                 type_to_name[initializer.data_type]))
         return weights
 
+    def _remove_quantized_weights(self):
+        ''' Remove the weights which are already quantized from graph initializer list.
+            This function assumes that after quantization, all nodes that previously use a weight:
+                - use output from DequantizeLinear as input if they do not support quantization.
+                - use quantized weight if they support quantization.
+        '''
+        for weight in self._quantized_weights:
+            # Remove existing weight initializer
+            self.model.graph.initializer.remove(weight.initializer)
+
+            # Removing input weight to a convolution
+            try:
+                weight_input = next(val for val in self.model.graph.input if val.name == weight.name)
+            except StopIteration:
+                raise ValueError('invalid weight name {} found in the graph '.format(weight.name))
+            self.model.graph.input.remove(weight_input)
+
+
     def _update_graph(self, weight):
         '''
             Given a weight object, update the graph by doing the following:
@@ -296,8 +338,6 @@ class ONNXQuantizer:
         scale_name = weight.name + '_scale'
         zero_point_name = weight.name + '_zero_point'
 
-        # Remove existing weight initializer
-        self.model.graph.initializer.remove(weight.initializer)
         # Update packed weight, zero point, and scale initializers
         packed_weight_np_data = np.asarray(weight.quantized_data,
             dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight.qType]).reshape(weight.initializer.dims)
@@ -313,13 +353,6 @@ class ONNXQuantizer:
 
         self.model.graph.initializer.extend([packed_weight_initializer, scale_initializer, zero_initializer])
 
-        # Removing input weight to a convolution
-        try:
-            weight_input = next(val for val in self.model.graph.input if val.name == weight.name)
-        except StopIteration:
-            raise ValueError('invalid weight name {} found in the graph '.format(weight.name))
-        self.model.graph.input.remove(weight_input)
-
         # Create input for initialized scale and zeros
         packed_weight_value_info = onnx.helper.make_tensor_value_info(packed_weight_name, weight.qType,
                                         weight.initializer.dims)
@@ -328,6 +361,8 @@ class ONNXQuantizer:
             zero_point_type, zero_scale_shape) # zero_point is int for dequantize operator
 
         self.model.graph.input.extend([packed_weight_value_info, scale_value_info, zero_point_value_info])
+
+        self._quantized_weights.append(weight)
 
     def _get_quantized_weight(self, initializer, qType):
         '''
@@ -632,6 +667,65 @@ class ONNXQuantizer:
             [output_name], input_name + "_QuantizeLinear")
         return nodes + [qlinear_node]
 
+    def _update_unsupported_nodes_using_weight(self, weight, new_nodes_list):
+        '''Find all nodes using a weight that do not support quantization and
+        add a DequantizeLinear node before those nodes. This includes all nodes except Conv, MatMul.
+
+            parameter weight: Weight object
+            parameter new_nodes_list: List of new nodes created before processing current node.
+            return: List of new nodes created.
+        '''
+        nodes_using_weight = _find_nodes_using_initializer(self.model.graph, weight.initializer)
+        unsupported_nodes = [node for node in nodes_using_weight if node.op_type not in ["Conv", "MatMul"]]
+
+        nodes_list = []
+        dequantize_linear_name = weight.name + "_DequantizeLinear"
+        output_name = weight.name + "_dequantized"
+
+        # Check if DequantizeLinear node needs to be added to graph.
+        if len(unsupported_nodes) != 0 and \
+            _find_node_by_name(dequantize_linear_name, self.model.graph, new_nodes_list) is None:
+            inputs = [weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point"]
+            node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name],
+                                         dequantize_linear_name)
+            nodes_list.append(node)
+
+        # Update unsupported nodes to take dequantized weight as input.
+        for node in unsupported_nodes:
+            for i, node_input in enumerate(node.input):
+                if node_input == weight.name:
+                    node.input[i] = output_name
+
+        return nodes_list
+
+    def _is_quantized(self, weight):
+        '''
+        Check if this weight is already quantized to the expected type and quantization axis.
+        If it is already quantized to (type, axis) different from expected values,
+        this function will throw an exception and stop the quantization.
+
+            parameter weight: Weight object.
+            return: Boolean indicating if quantized weight is already added to graph.
+        '''
+        quantized_initializer_name = weight.name + "_quantized"
+        quantized_initializer = _find_by_name(quantized_initializer_name, self.model.graph.initializer)
+        zero_point = _find_by_name(weight.name + "_zero_point", self.model.graph.initializer)
+        if quantized_initializer is None:
+            return False
+
+        # Compare type
+        if quantized_initializer.data_type != weight.qType:
+            raise ValueError("{} is being used by multiple nodes which are being quantized to different types. \
+                Please use different initializers for these nodes.", weight.name)
+
+        expected_dims = [] if weight.axis is None else [len(weight.zero_points)]
+        # Compare quantization axis
+        if zero_point.dims != expected_dims:
+            raise ValueError("{} is being used by multiple nodes which are being quantized to different shapes. \
+                Please use different initializers for these nodes.", weight.name)
+
+        return True
+
     def _quantize_inputs(self, node, indices, weight_index, new_nodes_list):
         '''
         Given a node, this function quantizes the inputs as follows:
@@ -667,7 +761,10 @@ class ONNXQuantizer:
                     weight = self._get_quantized_weight_convolution(initializer, qType)
                 else:
                     weight = self._get_quantized_weight(initializer, qType)
-                self._update_graph(weight)
+
+                if not self._is_quantized(weight):
+                    nodes.extend(self._update_unsupported_nodes_using_weight(weight, new_nodes_list))
+                    self._update_graph(weight)
 
                 quantized_input_names.append(weight.name + "_quantized")
                 zero_point_names.append(weight.name + "_zero_point")
