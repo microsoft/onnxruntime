@@ -5,7 +5,6 @@
 #include "onnxruntime_c_api.h"
 #include <cstddef>
 #include <array>
-#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -413,17 +412,19 @@ inline Session::Session(Env& env, const void* model_data, size_t model_data_leng
 
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
                                        const char* const* output_names, size_t output_names_count) {
-  std::vector<OrtValue*> ort_input_values(input_values, input_values + input_count);
-  std::vector<OrtValue*> ort_output_values(output_names_count, nullptr);
-  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, output_names_count, ort_output_values.data()));
-  return std::vector<Value>(ort_output_values.begin(), ort_output_values.end());
+  std::vector<Ort::Value> output_values;
+  for (size_t i = 0; i < output_names_count; i++)
+    output_values.emplace_back(nullptr);
+  Run(run_options, input_names, input_values, input_count, output_names, output_values.data(), output_names_count);
+  return output_values;
 }
 
 inline void Session::Run(const RunOptions& run_options, const char* const* input_names, Value* input_values, size_t input_count,
                          const char* const* output_names, Value* output_values, size_t output_count) {
-  std::vector<OrtValue*> ort_input_values(input_values, input_values + input_count);
-  std::vector<OrtValue*> ort_output_values(output_values, output_values + output_count);
-  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values.data(), ort_input_values.size(), output_names, ort_output_values.size(), ort_output_values.data()));
+  static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
+  auto ort_input_values = reinterpret_cast<OrtValue**>(input_values);
+  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
+  ORT_THROW_ON_ERROR(OrtRun(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
 }
 
 inline size_t Session::GetInputCount() const {
