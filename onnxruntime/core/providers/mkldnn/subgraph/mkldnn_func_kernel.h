@@ -4,6 +4,8 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/framework/func_api.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
@@ -41,8 +43,7 @@ class MkldnnFuncKernel {
     }
   }
 
-  Status Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs,
-                 ONNXRunTimeTensor* const output_tensors, const size_t num_outputs) const;
+  Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const;
 
  private:
   SubgraphParams params_;

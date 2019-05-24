@@ -103,7 +103,9 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
 
   // Create MklDnn node, update inputs, outputs and parent nodes
   // collect attribtes
-  void CreateMetaDef(mkl_dnn::Subgraph::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
+  void CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
+                     const NodeAttributes& subgraph_attributes,
+                     mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                      std::vector<std::unique_ptr<ComputeCapability>>& result) const;
 
  public:

@@ -90,6 +90,7 @@ Return Value:
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
+    this->ErfKernelRoutine = MlasErfKernel;
 #endif
 
     //
@@ -144,6 +145,7 @@ Return Value:
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
+                this->ErfKernelRoutine = MlasErfKernelFma3;
 
             } else {
 

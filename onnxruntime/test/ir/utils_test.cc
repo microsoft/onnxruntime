@@ -207,7 +207,7 @@ static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
   auto& node_to_remove = *graph.GetNode(1);
   const auto& if_node = *graph.GetNode(2);
 
-  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveNode(graph, node_to_remove);
   ASSERT_TRUE(removed);
 
   // check subgraph implicit input was updated
@@ -238,7 +238,7 @@ static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  bool removed = graph_utils::RemoveSingleInputNode(graph, node_to_remove);
+  bool removed = graph_utils::RemoveNode(graph, node_to_remove);
   ASSERT_FALSE(removed);
 }
 
@@ -287,7 +287,7 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
   ASSERT_EQ(nodes[2]->GetOutputEdgesCount(), 2);
 
   // Remove id_2. This leaves id_0 with 3 output edges. id_0 is now incoming node to id_3 and id_4.
-  ASSERT_TRUE(graph_utils::RemoveSingleInputNode(graph, *nodes[2]));
+  ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[2]));
   ASSERT_EQ(graph.NumberOfNodes(), 4);
   ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 3);
   ASSERT_EQ(nodes[3]->InputDefs().size(), 1);
@@ -296,11 +296,60 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
   ASSERT_TRUE(nodes[4]->InputDefs()[0]->Name() == "id_0_out");
 
   // Remove id_0
-  ASSERT_TRUE(graph_utils::RemoveSingleInputNode(graph, *nodes[0]));
+  ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
   ASSERT_EQ(graph.NumberOfNodes(), 3);
   ASSERT_TRUE(nodes[1]->InputDefs()[0]->Name() == "id_0_in");
   ASSERT_TRUE(nodes[3]->InputDefs()[0]->Name() == "id_0_in");
   ASSERT_TRUE(nodes[4]->InputDefs()[0]->Name() == "id_0_in");
+}
+
+TEST(GraphUtils, TestMultiOutputRemoveNode) {
+
+  Model model("MultiOutputRemovalGraph");
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  TypeProto bool_tensor;
+  bool_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& do_0_in = graph.GetOrCreateNodeArg("do_0_in", &float_tensor);
+  auto& do_0_out = graph.GetOrCreateNodeArg("do_0_out", &float_tensor);
+  auto& do_0_out1 = graph.GetOrCreateNodeArg("do_0_out1", &bool_tensor);
+  auto& id_1_out = graph.GetOrCreateNodeArg("id_1_out", &float_tensor);
+  auto& id_2_out = graph.GetOrCreateNodeArg("id_2_out", &bool_tensor);
+
+  std::vector<Node*> nodes;
+  nodes.push_back(&graph.AddNode("do_0", "Dropout", "Dropout node 0", {&do_0_in}, {&do_0_out, &do_0_out1}));
+  nodes.push_back(&graph.AddNode("id_1", "Identity", "Identity node 1", {&do_0_out}, {&id_1_out}));
+  nodes.push_back(&graph.AddNode("id_2", "Identity", "Identity node 2", {&do_0_out1}, {&id_2_out}));
+
+  std::vector<const NodeArg*> graph_outputs;
+  graph_outputs.push_back(&id_2_out);
+  graph.SetOutputs(graph_outputs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  ASSERT_EQ(graph.NumberOfNodes(), 3);
+
+  // Check inputs/outputs of do_0, id_1, id_2
+  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 2);
+  ASSERT_EQ(nodes[1]->GetInputEdgesCount(), 1);
+  ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1);
+
+  // Try to remove do_0, which should return false 
+  // because both outputs are consumed by downstream Operators.
+  ASSERT_FALSE(graph_utils::RemoveNode(graph, *nodes[0]));
+
+  // Try removing do_0 after removing id_2, which should return true
+  // because it now has exactly one output consumed by downstream Operators.
+  ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[1]));
+  ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], 0));
+  ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
 }
 
 }  // namespace test

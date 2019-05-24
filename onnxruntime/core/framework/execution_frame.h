@@ -25,12 +25,9 @@ class NodeIndexInfo;
 
 class IExecutionFrame {
  protected:
-  IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
-                  const std::vector<MLValue>& feeds,
-                  const std::unordered_map<int, MLValue>& initializers,
-                  const std::vector<int>& fetch_mlvalue_idxs,
-                  const std::vector<MLValue>& fetches,
-                  const MLValueNameIdxMap& mlvalue_idx_map,
+  IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                  const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
+                  const std::vector<OrtValue>& fetches, const MLValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info);
 
  public:
@@ -42,94 +39,82 @@ class IExecutionFrame {
   }
 
   // Return nullptr if index map to an value that is an unused optional input/output
-  const MLValue* GetNodeInputOrOutputMLValue(int index) const;
-  MLValue* GetMutableNodeInputOrOutputMLValue(int index);
+  const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
+  OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
   // TO DO: make it thread safe
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, MLValue*& p_mlvalue);
+  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value);
 
   /**
    * write the output values to the 'fetches' vector
    * Don't access the values after SessionState is destroyed 
    */
-  Status GetOutputs(std::vector<MLValue>& fetches);
+  Status GetOutputs(std::vector<OrtValue>& fetches);
 
   AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const;
 
-  Status ReleaseMLValue(int mlvalue_idx);
+  Status ReleaseMLValue(int ort_value_idx);
 
  protected:
-  // get the mlvalue_idx from NodeIndexInfo
+  // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;
 
-  MLValue& GetMutableMLValue(int mlvalue_index) {
-    return const_cast<MLValue&>(GetMLValue(mlvalue_index));
-  }
+  OrtValue& GetMutableMLValue(int ort_value_index) { return const_cast<OrtValue&>(GetMLValue(ort_value_index)); }
 
-  virtual Status ReleaseMLValueImpl(int mlvalue_idx);
+  virtual Status ReleaseMLValueImpl(int ort_value_idx);
 
-  // returns true if the mlvalue_idx is an output from the graph
-  bool IsOutput(int mlvalue_idx) const;
+  // returns true if the ort_value_idx is an output from the graph
+  bool IsOutput(int ort_value_idx) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
-  void Init(const std::vector<int>& feed_mlvalue_idxs,
-            const std::vector<MLValue>& feeds,
-            const std::unordered_map<int, MLValue>& initializers,
-            const std::vector<int>& fetch_mlvalue_idxs,
-            const std::vector<MLValue>& fetches,
-            const MLValueNameIdxMap& mlvalue_idx_map);
+  void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+            const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
+            const std::vector<OrtValue>& fetches, const MLValueNameIdxMap& ort_value_idx_map);
 
-  const MLValue& GetMLValue(int mlvalue_index) const {
-    ORT_ENFORCE(mlvalue_index >= 0 && static_cast<size_t>(mlvalue_index) < all_values_.size());
-    return all_values_[mlvalue_index];
+  const OrtValue& GetMLValue(int ort_value_index) const {
+    ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_.size());
+    return all_values_[ort_value_index];
   }
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const = 0;
-  virtual Status CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue_idx, const TensorShape* shape) = 0;
+  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) = 0;
 
   const NodeIndexInfo& node_index_info_;
 
   // All the intermediate values for the entire graph.
   // Input and Output values are passed in by executors
-  std::vector<MLValue> all_values_;
+  std::vector<OrtValue> all_values_;
 
   const std::vector<int> fetch_mlvalue_idxs_;
 };
 
 class ExecutionFrame final : public IExecutionFrame {
  public:
-  ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs,
-                 const std::vector<MLValue>& feeds,
-                 const std::vector<int>& fetch_mlvalue_idxs,
-                 const std::vector<MLValue>& fetches,
+  ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
+                 const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state);
 
-  ~ExecutionFrame();
+  ~ExecutionFrame() override;
 
   // TODO: These two AllocateMLValue... methods are in the API purely for unit test usage.
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
-  Status AllocateMLValueTensorSelfOwnBuffer(MLValue& mlvalue,
-                                            int mlvalue_index,
-                                            MLDataType element_type,
-                                            const OrtAllocatorInfo& location,
-                                            const TensorShape& shape,
+  Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
+                                            const OrtAllocatorInfo& location, const TensorShape& shape,
                                             bool create_fence = false);
 
-  Status AllocateMLValueTensorPreAllocateBuffer(MLValue& mlvalue,
-                                                int mlvalue_index_reuse,
-                                                MLDataType element_type,
-                                                const OrtAllocatorInfo& location,
-                                                const TensorShape& shape,
+  Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
+                                                const OrtAllocatorInfo& location, const TensorShape& shape,
                                                 bool create_fence = false);
 
+  // thread-safe
   Status GeneratePatterns(MemoryPatternGroup* out) const;
 
   bool HasMemoryPatternPlanner() const {
@@ -140,30 +125,22 @@ class ExecutionFrame final : public IExecutionFrame {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
   AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
-  Status ReleaseMLValueImpl(int mlvalue_idx) override;
-  Status CreateNodeOutputMLValueImpl(MLValue& mlvalue, int mlvalue_idx, const TensorShape* shape) override;
+  Status ReleaseMLValueImpl(int ort_value_idx) override;
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
 
-  common::Status AllocateAsPerAllocationPlan(MLValue& mlvalue,
-                                             int mlvalue_index,
-                                             const TensorShape* shape);
+  common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
 
-  Status AllocateMLValueTensorSelfOwnBufferHelper(MLValue& mlvalue,
-                                                  int mlvalue_index,
-                                                  MLDataType element_type,
-                                                  const OrtAllocatorInfo& location,
-                                                  const TensorShape& shape,
+  Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
+                                                  const OrtAllocatorInfo& location, const TensorShape& shape,
                                                   bool create_fence);
 
-  Status AllocateTensorWithPreAllocateBufferHelper(MLValue& mlvalue,
-                                                   void* pBuffer,
-                                                   MLDataType element_type,
-                                                   const OrtAllocatorInfo& location,
-                                                   const TensorShape& shape);
+  Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
+                                                   const OrtAllocatorInfo& location, const TensorShape& shape);
 
-  void TraceAllocate(int mlvalue_idx, size_t size);
-  void TraceFree(int mlvalue_idx);
+  void TraceAllocate(int ort_value_idx, size_t size);
+  void TraceFree(int ort_value_idx);
 
-  const AllocPlanPerValue& GetAllocationPlan(int mlvalue_idx);
+  const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
 
   const SessionState& session_state_;
 

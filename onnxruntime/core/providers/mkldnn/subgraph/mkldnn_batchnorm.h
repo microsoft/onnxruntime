@@ -83,7 +83,7 @@ template <typename T>
 class MklDnnBatchNorm : public MklDnnKernel {
  public:
   explicit MklDnnBatchNorm(MklDnnNode& node,
-                        MKLDNNExecutionProvider* provider,
+                           MKLDNNExecutionProvider* provider,
                            std ::shared_ptr<MKLContext> mkl_context,
                            const NodeAttributes& attributes,
                            const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
@@ -98,7 +98,8 @@ class MklDnnBatchNorm : public MklDnnKernel {
     }
   }
 
-  Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
+  Status CreatePrimitives(Ort::CustomOpApi ort,
+                          OrtKernelContext* context,
                           mkldnn::engine& cpu_engine,
                           std::vector<mkldnn::primitive>& net,
                           mkldnn::memory::format& source_format) override {
@@ -106,9 +107,14 @@ class MklDnnBatchNorm : public MklDnnKernel {
 
     TensorShape x_shape;
     if (mklnode_ptr_->parent_nodes.size() == 0) {
-      auto xshape = input_tensors[input_index].shape;
-      auto xdim = input_tensors[input_index].ndim;
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+      auto xshape = tensor_shape.data();
+      auto xdim = tensor_shape.size();
       mkldnn::memory::dims dims(xdim);
+
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
       source_format = ort_source_format_;
       src_format_ = ort_source_format_;
@@ -132,10 +138,39 @@ class MklDnnBatchNorm : public MklDnnKernel {
       return primitive_created_;
     }
 
-    TensorShape scale_shape(input_tensors[input_index + 1].shape, input_tensors[input_index + 1].ndim);
-    TensorShape b_shape(input_tensors[input_index + 2].shape, input_tensors[input_index + 2].ndim);
-    TensorShape mean_shape(input_tensors[input_index + 3].shape, input_tensors[input_index + 3].ndim);
-    TensorShape var_shape(input_tensors[input_index + 4].shape, input_tensors[input_index + 4].ndim);
+    const OrtValue* scale_input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
+    const OrtValue* b_input_tensor = ort.KernelContext_GetInput(context, input_index + 2);
+    const OrtValue* mean_input_tensor = ort.KernelContext_GetInput(context, input_index + 3);
+    const OrtValue* var_input_tensor = ort.KernelContext_GetInput(context, input_index + 4);
+
+    auto scale_tensor_info = ort.GetTensorTypeAndShape(scale_input_tensor);
+    auto scale_tensor_shape = ort.GetTensorShape(scale_tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(scale_tensor_info);
+    auto sshape = scale_tensor_shape.data();
+    auto sdim = scale_tensor_shape.size();
+    TensorShape scale_shape(sshape, sdim);
+
+    auto b_tensor_info = ort.GetTensorTypeAndShape(b_input_tensor);
+    auto b_tensor_shape = ort.GetTensorShape(b_tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(b_tensor_info);
+    auto bshape = b_tensor_shape.data();
+    auto bdim = b_tensor_shape.size();
+    TensorShape b_shape(bshape, bdim);
+
+    auto mean_tensor_info = ort.GetTensorTypeAndShape(mean_input_tensor);
+    auto mean_tensor_shape = ort.GetTensorShape(mean_tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(mean_tensor_info);
+    auto mshape = mean_tensor_shape.data();
+    auto mdim = mean_tensor_shape.size();
+    TensorShape mean_shape(mshape, mdim);
+
+    auto var_tensor_info = ort.GetTensorTypeAndShape(var_input_tensor);
+    auto var_tensor_shape = ort.GetTensorShape(var_tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(var_tensor_info);
+    auto vshape = var_tensor_shape.data();
+    auto vdim = var_tensor_shape.size();
+    TensorShape var_shape(vshape, vdim);
+
     primitive_dst_shape_ = TensorShape(x_shape);
 
     primitive_created_ = BatchNormHelper::ValidateInputs(x_shape, scale_shape, b_shape, mean_shape, var_shape);
@@ -242,30 +277,38 @@ class MklDnnBatchNorm : public MklDnnKernel {
     return Status::OK();
   }
 
-  Status Bind(const ONNXRunTimeTensor* input_tensors,
-                 ONNXRunTimeTensor* const output_tensors) override {
+  Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (!primitive_created_.IsOK()) {
       // abort as MKLDNN cannot execute this. but
       // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
       // fix for test_averagepool_1d_default node test
-      auto xshape = input_tensors[input_index].shape;
-      auto xdim = input_tensors[input_index].ndim;
-      AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
       return primitive_created_;
     }
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {
-      src_mem_->set_data_handle(input_tensors[input_index].data);
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+      const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
+      src_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
     }
 
-    const T* scale_data = reinterpret_cast<const T*>(input_tensors[input_index + 1].data);
-    const T* b_data = reinterpret_cast<const T*>(input_tensors[input_index + 2].data);
-    const T* mean_data = reinterpret_cast<const T*>(input_tensors[input_index + 3].data);
-    const T* var_data = reinterpret_cast<const T*>(input_tensors[input_index + 4].data);
+    const OrtValue* scale_input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
+    const T* scale_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(scale_input_tensor));
+    const OrtValue* b_input_tensor = ort.KernelContext_GetInput(context, input_index + 2);
+    const T* b_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(b_input_tensor));
+    const OrtValue* mean_input_tensor = ort.KernelContext_GetInput(context, input_index + 3);
+    const T* mean_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(mean_input_tensor));
+    const OrtValue* var_input_tensor = ort.KernelContext_GetInput(context, input_index + 4);
+    const T* var_data = reinterpret_cast<const T*>(ort.GetTensorData<T>(var_input_tensor));
 
-    TensorShape scale_shape(input_tensors[input_index + 1].shape, input_tensors[input_index + 1].ndim);
+    auto tensor_info = ort.GetTensorTypeAndShape(scale_input_tensor);
+    auto tensor_shape = ort.GetTensorShape(tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+    auto sshape = tensor_shape.data();
+    auto sdim = tensor_shape.size();
+
+    TensorShape scale_shape(sshape, sdim);
     mkldnn::memory::dims scale_dims_mkl(
         scale_shape.GetDims().begin(), scale_shape.GetDims().end());
 
@@ -281,7 +324,16 @@ class MklDnnBatchNorm : public MklDnnKernel {
     MEMCPY_S(&scale_shift_buf[scale_dims_mkl[0]], b_data, src_bytes, dst_bytes);
 
     if (mklnode_ptr_->output_index >= 0) {
-      AllocateMemoryAndReorderIfNeeded(output_tensors, input_tensors[0].dtype);
+      auto& y_dims = primitive_dst_shape_.GetDims();
+      // Allocate memory for output bufffer
+      OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
+      T* dst_data = ort.GetTensorMutableData<T>(output);
+
+      if (primitive_dst_format_ != ort_source_format_) {
+        reorder_dst_mem_to_->set_data_handle(dst_data);
+      } else {
+        primitive_dst_mem_->set_data_handle(dst_data);
+      }
     }
     return Status::OK();
   }

@@ -23,31 +23,31 @@ class IFence {
   virtual ~IFence() = default;
 
   /**
-     Called by executor before MLValue is used as input in a compute kernel in provider_type and exec queue_id
-     This should wait in the specified provider's exec queue for previous write to MLValue to finish
+     Called by executor before OrtValue is used as input in a compute kernel in provider_type and exec queue_id
+     This should wait in the specified provider's exec queue for previous write to OrtValue to finish
   */
   virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) = 0;
 
   /**
-     Called by executor before MLValue is used as output in a compute kernel in provider_type and exec queue_id
-     This should wait in the specified provider's exec queue for previous read to MLValue to finish
+     Called by executor before OrtValue is used as output in a compute kernel in provider_type and exec queue_id
+     This should wait in the specified provider's exec queue for previous read to OrtValue to finish
   */
   virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) = 0;
 
   /**
-     Called by executor after MLValue is used as input in a compute kernel in provider_type and exec queue_id
+     Called by executor after OrtValue is used as input in a compute kernel in provider_type and exec queue_id
      This should update the read fence of the MLValue
   */
   virtual void AfterUsedAsInput(int queue_id) = 0;
 
   /**
-     Called by executor after MLValue is used as output in a compute kernel in provider_type and exec queue_id
+     Called by executor after OrtValue is used as output in a compute kernel in provider_type and exec queue_id
      This should update the write fence of the MLValue
   */
   virtual void AfterUsedAsOutput(int queue_id) = 0;
 
   /**
-  Called by executor before release MLValue to see whether async data read is finished or not. This is non-blocking.
+  Called by executor before release OrtValue to see whether async data read is finished or not. This is non-blocking.
   */
   virtual bool CanRelease() = 0;
 };

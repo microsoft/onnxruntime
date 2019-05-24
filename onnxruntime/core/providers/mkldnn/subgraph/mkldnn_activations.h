@@ -24,7 +24,8 @@ class MklDnnRelu : public MklDnnKernel {
     ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
-  Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
+  Status CreatePrimitives(Ort::CustomOpApi ort,
+                          OrtKernelContext* context,
                           mkldnn::engine& cpu_engine,
                           std::vector<mkldnn::primitive>& net,
                           mkldnn::memory::format& source_format) {
@@ -32,9 +33,16 @@ class MklDnnRelu : public MklDnnKernel {
 
     TensorShape x_shape;
     if (mklnode_ptr_->parent_nodes.size() == 0) {
-      auto xshape = input_tensors[input_index].shape;
-      auto xdim = input_tensors[input_index].ndim;
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+      auto xshape = tensor_shape.data();
+      auto xdim = tensor_shape.size();
+
       mkldnn::memory::dims dims(xdim);
+
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
       source_format = ort_source_format_;
       src_format_ = ort_source_format_;
@@ -103,17 +111,27 @@ class MklDnnRelu : public MklDnnKernel {
     return Status::OK();
   }
 
-  Status Bind(const ONNXRunTimeTensor* input_tensors,
-              ONNXRunTimeTensor* const output_tensors) override {
+  Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {
       // Sub-graph's first node. Read input from input buffer
-      src_mem_->set_data_handle(input_tensors[input_index].data);
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+      const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
+      src_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
     }
 
     if (mklnode_ptr_->output_index >= 0) {
-      AllocateMemoryAndReorderIfNeeded(output_tensors, input_tensors[0].dtype);
+      auto& y_dims = primitive_dst_shape_.GetDims();
+      // Allocate memory for output bufffer
+      OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
+      T* dst_data = ort.GetTensorMutableData<T>(output);
+
+      if (primitive_dst_format_ != ort_source_format_) {
+        reorder_dst_mem_to_->set_data_handle(dst_data);
+      } else {
+        primitive_dst_mem_->set_data_handle(dst_data);
+      }
     }
 
     return Status::OK();

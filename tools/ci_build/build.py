@@ -84,7 +84,7 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
-    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
+    parser.add_argument("--numpy_version", help="Installs a specific version of numpy "
                         "before building the python binding.")
     parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
@@ -94,6 +94,11 @@ Use the individual flags to only run the specified stages.
 
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
+
+    # Build ONNX Runtime server
+    parser.add_argument("--build_server", action='store_true', help="Build server application for the ONNXRuntime.")
+    parser.add_argument("--enable_server_tests", action='store_true', help="Run server application tests.")
+    parser.add_argument("--enable_server_model_tests", action='store_true', help="Run server model tests.")
 
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
@@ -214,7 +219,7 @@ def install_ubuntu_deps(args):
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel']
-    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
+    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -265,8 +270,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         shutil.rmtree(models_dir)
     if shutil.which('unzip'):
         run_subprocess(['unzip','-qd', models_dir, local_zip_file])
-    elif shutil.which('7za'):
-        run_subprocess(['7za','x', local_zip_file, '-y', '-o' + models_dir])
+    elif shutil.which('7z'):  # 7-Zip
+        run_subprocess(['7z','x', local_zip_file, '-y', '-o' + models_dir])
+    elif shutil.which('7za'):  # 7-Zip standalone
+        run_subprocess(['7za', 'x', local_zip_file, '-y', '-o' + models_dir])
     else:
         #TODO: use python for unzip
         log.error("No unzip tool for use")
@@ -324,9 +331,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
                  "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
+                 "-Donnxruntime_BUILD_SERVER=" + ("ON" if args.build_server else "OFF"),
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt else "OFF"),
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  ]
@@ -535,6 +543,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
+
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -563,6 +572,44 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         run_subprocess([exe] + cmd, cwd=cwd)
         if enable_parallel_executor_test:
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+
+
+def run_server_tests(build_dir, configs):
+    pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
+    installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
+    if not (('requests' in installed_packages) and ('protobuf' in installed_packages) and ('numpy' in installed_packages)):
+        if hasattr(sys, 'real_prefix'):
+            # In virtualenv
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+        else:
+            # Outside virtualenv
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+    
+    for config in configs:
+        config_build_dir = get_config_build_dir(build_dir, config)
+        if is_windows():
+            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+        else:
+            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+
+
+def run_server_model_tests(build_dir, configs):
+    for config in configs:
+        config_build_dir = get_config_build_dir(build_dir, config)
+        if is_windows():
+            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+            test_raw_data_folder = os.path.join(config_build_dir, 'models')
+        else:
+            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+            test_raw_data_folder = os.path.join(build_dir, 'models')
+
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
+        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
 
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
@@ -624,7 +671,7 @@ def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
     for config in configs:
         #copy the gen_doc.py
-        shutil.copy(os.path.join(source_dir,'onnxruntime','python','tools','gen_doc.py'),
+        shutil.copy(os.path.join(source_dir,'tools','python','gen_doc.py'),
                     os.path.join(build_dir,config, config))
         run_subprocess([
                         sys.executable,
@@ -632,10 +679,16 @@ def generate_documentation(source_dir, build_dir, configs):
                         '--output_path', operator_doc_path
                     ], 
                     cwd = os.path.join(build_dir,config, config))
-        
-    docdiff = run_subprocess(['git', 'diff', operator_doc_path], capture=True).stdout
+    docdiff = ''
+    try:    
+        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    
+
     if len(docdiff) > 0:
-        raise BuildError("The updated operator document file "+operator_doc_path+" must be checked in")
+        raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
+
 
 def main():
     args = parse_arguments()
@@ -741,7 +794,7 @@ def main():
 
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.enable_pybind if not args.skip_onnx_tests else False,
+                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt, args.use_ngraph)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
@@ -766,12 +819,18 @@ def main():
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
+    if args.build_server and args.enable_server_tests:
+        run_server_tests(build_dir, configs)
+
+    if args.build_server and args.enable_server_model_tests:
+        run_server_model_tests(build_dir, configs)
+
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
             build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, nightly_build)
 
-    if args.gen_doc:
+    if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
 
     log.info("Build complete")

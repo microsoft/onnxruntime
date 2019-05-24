@@ -24,12 +24,14 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
       {DataTypeImpl::GetType<bool>(), NPY_BOOL},
       {DataTypeImpl::GetType<float>(), NPY_FLOAT},
+      {DataTypeImpl::GetType<MLFloat16>(), NPY_FLOAT16},
       {DataTypeImpl::GetType<double>(), NPY_DOUBLE},
-      {DataTypeImpl::GetType<int32_t>(), NPY_INT},
       {DataTypeImpl::GetType<int8_t>(), NPY_INT8},
       {DataTypeImpl::GetType<uint8_t>(), NPY_UINT8},
       {DataTypeImpl::GetType<int16_t>(), NPY_INT16},
       {DataTypeImpl::GetType<uint16_t>(), NPY_UINT16},
+      {DataTypeImpl::GetType<int32_t>(), NPY_INT},
+      {DataTypeImpl::GetType<uint32_t>(), NPY_UINT},
       {DataTypeImpl::GetType<int64_t>(), NPY_LONGLONG},
       {DataTypeImpl::GetType<uint64_t>(), NPY_ULONGLONG},
       {DataTypeImpl::GetType<std::string>(), NPY_OBJECT},
@@ -47,15 +49,32 @@ const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
   static std::map<int, MLDataType> type_map{
       {NPY_BOOL, DataTypeImpl::GetType<bool>()},
       {NPY_FLOAT, DataTypeImpl::GetType<float>()},
+      // Special, not a C type expands to enum value of 16
+      {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
       {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
-      {NPY_INT, DataTypeImpl::GetType<int32_t>()},
-      {NPY_INT8, DataTypeImpl::GetType<int8_t>()},
-      {NPY_UINT8, DataTypeImpl::GetType<uint8_t>()},
-      {NPY_INT16, DataTypeImpl::GetType<int16_t>()},
-      {NPY_UINT16, DataTypeImpl::GetType<uint16_t>()},
+      // We don't want to use size specific types such
+      // as NPY_INT32 bc they are not enums but hash defines
+      // which may map into other enums and may conflict with other entries here
+      // also NPY docs define these sizes as platform specific, thus we
+      // choose to do some rudimentary checks for proper mapping on C++ size
+      {NPY_BYTE, DataTypeImpl::GetType<int8_t>()},
+      {NPY_UBYTE, DataTypeImpl::GetType<uint8_t>()},
+      {NPY_SHORT, sizeof(short) == sizeof(int16_t) ? DataTypeImpl::GetType<int16_t>()
+                                                   : DataTypeImpl::GetType<int32_t>()},
+      {NPY_USHORT, sizeof(unsigned short) == sizeof(uint16_t) ? DataTypeImpl::GetType<uint16_t>()
+                                                              : DataTypeImpl::GetType<uint32_t>()},
+      {NPY_INT,
+       sizeof(int) == sizeof(int32_t) ? DataTypeImpl::GetType<int32_t>()
+                                      : DataTypeImpl::GetType<int64_t>()},
+      {NPY_UINT, sizeof(int) == sizeof(int32_t) ? DataTypeImpl::GetType<uint32_t>()
+                                                : DataTypeImpl::GetType<uint64_t>()},
+
       {NPY_LONG,
-       sizeof(long) == sizeof(int) ? DataTypeImpl::GetType<int32_t>()
-                                   : DataTypeImpl::GetType<int64_t>()},
+       sizeof(long) == sizeof(int32_t) ? DataTypeImpl::GetType<int32_t>()
+                                       : DataTypeImpl::GetType<int64_t>()},
+      {NPY_ULONG,
+       sizeof(unsigned long) == sizeof(uint32_t) ? DataTypeImpl::GetType<uint32_t>()
+                                                 : DataTypeImpl::GetType<uint64_t>()},
       {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
       {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
       {NPY_UNICODE, DataTypeImpl::GetType<std::string>()},
@@ -76,7 +95,8 @@ bool PyObjectCheck_Array(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
 
-void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject, MLValue* p_mlvalue) {
+void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
+                         OrtValue* p_mlvalue) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   if (darray == NULL) {
     throw std::runtime_error(std::string("The object must be a contiguous array for input '") + name_input + std::string("'."));
@@ -229,9 +249,8 @@ void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::st
 
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                          PyObject* item,
-                          AllocatorPtr /*alloc*/, MLValue* p_mlvalue,
-                          KeyGetterType keyGetter, ValueGetterType valueGetter) {
+                          PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
+                          ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
   dst = std::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
@@ -241,8 +260,7 @@ void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& na
 
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                PyObject* iterator, PyObject* item,
-                                AllocatorPtr /*alloc*/, MLValue* p_mlvalue,
+                                PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
   dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
@@ -259,8 +277,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
 }
 
 void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                  PyObject* iterator, PyObject* item,
-                                  AllocatorPtr alloc, MLValue* p_mlvalue) {
+                                  PyObject* iterator, PyObject* item, AllocatorPtr alloc, OrtValue* p_mlvalue) {
   // If iterator is NULL, it returns a single Map,
   // if is not NULL, it returns a VectorMap.
   auto int64Getter = [](PyObject* obj, int64_t& value) -> bool {
@@ -330,7 +347,8 @@ void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::st
   }
 }
 
-void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc, const std::string& name_input, MLValue* p_mlvalue) {
+void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc,
+                                        const std::string& name_input, OrtValue* p_mlvalue) {
   // CreateMapMLValue is called by CreateGenericTerableMLValue
   // or CreateGenericMLValue which ensures
   // item is a dictionary, no need to check type again.
@@ -354,9 +372,10 @@ void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, Allo
   }
 }
 
-void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input, MLValue* p_mlvalue) {
+void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
+                                  OrtValue* p_mlvalue) {
   PyObject* item;
-  MLValue ml_value;
+  OrtValue ml_value;
   item = PyIter_Next(iterator);
   if (item == NULL) {
     throw std::runtime_error("Input '" + name_input + "' must not be empty.");
@@ -380,7 +399,7 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
   }
 }
 
-void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, MLValue* p_mlvalue) {
+void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, OrtValue* p_mlvalue) {
   if (PyObjectCheck_Array(value.ptr())) {
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());

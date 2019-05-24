@@ -112,7 +112,7 @@ Status CreateKernelRegistryManagerFromModel(std::unique_ptr<KernelRegistryManage
   ORT_RETURN_IF_ERROR(CreateExecutionProviders(&execution_providers));
   std::unique_ptr<KernelRegistryManager> kernel_registry_manager = std::make_unique<KernelRegistryManager>();
   ORT_RETURN_IF_ERROR(kernel_registry_manager->RegisterKernels(*execution_providers));
-  SessionState s{*execution_providers};
+  SessionState s{*execution_providers, true};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
 
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve());
@@ -179,7 +179,7 @@ static void BM_PartitionModel_tiny_yolo(benchmark::State& state) {
   for (auto _ : state) {
     state.PauseTiming();
     std::shared_ptr<onnxruntime::Model> model = std::make_shared<onnxruntime::Model>(model_proto);
-    SessionState s{*execution_providers};
+    SessionState s{*execution_providers, true};
     s.SetLogger(logging::LoggingManager::DefaultLogger());
     BM_BREAK_IF_ERROR(model->MainGraph().Resolve());
     s.SetGraphViewer(std::make_unique<GraphViewer>(model->MainGraph()));
@@ -209,7 +209,7 @@ static void BM_PartitionModel_inception_v4(benchmark::State& state) {
   for (auto _ : state) {
     state.PauseTiming();
     std::shared_ptr<onnxruntime::Model> model = std::make_shared<onnxruntime::Model>(model_proto);
-    SessionState s{*execution_providers};
+    SessionState s{*execution_providers, true};
     s.SetLogger(logging::LoggingManager::DefaultLogger());
     BM_BREAK_IF_ERROR(model->MainGraph().Resolve());
     s.SetGraphViewer(std::make_unique<GraphViewer>(model->MainGraph()));

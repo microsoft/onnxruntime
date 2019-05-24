@@ -20,7 +20,7 @@ void MklDnnKernel::InitDstReorderOutput(mkldnn::engine& cpu_engine,
     net.push_back(mkldnn::reorder(*primitive_dst_mem_, *reorder_dst_mem_to_));
   }
 }
-
+/*
 void MklDnnKernel::AllocateMemoryAndReorderIfNeeded(ONNXRunTimeTensor* const output_tensors, const DType& dtype) {
   // End of sub-graph. Allocate memory and get the output
   auto& y_dims = primitive_dst_shape_.GetDims();
@@ -35,7 +35,7 @@ void MklDnnKernel::AllocateMemoryAndReorderIfNeeded(ONNXRunTimeTensor* const out
 }
 
 void MklDnnKernel::AllocateOutputTensor(ONNXRunTimeTensor* const output_tensors,
-                                        int index, const int64_t* shape, size_t dim, const DType& dtype) {
+                                        int index, const int64_t* shape, size_t dim) {
   output_tensors[index].dtype = dtype;
   output_tensors[index].ndim = dim;
   output_tensors[index].shape = new int64_t[dim];
@@ -45,6 +45,7 @@ void MklDnnKernel::AllocateOutputTensor(ONNXRunTimeTensor* const output_tensors,
     data_size *= output_tensors[index].shape[j];
   output_tensors[index].data = (*(mkl_context_->allocate_func))(mkl_context_->allocator, sizeof(double) * data_size, 64);
 }
+*/
 
 mkldnn::memory::format MklDnnKernel::GetSourceFormat(int dim_size) {
   mkldnn::memory::format source_format = mkldnn::memory::format::any;

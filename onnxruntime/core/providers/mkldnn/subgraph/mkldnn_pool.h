@@ -18,18 +18,24 @@ class MklDnnPool : public MklDnnKernel {
              std ::shared_ptr<MKLContext> mkl_context,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : MklDnnKernel(node, provider, mkl_context) {
-    ReadAttributes(attributes, attributes_prefix);
     op_name_ = node.name;
+    ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
+  Status CreatePrimitives(Ort::CustomOpApi ort,
+                          OrtKernelContext* context,
                           mkldnn::engine& cpu_engine, std::vector<mkldnn::primitive>& net,
                           mkldnn::memory::format& source_format) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {
-      auto xshape = input_tensors[input_index].shape;
-      auto xdim = input_tensors[input_index].ndim;
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+      auto xshape = tensor_shape.data();
+      auto xdim = tensor_shape.size();
+
       mkldnn::memory::dims dims(xdim);
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
       source_format = ort_source_format_;
@@ -177,8 +183,7 @@ class MklDnnPool : public MklDnnKernel {
     return Status::OK();
   }
 
-  Status Bind(const ONNXRunTimeTensor* input_tensors,
-                 ONNXRunTimeTensor* const output_tensors) {
+  Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) override {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (x_shape_.NumDimensions() <= 3) {
@@ -186,26 +191,31 @@ class MklDnnPool : public MklDnnKernel {
         // abort as MKLDNN cannot execute this. but
         // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
         // fix for test_averagepool_1d_default node test
-        auto xshape = input_tensors[input_index].shape;
-        auto xdim = input_tensors[input_index].ndim;
-        AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
+        //auto xshape = input_tensors[input_index].shape;
+        //auto xdim = input_tensors[input_index].ndim;
+        //AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
       }
       std::cout << "MKLDNN cannot compute shape with dim less than three." << std::endl;
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Please call default CPU kernel.");
     }
 
     if (primitive_src_format_ != src_format_) {
-      if (mklnode_ptr_->parent_nodes.size() == 0)
-        src_mem_from_->set_data_handle(input_tensors[input_index].data);
-      else
+      if (mklnode_ptr_->parent_nodes.size() == 0) {
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+        const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
+        src_mem_from_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
+      } else {
         src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
+      }
 
       auto src_size = fwd_primitive_desc_.get()->src_primitive_desc().get_size();
       src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.size() == 0) {
-        src_mem_->set_data_handle(input_tensors[input_index].data);
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
+        const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
+        src_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
       } else {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
@@ -214,7 +224,16 @@ class MklDnnPool : public MklDnnKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // Last node of sub-graph. Allocate memory for output_buffer data
       // Reorder if needed
-      AllocateMemoryAndReorderIfNeeded(output_tensors, input_tensors[0].dtype);
+      auto& y_dims = primitive_dst_shape_.GetDims();
+      // Allocate memory for output bufffer
+      OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
+      T* dst_data = ort.GetTensorMutableData<T>(output);
+
+      if (primitive_dst_format_ != ort_source_format_) {
+        reorder_dst_mem_to_->set_data_handle(dst_data);
+      } else {
+        primitive_dst_mem_->set_data_handle(dst_data);
+      }
     }
     return Status::OK();
   }

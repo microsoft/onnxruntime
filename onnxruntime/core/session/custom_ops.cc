@@ -29,8 +29,16 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API(OrtValue*, OrtKernelContext_GetInput, OrtKernelContext* context, _In_ size_t index) {
-  return reinterpret_cast<OrtValue*>(const_cast<onnxruntime::MLValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index)));
+ORT_API(size_t, OrtKernelContext_GetInputCount, const OrtKernelContext* context) {
+  return reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+};
+
+ORT_API(size_t, OrtKernelContext_GetOutputCount, const OrtKernelContext* context) {
+  return reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
+};
+
+ORT_API(const OrtValue*, OrtKernelContext_GetInput, const OrtKernelContext* context, _In_ size_t index) {
+  return reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
 };
 
 ORT_API(OrtValue*, OrtKernelContext_GetOutput, OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
@@ -42,20 +50,25 @@ constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtKernelInfoGetAttribute_float,
     &OrtKernelInfoGetAttribute_int64,
 
-    &OrtGetTensorShapeAndType,
+    &OrtGetTensorTypeAndShape,
 
     &OrtGetTensorShapeElementCount,
-    &OrtGetNumOfDimensions,
-    &OrtGetDimensions,
-    &OrtSetDims,
+    &OrtGetTensorElementType,
 
+    &OrtGetDimensionsCount,
+    &OrtGetDimensions,
+    &OrtSetDimensions,
     &OrtGetTensorMutableData,
 
     &OrtReleaseTensorTypeAndShapeInfo,
 
+    &OrtKernelContext_GetInputCount,
     &OrtKernelContext_GetInput,
+    &OrtKernelContext_GetOutputCount,
     &OrtKernelContext_GetOutput,
 };
+
+const OrtCustomOpApi& GetCustomOpApi() { return g_custom_op_api; }
 
 namespace onnxruntime {
 
@@ -66,9 +79,7 @@ struct CustomOpKernel : OpKernel {
     op_kernel_ = op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
-  ~CustomOpKernel() {
-    op_.KernelDestroy(op_kernel_);
-  }
+  ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
 
   Status Compute(OpKernelContext* ctx) const override {
     auto* ictx = static_cast<OpKernelContextInternal*>(ctx);

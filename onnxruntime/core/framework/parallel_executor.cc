@@ -29,12 +29,10 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 32);
 }
 
-Status ParallelExecutor::Execute(const SessionState& session_state,
-                                 const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<MLValue>& feeds,
-                                 const std::vector<int>& fetch_mlvalue_idxs,
-                                 std::vector<MLValue>& fetches,
-                                 const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                 std::vector<OrtValue>& fetches,
+                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {
   TimePoint tp;
   bool f_profiler_enabled = session_state.Profiler().FEnabled();

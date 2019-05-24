@@ -11,6 +11,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_func_kernel.h"
+
 #include "mkldnn_fwd.h"
 
 namespace onnxruntime {
@@ -38,16 +39,26 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace mkl_dnn
 
-MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& /*info*/)
+MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
                                                           [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(default_allocator_info));
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
                                                       [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
-}
+
+  if (info.create_arena) {
+    InsertAllocator(CreateAllocator(default_allocator_info));
+
+    InsertAllocator(CreateAllocator(cpu_allocator_info));
+  } else {
+    InsertAllocator(std::shared_ptr<IArenaAllocator>(
+        std::make_unique<DummyArena>(default_allocator_info.factory(0))));
+
+    InsertAllocator(std::shared_ptr<IArenaAllocator>(
+        std::make_unique<DummyArena>(cpu_allocator_info.factory(0))));
+  }
+}  // namespace onnxruntime
 
 MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
 }
@@ -137,7 +148,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
                                                        bool fused,
                                                        std::map<std::string, int>& output_to_source_node_map,
                                                        NodeAttributes& subgraph_attributes) const {
-  auto& node_inputs = node->InputDefs();
+  const auto& node_inputs = node->InputDefs();
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
   if (!fused) {
@@ -146,7 +157,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     mklnode.num_inputs = static_cast<int>(node->InputDefs().size());
     mklnode.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
     mklnode.node_index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size()) + 1;
-    auto& node_outputs = node->OutputDefs();
+    const auto& node_outputs = node->OutputDefs();
     mklnode.output_name = node_outputs[0]->Name();
     if (node->OpType() == "Conv") {
       mklnode.weight_name = node->InputDefs()[1]->Name();
@@ -159,7 +170,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     sub_var.subgraph_ptr->mklnodes.push_back(mklnode);
     output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
   } else {
-    auto& node_outputs = node->OutputDefs();
+    const auto& node_outputs = node->OutputDefs();
     output_to_source_node_map.erase(sub_var.subgraph_ptr->mklnodes.back().output_name);
     sub_var.subgraph_ptr->mklnodes.back().output_name = node_outputs[0]->Name();
     output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
@@ -241,7 +252,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
           auto next_node = graph_viewer.GetNode(temp_index);
           auto sub_it = mkldnn_ops_.find(next_node->OpType());
           if (sub_it != mkldnn_ops_.end()) {
-            auto& next_node_inputs = next_node->InputDefs();
+            const auto& next_node_inputs = next_node->InputDefs();
             bool input_from_subgraph = true;
             int inputs_count = 1;
             if (next_node->OpType() == "Sum")
@@ -254,7 +265,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
               }
             }
             if (input_from_subgraph == false) {
-              CreateMetaDef(sub_var, subgraph_attributes, result);
+              CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
               subgraph_attributes.clear();
               output_to_source_node_map.clear();
             }
@@ -289,7 +300,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
               temp_index++;
             }
             if (create_subgraph) {
-              CreateMetaDef(sub_var, subgraph_attributes, result);
+              CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
               subgraph_attributes.clear();
               output_to_source_node_map.clear();
             }
@@ -298,27 +309,48 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       }
     } else {
       if (!sub_var.subgraph_node_indexes.empty()) {
-        CreateMetaDef(sub_var, subgraph_attributes, result);
+        CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
         subgraph_attributes.clear();
       }
     }
     node_index++;
   }  // graph_viewer node iterator ends
   if (!sub_var.subgraph_node_indexes.empty()) {
-    CreateMetaDef(sub_var, subgraph_attributes, result);
+    CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
     subgraph_attributes.clear();
   }
   return result;
 }
 
-void MKLDNNExecutionProvider::CreateMetaDef(mkl_dnn::Subgraph::SubgraphVariables& sub_var, const NodeAttributes& subgraph_attributes,
+void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
+                                            const NodeAttributes& subgraph_attributes,
+                                            mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
   std::string node_list;
   std::string subgraph_id = std::to_string(sub_var.subgraph_index);
   sub_var.subgraph_index++;
 
+  // This is a list of initializers that subgraph considers as constants. 
+  // Example weights, reshape shape etc.
+  std::unordered_set<std::string> input_initializers;
+
+  // Create ng_required_initializers attribute of NGraphCustomOp
+  ONNX_NAMESPACE::AttributeProto initializers;
+  initializers.set_name("initializers");
+  initializers.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
+  //auto tensor = initializers.add_tensors();
+  //*tensor = *(graph_viewer.GetAllInitializedTensors().at(sub_var.inputs[1]));
+
+  for (const auto& init : sub_var.inputs) {
+    if (graph_viewer.GetAllInitializedTensors().count(init)) {
+      auto tensor = initializers.add_tensors();
+      *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
+    }
+  }
+
   auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  meta_def->attributes["initializers"] = initializers;
   meta_def->name = "MkldnnCustomOp" + std::to_string(sub_var.subgraph_index);
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
@@ -367,12 +399,10 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
         delete static_cast<onnxruntime::mkl_dnn::MkldnnFuncKernel<float>*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, ONNXRunTimeTensor* input_tensors,
-                                   size_t num_inputs, ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
+   compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::mkl_dnn::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<mkl_dnn::MkldnnFuncKernel<float>*>(state);
-      custom_op->Compute(input_tensors, num_inputs, output_tensors, num_outputs);
-
-      return 0;
+      const Status compute_status = custom_op->Compute(api, context);
+      return compute_status == Status::OK() ? 0 : 1;
     };
 
     node_compute_funcs.push_back(compute_info);

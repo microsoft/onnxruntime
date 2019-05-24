@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "sync_api.h"
+#include <memory>
 #include <mutex>
 
 #if defined(_MSC_VER)
@@ -70,7 +71,7 @@ static std::once_flag default_pool_init;
 PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num));
+    default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();
 }
@@ -86,10 +87,9 @@ Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVE
     }
     finish_event->finish_event_data.notify_all();
     return Status::OK();
-  } else {
+  }
     pci->AddEvent(finish_event);
     return Status::OK();
-  }
 }
 
 void OnnxRuntimeCallbackInstance::AddEvent(ORT_EVENT event) {

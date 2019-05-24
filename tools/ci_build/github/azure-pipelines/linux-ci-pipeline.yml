@@ -8,8 +8,8 @@ jobs:
       displayName: 'Clean untagged docker images'
       inputs:
         script: |
-          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
-          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
+          docker container prune -f
+          docker image prune -f
         workingDirectory: $(Build.BinariesDirectory)
       continueOnError: true
       condition: always()
@@ -30,7 +30,7 @@ jobs:
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
       displayName: 'Command Line Script'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0

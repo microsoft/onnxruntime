@@ -21,7 +21,8 @@ inline T ShrinkCore(const T& val, float bias, float lambd) {
   // Implementing the spec as is for now
   if (val < -lambd) {
     return T(val + bias);
-  } else if (val > lambd) {
+  }
+  if (val > lambd) {
     return T(val - bias);
   } else {
     return T(0);

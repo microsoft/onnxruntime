@@ -6,6 +6,7 @@
 
 #include "mkldnn_func_kernel.h"
 #include "core/common/exceptions.h"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/mkldnn/mkldnn_common.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_conv.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_batchnorm.h"
@@ -13,6 +14,7 @@
 #include "core/providers/mkldnn/subgraph/mkldnn_pool.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_sum.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_lrn.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
@@ -21,21 +23,22 @@ namespace {
 template <typename T>
 class SubgraphPrimitive : public PrimitiveBase {
  public:
-  SubgraphPrimitive(const ONNXRunTimeTensor* input_tensors,
+  SubgraphPrimitive(Ort::CustomOpApi ort,
+                    OrtKernelContext* context,
                     const SubgraphParams& params)
-      : cpu_engine_(GetEngine()) {
+      : cpu_engine_(GetEngine()), ort_(ort) {
     context_.stream.reset(new mkldnn::stream(mkldnn::stream::kind::eager));
 
-    if (context_.net.size() == 0) {
+	if (context_.net.size() == 0) {
       CreateKernels(params);
-      Initialize(input_tensors);
+      Initialize(context);
     }
   }
 
-  Status Compute(const ONNXRunTimeTensor* input_tensors, ONNXRunTimeTensor* const output_tensors) {
+  Status Compute(OrtKernelContext* context) {
     Status status;
     for (auto& kernel : context_.kernels) {
-      status = kernel->Bind(input_tensors, output_tensors);
+      status = kernel->Bind(ort_, context);
       if (!status.IsOK())
         break;
     }
@@ -163,14 +166,14 @@ class SubgraphPrimitive : public PrimitiveBase {
     SubgraphContext() : stream(nullptr) {}
   };
 
-  Status Initialize(const ONNXRunTimeTensor* input_tensors) {
+  Status Initialize(OrtKernelContext* context) {
     // Propagate mkldnn block format
     // dst format of current node to src format of next node
     mkldnn::memory::format source_format = mkldnn::memory::format::any;  // ONNXRuntime format
     for (auto& kernel : context_.kernels) {
-      Status status = kernel->CreatePrimitives(input_tensors, cpu_engine_, context_.net, source_format);
+      Status status = kernel->CreatePrimitives(ort_, context, cpu_engine_, context_.net, source_format);
       if (status.IsOK())
-        kernel->ReorderWeights(input_tensors, cpu_engine_);
+        kernel->ReorderWeights(ort_, context, cpu_engine_);
       else
         return status;
     }
@@ -179,6 +182,7 @@ class SubgraphPrimitive : public PrimitiveBase {
 
   SubgraphContext context_;
   mkldnn::engine& cpu_engine_;
+  Ort::CustomOpApi ort_;
 };
 
 // Pool which allows for reuse of MKLDNN Conv primitives which are expensive to instantiate.
@@ -186,10 +190,20 @@ class SubgraphPrimitive : public PrimitiveBase {
 template <typename T>
 class SubgraphPrimitivePool : public PrimitivePool<T> {
  public:
-  static SubgraphPrimitive<T>* Get(const ONNXRunTimeTensor* input_tensors,
+  static SubgraphPrimitive<T>* Get(Ort::CustomOpApi ort,
+                                   OrtKernelContext* context,
                                    const SubgraphParams& params) {
-    auto xshape = input_tensors[0].shape;
-    auto xdim = input_tensors[0].ndim;
+    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, 0);
+    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+    auto tensor_shape = ort.GetTensorShape(tensor_info);
+    // auto tensor_type = ort.GetTensorElementType(tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+	std::vector<std::vector<int64_t>> input_shapes;
+
+    auto xshape = tensor_shape.data();
+	auto xdim = tensor_shape.size();
+
     TensorShape x_shape(xshape, xdim);
     mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
     std::string dims_str;
@@ -199,7 +213,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
         SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));
 
     if (primitive == nullptr) {
-      auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(input_tensors, params);
+      auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(ort, context, params);
       primitive = subgraph_primitive.get();
       SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
     }
@@ -218,15 +232,13 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
 }  // namespace
 
 template <typename T>
-Status MkldnnFuncKernel<T>::Compute(const ONNXRunTimeTensor* input_tensors, const size_t num_inputs,
-                                    ONNXRunTimeTensor* const output_tensors, const size_t num_outputs) const {
+Status MkldnnFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Status status;
-  ORT_UNUSED_PARAMETER(num_inputs);
-  ORT_UNUSED_PARAMETER(num_outputs);
+  Ort::CustomOpApi ort{*api};
 
   try {
-    SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(input_tensors, params_);
-    status = primitive->Compute(input_tensors, output_tensors);
+    SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(ort, context, params_);
+    status = primitive->Compute(context);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
                            ", message: ", e.message.c_str());

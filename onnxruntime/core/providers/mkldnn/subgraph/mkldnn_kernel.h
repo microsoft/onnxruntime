@@ -8,6 +8,7 @@
 
 #include "mkldnn.hpp"
 #include "core/common/cpuid_info.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/mkldnn/subgraph/subgraph.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
 
@@ -26,18 +27,18 @@ class MklDnnKernel {
   }
   virtual ~MklDnnKernel(){};
 
-  virtual Status CreatePrimitives(const ONNXRunTimeTensor* input_tensors,
+  virtual Status CreatePrimitives(Ort::CustomOpApi ort,
+                                  OrtKernelContext* context,
                                   mkldnn::engine& cpu_engine,
                                   std::vector<mkldnn::primitive>& net,
                                   mkldnn::memory::format& src_fmt) = 0;
 
-  virtual void ReorderWeights(const ONNXRunTimeTensor* input_tensors, mkldnn::engine& cpu_engine) {
-    ORT_UNUSED_PARAMETER(input_tensors);
+  virtual void ReorderWeights(Ort::CustomOpApi ort, OrtKernelContext* context, mkldnn::engine& cpu_engine) {
+    ORT_UNUSED_PARAMETER(ort);
     ORT_UNUSED_PARAMETER(cpu_engine);
   }
 
-  virtual Status Bind(const ONNXRunTimeTensor* input_tensors,
-                      ONNXRunTimeTensor* const output_tensors) = 0;
+  virtual Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) = 0;
 
  protected:
   virtual void ReadAttributes(const NodeAttributes& attributes,
@@ -76,9 +77,9 @@ class MklDnnKernel {
                             mkldnn::memory::data_type& data_type,
                             std::vector<mkldnn::primitive>& net);
 
-  void AllocateMemoryAndReorderIfNeeded(ONNXRunTimeTensor* const output_tensors, const DType& dtype);
+  //void AllocateMemoryAndReorderIfNeeded(const OrtCustomOpApi* api);
 
-  void AllocateOutputTensor(ONNXRunTimeTensor* const output_tensors, int index, const int64_t* shape, size_t dim, const DType& dtype);
+  //void AllocateOutputTensor(const OrtCustomOpApi* api, int index, const int64_t* shape, size_t dim);
 
   mkldnn::memory::format GetSourceFormat(int dim_size);
 
