@@ -326,3 +326,17 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ### Using other compilers
 (TODO)
+
+## Android Builds
+
+### Cross compiling on Linux
+
+1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
+
+2. Get a pre-compiled protoc:
+
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
+
+3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it. 
+
+Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
