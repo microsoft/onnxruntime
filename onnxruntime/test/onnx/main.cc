@@ -336,7 +336,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"mvn", "disable reason"},
       {"operator_add_broadcast", "disable reason"},
       {"operator_add_size1_broadcast", "disable reason"},
       {"operator_add_size1_right_broadcast", "disable reason"},
@@ -426,6 +425,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"dynamic_slice", "This model uses contrib ops."});
   broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
   broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
+  broken_tests.insert({"mvn", "This model uses contrib ops.", {8}});
 #endif
 
   int result = 0;

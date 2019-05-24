@@ -3,10 +3,6 @@
 
 // Thrust code needs to be compiled with nvcc
 #include <memory>
-#include <mutex>
-#include <thrust/device_vector.h>
-#include <thrust/execution_policy.h>
-#include <thrust/fill.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cudnn_common.h"
@@ -15,18 +11,43 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
+__global__ void _Fill(
+    T* output_data,
+    T val,
+    CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  output_data[id] = val;
+}
+
+template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
  public:
-  ConstantBufferImpl(T val) : val_(val) {}
+  ConstantBufferImpl(T val) : val_(val), buffer_(nullptr), count_(0) {
+  }
+  ~ConstantBufferImpl() {
+    if (buffer_)
+      cudaFree(buffer_);
+  }
 
   virtual const T* GetBuffer(size_t count) {
-    buffer_.resize(count);
-    thrust::fill(buffer_.begin(), buffer_.end(), val_);
-    return buffer_.data().get();
+    if (count > count_) {
+      if (buffer_) {
+        cudaFree(buffer_);
+        buffer_ = nullptr;
+      }
+      CUDA_CALL_THROW(cudaMalloc(&buffer_, count * sizeof(T)));
+      count_ = count;
+
+      int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+      CUDA_LONG N = static_cast<CUDA_LONG>(count);
+      _Fill<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(buffer_, val_, N);
+    }
+    return buffer_;
   }
 
  private:
-  thrust::device_vector<T> buffer_;
+  T* buffer_;
+  size_t count_;
   T val_;
 };
 
