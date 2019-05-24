@@ -820,14 +820,14 @@ bool CUDAExecutionProvider::RNNNeedFallbackToCPU(const onnxruntime::Node& node,
       }
     }
 
-    if ("GRU" == op_type &&
-        "linear_before_reset" == attr_name &&
-        ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
-      // cudnn GRU only support linear_before_reset = 1
-      if (1 != attr_value.i()) {
-        return true;
-      }
-    }
+    //if ("GRU" == op_type &&
+    //    "linear_before_reset" == attr_name &&
+    //    ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
+    //  // cudnn GRU only support linear_before_reset = 1
+    //  if (1 != attr_value.i()) {
+    //    return true;
+    //  }
+    //}
   }
 
   if ("LSTM" == op_type) {
