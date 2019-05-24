@@ -183,7 +183,11 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     if (node->OpType() == "Conv") {
       mkldnn_node.weight_name = node->InputDefs()[1]->Name();
     }
+<<<<<<< HEAD
     for (size_t i = 0; i < node_inputs.size(); i++) {
+=======
+    for (int i = 0; i < static_cast<int>(node_inputs.size()); i++) {
+>>>>>>> Linux compile errors fix
       auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
       if (iter != output_to_source_node_map.end())
         mkldnn_node.parent_nodes.push_back(iter->second);
@@ -198,7 +202,11 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
   }
 
   // Add inputs which are not in the outputs vector.
+<<<<<<< HEAD
   for (size_t i = 0; i < node_inputs.size(); i++) {
+=======
+  for (int i = 0; i < static_cast<int>(node_inputs.size()); i++) {
+>>>>>>> Linux compile errors fix
     auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), node_inputs[i]->Name());
     if (itr == sub_var.outputs.end()) {
       sub_var.inputs.push_back(node_inputs[i]->Name());
@@ -256,12 +264,16 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     if (node == nullptr) {
       node_index++;
       continue;
+<<<<<<< HEAD
     }
 
     if (IsDimensionSupported(node) == false) {
       node_index++;
       continue;
     }
+=======
+	}
+>>>>>>> Linux compile errors fix
 
     auto op_it = mkldnn_ops_.find(node->OpType());
     if (op_it != mkldnn_ops_.end()) {
