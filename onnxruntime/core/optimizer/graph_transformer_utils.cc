@@ -27,6 +27,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
+      rules.push_back(std::make_unique<UnsqueezeElimination>());
       break;
 
     case TransformerLevel::Level2:
