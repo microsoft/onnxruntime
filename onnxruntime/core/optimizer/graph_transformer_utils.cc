@@ -11,6 +11,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
 
 namespace onnxruntime {
 
@@ -28,6 +29,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
       rules.push_back(std::make_unique<UnsqueezeElimination>());
+      rules.push_back(std::make_unique<EliminateDropout>());
       break;
 
     case TransformerLevel::Level2:
