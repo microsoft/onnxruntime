@@ -435,7 +435,7 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
   }
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    CompleteAsyncInference(input_tensors, batch_slice_idx, inf_req_idx);
+    CompleteAsyncInference(output_tensors, batch_slice_idx, inf_req_idx);
   }
 }
 
