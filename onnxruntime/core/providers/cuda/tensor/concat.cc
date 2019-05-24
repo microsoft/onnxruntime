@@ -44,8 +44,6 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
         cudaMemcpyDeviceToDevice));
 
     output_offset += prep.axis_pitch;
-
-    const Tensor* data = ctx->Input<Tensor>(input_index);
   }
   return Status::OK();
 }  // namespace cuda

@@ -11,11 +11,11 @@ namespace cuda {
 template <typename T>
 class ConvTransposeWithDynamicPads : public ::onnxruntime::cuda::ConvTranspose<T> {
  public:
-  ConvTransposeWithDynamicPads(const OpKernelInfo& info) : ConvTranspose<T>(info) {
+  ConvTransposeWithDynamicPads(const OpKernelInfo& info) : ::onnxruntime::cuda::ConvTranspose<T>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    return ConvTranspose<T>::DoConvTranspose(context, true);
+    return ::onnxruntime::cuda::ConvTranspose<T>::DoConvTranspose(context, true);
   }
 };
 }  // namespace cuda

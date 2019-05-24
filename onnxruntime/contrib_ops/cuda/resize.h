@@ -12,12 +12,12 @@ namespace cuda {
 template <typename T>
 class Resize : public ::onnxruntime::cuda::Upsample<T> {
  public:
-  Resize(OpKernelInfo info) : Upsample(info) {
+  Resize(OpKernelInfo info) : ::onnxruntime::cuda::Upsample<T>(info) {
     UpsampleBase::is_resize = true;
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    return Upsample::ComputeInternal(context);
+    return ::onnxruntime::cuda::Upsample<T>::ComputeInternal(context);
   }
 };
 

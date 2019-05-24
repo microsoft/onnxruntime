@@ -525,7 +525,7 @@ Sample echo operator.)DOC");
           "",
           "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext&) {
         //ONNX_NAMESPACE::convPoolTypeAndShapeInference(ctx, false, true);
       });
 

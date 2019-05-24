@@ -6,13 +6,9 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
-#<<<<<<< HEAD
 file(GLOB onnxruntime_contrib_ops_srcs
-#=======
-#file(GLOB_RECURSE onnxruntime_contrib_ops_srcs CONFIGURE_DEPENDS
-#>>>>>>> master
   "${ONNXRUNTIME_ROOT}/contrib_ops/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.h"
@@ -64,6 +60,7 @@ if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/contrib_kernels_cuda.cc"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
