@@ -34,14 +34,16 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
 
-
 //Disabled because of accuracy issues for MYRIAD FP16
 #ifdef OPENVINO_CONFIG_MYRIAD
+    is_openvino_supported = false;
+#else
+    is_openvino_supported = true;
+#endif
 
   if(!is_openvino_supported){
       excluded_providers.insert(kOpenVINOExecutionProvider);
   }
-#endif
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }

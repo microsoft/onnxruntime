@@ -240,10 +240,11 @@ TEST(MathOpTest, Mul) {
 
 #ifdef OPENVINO_CONFIG_MYRIAD
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
-}
 #else
   test.Run();
 #endif
+
+}
 
 
 TEST(MathOpTest, Div_int32) {
