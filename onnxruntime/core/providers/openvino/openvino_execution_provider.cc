@@ -219,10 +219,8 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
       // Prepare ModelProto Input to Python
       PyObject* pFileName = PyByteArray_FromStringAndSize(model_proto_strbuf.c_str(), model_proto_strbuf.size());
-      PyObject* pDynDim = PyLong_FromLong(DYNAMIC_DIMENSION);
-      PyObject* pArgs = PyTuple_New(2);
+      PyObject* pArgs = PyTuple_New(1);
       PyTuple_SetItem(pArgs, 0, pFileName);
-      PyTuple_SetItem(pArgs, 1, pDynDim);
 
       if (pFunc && PyCallable_Check(pFunc)) {
         // Call the Python function
@@ -281,7 +279,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::shared_ptr<openvino_ep::OpenVINOGraph> openvino_graph;
     try {
       openvino_graph = std::make_shared<openvino_ep::OpenVINOGraph>(fused_node,
-                                                                    std::string(info_.device), DYNAMIC_DIMENSION);
+                                                                    std::string(info_.device));
 
     } catch (const char* msg) {
       std::cerr << "Caught Compiler exception: " << msg << std::endl;

@@ -19,8 +19,6 @@ from mo.utils.unsupported_ops import UnsupportedOps
 from mo.utils.utils import refer_to_faq_msg
 from mo.utils.version import get_version
 
-dyn_dim = 0
- 
 def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed: bool=True):
 
     for node_name in list(graph.nodes()):
@@ -133,12 +131,9 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
     for d in shape:
         dim = SubElement(element, 'dim')
         if d <= 0:
-            if(dyn_dim != 0):
-                d = dyn_dim
-            else:
-                d = 1
-               # raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
-               #         'wrong.'.format(d))
+            d = 1
+           # raise Error('The value "{}" for shape is less or equal to 0. May be the input shape of the topology is '
+           #         'wrong.'.format(d))
         if int(d) != d:
             raise Error('The value "{}" for shape is not integer.'.format(d))
         if not isinstance(d, np.int64):

@@ -402,9 +402,8 @@ def driver_entry(onnx_modelproto_bytes, precision : str):
 
     return weights, xml_string
 
-def convert_fp16(onnx_modelproto_bytes, dyn_dim=0):
+def convert_fp16(onnx_modelproto_bytes):
     try:
-        openvino_emitter.dyn_dim=dyn_dim
         init_logger('ERROR', False)
         framework = 'onnx'
 
@@ -418,9 +417,8 @@ def convert_fp16(onnx_modelproto_bytes, dyn_dim=0):
         #log.debug(traceback.format_exc())
         return 1
 
-def convert_fp32(onnx_modelproto_bytes, dyn_dim=0):
+def convert_fp32(onnx_modelproto_bytes):
     try:
-        openvino_emitter.dyn_dim=dyn_dim
         init_logger('ERROR', False)
         framework = 'onnx'
 

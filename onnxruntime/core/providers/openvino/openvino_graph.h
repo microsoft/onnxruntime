@@ -23,7 +23,7 @@ class OpenVINOGraph {
   InferenceEngine::Precision precision_;
   const onnxruntime::Graph* onnx_graph_;
 
-  OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info, long dyn_dim);
+  OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info);
 
   std::shared_ptr<InferenceEngine::CNNNetwork> GetCNNNetwork();
 
@@ -61,7 +61,6 @@ class OpenVINOGraph {
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
   mutable std::mutex compute_lock_;
-  long dyn_dim_;
 };
 }  // namespace openvino_ep
 

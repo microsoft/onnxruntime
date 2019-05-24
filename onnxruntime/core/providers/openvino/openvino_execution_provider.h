@@ -11,10 +11,6 @@
 namespace onnxruntime {
 
 constexpr const char* OPENVINO = "OpenVINO";
-
-constexpr long ENABLE_DYNAMIC_INPUT_SHAPE = 0;
-constexpr long DYNAMIC_DIMENSION = 0;
-
 using namespace InferenceEngine;
 
 // Information needed to construct OpenVINO execution providers.
