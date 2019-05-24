@@ -166,7 +166,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     if (node->OpType() == "Conv") {
       mklnode.weight_name = node->InputDefs()[1]->Name();
     }
-    for (int i = 0; i < node_inputs.size(); i++) {
+    for (int i = 0; i < static_cast<int>(node_inputs.size()); i++) {
       auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
       if (iter != output_to_source_node_map.end())
         mklnode.parent_nodes.push_back(iter->second);
@@ -181,7 +181,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
   }
 
   // Add inputs which are not in the outputs vector.
-  for (int i = 0; i < node_inputs.size(); i++) {
+  for (int i = 0; i < static_cast<int>(node_inputs.size()); i++) {
     auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), node_inputs[i]->Name());
     if (itr == sub_var.outputs.end()) {
       sub_var.inputs.push_back(node_inputs[i]->Name());
@@ -227,8 +227,12 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
   while (node_index < graph_viewer.MaxNodeIndex()) {
     auto node = graph_viewer.GetNode(node_index);
-    auto op_it = mkldnn_ops_.find(node->OpType());
+    if (node == nullptr) {
+      node_index++;
+      continue;
+	}
 
+    auto op_it = mkldnn_ops_.find(node->OpType());
     if (op_it != mkldnn_ops_.end()) {
       sub_var.subgraph_node_indexes.push_back(node->Index());
 
@@ -335,7 +339,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   std::string subgraph_id = std::to_string(sub_var.subgraph_index);
   sub_var.subgraph_index++;
 
-  // This is a list of initializers that subgraph considers as constants. 
+  // This is a list of initializers that subgraph considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> input_initializers;
 
@@ -403,7 +407,7 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
         delete static_cast<onnxruntime::mkl_dnn::MkldnnFuncKernel<float>*>(state);
     };
 
-   compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::mkl_dnn::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<mkl_dnn::MkldnnFuncKernel<float>*>(state);
       const Status compute_status = custom_op->Compute(api, context);
       return compute_status == Status::OK() ? 0 : 1;
