@@ -15,7 +15,7 @@ namespace test {
 
 using namespace ::testing;
 //TVM is not working with StackTrace now.
-#ifndef USE_TVM
+#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
 TEST(StacktraceTests, BasicTests) {
   auto result = ::onnxruntime::GetStackTrace();
 
