@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-// Disable TensorRT on the tests because of errors in the parser
+// Disable TensorRT on the tests because of SegFault errors in the parser
 
 TEST(TensorOpTest, Unsqueeze_1) {
   OpTester test("Unsqueeze");
@@ -33,7 +33,7 @@ TEST(TensorOpTest, Unsqueeze_2) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {1, 2, 3, 4, 1}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, Unsqueeze_3) {
@@ -42,7 +42,7 @@ TEST(TensorOpTest, Unsqueeze_3) {
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
@@ -51,7 +51,7 @@ TEST(TensorOpTest, Unsqueeze_Duplicate) {
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectFailure, "'axes' has a duplicate axis", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "'axes' has a duplicate axis");
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
@@ -60,7 +60,7 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   test.AddAttribute("axes", std::vector<int64_t>{4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
 }
 
 }  // namespace test

@@ -69,7 +69,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
 
-  // note that onnxruntime MLValue is row major, while cublas is column major,
+  // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
       Base::CublasHandle(),

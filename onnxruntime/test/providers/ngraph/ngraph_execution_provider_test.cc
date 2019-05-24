@@ -64,7 +64,7 @@ ONNX_NAMESPACE::OpSchema GetUnSupportedOpSchema() {
 }
 
 void add_feeds(NameMLValMap& feeds, std::string name, std::vector<int64_t> dims, std::vector<float> value) {
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, value, &ml_value);
   feeds.insert(std::make_pair(name, ml_value));
 }
@@ -104,7 +104,7 @@ void RunTest(const std::string& model_path, const NameMLValMap& feeds, const std
   run_options.run_tag = "nGraph EP test tag";
   run_options.run_log_verbosity_level = 1;
 
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
   status = session_object.Run(run_options, feeds, output_names, &fetches);
 
   if (!status.IsOK()) {
@@ -285,7 +285,6 @@ TEST(NGraphExecutionProviderTest, InOut_isAlso_GraphOut) {
   RunTest("testdata/ngraph/InOut_isAlso_GraphOut.onnx", feeds, {"Y", "Z"}, expected_shapes, expected_values);
 }
 
-
 /*
     (A)    (A)
       \    /
@@ -341,7 +340,7 @@ This test is to ensure, we do not have cyclic dependent sub-graphs.
 Example: Sub-Graph-1{1,2,3,5} is invalid because the output of this cluster is input to UnSupportedOp whose output is again input to the same cluster.
 
 */
-TEST(NGraphExecutionProviderTest, Independent_SubGraphs) {
+TEST(NGraphExecutionProviderTest, DISABLED_Independent_SubGraphs) {
   NameMLValMap feeds;
   add_feeds(feeds, "A", {4}, {1.0f, 2.0f, 3.0f, 4.0f});
 

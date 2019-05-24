@@ -586,11 +586,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var seq = outNode2.AsEnumerable<NamedOnnxValue>();
 
                     // try-cast first element in sequence to map/dictionary type
-                    var map = seq.First().AsDictionary<Int64, float>();
-                    //verify values are valid
-                    Assert.Equal(0.25938290, map[0], 6);
-                    Assert.Equal(0.40904793, map[1], 6);
-                    Assert.Equal(0.33156919, map[2], 6);
+                    if (System.Environment.Is64BitProcess)
+                    {
+                        var map = seq.First().AsDictionary<Int64, float>();
+                        Assert.Equal(0.25938290, map[0], 6);
+                        Assert.Equal(0.40904793, map[1], 6);
+                        Assert.Equal(0.33156919, map[2], 6);
+                    }
+                    else // 32-bit
+                    {
+                        var map = seq.First().AsDictionary<long, float>();
+                        Assert.Equal(0.25938290, map[0], 6);
+                        Assert.Equal(0.40904793, map[1], 6);
+                        Assert.Equal(0.33156919, map[2], 6);
+                    }
                 }
             }
         }
@@ -687,7 +696,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
             "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
-            "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetDimensionsCount",
+            "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
             "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
 
             var hModule = LoadLibrary(module);

@@ -21,7 +21,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
     LabelEncoder);
 
 Status LabelEncoder::Compute(OpKernelContext* context) const {
-  const Tensor* tensor_pointer = context->Input<Tensor>(0);
+  const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& shape = X.Shape();

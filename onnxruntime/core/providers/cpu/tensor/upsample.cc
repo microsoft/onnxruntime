@@ -75,7 +75,7 @@ Status UpsampleNearest(const T* input,
       size_t cur_idx = i;
 
       int64_t base = 1;
-      for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
+      for (auto j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
         auto tmp = cur_idx % output_shape[j];
 
         if (scales[j] < 1) {  //downsample
@@ -108,11 +108,13 @@ Status upsampleLiner(const T* input,
     return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
-    std::vector<int64_t> val1, val2;
-    std::vector<float> d1, d2;
+    std::vector<int64_t> val1;
+    std::vector<int64_t> val2;
+    std::vector<float> d1;
+    std::vector<float> d2;
     size_t cur_idx = i;
     //val1, vla2, d1, d2 are in reverse order
-    for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
+    for (auto j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
       T v = std::min((cur_idx % output_shape[j]) / scales[j], static_cast<float>(input_shape[j] - 1));
       auto v1 = std::min(static_cast<int64_t>(v), input_shape[j] - 1);
       auto v2 = std::min(v1 + 1, input_shape[j] - 1);
@@ -135,7 +137,7 @@ Status upsampleLiner(const T* input,
       float w = 1.0f;
       size_t old_idx = 0;
       size_t base = 1;
-      for (int64_t j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
+      for (auto j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
         int64_t reverse_idx = static_cast<int64_t>(n_dim - 1) - j;
         w *= (cur % 2) ? d1[reverse_idx] : d2[reverse_idx];
         old_idx += ((cur % 2) ? val2[reverse_idx] : val1[reverse_idx]) * base;
@@ -160,20 +162,20 @@ void upsampleBilinear(
     const T* Xdata,
     T* Ydata,
     AllocatorPtr& alloc) {
-  int64_t output_width = static_cast<int64_t>(input_width * width_scale);
-  int64_t output_height = static_cast<int64_t>(input_height * height_scale);
+  auto output_width = static_cast<int64_t>(input_width * width_scale);
+  auto output_height = static_cast<int64_t>(input_height * height_scale);
 
   size_t inx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
   size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
   auto inx_scale_data_buffer = alloc->Alloc(inx_buffer_size + scale_buffer_size);
   BufferUniquePtr inx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
-  int64_t* inx_data = static_cast<int64_t*>(inx_scale_data_buffer_holder.get());
+  auto* inx_data = static_cast<int64_t*>(inx_scale_data_buffer_holder.get());
   int64_t* input_width_mul_y1 = inx_data;
   int64_t* input_width_mul_y2 = inx_data + output_height;
   int64_t* in_x1 = inx_data + 2 * output_height;
   int64_t* in_x2 = inx_data + 2 * output_height + output_width;
 
-  float* scale_data = reinterpret_cast<float*>( in_x2 + output_width );
+  auto* scale_data = reinterpret_cast<float*>(in_x2 + output_width);
   float* dy1 = scale_data;
   float* dy2 = scale_data + output_height;
   float* dx1 = scale_data + 2 * output_height;
@@ -230,7 +232,7 @@ void upsampleBilinear(
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
   const std::vector<int64_t>& dims = X->Shape().GetDims();
@@ -253,8 +255,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       if (dims.size() != 4)
         return Status(ONNXRUNTIME, FAIL, "Upsample: linear mode upsample only support 4-D tensor with NCHW layout");
 
-      const int64_t batch_size = dims[0], num_channels = dims[1];
-      const int64_t input_height = dims[2], input_width = dims[3];
+      const int64_t batch_size = dims[0];
+      const int64_t num_channels = dims[1];
+      const int64_t input_height = dims[2];
+      const int64_t input_width = dims[3];
 
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -273,7 +277,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     return BaseCompute(context, scales_);
   }
 
-  const Tensor* scales = context->Input<Tensor>(1);
+  const auto* scales = context->Input<Tensor>(1);
   ORT_ENFORCE(scales != nullptr);
   int64_t scales_size = scales->Shape().Size();
   std::vector<float> scales_arrary(scales_size);

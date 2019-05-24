@@ -18,6 +18,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   }
 
   std::vector<int64_t> axes;
+  axes.reserve(attr->ints_size());
   for (int i = 0; i < attr->ints_size(); i++) {
     axes.push_back(static_cast<int64_t>(attr->ints(i)));
   }

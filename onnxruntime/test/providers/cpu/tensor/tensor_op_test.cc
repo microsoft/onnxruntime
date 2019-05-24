@@ -12,7 +12,8 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
-// Disable TensorRT on some of the tests because of unsupported data types
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
+// Those tests will fallback to other EPs.
 
 TEST(TensorOpTest, Reshape) {
   OpTester test("Reshape");
@@ -20,7 +21,7 @@ TEST(TensorOpTest, Reshape) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});  // Nuphar only supports reshape shape from initializer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});  // Nuphar only supports reshape shape from initializer
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyDim) {
@@ -29,7 +30,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
   test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
   test.AddInput<int64_t>("shape", {0}, {}, true);
   test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, ReshapeWithInitializer) {
@@ -38,7 +39,7 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2}, true);
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, Identity) {
@@ -54,7 +55,7 @@ TEST(TensorOpTest, IdentityString) {
   std::vector<std::string> X{"this", "is", "a", "test", "for", "identity"};
   test.AddInput<std::string>("input", {2, 3}, X);
   test.AddOutput<std::string>("output", {2, 3}, X);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, ShapeTest2D) {
@@ -62,7 +63,7 @@ TEST(TensorOpTest, ShapeTest2D) {
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<int64_t>("shape", {2}, {2, 3});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: volume of dimensions is not consistent with weights size
 }
 
 TEST(TensorOpTest, ShapeTest3D) {
@@ -70,7 +71,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 
   test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: volume of dimensions is not consistent with weights size
 }
 
 template <typename SrcType,

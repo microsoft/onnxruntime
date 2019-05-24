@@ -22,7 +22,7 @@ class IdentityOp final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     ORT_ENFORCE(X != nullptr);
     const TensorShape& shape = X->Shape();
     Tensor* Y = context->Output(0, shape);
@@ -36,8 +36,8 @@ class IdentityOp final : public OpKernel {
         memcpy(target, source, shape.Size() * X_type->Size());
       } else {
         // handle std::string
-        const std::string* src = X->template Data<std::string>();
-        std::string* dst = Y->template MutableData<std::string>();
+        const auto* src = X->template Data<std::string>();
+        auto* dst = Y->template MutableData<std::string>();
         std::copy(src, src + shape.Size(), dst);
       }
     }

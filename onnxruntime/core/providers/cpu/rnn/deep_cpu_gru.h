@@ -45,7 +45,7 @@ class DeepCpuGruOp final : public OpKernel {
       }
     }
 
-    ORT_ENFORCE(activation_func_names.size() == num_directions_ * 2);
+    ORT_ENFORCE(activation_func_names.size() == static_cast<size_t>(num_directions_) * 2);
 
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,
