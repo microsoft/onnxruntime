@@ -6,11 +6,43 @@
 #include "predict_request_handler.h"
 #include "server_configuration.h"
 
+#define VALUE_TO_STRING(x) #x
+#define VALUE(x) VALUE_TO_STRING(x)
+#define VAR_NAME_VALUE(var) #var "="  VALUE(var)
+
+#define LOCAL_BUILD_VERSION "local_build"
+#if !defined(SRV_VERSION)
+#define SRV_VERSION LOCAL_BUILD_VERSION
+#endif
+#pragma message(VAR_NAME_VALUE(SRV_VERSION))
+
+#define DEFAULT_COMMIT_ID "default"
+#if !defined(LATEST_COMMIT_ID)
+#define LATEST_COMMIT_ID DEFAULT_COMMIT_ID
+#endif
+#pragma message(VAR_NAME_VALUE(LATEST_COMMIT_ID))
+
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace server = onnxruntime::server;
 
 int main(int argc, char* argv[]) {
+  // Here we use std::cout print out the version and latest commit id,
+  // to make sure in case even logger has problem, we still have the version information and commit id.
+  std::string version = SRV_VERSION;
+  if (version.empty()){
+    version = LOCAL_BUILD_VERSION;
+  }
+
+  std::string commit_id = LATEST_COMMIT_ID;
+  if (commit_id.empty()){
+    commit_id = DEFAULT_COMMIT_ID;
+  }
+
+  std::cout << "Version: " << version << std::endl;
+  std::cout << "Commit ID: " << commit_id << std::endl;
+  std::cout << std::endl;
+
   server::ServerConfiguration config{};
   auto res = config.ParseInput(argc, argv);
 
