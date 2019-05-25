@@ -18,8 +18,8 @@ Abstract:
 #pragma once
 // clang-format off
 
-#include <stdlib.h>
-#include <stdint.h>
+#include <cstdlib>
+#include <cstdint>
 
 //
 // Define the calling convention for Windows targets.
@@ -249,10 +249,11 @@ MlasConvertHalfToFloatBuffer(
     );
 
 //
-//
+// Buffer reordering routines.
 //
 
 void
+MLASCALL
 MlasReorderInput(
     const int64_t* InputShape,
     const float* S,
@@ -260,6 +261,7 @@ MlasReorderInput(
     );
 
 void
+MLASCALL
 MlasReorderOutput(
     const int64_t* OutputShape,
     const float* S,
@@ -267,14 +269,8 @@ MlasReorderOutput(
     );
 
 void
-MlasConvReorderFilter(
-    const int64_t* FilterShape,
-    const float* S,
-    float* D
-    );
-
-void
-MlasConvReorderFilter2(
+MLASCALL
+MlasReorderFilterOIHWBiBo(
     const int64_t* FilterShape,
     const float* S,
     float* D
@@ -282,7 +278,25 @@ MlasConvReorderFilter2(
 
 void
 MLASCALL
-MlasConvNchwc(
+MlasReorderFilterOIHWBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
+
+//
+// Single precision NCHWc routines.
+//
+
+size_t
+MLASCALL
+MlasNchwcGetBlockSize(
+    void
+    );
+
+void
+MLASCALL
+MlasNchwcConv(
     size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
@@ -302,7 +316,7 @@ MlasConvNchwc(
 
 void
 MLASCALL
-MlasPoolNchwc(
+MlasNchwcPool(
     MLAS_POOLING_KIND PoolingKind,
     size_t Dimensions,
     const int64_t* InputShape,

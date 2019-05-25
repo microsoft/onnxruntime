@@ -55,32 +55,34 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
           group_count = 1;
         }
 
+        const size_t nchwc_block_size = MlasNchwcGetBlockSize();
+
         bool do_reorder_input = true;
-        bool do_reorder_format1 = true;
+        bool reorder_filter_OIHWBo = false;
 
         if (group_count > 1) {
           if (input_channels == 1 && output_channels == group_count) {
-            // Depthwise convolution needs alternate filter formatting.
-            do_reorder_format1 = false;
+            // Depthwise convolution.
+            reorder_filter_OIHWBo = true;
+          } else if ((input_channels % nchwc_block_size) != 0) {
+            continue;
           } else {
-            if ((output_channels % group_count) != 0) {
-              continue;
-            }
-            if ((input_channels % 8) != 0 || ((output_channels / group_count) % 8) != 0) {
+            if (((output_channels % group_count) != 0) ||
+                (((output_channels / group_count) % nchwc_block_size) != 0)) {
               continue;
             }
           }
         } else {
-          if (input_channels < 8) {
+          if (static_cast<size_t>(input_channels) < nchwc_block_size) {
             // Use NCHW input buffer directly.
+            reorder_filter_OIHWBo = true;
             do_reorder_input = false;
-            do_reorder_format1 = false;
-          } else if ((input_channels % 8) != 0) {
+          } else if ((input_channels % nchwc_block_size) != 0) {
             continue;
           }
         }
 
-        if ((output_channels % 8) != 0) {
+        if ((output_channels % nchwc_block_size) != 0) {
           continue;
         }
 
@@ -90,10 +92,10 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         std::vector<float> reordered_filter(conv_W->size());
 
         // Reorder the weights tensor statically.
-        if (do_reorder_format1) {
-          MlasConvReorderFilter(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+        if (reorder_filter_OIHWBo) {
+          MlasReorderFilterOIHWBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
         } else {
-          MlasConvReorderFilter2(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+          MlasReorderFilterOIHWBiBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
         }
 
         new_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
@@ -121,7 +123,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         if (do_reorder_input) {
           auto input_original_arg = conv_inputs[0];
           std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
-          auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
+          auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, nullptr);
           Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderInput"),
                                                    "ReorderInput",
                                                    "ReorderInput",
@@ -136,7 +138,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         // Reorder the output tensor.
         auto output_original_arg = conv_outputs[0];
         std::string output_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
-        auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, output_original_arg->TypeAsProto());
+        auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
         Node& reorder_output_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
                                                   "ReorderOutput",
                                                   "ReorderOutput",
@@ -191,7 +193,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         // Reorder the input tensor.
         auto input_original_arg = pool_inputs[0];
         std::string input_reorder_def_name = graph.GenerateNodeArgName("reorderInput");
-        auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, input_original_arg->TypeAsProto());
+        auto* input_reorder_arg = &graph.GetOrCreateNodeArg(input_reorder_def_name, nullptr);
         Node& reorder_input_node = graph.AddNode(graph.GenerateNodeName("ReorderInput"),
                                                  "ReorderInput",
                                                  "ReorderInput",
@@ -205,7 +207,7 @@ class NchwcConvPoolTransformer : public onnxruntime::GraphTransformer {
         // Reorder the output tensor.
         auto output_original_arg = pool_outputs[0];
         std::string output_reorder_def_name = graph.GenerateNodeArgName("reorderOutput");
-        auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, output_original_arg->TypeAsProto());
+        auto* output_reorder_arg = &graph.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
         Node& reorder_output_node = graph.AddNode(graph.GenerateNodeName("ReorderOutput"),
                                                   "ReorderOutput",
                                                   "ReorderOutput",

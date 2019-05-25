@@ -99,7 +99,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
     ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", ConvBase::activation_);
   }
 
-  MlasConvNchwc(kernel_shape.size(),
+  MlasNchwcConv(kernel_shape.size(),
                 X->Shape().GetDims().data(),
                 kernel_shape.data(),
                 dilations.data(),

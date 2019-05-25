@@ -1,0 +1,625 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    reorder.cpp
+
+Abstract:
+
+    This module implements routines to reorder buffers to and from blocked
+    formats.
+
+--*/
+
+#include "mlasi.h"
+
+MLAS_FORCEINLINE
+void
+MlasReorderGatherFloat32x4(
+    const float* S,
+    float* D,
+    size_t GatherStride
+    )
+/*++
+
+Routine Description:
+
+    This routine gathers floats from the source buffer and writes a vector to
+    the destination buffer.
+
+Arguments:
+
+    S - Supplies the address of the source buffer.
+
+    D - Supplies the address of the destination buffer.
+
+    GatherStride - Supplies the stride to read elements from the source buffer.
+
+Return Value:
+
+    None.
+
+--*/
+{
+#if defined(MLAS_SSE41_INTRINSICS)
+    __m128 v = _mm_load_ss(&S[0 * GatherStride]);
+    v = _mm_insert_ps(v, _mm_load_ss(&S[1 * GatherStride]), 0x10);
+    v = _mm_insert_ps(v, _mm_load_ss(&S[2 * GatherStride]), 0x20);
+    v = _mm_insert_ps(v, _mm_load_ss(&S[3 * GatherStride]), 0x30);
+
+    _mm_storeu_ps(D, v);
+#else
+    float f0 = S[0 * GatherStride];
+    float f1 = S[1 * GatherStride];
+    float f2 = S[2 * GatherStride];
+    float f3 = S[3 * GatherStride];
+
+    D[0] = f0;
+    D[1] = f1;
+    D[2] = f2;
+    D[3] = f3;
+#endif
+}
+
+MLAS_FORCEINLINE
+void
+MlasReorderScatterFloat32x4(
+    const float* S,
+    float* D,
+    size_t ScatterStride
+    )
+/*++
+
+Routine Description:
+
+    This routine scatters a vector read from the source buffer to the
+    destination buffer.
+
+Arguments:
+
+    S - Supplies the address of the source buffer.
+
+    D - Supplies the address of the destination buffer.
+
+    ScatterStride - Supplies the stride to write elements to the destination
+        buffer.
+
+Return Value:
+
+    None.
+
+--*/
+{
+#if defined(MLAS_SSE41_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)
+    MLAS_FLOAT32X4 v = MlasLoadFloat32x4(S);
+
+    MlasStoreLaneFloat32x4<0>(&D[ScatterStride * 0], v);
+    MlasStoreLaneFloat32x4<1>(&D[ScatterStride * 1], v);
+    MlasStoreLaneFloat32x4<2>(&D[ScatterStride * 2], v);
+    MlasStoreLaneFloat32x4<3>(&D[ScatterStride * 3], v);
+#else
+    float f0 = S[0];
+    float f1 = S[1];
+    float f2 = S[2];
+    float f3 = S[3];
+
+    D[ScatterStride * 0] = f0;
+    D[ScatterStride * 1] = f1;
+    D[ScatterStride * 2] = f2;
+    D[ScatterStride * 3] = f3;
+#endif
+}
+
+MLAS_FORCEINLINE
+void
+MlasReorderTransposeFloat32x4x4(
+    const float* S,
+    float* D,
+    size_t GatherStride,
+    size_t ScatterStride
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes a 4x4 float matrix read from the source buffer and
+    writes the result to the destination buffer.
+
+Arguments:
+
+    S - Supplies the address of the source buffer.
+
+    D - Supplies the address of the destination buffer.
+
+    GatherStride - Supplies the stride to read elements from the source buffer.
+
+    ScatterStride - Supplies the stride to write vectors to the destination
+        buffer.
+
+Return Value:
+
+    None.
+
+--*/
+{
+#if defined(MLAS_SSE2_INTRINSICS)
+    MLAS_FLOAT32X4 v[4];
+    MLAS_FLOAT32X4 t[4];
+
+    v[0] = MlasLoadFloat32x4(&S[GatherStride * 0]);
+    v[1] = MlasLoadFloat32x4(&S[GatherStride * 1]);
+    v[2] = MlasLoadFloat32x4(&S[GatherStride * 2]);
+    v[3] = MlasLoadFloat32x4(&S[GatherStride * 3]);
+
+    t[0] = _mm_unpacklo_ps(v[0], v[1]);
+    t[2] = _mm_unpackhi_ps(v[0], v[1]);
+    t[1] = _mm_unpacklo_ps(v[2], v[3]);
+    t[3] = _mm_unpackhi_ps(v[2], v[3]);
+
+    v[0] = _mm_movelh_ps(t[0], t[1]);
+    v[1] = _mm_movehl_ps(t[1], t[0]);
+    v[2] = _mm_movelh_ps(t[2], t[3]);
+    v[3] = _mm_movehl_ps(t[3], t[2]);
+
+    MlasStoreFloat32x4(&D[ScatterStride * 0], v[0]);
+    MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);
+    MlasStoreFloat32x4(&D[ScatterStride * 2], v[2]);
+    MlasStoreFloat32x4(&D[ScatterStride * 3], v[3]);
+#else
+    MlasReorderScatterFloat32x4(&S[GatherStride * 0], &D[0], ScatterStride);
+    MlasReorderScatterFloat32x4(&S[GatherStride * 1], &D[1], ScatterStride);
+    MlasReorderScatterFloat32x4(&S[GatherStride * 2], &D[2], ScatterStride);
+    MlasReorderScatterFloat32x4(&S[GatherStride * 3], &D[3], ScatterStride);
+#endif
+}
+
+void
+MLASCALL
+MlasReorderInput(
+    const int64_t* InputShape,
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine reorders an input buffer from NCHW to NCHWc format.
+
+Arguments:
+
+    InputShape - Supplies the shape of the input tensor.
+
+    S - Supplies the address of the source tensor.
+
+    D - Supplies the address of the destination tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t InputChannels = size_t(InputShape[0] * InputShape[1]);
+    const size_t InputSize = size_t(InputShape[2]) * size_t(InputShape[3]);
+
+    const MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+
+    for (size_t i = InputChannels; i > 0;) {
+
+        const size_t InputChannelsThisIteration = (std::min)(i, BlockSize);
+        i -= InputChannelsThisIteration;
+
+        const float* s = S;
+        float* d = D;
+        size_t InputSizeRemaining = InputSize;
+
+        for (; InputSizeRemaining >= 4; InputSizeRemaining -= 4) {
+
+            const float* ss = s;
+            float* dd = d;
+            size_t bc = 0;
+
+            for (; bc < InputChannelsThisIteration; bc += 4) {
+                MlasReorderTransposeFloat32x4x4(ss, dd, InputSize, BlockSize);
+                ss += 4 * InputSize;
+                dd += 4;
+            }
+
+            for (; bc < BlockSize; bc += 4) {
+                MlasStoreFloat32x4(dd, ZeroFloat32x4);
+                dd += 4;
+            }
+
+            s += 4;
+            d += 4 * BlockSize;
+        }
+
+        for (; InputSizeRemaining > 0; InputSizeRemaining--) {
+
+            const float* ss = s;
+            float* dd = d;
+            size_t bc = 0;
+
+            for (; bc < InputChannelsThisIteration; bc += 4) {
+                MlasReorderGatherFloat32x4(ss, dd, InputSize);
+                ss += 4 * InputSize;
+                dd += 4;
+            }
+
+            for (; bc < BlockSize; bc += 4) {
+                MlasStoreFloat32x4(dd, ZeroFloat32x4);
+                dd += 4;
+            }
+
+            s += 1;
+            d += 4 * BlockSize;
+        }
+
+        S += BlockSize * InputSize;
+        D += BlockSize * InputSize;
+    }
+}
+
+void
+MLASCALL
+MlasReorderOutput(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine reorders an output buffer from NCHWc to NCHW format.
+
+Arguments:
+
+    OutputShape - Supplies the shape of the output tensor.
+
+    S - Supplies the address of the source tensor.
+
+    D - Supplies the address of the destination tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t OutputChannels = size_t(OutputShape[0] * OutputShape[1]);
+    const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
+
+    //
+    // Transpose NCHWc blocks from the source buffer to the destination buffer.
+    //
+
+    for (size_t o = OutputChannels; o > 0;) {
+
+        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        o -= OutputChannelsThisIteration;
+
+        const float* s = S;
+        float* d = D;
+        size_t OutputSizeRemaining = OutputSize;
+
+        for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
+
+            const float* ss = s;
+            float* dd = d;
+
+            for (size_t bc = 0; bc < OutputChannelsThisIteration; bc += 4) {
+                MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
+                ss += 4;
+                dd += 4 * OutputSize;
+            }
+
+            s += 4 * BlockSize;
+            d += 4;
+        }
+
+        for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
+
+            const float* ss = s;
+            float* dd = d;
+
+            for (size_t bc = 0; bc < OutputChannelsThisIteration; bc += 4) {
+                MlasReorderScatterFloat32x4(ss, dd, OutputSize);
+                ss += 4;
+                dd += 4 * OutputSize;
+            }
+
+            s += BlockSize;
+            d += 1;
+        }
+
+        S += BlockSize * OutputSize;
+        D += BlockSize * OutputSize;
+    }
+}
+
+void
+MLASCALL
+MlasReorderFilterOIHWBiBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine reorders a filter buffer from OIHW to OIHWBiBo format.
+
+Arguments:
+
+    FilterShape - Supplies the shape of the filter tensor.
+
+    S - Supplies the address of the source tensor.
+
+    D - Supplies the address of the destination tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t OutputChannels = size_t(FilterShape[0]);
+    const size_t InputChannels = size_t(FilterShape[1]);
+    const size_t KernelHeight = size_t(FilterShape[2]);
+    const size_t KernelWidth = size_t(FilterShape[3]);
+
+    const size_t KernelSize = KernelHeight * KernelWidth;
+    const size_t InputStride = InputChannels * KernelSize;
+
+    const MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+
+    //
+    // Transform the filter tensor from format OIHW to OIHWBiBo:
+    //
+    //  OutputChannelBlock[0] = {
+    //      InputChannelBlock[0] = {
+    //          Kernel[0][0] = {
+    //              InputChannel[0] = { filter[0 filter[1] ... filter[BlockSize-1] },
+    //              InputChannel[1] = { filter[0 filter[1] ... filter[BlockSize-1] },
+    //              ...
+    //              InputChannel[BlockSize-1] = { filter[0] filter[1] ... filter[BlockSize-1] },
+    //          },
+    //          Kernel[0][1] = {
+    //              ...
+    //          },
+    //          ...
+    //          Kernel[KernelHeight-1][KernelWidth-1] = {
+    //              ...
+    //          },
+    //      },
+    //      InputChannelBlock[BlockSize] = {
+    //          ...
+    //      },
+    //      ...
+    //      InputChannelBlock[InputChannels-BlockSize] = {
+    //          ...
+    //      },
+    //  },
+    //  OutputChannelBlock[BlockSize] = {
+    //      ...
+    //  },
+    //  OutputChannelBlock[OutputChannels-BlockSize] = {
+    //      ...
+    //  };
+    //
+
+    //
+    // Iterate over BlockSize batches of the output channels.
+    //
+    // The final batch may be less than BlockSize, but must be a multiple of 4.
+    // The unaligned count results in zero padding below.
+    //
+
+    for (size_t o = OutputChannels; o > 0;) {
+
+        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        o -= OutputChannelsThisIteration;
+
+        //
+        // Iterate over BlockSize batches of the input channels.
+        //
+        // The final batch may be less than BlockSize, but must be a multiple
+        // of 4.
+        //
+
+        const float* S_InputChannels = S;
+
+        for (size_t i = InputChannels; i > 0;) {
+
+            const size_t InputChannelsThisIteration = (std::min)(i, BlockSize);
+            i -= InputChannelsThisIteration;
+
+            //
+            // Iterate over each index of the kernel.
+            //
+
+            const float* S_KernelSize = S_InputChannels;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                //
+                // Construct a filter block of BlockSize by BlockSize.
+                //
+
+                const float* S_BlockSize = S_KernelSize;
+
+                for (size_t bi = 0; bi < InputChannelsThisIteration; bi++) {
+
+                    //
+                    // Transpose a float[4] from the source filter buffer to the
+                    // destination buffer. Zero pad the filter block if the output
+                    // channels is not block aligned.
+                    //
+
+                    const float* s = S_BlockSize;
+                    size_t bo = 0;
+
+                    for (; bo < OutputChannelsThisIteration; bo += 4) {
+                        MlasReorderGatherFloat32x4(s, D, InputStride);
+                        s += 4 * InputStride;
+                        D += 4;
+                    }
+
+                    for (; bo < BlockSize; bo += 4) {
+                        MlasStoreFloat32x4(D, ZeroFloat32x4);
+                        D += 4;
+                    }
+
+                    S_BlockSize += KernelSize;
+                }
+
+                for (size_t z = 0; z < (BlockSize - InputChannelsThisIteration) * (BlockSize / 4); z++) {
+                    MlasStoreFloat32x4(D, ZeroFloat32x4);
+                    D += 4;
+                }
+
+                S_KernelSize += 1;
+            }
+
+            S_InputChannels += BlockSize * KernelSize;
+        }
+
+        S += BlockSize * InputStride;
+    }
+}
+
+void
+MLASCALL
+MlasReorderFilterOIHWBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine reorders a filter buffer from OIHW to OIHWBo format.
+
+Arguments:
+
+    FilterShape - Supplies the shape of the filter tensor.
+
+    S - Supplies the address of the source tensor.
+
+    D - Supplies the address of the destination tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t OutputChannels = size_t(FilterShape[0]);
+    const size_t InputChannels = size_t(FilterShape[1]);
+    const size_t KernelHeight = size_t(FilterShape[2]);
+    const size_t KernelWidth = size_t(FilterShape[3]);
+
+    const size_t KernelSize = KernelHeight * KernelWidth;
+    const size_t InputStride = InputChannels * KernelSize;
+
+    const MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
+
+    //
+    // Transform the filter tensor from format OIHW to OIHWBo:
+    //
+    //  OutputChannelBlock[0] = {
+    //      InputChannel[0] = {
+    //          Kernel[0][0] = filter[0 filter[1] ... filter[BlockSize-1] },
+    //          Kernel[0][1] = { filter[0 filter[1] ... filter[BlockSize-1] },
+    //          ...
+    //          Kernel[KernelHeight-1][KernelWidth-1] = { filter[0 filter[1] ... filter[BlockSize-1] },
+    //      },
+    //      InputChannel[1] = {
+    //          ...
+    //      },
+    //      ...
+    //      InputChannel[InputChannels-1] = {
+    //          ...
+    //      },
+    //  },
+    //  OutputChannelBlock[BlockSize] = {
+    //      ...
+    //  },
+    //  OutputChannelBlock[OutputChannels-BlockSize] = {
+    //      ...
+    //  };
+    //
+
+    //
+    // Iterate over BlockSize batches of the output channels.
+    //
+    // The final batch may be less than BlockSize, but must be a multiple of 4.
+    // The unaligned count results in zero padding below.
+    //
+
+    for (size_t o = OutputChannels; o > 0;) {
+
+        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        o -= OutputChannelsThisIteration;
+
+        //
+        // Iterate over each of the input channels.
+        //
+
+        const float* S_InputChannels = S;
+
+        for (size_t i = 0; i < InputChannels; i += 1) {
+
+            //
+            // Iterate over each index of the kernel.
+            //
+
+            const float* S_KernelSize = S_InputChannels;
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                //
+                // Transpose a float[4] from the source filter buffer to the
+                // destination buffer. Zero pad the filter block if the output
+                // channels is not block aligned.
+                //
+
+                const float* s = S_KernelSize;
+                size_t bo = 0;
+
+                for (; bo < OutputChannelsThisIteration; bo += 4) {
+                    MlasReorderGatherFloat32x4(s, D, InputStride);
+                    s += 4 * InputStride;
+                    D += 4;
+                }
+
+                for (; bo < BlockSize; bo += 4) {
+                    MlasStoreFloat32x4(D, ZeroFloat32x4);
+                    D += 4;
+                }
+
+                S_KernelSize += 1;
+            }
+
+            S_InputChannels += KernelSize;
+        }
+
+        S += BlockSize * InputStride;
+    }
+}

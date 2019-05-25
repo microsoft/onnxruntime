@@ -411,24 +411,12 @@ struct MLAS_PLATFORM {
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
-    size_t NchwcBlockSize;
+    uint32_t NchwcBlockSize;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
     int32_t MaximumThreadCount;
 #endif
-
-    size_t
-    GetNchwcBlockSize(
-        void
-        )
-    {
-#if defined(MLAS_TARGET_AMD64)
-        return NchwcBlockSize;
-#else
-        return 8;
-#endif
-    }
 
     MLAS_CONV_FLOAT_KERNEL*
     GetConvNchwFloatKernel(
@@ -550,6 +538,9 @@ MlasGetMaximumThreadCount(
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)
 #define MLAS_SSE2_INTRINSICS
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
+#define MLAS_SSE41_INTRINSICS
+#endif
 #if defined(__AVX__)
 #define MLAS_AVX_INTRINSICS
 #endif

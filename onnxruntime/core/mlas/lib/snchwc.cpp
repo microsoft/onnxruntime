@@ -17,10 +17,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(__GNUC__)
-#pragma GCC target "sse4.1"
-#endif
-
 //
 // Define the base thread context for NCWHc convolution or pooling operations.
 //
@@ -71,258 +67,32 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     int32_t tids;
 };
 
-void
-MlasReorderInput(
-    const int64_t* InputShape,
-    const float* S,
-    float* D
+size_t
+MLASCALL
+MlasNchwcGetBlockSize(
+    void
     )
+/*++
+
+Routine Description:
+
+    This routine returns the NCHWc block size for the platform.
+
+Arguments:
+
+    None.
+
+Return Value:
+
+    None.
+
+--*/
 {
-    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
-
-    const size_t InputChannels = size_t(InputShape[0] * InputShape[1]);
-    const size_t InputSize = size_t(InputShape[2]) * size_t(InputShape[3]);
-
-    for (size_t c = 0; c < InputChannels; c += NCHWC) {
-
-        const float* s = S;
-
-        for (size_t i = 0; i < InputSize; i++) {
-
-            __m128 v1 = _mm_load_ss(&s[0 * InputSize]);
-            v1 = _mm_insert_ps(v1, _mm_load_ss(&s[1 * InputSize]), 0x10);
-            v1 = _mm_insert_ps(v1, _mm_load_ss(&s[2 * InputSize]), 0x20);
-            v1 = _mm_insert_ps(v1, _mm_load_ss(&s[3 * InputSize]), 0x30);
-
-            __m128 v2 = _mm_load_ss(&s[4 * InputSize]);
-            v2 = _mm_insert_ps(v2, _mm_load_ss(&s[5 * InputSize]), 0x10);
-            v2 = _mm_insert_ps(v2, _mm_load_ss(&s[6 * InputSize]), 0x20);
-            v2 = _mm_insert_ps(v2, _mm_load_ss(&s[7 * InputSize]), 0x30);
-
-            _mm_storeu_ps(&D[0], v1);
-            _mm_storeu_ps(&D[4], v2);
-
-            if (NCHWC == 16) {
-
-                __m128 v3 = _mm_load_ss(&s[8 * InputSize]);
-                v3 = _mm_insert_ps(v3, _mm_load_ss(&s[9 * InputSize]), 0x10);
-                v3 = _mm_insert_ps(v3, _mm_load_ss(&s[10 * InputSize]), 0x20);
-                v3 = _mm_insert_ps(v3, _mm_load_ss(&s[11 * InputSize]), 0x30);
-
-                __m128 v4 = _mm_load_ss(&s[12 * InputSize]);
-                v4 = _mm_insert_ps(v4, _mm_load_ss(&s[13 * InputSize]), 0x10);
-                v4 = _mm_insert_ps(v4, _mm_load_ss(&s[14 * InputSize]), 0x20);
-                v4 = _mm_insert_ps(v4, _mm_load_ss(&s[15 * InputSize]), 0x30);
-
-                _mm_storeu_ps(&D[8], v3);
-                _mm_storeu_ps(&D[12], v4);
-            }
-
-            D += NCHWC;
-            s += 1;
-        }
-
-        S += NCHWC * InputSize;
-    }
-}
-
-void
-MlasReorderOutput(
-    const int64_t* OutputShape,
-    const float* S,
-    float* D
-    )
-{
-    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
-
-    const size_t OutputChannels = size_t(OutputShape[0] * OutputShape[1]);
-    const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
-
-    for (size_t c = 0; c < OutputChannels; c += NCHWC) {
-
-        const float* s = S;
-
-        for (size_t z = 0; z < NCHWC; z++) {
-
-            const float* ss = s;
-            size_t i = OutputSize;
-
-            while (i >= 8) {
-
-                __m128 v1 = _mm_load_ss(&ss[0]);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 1]), 0x10);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 2]), 0x20);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&ss[NCHWC * 3]), 0x30);
-
-                __m128 v2 = _mm_load_ss(&ss[NCHWC * 4]);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 5]), 0x10);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 6]), 0x20);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&ss[NCHWC * 7]), 0x30);
-
-                _mm_storeu_ps(&D[0], v1);
-                _mm_storeu_ps(&D[4], v2);
-
-                D += 8;
-                ss += NCHWC * 8;
-                i -= 8;
-            }
-
-            while (i > 0) {
-                *D = *ss;
-                D += 1;
-                ss += NCHWC;
-                i -= 1;
-            }
-
-            s += 1;
-        }
-
-        S += NCHWC * OutputSize;
-    }
-}
-
-void
-MlasConvReorderFilter(
-    const int64_t* FilterShape,
-    const float* S,
-    float* D
-    )
-{
-    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
-
-    const size_t OutputChannels = size_t(FilterShape[0]);
-    const size_t InputChannels = size_t(FilterShape[1]);
-    const size_t KernelHeight = size_t(FilterShape[2]);
-    const size_t KernelWidth = size_t(FilterShape[3]);
-
-    const size_t KernelSize = KernelHeight * KernelWidth;
-    const size_t InputStride = InputChannels * KernelSize;
-
-    for (size_t o = 0; o < OutputChannels; o += NCHWC) {
-
-        const float* inputI = S;
-
-        for (size_t i = 0; i < InputChannels; i += NCHWC) {
-
-            const float* inputK = inputI;
-
-            for (size_t k = 0; k < KernelSize; k++) {
-
-                const float* input = inputK;
-
-                for (unsigned ik = 0; ik < NCHWC; ik++) {
-
-                    __m128 v1 = _mm_load_ss(&input[0 * InputStride]);
-                    v1 = _mm_insert_ps(v1, _mm_load_ss(&input[1 * InputStride]), 0x10);
-                    v1 = _mm_insert_ps(v1, _mm_load_ss(&input[2 * InputStride]), 0x20);
-                    v1 = _mm_insert_ps(v1, _mm_load_ss(&input[3 * InputStride]), 0x30);
-
-                    __m128 v2 = _mm_load_ss(&input[4 * InputStride]);
-                    v2 = _mm_insert_ps(v2, _mm_load_ss(&input[5 * InputStride]), 0x10);
-                    v2 = _mm_insert_ps(v2, _mm_load_ss(&input[6 * InputStride]), 0x20);
-                    v2 = _mm_insert_ps(v2, _mm_load_ss(&input[7 * InputStride]), 0x30);
-
-                    _mm_storeu_ps(&D[0], v1);
-                    _mm_storeu_ps(&D[4], v2);
-
-                    if (NCHWC == 16) {
-
-                        __m128 v3 = _mm_load_ss(&input[8 * InputStride]);
-                        v3 = _mm_insert_ps(v3, _mm_load_ss(&input[9 * InputStride]), 0x10);
-                        v3 = _mm_insert_ps(v3, _mm_load_ss(&input[10 * InputStride]), 0x20);
-                        v3 = _mm_insert_ps(v3, _mm_load_ss(&input[11 * InputStride]), 0x30);
-
-                        __m128 v4 = _mm_load_ss(&input[12 * InputStride]);
-                        v4 = _mm_insert_ps(v4, _mm_load_ss(&input[13 * InputStride]), 0x10);
-                        v4 = _mm_insert_ps(v4, _mm_load_ss(&input[14 * InputStride]), 0x20);
-                        v4 = _mm_insert_ps(v4, _mm_load_ss(&input[15 * InputStride]), 0x30);
-
-                        _mm_storeu_ps(&D[8], v3);
-                        _mm_storeu_ps(&D[12], v4);
-                    }
-
-                    D += NCHWC;
-                    input += KernelSize;
-                }
-
-                inputK++;
-            }
-
-            inputI += NCHWC * KernelSize;
-        }
-
-        S += NCHWC * InputStride;
-    }
-}
-
-void
-MlasConvReorderFilter2(
-    const int64_t* FilterShape,
-    const float* S,
-    float* D
-    )
-{
-    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
-
-    const size_t OutputChannels = size_t(FilterShape[0]);
-    const size_t InputChannels = size_t(FilterShape[1]);
-    const size_t KernelHeight = size_t(FilterShape[2]);
-    const size_t KernelWidth = size_t(FilterShape[3]);
-
-    const size_t KernelSize = KernelHeight * KernelWidth;
-    const size_t InputStride = InputChannels * KernelSize;
-
-    for (size_t o = 0; o < OutputChannels; o += NCHWC) {
-
-        const float* inputI = S;
-
-        for (size_t i = 0; i < InputChannels; i += 1) {
-
-            const float* inputK = inputI;
-
-            for (size_t k = 0; k < KernelSize; k++) {
-
-                const float* input = inputK;
-
-                __m128 v1 = _mm_load_ss(&input[0 * InputStride]);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&input[1 * InputStride]), 0x10);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&input[2 * InputStride]), 0x20);
-                v1 = _mm_insert_ps(v1, _mm_load_ss(&input[3 * InputStride]), 0x30);
-
-                __m128 v2 = _mm_load_ss(&input[4 * InputStride]);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&input[5 * InputStride]), 0x10);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&input[6 * InputStride]), 0x20);
-                v2 = _mm_insert_ps(v2, _mm_load_ss(&input[7 * InputStride]), 0x30);
-
-                _mm_storeu_ps(&D[0], v1);
-                _mm_storeu_ps(&D[4], v2);
-
-                if (NCHWC == 16) {
-
-                    __m128 v3 = _mm_load_ss(&input[8 * InputStride]);
-                    v3 = _mm_insert_ps(v3, _mm_load_ss(&input[9 * InputStride]), 0x10);
-                    v3 = _mm_insert_ps(v3, _mm_load_ss(&input[10 * InputStride]), 0x20);
-                    v3 = _mm_insert_ps(v3, _mm_load_ss(&input[11 * InputStride]), 0x30);
-
-                    __m128 v4 = _mm_load_ss(&input[12 * InputStride]);
-                    v4 = _mm_insert_ps(v4, _mm_load_ss(&input[13 * InputStride]), 0x10);
-                    v4 = _mm_insert_ps(v4, _mm_load_ss(&input[14 * InputStride]), 0x20);
-                    v4 = _mm_insert_ps(v4, _mm_load_ss(&input[15 * InputStride]), 0x30);
-
-                    _mm_storeu_ps(&D[8], v3);
-                    _mm_storeu_ps(&D[12], v4);
-                }
-
-                D += NCHWC;
-
-                inputK++;
-            }
-
-            inputI += KernelSize;
-        }
-
-        S += NCHWC * InputStride;
-    }
+#if defined(MLAS_TARGET_AMD64)
+    return MlasPlatform.NchwcBlockSize;
+#else
+    return 8;
+#endif
 }
 
 void
@@ -444,7 +214,7 @@ struct MLAS_NCHWC_NN_ALGORITHM
     static constexpr size_t HeightShapeIndex = 0;
     static constexpr size_t WidthShapeIndex = 1;
 
-    const size_t NCHWC = MlasPlatform.GetNchwcBlockSize();
+    const size_t NCHWC = MlasNchwcGetBlockSize();
 
     //
     // Capture these values from the work block for use as local constants.
@@ -1294,7 +1064,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 
 void
 MLASCALL
-MlasConvNchwc(
+MlasNchwcConv(
     size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
@@ -1344,7 +1114,7 @@ MlasConvNchwc(
 
     PMLAS_THREADED_ROUTINE ConvolverRoutine;
 
-    if (WorkBlock.InputChannels >= MlasPlatform.GetNchwcBlockSize()) {
+    if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 &&
             WorkBlock.KernelShape[1] == 1 &&
             WorkBlock.Padding[0] == 0 &&
@@ -1367,7 +1137,7 @@ MlasConvNchwc(
 
 void
 MLASCALL
-MlasPoolNchwc(
+MlasNchwcPool(
     MLAS_POOLING_KIND PoolingKind,
     size_t Dimensions,
     const int64_t* InputShape,
