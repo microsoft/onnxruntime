@@ -40,12 +40,6 @@ def CreateBackendTest(testname=None):
     # Type not supported
     backend_test.exclude(r'(FLOAT16)')
 
-    if onnx.__version__ == "1.4.1":
-        backend_test.exclude(r'(^test_shrink_cpu.*|^test_constantofshape_*.*)');
-
-    if onnx.__version__ == "1.5.0":
-        backend_test.exclude(r'(^test_constantofshape_*.*)');
-
     if testname:
         backend_test.include(testname + '.*')
     else:
@@ -56,6 +50,7 @@ def CreateBackendTest(testname=None):
         '|^test_cast_STRING_to_FLOAT_cpu.*'
         '|^test_convtranspose_1d_cpu.*'
         '|^test_convtranspose_3d_cpu.*'
+        '|^test_constantofshape_*.*'
         '|^test_dequantizelinear_cpu.*'
 
         '|^test_AvgPool1d_cpu.*'
@@ -92,6 +87,7 @@ def CreateBackendTest(testname=None):
         '|^test_operator_non_float_params_cpu.*'
         '|^test_operator_params_cpu.*'
         '|^test_operator_pow_cpu.*'
+        '|^test_shrink_cpu.*'
         '|^test_vgg19_cpu.*'
         '|^test_zfnet512_cpu.*'
         '|^test_qlinearconv_cpu.*'

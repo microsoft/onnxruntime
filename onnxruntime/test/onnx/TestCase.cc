@@ -205,7 +205,7 @@ class OnnxModelInfo : public TestModelInfo {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
     std::string url_string(model_url);
-    onnx_commit_id_ = url_string.size() > 50 ? url_string.substr(10,40) : "";   
+    onnx_commit_id_ = url_string.size() > 50 ? url_string.substr(11,40) : "";   
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();
