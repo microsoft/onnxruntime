@@ -23,10 +23,33 @@ struct OrtDefaultAllocator : OrtAllocatorImpl {
   ~OrtDefaultAllocator() override { OrtReleaseAllocatorInfo(cpuAllocatorInfo); }
 
   void* Alloc(size_t size) {
-    return ::malloc(size);
+    if (size == 0)
+      return nullptr;
+    //default align to 64;
+    void* p;
+#if defined(_WIN32) && !defined(_WIN64)
+  size_t alignment = 32;
+#else  
+  size_t alignment = 64;
+#endif
+#if _MSC_VER
+    p = _aligned_malloc(size, alignment);
+    if (p == nullptr) throw std::bad_alloc();
+#elif defined(_LIBCPP_SGX_CONFIG)
+    p = memalign(alignment, size);
+    if (p == nullptr) throw std::bad_alloc();
+#else
+    int ret = posix_memalign(&p, alignment, size);
+    if (ret != 0) throw std::bad_alloc();
+#endif
+    return p;
   }
   void Free(void* p) {
-    return ::free(p);
+#if _MSC_VER
+    _aligned_free(p);
+#else
+    free(p);
+#endif
   }
   const OrtAllocatorInfo* Info() const {
     return cpuAllocatorInfo;

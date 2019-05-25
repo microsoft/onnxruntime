@@ -163,5 +163,25 @@ TEST(TensorOpTest, Pad_Reflect_2D) {
   test.Run();
 }
 
+TEST(TensorOpTest, Pad_Reflect_3D) {
+  OpTester test("Pad");
+
+  test.AddAttribute("pads", std::vector<int64_t>{0, 2, 2, 0, 2, 2});
+  test.AddAttribute("mode", "reflect");
+  test.AddInput<float>("data", {1, 3, 3},
+                       {11.0f, 21.0f, 31.0f,
+                        12.0f, 22.0f, 32.0f,
+                        13.0f, 23.0f, 33.0f});
+  test.AddOutput<float>("output", {1, 7, 7},
+                        {33.0f, 23.0f, 13.0f, 23.0f, 33.0f, 23.0f, 13.0f,
+                         32.0f, 22.0f, 12.0f, 22.0f, 32.0f, 22.0f, 12.0f,
+                         31.0f, 21.0f, 11.0f, 21.0f, 31.0f, 21.0f, 11.0f,
+                         32.0f, 22.0f, 12.0f, 22.0f, 32.0f, 22.0f, 12.0f,
+                         33.0f, 23.0f, 13.0f, 23.0f, 33.0f, 23.0f, 13.0f,
+                         32.0f, 22.0f, 12.0f, 22.0f, 32.0f, 22.0f, 12.0f,
+                         31.0f, 21.0f, 11.0f, 21.0f, 31.0f, 21.0f, 11.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

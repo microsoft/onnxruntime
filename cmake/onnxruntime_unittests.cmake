@@ -193,6 +193,14 @@ file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
   )
 
+if(onnxruntime_USE_NUPHAR)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
+  list(APPEND onnx_test_libs onnxruntime_providers_nuphar)
+endif()
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
@@ -386,6 +394,12 @@ if(WIN32)
       ${ngraph_LIBRARIES}/
       $<TARGET_FILE_DIR:${test_data_target}>
     )
+  endif()
+  if (onnxruntime_USE_TVM)
+    add_custom_command(
+      TARGET ${test_data_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
+      )
   endif()
 endif()
 

@@ -137,6 +137,43 @@ You can build from source on Linux by using the following `cmd` from the onnxrun
 
 ```
 
+### Nuphar
+ONNX Runtime supports Nuphar execution provider (released as preview). It is an execution provider built on top of [TVM](https://github.com/dmlc/tvm) and [LLVM](https://llvm.org). Currently it targets to X64 CPU.
+
+The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 6.0.1. Because of TVM's requirement when building with LLVM, you need to build LLVM from source:
+
+Window with Visual Studio 2017: (Note here builds release flavor. Debug build of LLVM would be needed to build with Debug flavor of ONNX Runtime)
+```
+REM download llvm source code 6.0.1 and unzip to \llvm\source\path, then install to \llvm\install\path
+cd \llvm\source\path
+mkdir build
+cd build
+cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86
+msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
+cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
+```
+
+Linux:
+```
+# download llvm source code 6.0.1 and unzip to /llvm/source/path, then install to /llvm/install/path
+cd /llvm/source/path
+mkdir build
+cd build
+cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
+cmake --build.
+cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
+```
+
+Then you can build from source by using following command from the onnxruntime directory:
+Windows:
+```
+build.bat --use_tvm --use_llvm --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --config=Release
+```
+
+Linux:
+```
+./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --config=Release
+```
 
 ### OpenBLAS
 #### Windows

@@ -25,7 +25,6 @@
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
-class Node;
 class OpSignature;
 
 /**

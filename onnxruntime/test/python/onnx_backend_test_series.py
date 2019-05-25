@@ -94,6 +94,9 @@ def CreateBackendTest(testname=None):
         '|^test_quantizelinear_cpu.*'
         '|^test_roialign_cpu.*'
         '|^test_operator_repeat_dim_overflow_cpu.*'
+        '|^test_operator_symbolic_override_nested_cpu.*'  #Nuphar: Same input used by multiple XP is not supported
+        '|^test_scan_sum_cpu.*'   #Nuphar: Graph output (sum_out) does not exist in the graph
+        '|^test_scan9_sum_cpu.*'  #Nuphar: Graph output (sum_out) does not exist in the graph
         ')')
 
     # import all test cases at global scope to make
