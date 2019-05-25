@@ -969,7 +969,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
     // string is not supported
     if ("to" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT == attr_value.type()) {
       auto to_type = attr_value.i();
-      if (to_type != ::ONNX_NAMESPACE::TensorProto_DataType_STRING)
+      if (to_type == ::ONNX_NAMESPACE::TensorProto_DataType_STRING)
         return true;
     }
   }
