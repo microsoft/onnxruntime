@@ -925,31 +925,74 @@ bool CUDAExecutionProvider::ConvNeedFallbackToCPU(const onnxruntime::Node& node)
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
-  for (auto& node : graph.Nodes()) {
-    bool fallback_to_cpu_provider = false;
+                                     const std::vector<const KernelRegistry*>&) const {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::unordered_set<const NodeArg*> defs_outside_cuda;
+
+  for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
+    const auto* p_node = graph.GetNode(node_index);
+    if (p_node == nullptr)
+      continue;
+
+    const auto& node = *p_node;
+    const auto* cuda_kernel_def = GetKernelRegistry()->TryFindKernel(node, Type());
+    if (cuda_kernel_def == nullptr || !node.GetExecutionProviderType().empty()) {
+      // node is not in cuda exeuction provider if no kernel def found,
+      // or if other execution provider already assigned to it
+      defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
+      continue;
+    }
+
+    bool not_supported = false;
+    bool force_outside = false;
+
     if ("LSTM" == node.OpType()) {
       // the supported activations covers the bidirectional mode
       std::vector<std::string> activations_supported{"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
-      fallback_to_cpu_provider = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
+      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
     } else if ("RNN" == node.OpType()) {
       std::vector<std::string> activations_supported{"tanh", "tanh"};
-      fallback_to_cpu_provider = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
+      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
     } else if ("GRU" == node.OpType()) {
       std::vector<std::string> activations_supported{"sigmoid", "tanh", "sigmoid", "tanh"};
-      fallback_to_cpu_provider = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
+      not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
     } else if ("Conv" == node.OpType()) {
-      fallback_to_cpu_provider = ConvNeedFallbackToCPU(node);
+      not_supported = ConvNeedFallbackToCPU(node);
+    } else {
+      node.ForEachWithIndex(
+          node.OutputDefs(),
+          [&](const NodeArg& def, size_t out_index) {
+            if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault)
+              defs_outside_cuda.insert(&def);
+            return Status::OK();
+          });
+
+      // Note that nodes with only inputs from initializer would not be place on CUDA
+      // Ideally, those nodes should be eliminated in constant folding
+      bool all_non_initializer_inputs_on_cpu = true;
+      node.ForEachWithIndex(
+          node.InputDefs(),
+          [&](const NodeArg& def, size_t) {
+            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+            if (!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def))
+              all_non_initializer_inputs_on_cpu = false;
+            return Status::OK();
+          });
+      if (all_non_initializer_inputs_on_cpu) {
+        force_outside = true;
+      }
     }
 
-    if (fallback_to_cpu_provider) {
-      LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
-      auto update_node = const_cast<Node*>(graph.GetNode(node.Index()));
-      update_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+    if (not_supported || force_outside) {
+      defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
+      if (not_supported)
+        LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
+    } else {
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
-  std::vector<std::unique_ptr<ComputeCapability>> result = IExecutionProvider::GetCapability(graph, kernel_registries);
-
   return result;
 }
 

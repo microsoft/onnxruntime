@@ -324,7 +324,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"mvn", "disable reason"},
       {"operator_add_broadcast", "disable reason"},
       {"operator_add_size1_broadcast", "disable reason"},
       {"operator_add_size1_right_broadcast", "disable reason"},
@@ -332,13 +331,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"operator_addconstant", "disable reason"},
       {"operator_addmm", "disable reason"},
       {"operator_basic", "disable reason"},
-      {"operator_lstm", "disable reason"},
       {"operator_mm", "disable reason"},
       {"operator_non_float_params", "disable reason"},
       {"operator_params", "disable reason"},
       {"operator_pow", "disable reason"},
-      {"operator_rnn", "disable reason"},
-      {"operator_rnn_single_layer", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -415,6 +411,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests["dynamic_slice"] = "This model uses contrib ops.";
   broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
   broken_tests["dynamic_slice_neg"] = "This model uses contrib ops.";
+  broken_tests["mvn"] = "This model uses contrib ops.";
 #endif
 
   int result = 0;
