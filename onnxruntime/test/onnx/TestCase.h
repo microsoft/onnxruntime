@@ -25,7 +25,7 @@ class ITestCase {
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
 
   virtual const std::string& GetTestCaseName() const = 0;
-  virtual int64_t GetTestCaseVersion() const = 0;
+  virtual const std::string& GetTestCaseVersion() const = 0;
   //a string to help identify the dataset
   virtual std::string GetDatasetDebugInfoString(size_t dataset_id) = 0;
   //The number of input/output pairs
@@ -53,9 +53,7 @@ class TestModelInfo {
   virtual int GetOutputCount() const = 0;
   virtual const std::string& GetInputName(size_t i) const = 0;
   virtual const std::string& GetOutputName(size_t i) const = 0;
-  virtual int64_t GetModelVersion() const {
-    return -1;
-  };
+  virtual const std::string& GetModelVersion() const = 0;
   virtual ~TestModelInfo() = default;
 
   static TestModelInfo* LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);

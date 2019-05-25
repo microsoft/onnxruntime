@@ -9,8 +9,8 @@
 
 namespace {
 
-void operator << (std::ostringstream& oss, const std::pair<std::string, int64_t>& p) {
-    oss << p.first << " opset: " << p.second;
+void operator << (std::ostringstream& oss, const std::pair<std::string, std::string>& p) {
+    oss << p.first << " onnx commit: " << p.second;
 }
 
 template <typename T1>
