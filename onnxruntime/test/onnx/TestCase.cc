@@ -177,7 +177,7 @@ using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
-  std::string onnx_commit_id_;
+  std::string onnx_commit_id_ = "";
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -204,8 +204,10 @@ class OnnxModelInfo : public TestModelInfo {
     if (!model_pb.ParseFromZeroCopyStream(&f)) {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
-    std::string url_string(model_url);
+#ifdef __GNUG__ 
+    std::string url_string{model_url};
     onnx_commit_id_ = url_string.size() > 50 ? url_string.substr(11,40) : "";   
+#endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();

@@ -10,7 +10,7 @@
 namespace {
 
 void operator << (std::ostringstream& oss, const std::pair<std::string, std::string>& p) {
-    oss << p.first << " onnx commit: " << p.second;
+    oss << p.first << ", onnx commit: " << p.second;
 }
 
 template <typename T1>
