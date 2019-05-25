@@ -21,7 +21,8 @@ inline T ShrinkCore(const T& val, float bias, float lambd) {
   // Implementing the spec as is for now
   if (val < -lambd) {
     return T(val + bias);
-  } else if (val > lambd) {
+  }
+  if (val > lambd) {
     return T(val - bias);
   } else {
     return T(0);
@@ -62,6 +63,14 @@ Status ShrinkImpl<bool>(const Tensor* /*input*/, Tensor* /*output*/, float /*bia
       ONNXRUNTIME, INVALID_ARGUMENT,
       "Input types for the Shrink operator are constrained "
       "to all numeric types only. Got bool type here.");
+}
+
+template <>
+Status ShrinkImpl<std::string>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
+  return ORT_MAKE_STATUS(
+      ONNXRUNTIME, INVALID_ARGUMENT,
+      "Input types for the Shrink operator are constrained "
+      "to all numeric types only. Got std::string type here.");
 }
 
 }  // namespace shrink_internal

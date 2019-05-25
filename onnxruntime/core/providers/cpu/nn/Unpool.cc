@@ -25,10 +25,10 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 Status MaxUnpool::Compute(OpKernelContext* context) const {
   // Get pooled values tensor
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const TensorShape& X_shape = X->Shape();
-  const float* X_data = X->template Data<float>();
+  const auto* X_data = X->template Data<float>();
 
   ORT_RETURN_IF_NOT(X_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
@@ -39,9 +39,9 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   }
 
   // Get pooled index tensor
-  const Tensor* I = context->Input<Tensor>(1);
+  const auto* I = context->Input<Tensor>(1);
   const TensorShape& I_shape = I->Shape();
-  const int64_t* I_data = I->template Data<int64_t>();
+  const auto* I_data = I->template Data<int64_t>();
 
   ORT_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
 
@@ -53,7 +53,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   inferredOutputShape[1] = X_shape[1];
 
   // For feature dims calculate reversing the formula used for Maxpool
-  for (auto dim = 0; dim < kernel_shape_.size(); ++dim) {
+  for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
     inferredOutputShape[dim + 2] = (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim + 2] + pads_[kernel_shape_.size() + dim + 4]) + kernel_shape_[dim];
   }
 
@@ -68,14 +68,14 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
     // Turn the shape tensor data into an actual shape
-    const int64_t* p_shape = tensor_shape->template Data<int64_t>();
+    const auto* p_shape = tensor_shape->template Data<int64_t>();
     std::vector<int64_t> shape{p_shape, p_shape + tensor_shape->Shape().Size()};
     givenOutputShape = shape;
 
     inferredPads.resize(inferredOutputShape.size() * 2, 0);
 
     // calculate if output shape has any padding over the inferred shape for feature dims.
-    for (auto dim = 2; dim < shape.size(); dim++) {
+    for (size_t dim = 2; dim < shape.size(); dim++) {
       ORT_RETURN_IF_NOT(inferredOutputShape[dim] <= shape[dim], "Incorrect output shape");
 
       int64_t inferredPad = shape[dim] - inferredOutputShape[dim];
@@ -97,7 +97,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   int64_t totalPooledElem = 1;
   int64_t totalOutputElem = 1;
 
-  for (auto dim = 0; dim < X_shape.NumDimensions(); dim++) {
+  for (size_t dim = 0; dim < X_shape.NumDimensions(); dim++) {
     totalPooledElem *= X_shape[dim];
     totalOutputElem *= inferredOutputShape[dim];
   }
@@ -129,7 +129,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
                                                                 shape,
                                                                 alloc);
 
-    float* p = p_tensor->template MutableData<float>();
+    auto* p = p_tensor->template MutableData<float>();
 
     auto out = gsl::make_span(p, p_tensor->Shape().Size());
     std::fill_n(out.data(), out.size(), 0.f);
@@ -171,12 +171,12 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     size_t inner_axis = dimension_count - 1;
 
     TensorAxisCounters input_counters(*p_tensor);
-    SliceIterator<float> input(*p_tensor, input_starts, input_extents);
+    SliceIterator<float> input(*p_tensor, input_starts, input_extents, {});
 
     while (input_counters) {
       Y_data += alignSkip;
       {
-        Y_data = input.CopyInnermostAxis(Y_data);
+        Y_data = input.CopyInnermostAxisSolitaryInnerStep(Y_data);
         int64_t prePad = inferredPads[inner_axis];
         int64_t postPad = inferredPads[inner_axis + dimension_count];
         Y_data += postPad;

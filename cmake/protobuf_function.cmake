@@ -102,7 +102,7 @@ function(onnxruntime_protobuf_generate)
       get_filename_component(_abs_path ${_abs_file} PATH)
       list(FIND _protobuf_include_path ${_abs_path} _contains_already)
       if(${_contains_already} EQUAL -1)
-          list(APPEND _protobuf_include_path -I ${_abs_path})
+        list(APPEND _protobuf_include_path -I ${_abs_path})
       endif()
     endforeach()
   else()
@@ -113,7 +113,7 @@ function(onnxruntime_protobuf_generate)
     get_filename_component(ABS_PATH ${DIR} ABSOLUTE)
     list(FIND _protobuf_include_path ${ABS_PATH} _contains_already)
     if(${_contains_already} EQUAL -1)
-        list(APPEND _protobuf_include_path -I ${ABS_PATH})
+      list(APPEND _protobuf_include_path -I ${ABS_PATH})
     endif()
   endforeach()
 
@@ -128,13 +128,23 @@ function(onnxruntime_protobuf_generate)
     endforeach()
     list(APPEND _generated_srcs_all ${_generated_srcs})
 
-    add_custom_command(
-      OUTPUT ${_generated_srcs}
-      COMMAND  ${PROTOC_EXECUTABLE}
-      ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
-      DEPENDS ${_abs_file} ${PROTOC_DEPS}
-      COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer compiler on ${_proto}"
-      VERBATIM )
+    if (onnxruntime_USE_FULL_PROTOBUF)
+      add_custom_command(
+        OUTPUT ${_generated_srcs}
+        COMMAND  ${PROTOC_EXECUTABLE}
+        ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out ${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
+        DEPENDS ${_abs_file} ${PROTOC_DEPS}
+        COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer (full) compiler on ${_proto}"
+        VERBATIM )
+    else()
+      add_custom_command(
+        OUTPUT ${_generated_srcs}
+        COMMAND  ${PROTOC_EXECUTABLE}
+        ARGS --${onnxruntime_protobuf_generate_LANGUAGE}_out lite:${_dll_export_decl}${CMAKE_CURRENT_BINARY_DIR} ${_protobuf_include_path} ${_abs_file}
+        DEPENDS ${_abs_file} ${PROTOC_DEPS}
+        COMMENT "Running ${onnxruntime_protobuf_generate_LANGUAGE} protocol buffer compiler (lite) on ${_proto}"
+        VERBATIM )
+    endif()
   endforeach()
 
   set_source_files_properties(${_generated_srcs_all} PROPERTIES GENERATED TRUE)

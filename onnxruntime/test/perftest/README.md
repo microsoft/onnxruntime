@@ -4,7 +4,7 @@ onnxruntime_perf_test [options...] model_path result_file
 Options:
         -m [test_mode]: Specifies the test mode. Value coulde be 'duration' or 'times'.
                 Provide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. Default:'duration'.
-        -e [cpu|cuda|mkldnn]: Specifies the provider 'cpu','cuda','mkldnn'. Default:'cpu'.
+        -e [cpu|cuda|mkldnn|tensorrt]: Specifies the provider 'cpu','cuda','mkldnn' or 'tensorrt'. Default:'cpu'.
         -r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.
         -t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.
         -p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.

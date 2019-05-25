@@ -7,82 +7,104 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(TensorOpTest, Tile1DWithZeroRepeats) {
+template <typename T>
+void RunTest(std::initializer_list<T> input,
+             std::initializer_list<int64_t> input_dims,
+             std::initializer_list<int64_t> repeat,
+             std::initializer_list<int64_t> repeat_dims,
+             std::initializer_list<T> output,
+             std::initializer_list<int64_t> output_dims) {
   OpTester test("Tile");
-
-  test.AddInput<float>("input", {3}, {1.0f, 2.0f, 3.0f});
-  test.AddInput<int64_t>("repeats", {1}, {0});
-  test.AddOutput<float>("output", {0}, {});
+  test.AddInput<T>("input", input_dims, input);
+  test.AddInput<int64_t>("repeats", repeat_dims, repeat);
+  test.AddOutput<T>("output", output_dims, output);
   test.Run();
 }
 
-TEST(TensorOpTest, Tile2DWithZeroRepeats) {
-  OpTester test("Tile");
+template <typename T>
+void RunTestWrapper() {
+  // Tile1DWithZeroRepeats
+  RunTest<T>({1, 2, 3}, {3}, {0}, {1}, {}, {0});
 
-  test.AddInput<float>("input", {2, 2},
-                       {11.0f, 12.0f,
-                        21.0f, 22.0f});
-  test.AddInput<int64_t>("repeats", {2}, {2, 0});
-  test.AddOutput<float>("output", {4, 0}, {});
-  test.Run();
+  // Tile2DWithZeroRepeats
+  RunTest<T>({11, 12, 21, 22}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
+
+  // Tile1D
+  RunTest<T>({1, 2, 3}, {3}, {3}, {1}, {1, 2, 3, 1, 2, 3, 1, 2, 3}, {9});
+
+  // Tile2D_1Axis
+  RunTest<T>({11, 12, 21, 22}, {2, 2}, {2, 1}, {2}, {11, 12, 21, 22, 11, 12, 21, 22}, {4, 2});
+
+  // Tile2D_2Axes
+  RunTest<T>({11, 12, 21, 22}, {2, 2}, {2, 2}, {2}, {11, 12, 11, 12, 21, 22, 21, 22, 11, 12, 11, 12, 21, 22, 21, 22}, {4, 4});
+
+  // Tile3D
+  RunTest<T>({111, 112, 113, 122, 123, 124}, {2, 1, 3}, {1, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 122, 123, 124, 122, 123, 124}, {2, 2, 3});
 }
 
-TEST(TensorOpTest, Tile1D) {
-  OpTester test("Tile");
+template <>
+void RunTestWrapper<bool>() {
+  // Tile1DWithZeroRepeats
+  RunTest<bool>({true, false, true}, {3}, {0}, {1}, {}, {0});
 
-  test.AddInput<float>("input", {3}, {1.0f, 2.0f, 3.0f});
-  test.AddInput<int64_t>("repeats", {1}, {3});
-  test.AddOutput<float>("output", {9}, {1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
+  // Tile2DWithZeroRepeats
+  RunTest<bool>({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
+
+  // Tile1D
+  RunTest<bool>({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9});
+
+  // Tile2D_1Axis
+  RunTest<bool>({true, false, true, false}, {2, 2}, {2, 1}, {2}, {true, false, true, false, true, false, true, false}, {4, 2});
+
+  // Tile2D_2Axes
+  RunTest<bool>({true, false, true, false}, {2, 2}, {2, 2}, {2}, {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4});
+
+  // Tile3D
+  RunTest<bool>({true, false, true, false, true, false}, {2, 1, 3}, {1, 2, 1}, {3}, {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3});
 }
 
-TEST(TensorOpTest, Tile2D_1Axis) {
-  OpTester test("Tile");
-
-  test.AddInput<float>("input", {2, 2},
-                       {11.0f, 12.0f,
-                        21.0f, 22.0f});
-  test.AddInput<int64_t>("repeats", {2}, {2, 1});
-  test.AddOutput<float>("output", {4, 2},
-                        {11.0f, 12.0f,
-                         21.0f, 22.0f,
-                         11.0f, 12.0f,
-                         21.0f, 22.0f});
-
-  test.Run();
+TEST(TensorOpTest, TileFloatType) {
+  RunTestWrapper<float>();
 }
 
-TEST(TensorOpTest, Tile2D_2Axes) {
-  OpTester test("Tile");
-
-  test.AddInput<float>("input", {2, 2},
-                       {11.0f, 12.0f,
-                        21.0f, 22.0f});
-  test.AddInput<int64_t>("repeats", {2}, {2, 2});
-  test.AddOutput<float>("output", {4, 4},
-                        {11.0f, 12.0f, 11.0f, 12.0f,
-                         21.0f, 22.0f, 21.0f, 22.0f,
-                         11.0f, 12.0f, 11.0f, 12.0f,
-                         21.0f, 22.0f, 21.0f, 22.0f});
-
-  test.Run();
+TEST(TensorOpTest, TileDoubleType) {
+  RunTestWrapper<double>();
 }
 
-TEST(TensorOpTest, Tile3D) {
-  OpTester test("Tile");
-
-  test.AddInput<float>("input", {2, 1, 3},
-                       {111.0f, 112.0f, 113.0f,
-                        211.0f, 212.0f, 213.0f});
-  test.AddInput<int64_t>("repeats", {3}, {1, 2, 1});
-  test.AddOutput<float>("output", {2, 2, 3},
-                        {111.0f, 112.0f, 113.0f,
-                         111.0f, 112.0f, 113.0f,
-
-                         211.0f, 212.0f, 213.0f,
-                         211.0f, 212.0f, 213.0f});
-  test.Run();
+TEST(TensorOpTest, TileInt8Type) {
+  RunTestWrapper<int8_t>();
 }
 
+TEST(TensorOpTest, TileUint8Type) {
+  RunTestWrapper<uint8_t>();
+}
+
+TEST(TensorOpTest, TileInt16Type) {
+  RunTestWrapper<int16_t>();
+}
+
+TEST(TensorOpTest, TileUint16Type) {
+  RunTestWrapper<uint16_t>();
+}
+
+TEST(TensorOpTest, TileInt32Type) {
+  RunTestWrapper<int32_t>();
+}
+
+TEST(TensorOpTest, TileUint32Type) {
+  RunTestWrapper<uint32_t>();
+}
+
+TEST(TensorOpTest, TileInt64Type) {
+  RunTestWrapper<int64_t>();
+}
+
+TEST(TensorOpTest, TileUint64Type) {
+  RunTestWrapper<uint64_t>();
+}
+
+TEST(TensorOpTest, TileBoolType) {
+  RunTestWrapper<bool>();
+}
 }  // namespace test
 }  // namespace onnxruntime

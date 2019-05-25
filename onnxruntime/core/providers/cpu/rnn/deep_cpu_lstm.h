@@ -7,10 +7,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
-
-#ifndef USE_EIGEN_THREADPOOL
-#include "core/common/task_thread_pool.h"
-#endif
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -47,7 +44,7 @@ class DeepCpuLstmOp final : public OpKernel {
       }
     }
 
-    ORT_ENFORCE(activation_func_names.size() == num_directions_ * 3);
+    ORT_ENFORCE(activation_func_names.size() == static_cast<size_t>(num_directions_) * 3);
 
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,
@@ -85,12 +82,8 @@ class DeepCpuLstmOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
-
-#ifdef USE_EIGEN_THREADPOOL
-  mutable Eigen::NonBlockingThreadPool ttp_{static_cast<int>(std::thread::hardware_concurrency())};
-#else
-  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
-#endif
+  mutable onnxruntime::concurrency::ThreadPool ttp_{"DEEPCPU_LSTM",
+                                                    static_cast<int>(std::thread::hardware_concurrency())};
 };
 
 }  // namespace onnxruntime

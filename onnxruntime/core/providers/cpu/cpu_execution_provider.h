@@ -46,11 +46,6 @@ class CPUExecutionProvider : public IExecutionProvider {
 #endif
   }
 
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
-
-  ///requires src.buffer_deleter_ == nullptr
   Status CopyTensor(const Tensor&, Tensor&) const override {
     return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
   }
@@ -62,7 +57,6 @@ class CPUExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  void InsertFusedRules(FuseRuleFn rule);
 
  private:
   std::vector<FuseRuleFn> fuse_rules_;

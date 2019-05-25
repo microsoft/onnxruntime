@@ -71,7 +71,7 @@ struct ort_endian {
 //BFloat16
 struct BFloat16 {
   uint16_t val{0};
-  explicit BFloat16() {}
+  explicit BFloat16() = default;
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
     uint16_t* dst = reinterpret_cast<uint16_t*>(&v);
@@ -122,8 +122,8 @@ inline bool operator!=(const BFloat16& left, const BFloat16& right) {
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
 using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
-using DeleteFunc = void (*)(void*);
-using CreateFunc = std::function<void*()>;
+using DeleteFunc = void(*)(void*);
+using CreateFunc = void*(*)();
 
 /**
  * \brief Base class for MLDataType
@@ -174,11 +174,13 @@ class DataTypeImpl {
   /**
    * Convert an ONNX TypeProto to onnxruntime DataTypeImpl.
    * However, this conversion is lossy. Don't try to use 'this->GetTypeProto()' converting it back
-   * Don't pass the returned value to MLValue::MLValue(...) function
+   * Don't pass the returned value to OrtValue::OrtValue(...) function
    * \param proto
    */
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
+  static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
+  static const char* ToString(MLDataType type);
   // Registers ONNX_NAMESPACE::DataType (internalized string) with
   // MLDataType. DataType is produced by internalizing an instance of
   // TypeProto contained within MLDataType
@@ -424,7 +426,7 @@ class NonTensorType : public NonTensorTypeBase {
   }
 
   CreateFunc GetCreateFunc() const override {
-    return []() { return new T(); };
+    return []() -> void* { return new T(); };
   }
 
  protected:

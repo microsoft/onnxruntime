@@ -7,6 +7,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types or limits
+// in its parser: axis >=0 && axis < nbDims. Those Tests will fallback to other EPs
+
 TEST(MathOpTest, Concat1D_string) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
@@ -40,7 +43,7 @@ TEST(MathOpTest, Concat1D_int32_negative_axis) {
   test.Run();
 }
 
-TEST(MathOpTest, Concat1D) {
+TEST(MathOpTest, Concat1D_1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
@@ -48,6 +51,17 @@ TEST(MathOpTest, Concat1D) {
   test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
   test.AddInput<float>("input3", {4}, {4.0f, 5.0f, 6.0f, 7.0f});
   test.AddOutput<float>("concat_result", {7}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f});
+  test.Run();
+}
+
+TEST(MathOpTest, Concat1D_2) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<float>("input1", {1}, {1.0f});
+  test.AddInput<float>("input2", {2}, {2.0f, 3.0f});
+  test.AddInput<float>("input3", {0}, {});
+  test.AddOutput<float>("concat_result", {3}, {1.0f, 2.0f, 3.0f});
   test.Run();
 }
 
@@ -79,6 +93,17 @@ TEST(MathOpTest, Concat2D_2) {
                          21.0f, 22.0f, 23.0f, 24.0f,
                          31.0f, 32.0f, 33.0f, 34.0f,
                          41.0f, 42.0f, 43.0f, 44.0f});
+  test.Run();
+}
+
+TEST(MathOpTest, Concat2D_3) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<float>("input1", {1, 0}, {});
+  test.AddInput<float>("input2", {1, 0}, {});
+  test.AddInput<float>("input3", {1, 0}, {});
+  test.AddOutput<float>("concat_result", {1, 0}, {});
   test.Run();
 }
 

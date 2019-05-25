@@ -3,19 +3,47 @@
 
 #include <set>
 #include "core/framework/ml_value_patterns_planner.h"
-#include "core/framework/sequential_execution_plan.h"
+#include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {
-MLValuePatternPlanner::MLValuePatternPlanner(const SequentialExecutionPlan& execution_plan)
+MLValuePatternPlanner::MLValuePatternPlanner(const ExecutionPlanBase& execution_plan)
     : execution_planner_{execution_plan} {
-  std::set<OrtAllocatorInfo> locations;
-  for (auto& alloc_plan : execution_planner_.allocation_plan) {
-    if (locations.find(alloc_plan.location) == locations.end())
-      locations.insert(alloc_plan.location);
-  }
-  for (auto& location : locations) {
-    pattern_planners_.push_back(std::make_unique<MemPatternPlanner>());
-    planner_map_[location] = pattern_planners_.back().get();
+  for (auto& location : execution_plan.GetAllLocations()) {
+    planner_map_.emplace(location, std::make_unique<MemPatternPlanner>());
   }
 }
+
+common::Status MLValuePatternPlanner::TraceAllocation(int ml_value_idx, size_t size) {
+  auto location = execution_planner_.GetLocation(ml_value_idx);
+  auto it = planner_map_.find(location);
+  if (it == planner_map_.end()) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  it->second->TraceAllocation(ml_value_idx, size);
+  return common::Status::OK();
+}
+
+common::Status MLValuePatternPlanner::TraceFree(int ml_value_index) {
+  auto location = execution_planner_.GetLocation(ml_value_index);
+  auto it = planner_map_.find(location);
+  if (it == planner_map_.end()) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  it->second->TraceFree(ml_value_index);
+  return common::Status::OK();
+}
+
+common::Status MLValuePatternPlanner::GeneratePatterns(MemoryPatternGroup* out) {
+  if (!out) return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+
+  for (auto& it : planner_map_) {
+    out->locations.push_back(it.first);
+    out->patterns.push_back(it.second->GenerateMemPattern());
+  }
+
+  return common::Status::OK();
+}
+
 }  // namespace onnxruntime

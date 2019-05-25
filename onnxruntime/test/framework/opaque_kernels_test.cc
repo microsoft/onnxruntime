@@ -296,7 +296,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   auto shape_def = ConstructFetchSparseShape();
   EXPECT_TRUE(registry->RegisterCustomKernel(shape_def, [](const OpKernelInfo& info) { return new FetchSparseTensorShape(info); }).IsOK());
 
-  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry};
+  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
   Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version);
@@ -351,11 +351,11 @@ TEST_F(OpaqueTypeTests, RunModel) {
   EXPECT_TRUE(graph.Resolve().IsOK());
 
   // Get a proto and load from it
-  std::stringstream serialized_model;
+  std::string serialized_model;
   auto model_proto = model.ToProto();
-  EXPECT_TRUE(model_proto.SerializeToOstream(&serialized_model));
-
-  EXPECT_TRUE(session_object.Load(serialized_model).IsOK());
+  EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
+  std::stringstream sstr(serialized_model);
+  EXPECT_TRUE(session_object.Load(sstr).IsOK());
   EXPECT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -364,17 +364,17 @@ TEST_F(OpaqueTypeTests, RunModel) {
   std::vector<int64_t> val_dims = {2};
   std::vector<int64_t> values = {1, 2};
   // prepare inputs
-  MLValue ml_values;
+  OrtValue ml_values;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), val_dims, values, &ml_values);
 
   std::vector<int64_t> ind_dims = {2};
   std::vector<int64_t> indicies = {1, 4};
-  MLValue ml_indicies;
+  OrtValue ml_indicies;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), ind_dims, indicies, &ml_indicies);
 
   std::vector<int64_t> shape_dims = {1};
   std::vector<int64_t> shape = {5};
-  MLValue ml_shape;
+  OrtValue ml_shape;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape_dims, shape, &ml_shape);
 
   NameMLValMap feeds;
@@ -388,7 +388,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
 
   std::vector<std::string> output_names;
   output_names.push_back("sparse_tensor_shape");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
   ASSERT_EQ(1, fetches.size());

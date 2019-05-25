@@ -1,0 +1,18 @@
+ARG OS_VERSION=16.04
+FROM i386/ubuntu:${OS_VERSION}
+
+ARG PYTHON_VERSION=3.5
+
+ADD scripts /tmp/scripts
+ENV PATH="/opt/cmake/bin:${PATH}"
+RUN /tmp/scripts/install_ubuntu_x86.sh -p ${PYTHON_VERSION} && /tmp/scripts/install_deps_x86.sh && rm -rf /tmp/scripts
+
+WORKDIR /root
+ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
+
+ARG BUILD_UID=1000
+ARG BUILD_USER=onnxruntimedev
+WORKDIR /home/$BUILD_USER
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+USER $BUILD_USER
+

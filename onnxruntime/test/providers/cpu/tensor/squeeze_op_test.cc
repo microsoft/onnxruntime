@@ -7,6 +7,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because axis=0 is not supported
+// or there are unsupported data types. Those tests will fallback to other EPs.
+
 TEST(SqueezeOpTest, Squeeze_1) {
   OpTester test("Squeeze");
   test.AddAttribute("axes", std::vector<int64_t>{0});
@@ -72,7 +75,7 @@ TEST(SqueezeOpTest, BadAxes) {
   test.AddOutput<float>("squeezed", {3, 4, 5}, std::vector<float>(60, 1.0f));
 
   // Expect failure.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3", {kTensorrtExecutionProvider});
 }
 }  // namespace test
 }  // namespace onnxruntime

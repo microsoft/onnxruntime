@@ -76,17 +76,11 @@ void Not(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
-#define DECLARE_BINARY_OP_BINARY_RESULT(name)                                  \
-  template <typename T, class Provider>                                        \
-  void name(const int N, const T* a, const T* b, bool* y, Provider* provider); \
-  template <typename T, class Provider>                                        \
-  void name##ToRow(                                                            \
-      const int M,                                                             \
-      const int N,                                                             \
-      const T* a,                                                              \
-      const T* b,                                                              \
-      bool* y,                                                                 \
-      Provider* provider);
+#define DECLARE_BINARY_OP_BINARY_RESULT(name)                            \
+  template <typename T, class Provider>                                  \
+  void name(int N, const T* a, const T* b, bool* y, Provider* provider); \
+  template <typename T, class Provider>                                  \
+  void name##ToRow(int M, int N, const T* a, const T* b, bool* y, Provider* provider);
 
 DECLARE_BINARY_OP_BINARY_RESULT(LT);
 DECLARE_BINARY_OP_BINARY_RESULT(LE);
@@ -99,23 +93,15 @@ DECLARE_BINARY_OP_BINARY_RESULT(Xor);
 
 #undef DECLARE_BINARY_OP_BINARY_RESULT
 
-#define DECLARE_BINARY_OP(name)                                             \
-  template <typename T, class Provider>                                     \
-  void name(const int N, const T* a, const T* b, T* y, Provider* provider); \
-  template <typename T, class Provider>                                     \
-  void name##ToRow(                                                         \
-      const int M,                                                          \
-      const int N,                                                          \
-      const T* a,                                                           \
-      const T* b,                                                           \
-      T* y,                                                                 \
-      Provider* provider);                                                  \
-  template <typename T, class Provider>                                     \
-  void name##ToRow(                                                         \
-      const int M, const int N, const T* x, T* y, Provider* provider);      \
-  template <typename T, class Provider>                                     \
-  void name##ToCol(                                                         \
-      const int M, const int N, const T* x, T* y, Provider* provider);
+#define DECLARE_BINARY_OP(name)                                                     \
+  template <typename T, class Provider>                                             \
+  void name(int N, const T* a, const T* b, T* y, Provider* provider);               \
+  template <typename T, class Provider>                                             \
+  void name##ToRow(int M, int N, const T* a, const T* b, T* y, Provider* provider); \
+  template <typename T, class Provider>                                             \
+  void name##ToRow(int M, int N, const T* x, T* y, Provider* provider);             \
+  template <typename T, class Provider>                                             \
+  void name##ToCol(int M, int N, const T* x, T* y, Provider* provider);
 
 DECLARE_BINARY_OP(Add);
 DECLARE_BINARY_OP(Sub);
@@ -149,6 +135,18 @@ void AddStripedBatch(
     int stripe,
     int batch,
     Provider* provider);
+
+// Compute the row-wise sum of a N*D matrix X, and write it to a N
+// dimensional vector y.
+template <typename T, class Provider>
+void RowwiseSum(int N, int D, const T* x, T* y,
+                Provider* provider);
+
+// Compute the column-wise sum of a N*D matrix X, and write it to a D
+// dimensional vector y.
+template <typename T, class Provider>
+void ColwiseSum(int N, int D, const T* x, T* y,
+                Provider* provider);
 
 // Compute the row-wise max of a N*D matrix X, and write it to a N
 // dimensional vector y.
@@ -254,8 +252,7 @@ template <typename T, class Provider>
 void Set(int64_t N, T alpha, T* X, Provider* provider);
 
 template <typename T, class Provider>
-void RandUniform(int n, T a, T b, T* r,
-                 Provider* provider);
+void RandUniform(int n, T a, T b, const T* r, Provider* provider);
 
 template <typename T, class Provider>
 void RandUniformUnique(
@@ -268,12 +265,7 @@ void RandUniformUnique(
     Provider* provider);
 
 template <typename T, class Provider>
-void RandGaussian(
-    int n,
-    T mean,
-    T std,
-    T* r,
-    Provider* provider);
+void RandGaussian(int n, T mean, T std, const T* r, Provider* provider);
 
 // Dot matrix of vector a and b, and writes the result to a single value y.
 template <typename T, class Provider>
@@ -347,26 +339,15 @@ struct Im2colNd {
 
 template <typename T, class Provider>
 struct Im2colNd<T, Provider, StorageOrder::NCHW> {
-  void operator()(
-      const T* data_img,
-      const int64_t* im_shape,
-      const int64_t* col_shape,
-      const int64_t /*img_size*/,
-      const int64_t /*col_size*/,
-      const int64_t* kernel_shape,
-      const int64_t* stride,
-      const int64_t* dilation,
-      const int64_t* pad,
-      const int64_t N,
-      T* data_col,
-      Provider* /*provider*/,
-      bool accumulate_output = false,
-      T padding_value = 0) {
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
+                  int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+                  const int64_t* pad, int64_t N, T* data_col, Provider* /*provider*/, bool accumulate_output = false,
+                  T padding_value = 0) {
     int64_t kernel_size = 1;
     for (int64_t i = 0; i < N; ++i) {
       kernel_size *= kernel_shape[i];
     }
-    const int64_t channels_col = col_shape[0];
+    int64_t channels_col = col_shape[0];
     std::vector<int64_t> d_offset(N, 0);
     std::vector<int64_t> d_iter(N, 0);
     for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
@@ -385,9 +366,8 @@ struct Im2colNd<T, Provider, StorageOrder::NCHW> {
         int64_t index_im = c_col / kernel_size;
         bool is_padding = false;
         for (int64_t d_i = 0; d_i < N; ++d_i) {
-          const int64_t d = d_iter[d_i];
-          const int64_t d_im =
-              d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
+          int64_t d = d_iter[d_i];
+          int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
           is_padding |= d_im < 0 || d_im >= im_shape[d_i + 1];
           index_col *= col_shape[d_i + 1];
           index_col += d;
@@ -407,7 +387,7 @@ struct Im2colNd<T, Provider, StorageOrder::NCHW> {
         // like counting.
         incremented = false;
         for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-          const int64_t d_max = col_shape[d_i + 1];
+          int64_t d_max = col_shape[d_i + 1];
           ORT_ENFORCE(d_iter[d_i] < d_max);
           if (d_iter[d_i] == d_max - 1) {
             d_iter[d_i] = 0;

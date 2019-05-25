@@ -79,7 +79,7 @@ class ValidNodes {
     using const_reference = std::add_const_t<reference>;
 
     /** Construct a NodeInterator and move to the first valid node. */
-    NodeIterator<TIterator>(TIterator current, const TIterator end) noexcept : current_{current}, end_{end} {
+    NodeIterator<TIterator>(const TIterator current, const TIterator end) noexcept : current_{current}, end_{end} {
       // skip to next valid node, stopping at end if none are found
       while (current_ < end && *current_ == nullptr) {
         ++current_;
@@ -122,7 +122,7 @@ class ValidNodes {
 
    private:
     TIterator current_;
-    const TIterator end_;
+    TIterator end_;
   };
 
  private:

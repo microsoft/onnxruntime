@@ -52,7 +52,7 @@ inline void ComputeTransposePadAndOutputShape(
       *pad_tail = paddings - paddings / 2;
     }
     return;
-  } else {
+  }
     if (pad_type != AutoPadType::NOTSET) {
       switch (pad_type) {
           // We handle cases of AutoPadType::VALID and AutoPadType::SAME_UPPER/LOWER,
@@ -71,12 +71,11 @@ inline void ComputeTransposePadAndOutputShape(
       *out_size =
           (in_size - 1) * stride + kernel + dilation - 1 + adj - *pad_head - *pad_tail;
     }
-  }
 }
 
 Status ConvTransposeBase::PrepareForCompute(OpKernelContext* context, bool has_bias, ConvTransposeBase::Prepare& p) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* F = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* F = context->Input<Tensor>(1);
   const Tensor* B = has_bias ? context->Input<Tensor>(2) : nullptr;
   const TensorShape& input_shape = X->Shape();
 
@@ -177,7 +176,8 @@ void ConvTransposeBase::ComputePadsAndOutputShape(
   const int64_t N = input_shape[0];
   const int64_t H = input_shape[2];
   const int64_t W = input_shape[3];
-  int64_t output_height = -1, output_width = -1;
+  int64_t output_height = -1;
+  int64_t output_width = -1;
   size_t output_shape_size = output_shape_.size();
 
   if (output_shape_size != 0) {

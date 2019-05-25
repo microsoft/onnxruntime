@@ -50,7 +50,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
 #endif
   for (int64_t i = 0; i < last_indice_dimension; ++i) {
     element_counts[i] = input_shape.SizeFromDimension(i + 1);
-  }
+}
 
   int64_t err_indice = 0;
   p.element_bytes    = input_tensor->DataType()->Size();
@@ -80,6 +80,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
       p.element_offsets[i] += indice * element_counts[j];
     }
   }
+
   return err_indice == 0 ? Status::OK() :
     ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
 }
@@ -91,6 +92,7 @@ Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
                               PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
+
   return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
 }
 
@@ -103,6 +105,7 @@ Status GatherND::GatherNumber(const Prepare& p) const {
            p.input_base + p.element_offsets[i] * p.element_bytes,
            p.bytes_to_copy);
   }
+
   return Status::OK();
 }
 
@@ -115,6 +118,7 @@ Status GatherND::GatherString(const Prepare& p) const {
       p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
     }
   }
+
   return Status::OK();
 }
 

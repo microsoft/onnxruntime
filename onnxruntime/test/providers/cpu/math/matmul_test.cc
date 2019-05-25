@@ -17,7 +17,7 @@ struct MatMulTestData {
 };
 
 template <typename T>
-std::vector<MatMulTestData<T>> GenerateTestCases() 
+std::vector<MatMulTestData<T>> GenerateTestCases()
 {
   std::vector<MatMulTestData<T>> test_cases;
 
@@ -48,7 +48,7 @@ std::vector<MatMulTestData<T>> GenerateTestCases()
     {2},
     {3, 1},
     {1, 3, 5}});
-  
+
   test_cases.push_back(
     {"test scalar output",
     {3},
@@ -96,16 +96,17 @@ void RunMatMulTest(int32_t opset_version = 7)
     test.AddInput<T>("B", t.input1_dims, input1_vals);
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
-    test.Run();
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// Disable TensorRT because of unsupported data type
   }
 }
 
 TEST(MathOpTest, MatMulFloatType) {
-  RunMatMulTest<float>();
+  RunMatMulTest<float>(7);
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
-  RunMatMulTest<double>();
+  RunMatMulTest<double>(7);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
