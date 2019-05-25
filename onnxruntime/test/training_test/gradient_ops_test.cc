@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <random>
+#include <algorithm>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/gradient_checker.h"
-#include <random>
 
 // TODO: replace this with ONNX version of attr_proto_util.h when ONNX dependency version is updated
 // TODO: update attributes type to AttributeProtoWrapper when ONNX version is ready
@@ -45,30 +47,74 @@ void GenerateRandomData(
 }
 
 #ifndef USE_CUDA
-TEST(GradientCheckerTest, SigmoidGrad) {
-  TensorShape shape({2, 3, 4});
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Sigmoid"};
 
-  EXPECT_THROW(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error), OnnxRuntimeException);
+TEST(GradientCheckerTest, CastGrad) {
+  // A dummy test that cast float to float
+  // TODO: add more test here
+  {
+    TensorShape shape({2, 3, 4});
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"Cast"};
+
+    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error,
+                                          {MakeAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
 }
 
-TEST(GradientCheckerTest, SinGrad) {
+void UnaryOpGradientTest(const std::string& op_type) {
   TensorShape shape({2, 3, 4});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Sin"};
+  OpDef op_def{op_type};
 
   gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error);
 
   EXPECT_TRUE(max_error <= 1e-3);
 }
 
-TEST(GradientCheckerTest, AddGrad) {
+TEST(GradientCheckerTest, SinGrad) {
+  UnaryOpGradientTest("Sin");
+}
+
+TEST(GradientCheckerTest, TanhGrad) {
+  UnaryOpGradientTest("Tanh");
+}
+
+TEST(GradientCheckerTest, ErfGrad) {
+  UnaryOpGradientTest("Erf");
+}
+
+TEST(GradientCheckerTest, ReluGrad) {
+  UnaryOpGradientTest("Relu");
+}
+
+TEST(GradientCheckerTest, SqrtGrad) {
+  TensorShape shape({2, 3, 4});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Add"};
+  OpDef op_def{"Sqrt"};
+
+  std::vector<std::vector<float>> x_datas(1);
+  x_datas[0].resize(shape.Size());
+
+  float scale = 5.f;
+  float mean = 0.f;
+  auto seed = std::chrono::system_clock::now().time_since_epoch().count();
+  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution{mean, scale};
+  std::generate(x_datas[0].begin(), x_datas[0].end(), [&] { return std::fabs(distribution(generator)); });
+
+  gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, x_datas);
+
+  EXPECT_TRUE(max_error <= 1e-3);
+}
+
+void TestAddSubGrad(const std::string& op_type) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{op_type};
 
   //shape(A) = (2, 3, 4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
   {
@@ -127,14 +173,12 @@ TEST(GradientCheckerTest, AddGrad) {
   }
 }
 
-TEST(GradientCheckerTest, SubGrad) {
-  TensorShape shape({2, 3, 4, 5});
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Sub"};
+TEST(GradientCheckerTest, AddGrad) {
+  TestAddSubGrad("Add");
+}
 
-  gradient_checker.ComputeGradientError(op_def, {shape, shape}, {shape}, &max_error);
-  EXPECT_TRUE(max_error <= 1e-2);
+TEST(GradientCheckerTest, SubGrad) {
+  TestAddSubGrad("Sub");
 }
 
 // TODO: Enable this test once Powgrad is implemented completely.
@@ -233,16 +277,6 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
 
   gradient_checker.ComputeGradientError(op_def, {{3, 5}}, {{1, 1}}, &max_error);
   EXPECT_TRUE(max_error <= 1e-2);
-}
-
-TEST(GradientCheckerTest, ReluGrad) {
-  TensorShape shape({3, 4, 5});
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Relu"};
-
-  gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error);
-  EXPECT_TRUE(max_error <= 1e-3);
 }
 
 TEST(GradientCheckerTest, SoftMaxGrad) {
@@ -551,6 +585,38 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
                                            MakeAttribute("count_include_pad", int64_t(1))});
     EXPECT_TRUE(max_error <= error_tolerance);
+  }
+}
+TEST(GradientCheckerTest, UnsqueezeGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Unsqueeze"};
+
+  {
+    TensorShape x_shape({2, 3});
+    TensorShape y_shape({1, 2, 3, 1});
+    std::vector<int64_t> axes{0, 3};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  {
+    TensorShape x_shape({2, 3});
+    TensorShape y_shape({1, 1, 2, 3});
+    std::vector<int64_t> axes{0, 1};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_TRUE(max_error <= 1e-3);
+  }
+
+  {
+    TensorShape x_shape({2, 3});
+    TensorShape y_shape({1, 2, 1, 3, 1});
+    std::vector<int64_t> axes{0, 2, 4};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_TRUE(max_error <= 1e-3);
   }
 }
 

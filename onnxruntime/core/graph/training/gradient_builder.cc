@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include "core/graph/training/gradient_builder.h"
 #include "core/graph/training/gradient_builder_registry.h"
 #include "core/graph/training/graph_augmenter.h"
@@ -12,6 +13,16 @@ namespace training {
 #define IMPLEMENT_GRADIENT_BUILDER(name) \
   std::vector<NodeDef> name::GetGradientDefs() const
 
+IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
+  // TODO: handle invalid conversion cases
+  const auto& data_type = I(0).type_proto->tensor_type().elem_type();
+  return std::vector<NodeDef>{
+      NodeDef("Cast",
+              {GO(0)},
+              {GI(0)},
+              {MakeAttribute("to", int64_t(data_type))})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
   return std::vector<NodeDef>{
       NodeDef("Cos",
@@ -22,13 +33,72 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
+  std::vector<NodeDef> result;
+  NodeDef one_constant_node = OneConstantNode();
+  ArgDef ONE = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+
+  result.push_back(NodeDef("Mul",
+                           {O(0), O(0)},
+                           {IA("Squared_output")}));
+  result.push_back(NodeDef("Sub",
+                           {ONE, IA("Squared_output")},
+                           {IA("Tanh_Grad")}));
+  result.push_back(NodeDef("Mul",
+                           {GO(0), IA("Tanh_Grad")},
+                           {GI(0)}));
+  return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
+  std::vector<NodeDef> result;
+  NodeDef constant_node = ConstantValueNode(0.5f, "OneHalfConstant");
+  ArgDef ONE_HALF = constant_node.output_args[0];
+  result.push_back(constant_node);
+
+  // TODO: Gradient of sqrt is unstable for x = 0, find a fix for this
+  result.push_back(NodeDef("Div",
+                           {ONE_HALF, O(0)},
+                           {IA("Sqrt_Grad")}));
+  result.push_back(NodeDef("Mul",
+                           {GO(0), IA("Sqrt_Grad")},
+                           {GI(0)}));
+  return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
+  std::vector<NodeDef> result;
+  // M_2_SQRTPI = 2 / sqrt(pi)
+  NodeDef constant_node = ConstantValueNode(static_cast<float>(M_2_SQRTPI), "TWO_SQRTPI");
+  ArgDef TWO_SQRTPI = constant_node.output_args[0];
+  result.push_back(constant_node);
+
+  result.push_back(NodeDef("Mul",
+                           {I(0), I(0)},
+                           {IA("Square_x")}));
+  result.push_back(NodeDef("Neg",
+                           {IA("Square_x")},
+                           {IA("Neg_Square_x")}));
+  result.push_back(NodeDef("Exp",
+                           {IA("Neg_Square_x")},
+                           {IA("Exp_Neg_Square_x")}));
+  result.push_back(NodeDef("Mul",
+                           {TWO_SQRTPI, IA("Exp_Neg_Square_x")},
+                           {IA("Erf_Grad")}));
+  result.push_back(NodeDef("Mul",
+                           {GO(0), IA("Erf_Grad")},
+                           {GI(0)}));
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
-  NodeDef zero_contant_node = ZeroConstantNode();
-  ArgDef ZERO = zero_contant_node.output_args[0];
+  NodeDef zero_constant_node = ZeroConstantNode();
+  ArgDef ZERO = zero_constant_node.output_args[0];
 
-  result.push_back(zero_contant_node);
+  result.push_back(zero_constant_node);
 
   // is GI(0) required
   if (IsGradientRequiredForSrcNodeInput(0)) {
@@ -358,6 +428,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Squeeze",
+              {GO(0)},
+              {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
   return std::vector<NodeDef>{
       NodeDef("ReluGrad",
@@ -407,7 +484,9 @@ void ComputeBroadcastBackwardAxes(
   }
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetAddGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
+  bool is_sub = (SrcNodeOpType() == "Sub");
+
   const ArgDef &a = I(0), b = I(1);
 
   std::vector<int64_t> a_shape = GetShape(a);
@@ -458,25 +537,33 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddGradient) {
                   {b},
                   {IA("b_shape")}));
 
+      ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2") : GI(1);
       output.push_back(
           NodeDef("Reshape",
                   {IA("ReduceSum_2"), IA("b_shape")},
-                  {GI(1)}));
+                  {reshape_output}));
+
+      if (is_sub) {
+        output.push_back(
+            NodeDef("Neg",
+                    {reshape_output},
+                    {GI(1)}));
+      }
     } else {
-      output.push_back(
-          NodeDef("Identity",
-                  {GO(0)},
-                  {GI(1)}));
+      if (is_sub) {
+        output.push_back(
+            NodeDef("Neg",
+                    {GO(0)},
+                    {GI(1)}));
+      } else /*is_add*/ {
+        output.push_back(
+            NodeDef("Identity",
+                    {GO(0)},
+                    {GI(1)}));
+      }
     }
   }
   return output;
-}
-
-IMPLEMENT_GRADIENT_BUILDER(GetSubGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("SubGrad",
-              {GO(0)},
-              {GI(0), GI(1)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {

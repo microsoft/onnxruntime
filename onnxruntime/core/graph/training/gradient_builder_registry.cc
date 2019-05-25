@@ -48,14 +48,18 @@ GradientDef GetGradientForOp(const Node* node,
 
 void GradientBuilderRegistry::RegisterGradientBuilders() {
   // Register gradient builders here.
+  REGISTER_GRADIENT_BUILDER("Cast", GetCastGradient);
   REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
+  REGISTER_GRADIENT_BUILDER("Tanh", GetTanhGradient);
+  REGISTER_GRADIENT_BUILDER("Sqrt", GetSqrtGradient);
+  REGISTER_GRADIENT_BUILDER("Erf", GetErfGradient);
   REGISTER_GRADIENT_BUILDER("MatMul", GetMatMulGradient);
   REGISTER_GRADIENT_BUILDER("Split", GetSplitGradient);
   REGISTER_GRADIENT_BUILDER("Relu", GetReluGradient);
   REGISTER_GRADIENT_BUILDER("Pow", GetPowGradient);
   REGISTER_GRADIENT_BUILDER("ReduceMean", GetReduceMeanGradient);
-  REGISTER_GRADIENT_BUILDER("Add", GetAddGradient);
-  REGISTER_GRADIENT_BUILDER("Sub", GetSubGradient);
+  REGISTER_GRADIENT_BUILDER("Add", GetAddSubGradient);
+  REGISTER_GRADIENT_BUILDER("Sub", GetAddSubGradient);
   REGISTER_GRADIENT_BUILDER("Concat", GetConcatGradient);
   REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);
   REGISTER_GRADIENT_BUILDER("Transpose", GetTransposeGradient);
@@ -64,6 +68,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("LRN", GetLRNGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient);
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
+  REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);
   REGISTER_GRADIENT_BUILDER("GlobalAveragePool", GetGlobalAveragePoolGradient);

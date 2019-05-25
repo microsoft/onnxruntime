@@ -58,7 +58,7 @@ inline std::vector<onnxruntime::MLValue> GradientChecker<X_T, Y_T, JAC_T>::Evalu
 
   for (int data_index = 0; data_index < y_infos.size(); data_index++) {
     std::string name = "output" + std::to_string(data_index);
-    op_session.AddOutput<X_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
+    op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
   }
   // Currently only allows setting int attributes to zero. TODO: Expand this
   for (auto attr : attributes) {
@@ -151,7 +151,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
     const std::vector<AttributeProto>& attributes) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
-  X_T x_delta = X_T{delta};
+  X_T x_delta = static_cast<X_T>(delta);
 
   for (int x_idx = 0; x_idx < x_num; x_idx++) {
     if (!x_infos[x_idx].has_gradient) {
@@ -183,7 +183,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
         auto y_plus_flat = y_plus[y_idx].Get<Tensor>().Data<Y_T>();
         auto y_minus_flat = y_minus[y_idx].Get<Tensor>().Data<Y_T>();
         const int64_t y_size = y_infos[y_idx].shape.Size();
-        const Y_T scale = 2 * delta;
+        const Y_T scale = static_cast<Y_T>(2 * delta);
         for (int c = 0; c < y_size; ++c) {
           auto calc_index = CalculateJacobianTransposeIndex(
               x_infos,
@@ -342,5 +342,6 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
 INSTANTIATE_GRAD_ERR_TYPE(float, float, float);
 INSTANTIATE_GRAD_ERR_TYPE(double, double, double);
+
 }  // namespace test
 }  // namespace onnxruntime
