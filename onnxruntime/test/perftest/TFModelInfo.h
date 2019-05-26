@@ -19,7 +19,7 @@ class TFModelInfo : public TestModelInfo {
   const std::string& GetInputName(size_t i) const override;
   const std::string& GetOutputName(size_t i) const override;
   ~TFModelInfo() override = default;
-  const std::string& GetModelVersion() const override { return model_version_;}
+
   static TestModelInfo* Create(_In_ const PATH_CHAR_TYPE* model_url);
 
  private:
@@ -28,5 +28,4 @@ class TFModelInfo : public TestModelInfo {
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::string node_name_;
-  std::string model_version_ = "";
 };
