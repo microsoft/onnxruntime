@@ -23,22 +23,22 @@ namespace {
 template <typename T>
 class SubgraphPrimitive : public PrimitiveBase {
  public:
-  SubgraphPrimitive(Ort::CustomOpApi ort,
+  SubgraphPrimitive(const OrtCustomOpApi* api,
                     OrtKernelContext* context,
                     const SubgraphParams& params)
-      : cpu_engine_(GetEngine()), ort_(ort) {
+      : cpu_engine_(GetEngine()) {
     context_.stream.reset(new mkldnn::stream(mkldnn::stream::kind::eager));
 
 	if (context_.net.size() == 0) {
       CreateKernels(params);
-      Initialize(context);
+      Initialize(api, context);
     }
   }
 
-  Status Compute(OrtKernelContext* context) {
+  Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) {
     Status status;
     for (auto& kernel : context_.kernels) {
-      status = kernel->Bind(ort_, context);
+      status = kernel->Bind(api, context);
       if (!status.IsOK())
         break;
     }
@@ -166,14 +166,14 @@ class SubgraphPrimitive : public PrimitiveBase {
     SubgraphContext() : stream(nullptr) {}
   };
 
-  Status Initialize(OrtKernelContext* context) {
+  Status Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) {
     // Propagate mkldnn block format
     // dst format of current node to src format of next node
     mkldnn::memory::format source_format = mkldnn::memory::format::any;  // ONNXRuntime format
     for (auto& kernel : context_.kernels) {
-      Status status = kernel->CreatePrimitives(ort_, context, cpu_engine_, context_.net, source_format);
+      Status status = kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, source_format);
       if (status.IsOK())
-        kernel->ReorderWeights(ort_, context, cpu_engine_);
+        kernel->ReorderWeights(api, context, cpu_engine_);
       else
         return status;
     }
@@ -182,7 +182,6 @@ class SubgraphPrimitive : public PrimitiveBase {
 
   SubgraphContext context_;
   mkldnn::engine& cpu_engine_;
-  Ort::CustomOpApi ort_;
 };
 
 // Pool which allows for reuse of MKLDNN Conv primitives which are expensive to instantiate.
@@ -190,9 +189,11 @@ class SubgraphPrimitive : public PrimitiveBase {
 template <typename T>
 class SubgraphPrimitivePool : public PrimitivePool<T> {
  public:
-  static SubgraphPrimitive<T>* Get(Ort::CustomOpApi ort,
+  static SubgraphPrimitive<T>* Get(const OrtCustomOpApi* api,
                                    OrtKernelContext* context,
                                    const SubgraphParams& params) {
+    Ort::CustomOpApi ort{*api};
+
     const OrtValue* input_tensor = ort.KernelContext_GetInput(context, 0);
     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
     auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -213,7 +214,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
         SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));
 
     if (primitive == nullptr) {
-      auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(ort, context, params);
+      auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params);
       primitive = subgraph_primitive.get();
       SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
     }
@@ -234,11 +235,9 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
 template <typename T>
 Status MkldnnFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Status status;
-  Ort::CustomOpApi ort{*api};
-
   try {
-    SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(ort, context, params_);
-    status = primitive->Compute(context);
+    SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
+    status = primitive->Compute(api, context);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
                            ", message: ", e.message.c_str());

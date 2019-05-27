@@ -21,11 +21,12 @@ class MklDnnSum : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(Ort::CustomOpApi ort,
+  Status CreatePrimitives(const OrtCustomOpApi* api,
                           OrtKernelContext* context,
                           mkldnn::engine& cpu_engine,
                           std::vector<mkldnn::primitive>& net,
                           mkldnn::memory::format& source_format) override {
+    Ort::CustomOpApi ort{*api};
     int num_inputs = mklnode_ptr_->num_inputs;
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -128,7 +129,9 @@ class MklDnnSum : public MklDnnKernel {
     return Status::OK();
   }
 
-  Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) override {
+  Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
+    Ort::CustomOpApi ort{*api};
+
     int num_inputs = mklnode_ptr_->num_inputs;
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 

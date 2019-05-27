@@ -70,13 +70,14 @@ class MklDnnConv : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(Ort::CustomOpApi ort,
+  Status CreatePrimitives(const OrtCustomOpApi* api,
                           OrtKernelContext* context,
                           mkldnn::engine& cpu_engine,
                           std::vector<mkldnn::primitive>& net,
                           mkldnn::memory::format& source_format) override {
-    int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
+    Ort::CustomOpApi ort{*api};
 
+    int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     auto wtensor_info = ort.GetTensorTypeAndShape(winput_tensor);
     auto wtensor_shape = ort.GetTensorShape(wtensor_info);
@@ -335,7 +336,8 @@ class MklDnnConv : public MklDnnKernel {
     return primitive_created_;
   }
 
-  virtual void ReorderWeights(Ort::CustomOpApi ort, OrtKernelContext* context, mkldnn::engine& cpu_engine) override {
+  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) override {
+    Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     
 	const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index+1);
@@ -382,7 +384,9 @@ class MklDnnConv : public MklDnnKernel {
     }
   }
 
-  Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) override {
+  Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
+    Ort::CustomOpApi ort{*api};
+
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
     if (!primitive_created_.IsOK()) {
       // abort as MKLDNN cannot execute this. but
@@ -403,7 +407,7 @@ class MklDnnConv : public MklDnnKernel {
    	}
     std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     if (filter_dst_mem == nullptr) {
-      ReorderWeights(ort, context, GetEngine());
+      ReorderWeights(api, context, GetEngine());
       filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     }
 	filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
