@@ -25,7 +25,7 @@ class SessionState;
 // 2. common execution provider type specific kernel registries.
 // The 1st and 2nd ones are shared across sessions.
 
-// This class is thread safe
+// This class is not thread safe.
 class KernelRegistryManager {
  public:
   KernelRegistryManager() = default;
