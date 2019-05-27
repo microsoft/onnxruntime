@@ -23,6 +23,8 @@ struct RunOptions {
   bool include_dim_values_in_subgraph = false;
   bool include_types_in_subgraph = false;
   bool mixed_execution_providers = false;
+  bool init_cond_1d_tensor = true;
+  bool init_iter_num_1d_tensor = true;
 };
 }
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
@@ -88,6 +90,9 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
   bool use_null_typeproto = !include_types && !include_dim_value && !graph_output_shape_required;
 
+  bool is_init_cond_1d = options.init_cond_1d_tensor;
+  bool is_init_iter_num_1d = options.init_iter_num_1d_tensor;
+
   Model model("Loop subgraph");
   auto& graph = model.MainGraph();
 
@@ -108,44 +113,59 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
        |             |                           |                          [Constant]
   iter_num_float  sum_0                          |          sum_0             /
        |           / | \                         |              \            /
-    [Concat]------/  |  \---------------------[Concat]           \--[Less]--/
-       |             |                           |                     |
-       |         [Identity]                      |                     |
+  (if scalar)     /  |  \---------------------[Concat]           \--[Less]--/
+  [Unsqueeze]    /   |                           |                     |
+       |        /    |                           |                     |
+    [Concat]---/ [Identity]                      |                     |
        |             |                           |                     |
    loop_out_0   loop_var_0_out             loop_var_1_out           cond_out
 
   */
 
-  // graph inputs. must have type and at least rank
+  // graph inputs.
   TypeProto int64_scalar;
   int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-  int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  int64_scalar.mutable_tensor_type()->mutable_shape();
 
   TypeProto bool_scalar;
   bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
-  bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  bool_scalar.mutable_tensor_type()->mutable_shape();
+
+  TypeProto int64_tensor;
+  int64_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+
+  TypeProto int64_tensor_single_dim{int64_tensor};
+  int64_tensor_single_dim.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  TypeProto bool_tensor;
+  bool_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+
+  TypeProto bool_tensor_single_dim{bool_tensor};
+  bool_tensor_single_dim.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   TypeProto float_scalar;
   float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  auto* mutable_dim = float_scalar.mutable_tensor_type()->mutable_shape()->add_dim();
-  if (include_dim_value) {
-    mutable_dim->set_dim_value(1);
-  }
+  float_scalar.mutable_tensor_type()->mutable_shape();
 
   TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
 
   // dimension value changes on each iteration so just add a dimension but no value
   TypeProto float_tensor_single_dim{float_tensor};
-  mutable_dim = float_tensor_single_dim.mutable_tensor_type()->mutable_shape()->add_dim();
+  float_tensor_single_dim.mutable_tensor_type()->mutable_shape()->add_dim();
 
   // graph inputs
-  auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
-  auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
-  auto& loop_var_0_in = graph.GetOrCreateNodeArg("loop_var_0_in", &float_scalar);
+  auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in",
+                                               is_init_iter_num_1d ? &int64_tensor_single_dim : &int64_scalar);
+  auto& cond_in = graph.GetOrCreateNodeArg("cond_in",
+                                           is_init_cond_1d ? &bool_tensor_single_dim : &bool_scalar);
+  auto& loop_var_0_in = graph.GetOrCreateNodeArg("loop_var_0_in", &float_tensor_single_dim);
   auto& loop_var_1_in = graph.GetOrCreateNodeArg("loop_var_1_in", &float_tensor_single_dim);
 
-  auto& iter_num_float = graph.GetOrCreateNodeArg("iter_num_float", &float_scalar);
+  auto& iter_num_float = graph.GetOrCreateNodeArg("iter_num_float",
+                                                  is_init_iter_num_1d ? &float_tensor_single_dim : &float_scalar);
+  auto& iter_num_float_tensor = is_init_iter_num_1d ? iter_num_float
+                                                    : graph.GetOrCreateNodeArg("iter_num_float_tensor", &float_tensor_single_dim);
 
   // outer scope values. need type but not shape.
   auto& outer_scope_0 = graph.GetOrCreateNodeArg("outer_scope_0", &float_tensor);
@@ -185,6 +205,14 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
     cast.AddAttribute("to", int64_t{TensorProto_DataType_FLOAT});
   }
 
+  // Unsqueeze iter_num_float, if initial iter_num is scalar.
+  if (!is_init_iter_num_1d) {
+    auto& unsqueeze = graph.AddNode("iter_num_unsqueeze", "Unsqueeze",
+                                    "Unsqueeze iter_num_float to tensor of single dim",
+                                    {&iter_num_float}, {&iter_num_float_tensor});
+    unsqueeze.AddAttribute("axes", std::vector<int64_t>{0});
+  }
+
   // Concat iter_num and sum to create loop_out_0
   {
     TypeProto loop_out_type;
@@ -200,7 +228,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
     loop_out_0 = &graph.GetOrCreateNodeArg("loop_out_0", &loop_out_type);
 
-    inputs = {&iter_num_float, &sum_0};
+    inputs = {&iter_num_float_tensor, &sum_0};
     outputs = {loop_out_0};
 
     auto& concat = graph.AddNode("concat_0", "Concat", "Combine iter num and current sum", inputs, outputs);
@@ -248,7 +276,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   // Update cond by checking if sum is < kSumMax
   {
     {
-      auto& max_value_out = graph.GetOrCreateNodeArg("max_value_out", &float_scalar);
+      auto& max_value_out = graph.GetOrCreateNodeArg("max_value_out", &float_tensor_single_dim);
       auto& constant = graph.AddNode("constant_max_value", "Constant", "Constant with value kSumMax",
                                      {}, {&max_value_out});
 
@@ -259,7 +287,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
 
       constant.AddAttribute("value", value_tensor);
 
-      cond_out = &graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+      cond_out = &graph.GetOrCreateNodeArg("cond_out", &bool_tensor_single_dim);
 
       inputs = {&sum_0, &max_value_out};
       outputs = {cond_out};
@@ -302,8 +330,16 @@ void RunTest(int64_t max_iterations,
 
   test.AddShapeToTensorData(options.include_dim_values_in_main_graph);
 
-  test.AddInput<int64_t>("M", {1}, {max_iterations});
-  test.AddInput<bool>("cond", {1}, {true});
+  if (options.init_iter_num_1d_tensor) {
+    test.AddInput<int64_t>("M", {1}, {max_iterations});
+  } else {
+    test.AddInput<int64_t>("M", {}, {max_iterations});
+  }
+  if (options.init_cond_1d_tensor) {
+    test.AddInput<bool>("cond", {1}, {true});
+  } else {
+    test.AddInput<bool>("cond", {}, {true});
+  }
 
   test.AddInput<float>("loop_var_0_orig", {1}, {0.f});
   test.AddInput<float>("loop_var_0_orig", {1}, {0.f});
@@ -348,23 +384,27 @@ void ExitDueToCond(const RunOptions& options) {
           options);
 }
 
-TEST(Loop, ExitDueToCond_DimsInMainGraph) {
-  RunOptions options{};
-  options.include_dim_values_in_main_graph = true;
-  options.include_dim_values_in_subgraph = false;
-  options.include_dim_values_in_subgraph = false;
+#define TEST_EXIT_DUE_TO_COND(name, dim_in_main_graph, iter_num_1d, cond_1d)   \
+  TEST(Loop, name) {                                                           \
+    RunOptions options{};                                                      \
+    options.include_dim_values_in_main_graph = dim_in_main_graph;              \
+    options.include_dim_values_in_subgraph = !dim_in_main_graph;               \
+    options.include_types_in_subgraph = false;                                 \
+                                                                               \
+    options.init_iter_num_1d_tensor = iter_num_1d;                             \
+    options.init_cond_1d_tensor = cond_1d;                                     \
+                                                                               \
+    ExitDueToCond(options);                                                    \
+  }
 
-  ExitDueToCond(options);
-}
-
-TEST(Loop, ExitDueToCond_DimsInSubgraph) {
-  RunOptions options{};
-  options.include_dim_values_in_main_graph = false;
-  options.include_dim_values_in_subgraph = true;
-  options.include_types_in_subgraph = false;
-
-  ExitDueToCond(options);
-}
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInMainGraph, true, true, true);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInMainGraph_ScalarIter, true, false, true);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInMainGraph_ScalarCond, true, true, false);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInMainGraph_ScalarBoth, true, false, false);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph, false, true, true);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph_ScalarIter, false, false, true);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph_ScalarCond, false, true, false);
+TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInSubGraph_ScalarBoth, false, false, false);
 
 TEST(Loop, ExitDueToMaxIterations) {
   int64_t max_iterations = 2;
@@ -404,7 +444,7 @@ TEST(Loop, InfiniteLoopTermination) {
                         cond_out     loop_var_0_out
     */
 
-    // graph inputs types. must have type and at least rank
+    // graph inputs types.
     TypeProto int64_scalar;
     int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
     int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);

@@ -41,13 +41,13 @@ class DummyRewriteRule : public RewriteRule {
   }
 
  private:
-  bool rewrite_rule_invoked_;
+  mutable bool rewrite_rule_invoked_;
 
-  bool SatisfyCondition(const Graph& /*graph*/, const Node& /*node*/) override {
+  bool SatisfyCondition(const Graph& /*graph*/, const Node& /*node*/) const override {
     return true;
   }
 
-  Status Apply(Graph& /*graph*/, Node& /*node*/, RewriteRuleEffect& /*rule_effect*/) override {
+  Status Apply(Graph& /*graph*/, Node& /*node*/, RewriteRuleEffect& /*rule_effect*/) const override {
     rewrite_rule_invoked_ = true;
     return Status::OK();
   }

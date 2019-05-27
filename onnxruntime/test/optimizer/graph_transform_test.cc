@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer.h"
@@ -16,6 +17,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/relu_clip_fusion.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ml_value.h"
 #include "core/util/math.h"
@@ -416,6 +418,73 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
                                      rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
+}
+
+TEST(GraphTransformationTests, ReluClipFusion) {
+  Model model("ReluClipFusion");
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // 3 paths in the model, each with Relu followed by Clip
+  // One has a Clip with min of 0  (remove Relu)
+  // One have a Clip with a min > 1 (remove Relu)
+  // One has a Clip with min < 0 (remove Relu and update Clip 'min' to 0)
+  auto& input0 = graph.GetOrCreateNodeArg("input_0", &input_tensor_type);
+  auto& input1 = graph.GetOrCreateNodeArg("input_1", &input_tensor_type);
+  auto& input2 = graph.GetOrCreateNodeArg("input_2", &input_tensor_type);
+
+  auto& relu0_output = graph.GetOrCreateNodeArg("relu0_output", &input_tensor_type);
+  auto& relu1_output = graph.GetOrCreateNodeArg("relu1_output", &input_tensor_type);
+  auto& relu2_output = graph.GetOrCreateNodeArg("relu2_output", &input_tensor_type);
+
+  auto& clip0_output = graph.GetOrCreateNodeArg("clip0_output", &input_tensor_type);
+  auto& clip1_output = graph.GetOrCreateNodeArg("clip1_output", &input_tensor_type);
+  auto& clip2_output = graph.GetOrCreateNodeArg("clip2_output", &input_tensor_type);
+
+  graph.AddNode("relu0", "Relu", "Relu to eliminate", {&input0}, {&relu0_output});
+  graph.AddNode("relu1", "Relu", "Relu to not eliminate", {&input1}, {&relu1_output});
+  graph.AddNode("relu2", "Relu", "Relu to eliminate and update 'min' of following Clip", {&input2}, {&relu2_output});
+
+  auto& clip0 = graph.AddNode("clip0", "Clip", "Clip with min 0", {&relu0_output}, {&clip0_output});
+  clip0.AddAttribute("min", 0.f);
+  clip0.AddAttribute("max", 1.f);
+
+  auto& clip1 = graph.AddNode("clip1", "Clip", "Clip with min 1", {&relu1_output}, {&clip1_output});
+  clip1.AddAttribute("min", 1.f);
+  clip1.AddAttribute("max", 1.f);
+
+  auto& clip2 = graph.AddNode("clip2", "Clip", "Clip with min -1", {&relu2_output}, {&clip2_output});
+  clip2.AddAttribute("min", -1.f);
+  clip2.AddAttribute("max", 1.f);
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 3);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<FuseReluClip>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 0);
+
+  // make sure the Clip nodes were updated to have a 'min' >= 0
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Clip") {
+      auto* min = graph_utils::GetNodeAttribute(node, "min");
+      ASSERT_TRUE(min->f() >= 0.f);
+    }
+  }
 }
 
 }  // namespace test
