@@ -97,11 +97,12 @@ class MklDnnBatchNorm : public MklDnnKernel {
     }
   }
 
-  Status CreatePrimitives(Ort::CustomOpApi ort,
+  Status CreatePrimitives(const OrtCustomOpApi* api,
                           OrtKernelContext* context,
                           mkldnn::engine& cpu_engine,
                           std::vector<mkldnn::primitive>& net,
                           mkldnn::memory::format& source_format) override {
+    Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     TensorShape x_shape;
@@ -276,7 +277,8 @@ class MklDnnBatchNorm : public MklDnnKernel {
     return Status::OK();
   }
 
-  Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) override {
+  Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {
+    Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (!primitive_created_.IsOK()) {

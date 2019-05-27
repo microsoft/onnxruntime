@@ -25,19 +25,19 @@ class MklDnnKernel {
   }
   virtual ~MklDnnKernel(){};
 
-  virtual Status CreatePrimitives(Ort::CustomOpApi ort,
+  virtual Status CreatePrimitives(const OrtCustomOpApi* api,
                                   OrtKernelContext* context,
                                   mkldnn::engine& cpu_engine,
                                   std::vector<mkldnn::primitive>& net,
                                   mkldnn::memory::format& src_fmt) = 0;
 
-  virtual void ReorderWeights(Ort::CustomOpApi ort, OrtKernelContext* context, mkldnn::engine& cpu_engine) {
-    ORT_UNUSED_PARAMETER(ort);
+  virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) {
+    ORT_UNUSED_PARAMETER(api);
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
   }
 
-  virtual Status Bind(Ort::CustomOpApi ort, OrtKernelContext* context) = 0;
+  virtual Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) = 0;
 
  protected:
   virtual void ReadAttributes(const NodeAttributes& attributes,
