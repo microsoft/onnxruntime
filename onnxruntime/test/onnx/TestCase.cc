@@ -204,7 +204,8 @@ class OnnxModelInfo : public TestModelInfo {
     if (!model_pb.ParseFromZeroCopyStream(&f)) {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
-    auto url_string = OrtPathToString(model_url);
+    std::string url_string;
+    OrtPathToString(model_url, url_string);
     if (url_string.size() >= 51) {
       onnx_commit_ = {url_string.begin()+11, url_string.begin()+51};  
     }
