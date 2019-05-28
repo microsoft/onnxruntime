@@ -566,8 +566,8 @@ class ONNXQuantizer:
             raise ValueError("Quantization parameters are not specified for input {}.".format(input_name))
         params = self.input_quantization_params[input_name]
         if params is None or len(params) != 2:
-            raise ValueError("Quantization parameters should contain zero point and scale. \
-                Specified values for input {}: {}".format(input_name, params))
+            raise ValueError("Quantization parameters should contain zero point and scale. "
+                "Specified values for input {}: {}".format(input_name, params))
 
         if not np.isscalar(params[0]):
             raise ValueError("Zero point for input {} should be a scalar value. Value specified: {}".format(
@@ -582,9 +582,9 @@ class ONNXQuantizer:
 
         zero_point_type = onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[params[0].dtype]
         if zero_point_type != qType:
-            raise ValueError("Zero point and input data types should be the same. \
-                Zero point for input {} is specified as {}, but input is being quantized to {}.\
-                ".format(input_name, params[0].dtype, onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]))
+            raise ValueError("Zero point and input data types should be the same. "
+                "Zero point for input {} is specified as {}, but input is being quantized to {}."
+                .format(input_name, params[0].dtype, onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]))
 
         scale_values = [params[1].item()]
         scale_shape = []
@@ -613,8 +613,8 @@ class ONNXQuantizer:
             raise ValueError("Quantization parameters are not specified for output {}.".format(output_name))
         params = self.output_quantization_params[output_name]
         if params is None or len(params) != 2:
-            raise ValueError("Quantization parameters should contain zero point and scale. \
-                Specified values for output {}: {}".format(output_name, params))
+            raise ValueError("Quantization parameters should contain zero point and scale. "
+                "Specified values for output {}: {}".format(output_name, params))
 
         if not np.isscalar(params[0]):
             raise ValueError("Zero point for output {} should be a scalar value. Value specified: {}".format(
@@ -715,14 +715,14 @@ class ONNXQuantizer:
 
         # Compare type
         if quantized_initializer.data_type != weight.qType:
-            raise ValueError("{} is being used by multiple nodes which are being quantized to different types. \
-                Please use different initializers for these nodes.", weight.name)
+            raise ValueError("{} is being used by multiple nodes which are being quantized to different types. "
+                "Please use different initializers for these nodes.", weight.name)
 
         expected_dims = [] if weight.axis is None else [len(weight.zero_points)]
         # Compare quantization axis
         if zero_point.dims != expected_dims:
-            raise ValueError("{} is being used by multiple nodes which are being quantized to different shapes. \
-                Please use different initializers for these nodes.", weight.name)
+            raise ValueError("{} is being used by multiple nodes which are being quantized to different shapes. "
+                "Please use different initializers for these nodes.", weight.name)
 
         return True
 
