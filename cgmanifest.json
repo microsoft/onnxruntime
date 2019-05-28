@@ -232,7 +232,7 @@
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
             }
-         }    
+         }
       },
       {
          "component":{
@@ -298,7 +298,17 @@
                "repositoryUrl":"https://github.com/NervanaSystems/ngraph.git"
             }
          }
-      }
+      },
+      {
+         "component":{
+            "Type":"other",
+            "Other":{
+               "Name":"Boost",
+               "Version":"1.69.0",
+               "DownloadUrl":"http://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.bz2"
+            }
+         }
+      },
    ],
    "Version":1
 }
