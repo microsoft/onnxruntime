@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   if (graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
@@ -18,7 +18,7 @@ Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule
   return Status::OK();
 }
 
-bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) {
+bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) const {
   // We currently support elimination for Dropout operator v1, v6, v7, and v10.
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {1, 6, 7, 10})) {
     return false;

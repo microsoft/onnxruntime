@@ -81,9 +81,9 @@ TEST_F(CApiTest, model_missing_data) {
   WriteStringToTempFile(test_data, model_url);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(model_url.c_str()),
                                                                          DeleteFileFromDisk);
-  std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
+  Ort::SessionOptions so;
   OrtSession* ret;
-  auto st = ::OrtCreateSession(env, model_url.c_str(), so.get(), &ret);
+  auto st = ::OrtCreateSession(env_, model_url.c_str(), so, &ret);
   ASSERT_NE(st, nullptr);
   OrtReleaseStatus(st);
 }
@@ -165,33 +165,25 @@ TEST_F(CApiTest, model_with_external_data) {
   WriteStringToTempFile(model_data.c_str(), model_url);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(model_url.c_str()),
                                                                          DeleteFileFromDisk);
-  std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
-  OrtSession* session;
-  auto st = ::OrtCreateSession(env, model_url.c_str(), so.get(), &session);
-  ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
-  OrtReleaseStatus(st);
-  ::OrtReleaseSession(session);
+  Ort::SessionOptions so;
+  Ort::Session session(env_, model_url.c_str(), so);
 }
 
 TEST_F(CApiTest, model_from_array) {
   const char* model_path = "testdata/matmul_1.pb";
   std::vector<char> buffer;
   {
-      std::ifstream file(model_path, std::ios::binary | std::ios::ate);
-      if (!file)
-          throw std::runtime_error("Error reading model");
-      buffer.resize(file.tellg());
-      file.seekg(0, std::ios::beg);
-      if (!file.read(buffer.data(), buffer.size()))
-          throw std::runtime_error("Error reading model");
+    std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+    if (!file)
+      throw std::runtime_error("Error reading model");
+    buffer.resize(file.tellg());
+    file.seekg(0, std::ios::beg);
+    if (!file.read(buffer.data(), buffer.size()))
+      throw std::runtime_error("Error reading model");
   }
 
-  std::unique_ptr<OrtSessionOptions> so(OrtCreateSessionOptions());
-  OrtSession* session;
-  auto st = ::OrtCreateSessionFromArray(env, buffer.data(), static_cast<int>(buffer.size()), so.get(), &session);
-  ASSERT_EQ(st, nullptr) << OrtGetErrorMessage(st);
-  OrtReleaseStatus(st);
-  ::OrtReleaseSession(session);
+  Ort::SessionOptions so;
+  Ort::Session session(env_, buffer.data(), buffer.size(), so);
 }
 }  // namespace test
 }  // namespace onnxruntime

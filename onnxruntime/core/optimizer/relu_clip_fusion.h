@@ -8,18 +8,16 @@
 namespace onnxruntime {
 
 /**
-@Class UnsqueezeElimination
+@Class FuseReluClip
 
-Rewrite rule that eliminates an unsqueeze operator that takes as input an initializer.
-
-It is attempted to be triggered only on nodes with op type "Unsqueeze".
+Rewrite rule that merges a Relu operator with a following Clip operator.
 */
-class UnsqueezeElimination : public RewriteRule {
+class FuseReluClip : public RewriteRule {
  public:
-  UnsqueezeElimination() noexcept : RewriteRule("UnsqueezeElimination") {}
+  FuseReluClip() noexcept : RewriteRule("FuseReluClip") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Unsqueeze"};
+    return {"Relu"};
   }
 
  private:

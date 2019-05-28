@@ -111,6 +111,10 @@ if(onnxruntime_USE_OPENMP)
   endif()
 endif()
 
+# Guarantee that the Eigen code that you are #including is licensed
+# under the MPL2 and possibly more permissive licenses (like BSD).
+add_definitions(-DEIGEN_MPL2_ONLY)
+
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
 endif()
