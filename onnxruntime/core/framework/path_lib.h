@@ -20,17 +20,6 @@
 #include "core/session/onnxruntime_c_api.h"
 
 using PATH_CHAR_TYPE = ORTCHAR_T;
-using PATH_STRING_TYPE = std::basic_string<ORTCHAR_T>;
-
-inline void OrtPathToString(const PATH_CHAR_TYPE* path, std::string& str)
-{
-#ifdef _WIN32
-    std::wstring s{path};
-#else
-    std::string  s{path};
-#endif
-    str = {s.begin(), s.end()};
-}
 
 template <typename T>
 long OrtStrtol(const T* nptr, T** endptr);
