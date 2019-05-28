@@ -98,6 +98,9 @@ def create_backend_test(testname=None):
                                  '^test_shrink_cpu.*',
                                  '^test_qlinearconv_cpu.*',
                                  '^test_quantizelinear_cpu.*')
+        # Failing for nGraph.
+        if c2.supports_device('NGRAPH'):
+            current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*')
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
