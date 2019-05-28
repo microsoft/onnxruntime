@@ -46,7 +46,7 @@ class IExecutionFrame {
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
   // Shape is required for tensors but not traditional ML values.
-  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value);
+  Status GetOrCreateNodeOutputMLValue(int index, const TensorShape* shape, OrtValue*& p_ort_value, size_t nnz = 0);
 
   /**
    * write the output values to the 'fetches' vector
@@ -82,7 +82,8 @@ class IExecutionFrame {
   }
 
   virtual AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const = 0;
-  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) = 0;
+
+  virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) = 0;
 
   const NodeIndexInfo& node_index_info_;
 
@@ -126,9 +127,10 @@ class ExecutionFrame final : public IExecutionFrame {
 
   AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
 
-  common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
+  common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape,
+                                             size_t nnz);
 
   Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
                                                   const OrtAllocatorInfo& location, const TensorShape& shape,

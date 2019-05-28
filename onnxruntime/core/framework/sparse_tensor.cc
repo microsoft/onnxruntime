@@ -1,0 +1,33 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/framework/data_types.h"
+#include "core/framework/sparse_tensor.h"
+
+using namespace onnxruntime::common;
+
+namespace onnxruntime {
+
+SparseTensor::SparseTensor(MLDataType elt_type,
+                           const TensorShape& shape,
+                           size_t nnz,
+                           void* values_data,
+                           void* indices_data,
+                           const OrtAllocatorInfo& allocator_info)
+    : shape_(shape),
+      values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), values_data, allocator_info, 0),
+      indices_(DataTypeImpl::GetType<int64_t>(),
+               TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),
+               indices_data, allocator_info, 0) {}
+
+SparseTensor::SparseTensor(MLDataType elt_type,
+                           const TensorShape& shape,
+                           size_t nnz,
+                           std::shared_ptr<IAllocator> allocator)
+    : shape_(shape),
+      values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), allocator, 0),
+      indices_(DataTypeImpl::GetType<int64_t>(),
+               TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),
+               allocator, 0) {}
+
+}  // namespace onnxruntime

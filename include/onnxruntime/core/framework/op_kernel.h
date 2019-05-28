@@ -14,6 +14,7 @@
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
+#include "core/framework/sparse_tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/span"
@@ -103,6 +104,8 @@ class OpKernelContext {
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
 
+  SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
+
   const logging::Logger& Logger() const {
     return *logger_;
   }
@@ -158,7 +161,9 @@ class OpKernelContext {
   const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
-  OrtValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the OrtValue* based on the shape, if it does not exist
+
+  // Creates the OrtValue* based on the shape, if it does not exist
+  OrtValue* OutputMLValue(int index, const TensorShape& shape, size_t nnz = 0);
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
