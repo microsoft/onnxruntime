@@ -12,6 +12,7 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
                             std::function<float(float)> expected_func,
                             const std::unordered_map<std::string, float> attribs = {},
                             bool is_tensorrt_supported = true,
+                            bool is_openvino_supported = true,
                             int opset_version = 7) {
   OpTester test(szOp, opset_version);
 
@@ -32,6 +33,18 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
+
+//Disabled because of accuracy issues for MYRIAD FP16
+#ifdef OPENVINO_CONFIG_MYRIAD
+    is_openvino_supported = false;
+#else
+    is_openvino_supported = true;
+#endif
+
+  if(!is_openvino_supported){
+      excluded_providers.insert(kOpenVINOExecutionProvider);
+  }
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
@@ -76,7 +89,7 @@ TEST(ActivationOpTest, Tanh) {
 TEST(ActivationOpTest, Relu) {
   TestUnaryElementwiseOp("Relu",
                          input_vals,
-                         [](float x) { return std::max(x, 0.0f); });
+                         [](float x) { return std::max(x, 0.0f); }, {}, true , false);
 }
 
 TEST(ActivationOpTest, Elu) {
@@ -92,7 +105,7 @@ TEST(ActivationOpTest, LeakyRelu) {
   TestUnaryElementwiseOp("LeakyRelu",
                          input_vals,
                          [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-                         {{"alpha", alpha}});
+                         {{"alpha", alpha}},true, false);
 }
 
 TEST(ActivationOpTest, ThresholdedRelu) {

@@ -36,28 +36,6 @@ backend_test = OrtBackendTest(c2, __name__)
 # Type not supported
 backend_test.exclude(r'(FLOAT16)')
 
-if("OPENVINO" in c2.backend.get_device()):
-    backend_test.exclude(r'('
-    '^test_softmax_default_axis_cpu.*'
-    '|^test_softmax_axis_1_cpu.*'
-    '|^test_softmax_axis_0_cpu.*'
-    '|^test_mul_bcast_cpu.*'
-    '|^test_maxpool_2d_same_lower_cpu.*'
-    '|^test_maxpool_2d_dilations_cpu.*'
-    '|^test_maxpool_2d_ceil_cpu.*'
-    '|^test_averagepool_2d_same_lower_cpu.*'
-    '|^test_averagepool_2d_ceil_cpu.*'
-    '|^test_operator_permute2_cpu.*'
-    '|^test_transpose_all_permutations_0_cpu.*'
-    '|^test_maxpool_1d_default_cpu.*'
-    '|^test_add_bcast_cpu.*'
-    '|^test_maxpool_2d_same_upper_cpu.*'
-    '|^test_averagepool_2d_same_upper_cpu.*'
-    '|^test_PixelShuffle_cpu*'
-    '|^test_averagepool_1d_default_cpu.*'
-    ')')
-
-
 backend_test.exclude(r'('
 '^test_cast_DOUBLE_to_FLOAT_cpu.*'
 '|^test_cast_FLOAT_to_DOUBLE_cpu.*'

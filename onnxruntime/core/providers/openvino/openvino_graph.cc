@@ -211,6 +211,7 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     }
   }
 
+
   network->setBatchSize(first_dim);
 
   // Prepare output blobs

@@ -184,7 +184,6 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 void RunTest(bool condition_value,
              RunOptions options,
              bool is_tensorrt_supported = true,
-             bool is_openvino_supported = true,
              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
              const std::string& failure_message = "") {
   IfOpTester test{options};
@@ -216,9 +215,6 @@ void RunTest(bool condition_value,
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
-  if (!is_openvino_supported) {
-    excluded_providers.insert(kOpenVINOExecutionProvider);
-  }
   if (options.mixed_execution_providers) {
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
@@ -237,7 +233,7 @@ TEST(If, ShapeInMainGraph_NoShapeInSubgraph_True) {
   options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(true, options, false, false);
+  RunTest(true, options, false);
 }
 
 TEST(If, ShapeInMainGraph_NoShapeInSubgraph_False) {
@@ -245,7 +241,7 @@ TEST(If, ShapeInMainGraph_NoShapeInSubgraph_False) {
   options.include_dim_values_in_main_graph = true;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(false, options, false, false);
+  RunTest(false, options, false);
 }
 
 TEST(If, NoShapeInMainGraph_ShapeInSubgraph_True) {
@@ -253,7 +249,7 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_True) {
   options.include_dim_values_in_main_graph = false;
   options.include_dim_values_in_subgraph = true;
 
-  RunTest(true, options, false, false);
+  RunTest(true, options, false);
 }
 
 TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
@@ -261,7 +257,7 @@ TEST(If, NoShapeInMainGraph_ShapeInSubgraph_False) {
   options.include_dim_values_in_main_graph = false;
   options.include_dim_values_in_subgraph = true;
 
-  RunTest(false, options, false, false);
+  RunTest(false, options, false);
 }
 
 #ifdef USE_CUDA
@@ -278,7 +274,7 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
   options.symbolic_dim_value_in_main_graph = 0;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(true, options, false,false);
+  RunTest(true, options, false);
 }
 
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
@@ -287,7 +283,7 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   options.symbolic_dim_value_in_main_graph = 0;
   options.include_dim_values_in_subgraph = false;
 
-  RunTest(false, options, false, false);
+  RunTest(false, options, false);
 }
 
 }  // namespace test
