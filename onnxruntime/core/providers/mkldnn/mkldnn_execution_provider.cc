@@ -258,6 +258,10 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
           // else
           //   break and create sub-graph
           auto next_node = graph_viewer.GetNode(temp_index);
+          while (next_node == nullptr) {
+            temp_index++;
+            next_node = graph_viewer.GetNode(temp_index);
+          }
           auto sub_it = mkldnn_ops_.find(next_node->OpType());
           if (sub_it != mkldnn_ops_.end()) {
             const auto& next_node_inputs = next_node->InputDefs();
@@ -292,6 +296,10 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
                 break_loop = true;
 
               auto next_node = graph_viewer.GetNode(temp_index);
+              while (next_node == nullptr) {
+                temp_index++;
+                next_node = graph_viewer.GetNode(temp_index);
+              }
               if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
                 // if all nodes in the branch loop are mkldnn nodes
                 // then continue with adding nodes to sub-graph
