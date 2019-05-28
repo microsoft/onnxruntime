@@ -18,7 +18,7 @@
 #include <pthread.h>
 #endif
 
-#include <test/compare_mlvalue.h>
+#include <test/compare_ortvalue.h>
 #include "TestCase.h"
 #include "heap_buffer.h"
 #include "OrtValueList.h"
@@ -306,11 +306,6 @@ void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_r
   OnTaskFinished(task_id, res, pci);
 }
 
-std::pair<COMPARE_RESULT, std::string> CompareGenericValue(const OrtValue* o, const OrtValue* expected_mlvalue, double per_sample_tolerance, double relative_per_sample_tolerance,
-                                                           bool post_processing) {
-  return onnxruntime::CompareMLValue(*(MLValue*)o, *(MLValue*)expected_mlvalue, per_sample_tolerance, relative_per_sample_tolerance, post_processing);
-}
-
 EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
   HeapBuffer holder;
   std::unordered_map<std::string, OrtValue*> feeds;
@@ -398,7 +393,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
       break;
     }
     OrtValue* actual_output_value = iter->second;
-    std::pair<COMPARE_RESULT, std::string> ret = CompareGenericValue(actual_output_value, expected_output_value, per_sample_tolerance, relative_per_sample_tolerance, post_procesing);
+    std::pair<COMPARE_RESULT, std::string> ret =
+        CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
+                        relative_per_sample_tolerance, post_procesing);
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];

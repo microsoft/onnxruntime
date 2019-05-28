@@ -272,7 +272,7 @@ class Node {
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 
-  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop). 
+  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop).
   @returns true if the Node contains a subgraph.
   */
   bool ContainsSubgraph() const {
@@ -707,6 +707,7 @@ class Graph {
 
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+  ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -879,9 +880,6 @@ class Graph {
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
 
-  // Sync graph inputs/outputs when serializing to proto.
-  void SyncGraphInputsOutputs();
-
   // Clear all unused initializers
   void CleanUnusedInitializers();
 
@@ -904,6 +902,8 @@ class Graph {
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+
+  void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and

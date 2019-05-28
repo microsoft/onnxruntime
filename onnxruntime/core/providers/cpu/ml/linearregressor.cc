@@ -22,7 +22,7 @@ LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info) : OpKernel(info),
 
 template <>
 Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto* X = ctx->Input<Tensor>(0);
   if (X->Shape().NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input shape needs to be at least a single dimension.");

@@ -51,7 +51,7 @@ void DoNormalizeP1(
 
 template <>
 Status LpNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const Tensor* input = p_op_kernel_context->Input<Tensor>(0);
+  const auto* input = p_op_kernel_context->Input<Tensor>(0);
   const TensorShape& input_shape = input->Shape();
   Tensor* output = p_op_kernel_context->Output(0, input_shape);
 

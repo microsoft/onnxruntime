@@ -963,7 +963,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
           // No such output_arg matching this input_arg.
           // This input arg should be fed when running evaluation.
           // See if it's present in the outer scope. If so it will be 'fed' by the execution frame
-          // providing access to the MLValue from the outer scope. Pass the name back up so nodes can
+          // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
           // be linked correctly at that level.
           if (outer_scope_node_args.find(input_arg->Name()) != outer_scope_node_args.cend()) {
             outer_scope_node_args_consumed.push_back(input_arg->Name());
@@ -1413,8 +1413,9 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
         // a corresponding def, for which type-inference already produced a valid type
         Status status(ONNXRUNTIME, FAIL,
                       "This is an invalid model. "
-                      "Node (" + node_name + ") input arg (" +
-                       input_def->Name() + ") does not have type information set by parent node.");
+                      "Node (" +
+                          node_name + ") input arg (" +
+                          input_def->Name() + ") does not have type information set by parent node.");
         return status;
       }
 
@@ -1428,7 +1429,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
 
         Status status(ONNXRUNTIME, INVALID_GRAPH,
                       "This is an invalid model. "
-                      "Type Error: Type '" + *input_type + "' of input parameter (" + input_def->Name() +
+                      "Type Error: Type '" +
+                          *input_type + "' of input parameter (" + input_def->Name() +
                           ") of operator (" + op.Name() + ") in node (" + node_name + ") is invalid.");
         return status;
       }
@@ -1450,9 +1452,9 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                        ") bound to different types (" + *(param_to_type_iter->second) +
-                        " and " + *(input_def->Type()) +
-                        " in node (" + node_name + ").");
+                            ") bound to different types (" + *(param_to_type_iter->second) +
+                            " and " + *(input_def->Type()) +
+                            " in node (" + node_name + ").");
           return status;
         }
       }
@@ -1558,8 +1560,10 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   // Check that the type of every input is specified:
   for (auto* graph_input : GetInputs()) {
     if (nullptr == graph_input->Type()) {
-      Status status(ONNXRUNTIME, FAIL, "This is an invalid model. " 
-                                       "Model input (" + graph_input->Name() + ") does not have type information.");
+      Status status(ONNXRUNTIME, FAIL,
+                    "This is an invalid model. "
+                    "Model input (" +
+                        graph_input->Name() + ") does not have type information.");
       return status;
     }
   }
@@ -1695,7 +1699,8 @@ Status Graph::VerifyNodeAndOpMatch() {
         } else {
           Status status(ONNXRUNTIME, FAIL,
                         "This is an invalid model. "
-                        "Node (" + node_name + ") attribute (" + attr_def.first +
+                        "Node (" +
+                            node_name + ") attribute (" + attr_def.first +
                             ") is required but not specified.");
           return status;
         }
@@ -2096,20 +2101,13 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
   return true;
 }
 
-const GraphProto& Graph::ToGraphProto() {
+const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
   if (!GraphProtoSyncNeeded()) {
     return *graph_proto_;
   }
 
   // Nodes.
-  graph_proto_->clear_node();
-  GraphViewer graph_viewer(*this);
-  // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    const gsl::not_null<NodeProto*> node_proto{graph_proto_->add_node()};
-    const gsl::not_null<Node*> p_node{GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
-  }
+  ToGraphProtoInternal(*graph_proto_);
 
   if (!removed_initializer_indexes_.empty()) {
     // Move initializers.
@@ -2140,36 +2138,58 @@ const GraphProto& Graph::ToGraphProto() {
     removed_initializer_indexes_.clear();
   }
 
-  // Sync graph inputs/outputs/valueInfo.
-  SyncGraphInputsOutputs();
-
   GraphProtoSyncNeeded(false);
 
   return *graph_proto_;
 }
 
-void Graph::SyncGraphInputsOutputs() {
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
+  if (!GraphProtoSyncNeeded()) {
+    return *graph_proto_;
+  }
+  GraphProto result;
+  ToGraphProtoInternal(result);
+
+  for (auto initializer : GetAllInitializedTensors()) {
+    *result.add_initializer() = *initializer.second;
+  }
+
+  return result;
+}
+
+void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
+  graph_proto_->clear_node();
   graph_proto_->clear_input();
   graph_proto_->clear_output();
   graph_proto_->clear_value_info();
+  graph_proto.set_name(Name());
+  graph_proto.set_doc_string(Description());
 
   for (const auto* input_arg : GetInputsIncludingInitializers()) {
-    *(graph_proto_->mutable_input()->Add()) = input_arg->ToProto();
+    *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
 
   for (const auto* output_arg : GetOutputs()) {
-    *(graph_proto_->mutable_output()->Add()) = output_arg->ToProto();
+    *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
   for (const auto* value_info : value_info_) {
-    *(graph_proto_->mutable_value_info()->Add()) = value_info->ToProto();
+    *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
   // add the NodeArg info for outer scope NodeArgs so we capture the type information
   for (const auto& name : outer_scope_node_arg_names_) {
     auto* node_arg = GetNodeArg(name);
     ORT_ENFORCE(node_arg, "Outer scope node arg name '" + name + "'was added but does not exist. ");
-    *(graph_proto_->mutable_value_info()->Add()) = node_arg->ToProto();
+    *(graph_proto.mutable_value_info()->Add()) = node_arg->ToProto();
+  }
+
+  GraphViewer graph_viewer(*this);
+  // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
+  for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
+    const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
+    p_node->ToProto(*node_proto);
   }
 }
 
@@ -2276,8 +2296,10 @@ Status Graph::SetGraphInputsOutputs() {
           auto iter3 = graph_inputs.find(graph_output_name);
           if (graph_inputs.end() == iter3) {
             // Graph output is not found as any graph input.
-            return Status(ONNXRUNTIME, FAIL, "This is an invalid model. " 
-                                             "Graph output (" + graph_output_name + ") does not exist in the graph.");
+            return Status(ONNXRUNTIME, FAIL,
+                          "This is an invalid model. "
+                          "Graph output (" +
+                              graph_output_name + ") does not exist in the graph.");
           }
           graph_outputs_.push_back(iter3->second);
           continue;
@@ -2443,7 +2465,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
 
   fused_node.SetNodeType(Node::Type::Fused);
   function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph)));
-  fused_node.SetFunctionBody(*(function_container_.back().get()));
+  fused_node.SetFunctionBody(*function_container_.back());
 
   // Remove nodes fused above.
   auto& sub_graph_ref = function_container_.back()->GetIndexedSubGraph();

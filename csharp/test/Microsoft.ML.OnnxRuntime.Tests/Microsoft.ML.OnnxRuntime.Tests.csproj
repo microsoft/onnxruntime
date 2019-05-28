@@ -4,7 +4,7 @@
     <TargetFramework>netcoreapp2.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
-    <Platform>AnyCPU</Platform>
+    <Platforms>AnyCPU;x86</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <ProtocDirectory>$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>

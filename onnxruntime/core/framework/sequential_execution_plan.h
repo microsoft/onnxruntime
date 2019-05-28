@@ -26,7 +26,7 @@ struct AllocPlanPerValue {
   MLDataType value_type{nullptr};
   OrtAllocatorInfo location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
-  // which MLValue's buffer must be reused for this MLValue.
+  // which OrtValue's buffer must be reused for this OrtValue.
   MLValueIndex reused_buffer{0};
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
@@ -69,12 +69,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
   std::vector<MLValueIndex> to_be_freed;
 
-  const OrtAllocatorInfo& GetLocation(size_t mlvalue_index) const override {
-    return allocation_plan[mlvalue_index].location;
+  const OrtAllocatorInfo& GetLocation(size_t ort_value_index) const override {
+    return allocation_plan[ort_value_index].location;
   }
 
-  void SetLocation(size_t mlvalue_index, const struct OrtAllocatorInfo& info) override {
-    allocation_plan[mlvalue_index].location = info;
+  void SetLocation(size_t ort_value_index, const struct OrtAllocatorInfo& info) override {
+    allocation_plan[ort_value_index].location = info;
   }
 
   std::set<OrtAllocatorInfo> GetAllLocations() const override {
