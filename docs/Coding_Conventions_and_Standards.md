@@ -11,12 +11,18 @@ Google style from https://google.github.io/styleguide/cppguide.html with a few m
   *	Allowed to throw fatal errors that are expected to result in a top level handler catching them, logging them and terminating the program.
 * Non-const references
   *	Allowed
-  *	However const correctness and usage of smart pointers (shared_ptr and unique_ptr) is expected, so a non-const reference equates to “this is a non-null object that you can change but are not being given ownership of”.
+  * Use a non-const reference for arguments that are modifiable but cannot be nullptr so the API clearly advertises the intent
+  *	Const correctness and usage of smart pointers (shared_ptr and unique_ptr) is expected. A non-const reference equates to “this is a non-null object that you can change but are not being given ownership of”.
 * 'using namespace' permitted with limited scope
   * Not allowing 'using namespace' at all is overly restrictive. Follow the C++ Core Guidelines:
     * [SF.6: Use using namespace directives for transition, for foundation libraries (such as std), or within a local scope (only)](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rs-using)
     * [SF.7: Don't write using namespace at global scope in a header file](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rs-using-directive)
 
+Other
+* Qualify usages of 'auto' with 'const', '*', '&' and '&&' where applicable to more clearly express the intent
+* When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
+  * Use ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE initially
+  * See the other ORT_DISALLOW_* macros in https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h
 
 #### Clang-format
 

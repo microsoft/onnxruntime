@@ -9,7 +9,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   auto& conv_node = node;
   const Node& bn_node = *conv_node.OutputNodesBegin();
 
@@ -142,21 +142,16 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   return Status::OK();
 }
 
-bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) {
+bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
-      next_node.GetInputEdgesCount() != 1 ||
-      graph.IsNodeOutputsInGraphOutputs(next_node) ||
-      next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
-    return false;
-  }
-
-  return true;
+  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
+           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+           next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
 }
 
 }  // namespace onnxruntime

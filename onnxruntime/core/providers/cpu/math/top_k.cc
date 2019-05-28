@@ -151,7 +151,7 @@ TopK<9, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_in
 // Opset ver - 1 to 9
 template <>
 Status TopK<9, float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
+  const auto* X = p_op_kernel_context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
                                   "input count mismatch, expected 1 input - the tensor to be processed");
   return TopKImpl(p_op_kernel_context, X, axis_, k_);
@@ -168,8 +168,8 @@ TopK<10, float>::TopK(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_i
 // Opset ver - 10
 template <>
 Status TopK<10, float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
-  const Tensor* Y = p_op_kernel_context->Input<Tensor>(1);
+  const auto* X = p_op_kernel_context->Input<Tensor>(0);
+  const auto* Y = p_op_kernel_context->Input<Tensor>(1);
   if (X == nullptr || Y == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
                                                   "input count mismatch, expected 2 inputs - "
                                                   "the tensor to be processed and a tensor containing k value");

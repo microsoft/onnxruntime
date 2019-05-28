@@ -69,7 +69,7 @@ OneHotEncoderOp<T>::OneHotEncoderOp(const OpKernelInfo& info) : OpKernel(info), 
 
 template <typename T>
 common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
   ORT_ENFORCE(input_shape.NumDimensions() <= 2);
 
@@ -94,7 +94,7 @@ common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
 
 template <>
 common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   const TensorShape& input_shape = X->Shape();
   ORT_ENFORCE(input_shape.NumDimensions() <= 2);
 

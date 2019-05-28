@@ -70,7 +70,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   ORT_ENFORCE(nodes_id_size == nodes_modes_.size());
   ORT_ENFORCE(nodes_id_size == nodes_truenodeids_.size());
   ORT_ENFORCE(nodes_id_size == nodes_falsenodeids_.size());
-  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (0 == nodes_hitrates_.size()));
+  ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (nodes_hitrates_.empty()));
 
   max_tree_depth_ = 1000;
   offset_ = four_billion_;
@@ -81,8 +81,8 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   std::sort(begin(leafnode_data_), end(leafnode_data_), [](auto const& t1, auto const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
-    else
-      return std::get<1>(t1) < std::get<1>(t2);
+
+    return std::get<1>(t1) < std::get<1>(t2);
   });
   //make an index so we can find the leafnode data quickly when evaluating
   int64_t field0 = -1;
@@ -149,7 +149,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < int64_t, std::tuple<float, float, float>>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const {
   //walk down tree to the leaf
-  ::onnxruntime::ml::NODE_MODE mode = static_cast<::onnxruntime::ml::NODE_MODE>(nodes_modes_[treeindex]);
+  auto mode = static_cast<::onnxruntime::ml::NODE_MODE>(nodes_modes_[treeindex]);
   int64_t loopcount = 0;
   int64_t root = treeindex;
   while (mode != ::onnxruntime::ml::NODE_MODE::LEAF) {
@@ -219,7 +219,7 @@ common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < in
 
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   if (X->Shape().NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,

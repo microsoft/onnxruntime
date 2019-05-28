@@ -25,7 +25,7 @@ class PoolProcessContext {
 
  public:
   friend class LpPool;
-  PoolProcessContext() {}
+  PoolProcessContext() = default;
   void init(const OpKernelInfo& info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("p", &p_).IsOK());
   }
@@ -134,7 +134,8 @@ class PoolBase {
       }
 
       if (op_name_ == "MaxPool") {
-        int start, end;
+        int start;
+        int end;
         info.GetKernelDef().SinceVersion(&start, &end);
         if (start == 8) {
           storage_order_ = info.GetAttrOrDefault<int64_t>("storage_order", 0 /*default_value*/);
@@ -153,7 +154,8 @@ class PoolBase {
     }
   }
 
-  ~PoolBase(){};
+  ~PoolBase() = default;
+  ;
 
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
@@ -242,9 +244,9 @@ class PoolBase {
                                    int64_t ceil_mode) const {
     if (ceil_mode == 0) {
       return static_cast<int64_t>(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1);
-    } else {
-      return static_cast<int64_t>(ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
     }
+    return static_cast<int64_t>(
+        std::ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
   }
 
   Status Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const;

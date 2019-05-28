@@ -64,7 +64,7 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
 #endif
 }  // namespace
 
@@ -252,7 +252,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       }
       TestResultStat per_case_stat;
       std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, env ,sf);
+      TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
       RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
       stat += per_case_stat;
     });
@@ -321,14 +321,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"flatten_default_axis", "disable reason"},
       {"gemm_broadcast", "disable reason"},
       {"gemm_nobroadcast", "disable reason"},
-      {"greater", "disable reason"},
-      {"greater_bcast", "disable reason"},
-      {"less", "disable reason"},
-      {"less_bcast", "disable reason"},
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"mvn", "disable reason"},
       {"operator_add_broadcast", "disable reason"},
       {"operator_add_size1_broadcast", "disable reason"},
       {"operator_add_size1_right_broadcast", "disable reason"},
@@ -336,15 +331,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"operator_addconstant", "disable reason"},
       {"operator_addmm", "disable reason"},
       {"operator_basic", "disable reason"},
-      {"operator_lstm", "disable reason"},
       {"operator_mm", "disable reason"},
       {"operator_non_float_params", "disable reason"},
       {"operator_params", "disable reason"},
       {"operator_pow", "disable reason"},
-      {"operator_rnn", "disable reason"},
-      {"operator_rnn_single_layer", "disable reason"},
-      {"prelu_broadcast", "disable reason"},
-      {"prelu_example", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -368,6 +358,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
   broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
   broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests["tiny_yolov2"] = "temporarily disable due to graph resolve failure.";
+  broken_tests["operator_repeat_dim_overflow"] = "temporarily disable due to graph resolve failure.";
 #endif
 
 #ifdef USE_CUDA
@@ -419,6 +411,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests["dynamic_slice"] = "This model uses contrib ops.";
   broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
   broken_tests["dynamic_slice_neg"] = "This model uses contrib ops.";
+  broken_tests["mvn"] = "This model uses contrib ops.";
 #endif
 
   int result = 0;

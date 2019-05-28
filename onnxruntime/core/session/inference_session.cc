@@ -32,7 +32,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/ml_value_patterns_planner.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/mlvalue_name_idx_map.h"
+#include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
@@ -90,10 +90,11 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }  // namespace
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
-    : session_state_{execution_providers_},
-      session_options_{session_options},
+    : session_options_{session_options},
       graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
+      session_state_(execution_providers_,
+                     session_options.enable_mem_pattern && session_options.enable_sequential_execution),
       insert_cast_transformer_{"CastFloat16Transformer"} {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
@@ -111,7 +112,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   }
 
   session_state_.SetThreadPool(thread_pool_.get());
-  session_state_.SetEnableMemoryPattern(session_options.enable_mem_pattern && session_options.enable_sequential_execution);
   session_profiler_.Initialize(session_logger_);
   session_state_.SetProfiler(session_profiler_);
   if (session_options.enable_profiling) {
@@ -362,7 +362,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       Graph* subgraph = entry.second;
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
-      auto subgraph_session_state = std::make_unique<SessionState>(execution_providers_);
+      auto subgraph_session_state =
+          std::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern());
       subgraph_session_state->SetProfiler(session_profiler_);
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
@@ -394,8 +395,8 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
 
       // setup everything required to execute the subgraph and save it in subgraph_session_state
-      SessionStateInitializer initializer{model_location_, subgraph, *subgraph_session_state, execution_providers_,
-                                          kernel_registry_manager_};
+      SessionStateInitializer initializer(session_options_.enable_mem_pattern, model_location_, subgraph,
+                                          *subgraph_session_state, execution_providers_, kernel_registry_manager_);
 
       const auto implicit_inputs = node.ImplicitInputDefs();
       ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
@@ -463,8 +464,8 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
-    SessionStateInitializer session_initializer{model_location_, graph, session_state_, execution_providers_,
-                                                kernel_registry_manager_};
+    SessionStateInitializer session_initializer(session_options_.enable_mem_pattern, model_location_, graph,
+                                                session_state_, execution_providers_, kernel_registry_manager_);
 
     // create SessionState for subgraphs as it's needed by the transformers
     ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(graph, session_state_));
@@ -493,7 +494,7 @@ common::Status InferenceSession::Initialize() {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   } catch (const std::exception& ex) {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception during initialization: ", ex.what());
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception during initialization: ", ex.what());
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
   } catch (...) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "Encountered unknown exception in Initialize()");
@@ -521,7 +522,7 @@ common::Status InferenceSession::CheckTypes(MLDataType actual, MLDataType expect
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
-                                                const std::vector<MLValue>& feeds) {
+                                                const std::vector<OrtValue>& feeds) {
   if (feed_names.size() != feeds.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Size mismatch: feed_names has ",
@@ -554,7 +555,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 }
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
-                                                 const std::vector<MLValue>* p_fetches) {
+                                                 const std::vector<OrtValue>* p_fetches) {
   if (!p_fetches) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
@@ -585,11 +586,9 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
-Status InferenceSession::Run(const RunOptions& run_options,
-                             const std::vector<std::string>& feed_names,
-                             const std::vector<MLValue>& feeds,
-                             const std::vector<std::string>& output_names,
-                             std::vector<MLValue>* p_fetches) {
+Status InferenceSession::Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
+                             const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+                             std::vector<OrtValue>* p_fetches) {
   auto tp = session_profiler_.StartTime();
   Status retval = Status::OK();
 
@@ -652,18 +651,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
   return retval;
 }
 
-common::Status InferenceSession::Run(const NameMLValMap& feeds,
-                                     const std::vector<std::string>& output_names,
-                                     std::vector<MLValue>* p_fetches) {
+common::Status InferenceSession::Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+                                     std::vector<OrtValue>* p_fetches) {
   return Run(RunOptions(), feeds, output_names, p_fetches);
 }
 
-common::Status InferenceSession::Run(const RunOptions& run_options,
-                                     const NameMLValMap& feeds_map,
-                                     const std::vector<std::string>& output_names,
-                                     std::vector<MLValue>* p_fetches) {
+common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
+                                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches) {
   std::vector<std::string> feed_names;
-  std::vector<MLValue> feeds;
+  std::vector<OrtValue> feeds;
 
   auto num_feeds = feeds_map.size();
   feed_names.reserve(num_feeds);

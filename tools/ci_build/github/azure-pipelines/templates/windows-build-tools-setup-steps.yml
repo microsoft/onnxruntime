@@ -6,9 +6,9 @@ parameters:
   setVcvars: false
 steps:
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 4.3
+      displayName: Use Nuget 4.9
       inputs:
-        versionSpec: 4.3.0
+        versionSpec: 4.9.4
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:
