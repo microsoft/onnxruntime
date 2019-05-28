@@ -297,15 +297,7 @@ class SparseTensorTests : public testing::Test {
     register_actions.push_back(register_kernel);
   }
 
-  template <typename Op1, typename Op2, typename... Ops>
-  void Add() {
-    Add<Op1>();
-    Add<Op2, Ops...>();
-  }
-
-  template <typename... Ops>
   void RegisterOps() {
-    Add<Ops...>();
     EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 10, 11).IsOK());
     for (auto registerop : register_actions)
       registerop(registry.get());
@@ -419,7 +411,10 @@ class SparseTensorTests : public testing::Test {
 // Tests 1-dimensional int64 sparse tensor.
 TEST_F(SparseTensorTests, Test1) {
   // Register ops
-  RegisterOps<SparseFromCOO, SparseAbs, SparseToValues>();
+  Add<SparseFromCOO>();
+  Add<SparseAbs>();
+  Add<SparseToValues>();
+  RegisterOps();
 
   // Build model/graph
 
@@ -458,7 +453,10 @@ TEST_F(SparseTensorTests, Test1) {
 // Tests 2-dimensional int64 sparse tensor.
 TEST_F(SparseTensorTests, Test2) {
   // Register ops
-  RegisterOps<SparseFromCOO, SparseAbs, SparseToValues>();
+  Add<SparseFromCOO>();
+  Add<SparseAbs>();
+  Add<SparseToValues>();
+  RegisterOps();
 
   // Build model/graph
 
