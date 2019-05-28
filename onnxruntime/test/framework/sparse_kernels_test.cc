@@ -19,6 +19,15 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace test {
 
+// This file contains sample implementations of several ops with sparse-tensor inputs/outputs.
+// Each op is implemented as a struct with the following signature:
+// struct SparseOp {
+//    static std::string OpName();
+//    static ONNX_NAMESPACE::OpSchema OpSchema();
+//    class OpKernelImpl final : public OpKernel {...};
+//    static KernelDefBuilder KernelDef();
+// }
+
 // op SparseFromCOO
 struct SparseFromCOO {
   static std::string OpName() { return "SparseFromCOO"; };
@@ -105,7 +114,6 @@ This operator constructs a sparse tensor from three tensors that provide a COO
 
       memcpy(output->Values().MutableData<int64_t>(), values.Data<int64_t>(), nnz * sizeof(int64_t));
       memcpy(output->Indices().MutableData<int64_t>(), indices.Data<int64_t>(), nnz * numdims * sizeof(int64_t));
-      // output->Shape() = TensorShape(shape_tensor.Data<int64_t>(), shape_shape.Size());
 
       return Status::OK();
     }

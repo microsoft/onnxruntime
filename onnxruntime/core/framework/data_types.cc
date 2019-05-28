@@ -414,10 +414,6 @@ DeleteFunc SparseTensorTypeBase::GetDeleteFunc() const {
   return &Delete<SparseTensor>;
 }
 
-//CreateFunc SparseTensorTypeBase::GetCreateFunc() const {
-//  return []() -> void* { return new SparseTensor(); };
-//}
-
 const ONNX_NAMESPACE::TypeProto* SparseTensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }

@@ -38,9 +38,6 @@ using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 class DataTypeImpl;
 class TensorTypeBase;
 class SparseTensorTypeBase;
-class MLValue;
-class Tensor;
-class SparseTensor;
 
 // MLFloat16
 union MLFloat16 {
@@ -149,11 +146,6 @@ class DataTypeImpl {
   virtual size_t Size() const = 0;
 
   virtual DeleteFunc GetDeleteFunc() const = 0;
-
-  virtual CreateFunc GetCreateFunc() const {
-    //
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
-  }
 
   /**
    * \brief Retrieves an instance of TypeProto for
@@ -426,7 +418,6 @@ class SparseTensorTypeBase : public DataTypeImpl {
   size_t Size() const override;
 
   DeleteFunc GetDeleteFunc() const override;
-  // CreateFunc GetCreateFunc() const override;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 
@@ -478,7 +469,7 @@ class NonTensorTypeBase : public DataTypeImpl {
 
   DeleteFunc GetDeleteFunc() const override = 0;
 
-  CreateFunc GetCreateFunc() const override = 0;
+  virtual CreateFunc GetCreateFunc() const = 0;
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 
