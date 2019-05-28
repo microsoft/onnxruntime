@@ -12,10 +12,10 @@ namespace onnxruntime {
 
 namespace {
 bool IsFusableActivation(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6});
 }
 
 void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
@@ -46,7 +46,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto node = graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", 1) || 
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1}) ||
         !graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) || 
         node->GetOutputEdgesCount() != 1) {
       continue;

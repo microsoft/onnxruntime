@@ -14,6 +14,7 @@ apt-get update && apt-get install -y software-properties-common
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
         autotools-dev \
+        automake \
         build-essential \
         git apt-transport-https \
         ca-certificates \
@@ -34,6 +35,8 @@ apt-get update && apt-get install -y --no-install-recommends \
         libssl1.0.0 \
         libkrb5-3 \
         libicu55 \
+        libtinfo-dev \
+        libtool \
         aria2 \
         bzip2 \
         unzip \
@@ -64,6 +67,7 @@ fi
 
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall numpy==1.15.0
+/usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall requests==2.21.0
 rm -rf /var/lib/apt/lists/*
 
 mkdir -p /tmp/azcopy

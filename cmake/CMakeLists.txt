@@ -51,6 +51,7 @@ option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_USE_JEMALLOC "Use jecmalloc" OFF)
@@ -67,10 +68,13 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
-option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stable on older GCCs" OFF)
+option(onnxruntime_ENABLE_LTO "Enable link time optimization" ON)
+
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
+option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -79,18 +83,16 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
 if(onnxruntime_ENABLE_LTO)
-  #LTO(or LTCG) is great, in our case it can reduce binary size by 1/3.
-  #cmake can only help us check if the compiler support LTO or not, it can't tell us if the feature works well
-  #Don't enable this option in Ubuntu 16.04, protoc will crash
-  include(CheckIPOSupported)
-  check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
   #TODO: figure out why nsync doesn't work
-  if(NOT onnxruntime_USE_NSYNC)
-    if(ipo_enabled)
-      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
-      set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
-    else()
-      message(WARNING "IPO is not supported: ${ipo_output}")
+  if(onnxruntime_USE_NSYNC)
+    message(WARNING "IPO is not supported when nsync is in use")
+    set(onnxruntime_ENABLE_LTO OFF)
+  else()
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
+    if(NOT ipo_enabled)
+      message(WARNING "IPO is not supported by this compiler")
+      set(onnxruntime_ENABLE_LTO OFF)
     endif()
   endif()
 endif()
@@ -108,6 +110,10 @@ if(onnxruntime_USE_OPENMP)
     add_definitions(-DUSE_OPENMP)
   endif()
 endif()
+
+# Guarantee that the Eigen code that you are #including is licensed
+# under the MPL2 and possibly more permissive licenses (like BSD).
+add_definitions(-DEIGEN_MPL2_ONLY)
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
@@ -127,12 +133,12 @@ if (MSVC)
     # so that MSVCR*.DLL is not required at runtime.
     # https://msdn.microsoft.com/en-us/library/2kzt1wy3.aspx
     # This is achieved by replacing msvc option /MD with /MT and /MDd with /MTd
-    # http://www.cmake.org/Wiki/CMake_FAQ#How_can_I_build_my_MSVC_application_with_a_static_runtime.3F
+    # https://gitlab.kitware.com/cmake/community/wikis/FAQ#how-can-i-build-my-msvc-application-with-a-static-runtime
     foreach(flag_var
         CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
         CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
         CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-        CMAKE_C_FLAGS_MINSIZEREL CMAKE__FLAGS_RELWITHDEBINFO)
+        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
       if(${flag_var} MATCHES "/MD")
         string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
       endif(${flag_var} MATCHES "/MD")
@@ -148,8 +154,8 @@ if (MSVC)
   #Disable 4100 globally. Too many this kind errors in protobuf
   SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100")
   if (NOT onnxruntime_USE_CUDA)
-    SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL")
-    SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GL")
+    SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
+    SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
   check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
   if (HAS_QSPECTRE)
@@ -240,11 +246,6 @@ else()
 endif()
 add_executable(protobuf::protoc ALIAS protoc)
 include(protobuf_function.cmake)
-
-
-if (onnxruntime_USE_FULL_PROTOBUF)
-  add_definitions(-DUSE_FULL_PROTOBUF)
-endif()
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
   add_definitions(-DDISABLE_CONTRIB_OPS)
@@ -403,9 +404,10 @@ if (WIN32)
     endif()
 else()
   add_definitions(-DPLATFORM_POSIX)
-  # Enable warning in Linux
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
-  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
+  # Enable warning and enable space optimization in Linux
+  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+
   if(onnxruntime_DEV_MODE)
     if(NOT onnxruntime_USE_TVM)
       string(APPEND CMAKE_CXX_FLAGS " -Werror")
@@ -433,7 +435,6 @@ else()
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-nonnull-compare")
     string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-nonnull-compare")
   endif()
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=sign-compare")
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
   endif()
@@ -471,6 +472,19 @@ if (onnxruntime_USE_MKLDNN)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
   link_directories(${MKLDNN_LIB_DIR})
+endif()
+
+if (onnxruntime_USE_NGRAPH)
+  #if (onnxruntime_USE_OPENMP)
+  #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
+  #endif()
+  if (NOT onnxruntime_USE_FULL_PROTOBUF)
+    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+  endif()
+  add_definitions(-DUSE_NGRAPH=1)
+  include(ngraph)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ngraph)
 endif()
 
 if (onnxruntime_USE_OPENBLAS)
@@ -578,10 +592,18 @@ else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
+endif()
+
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
 if (onnxruntime_BUILD_SHARED_LIB)
   include(onnxruntime.cmake)
+endif()
+
+if (onnxruntime_BUILD_SERVER)
+  include(onnxruntime_server.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be
@@ -610,3 +632,4 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+

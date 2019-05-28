@@ -6,6 +6,7 @@
 #include "core/graph/basic_types.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
+#include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.
@@ -25,7 +26,7 @@ struct AllocPlanPerValue {
   MLDataType value_type{nullptr};
   OrtAllocatorInfo location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
-  // which MLValue's buffer must be reused for this MLValue.
+  // which OrtValue's buffer must be reused for this OrtValue.
   MLValueIndex reused_buffer{0};
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
@@ -37,7 +38,7 @@ struct AllocPlanPerValue {
 
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
-struct SequentialExecutionPlan {
+struct SequentialExecutionPlan : public ExecutionPlanBase {
   // Allocation plan:
   // ExecutionFrame::GetOrCreateTensor() should use the following information
   // to decide whether to allocate a new buffer or reuse an existing buffer
@@ -67,6 +68,22 @@ struct SequentialExecutionPlan {
 
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
   std::vector<MLValueIndex> to_be_freed;
+
+  const OrtAllocatorInfo& GetLocation(size_t ort_value_index) const override {
+    return allocation_plan[ort_value_index].location;
+  }
+
+  void SetLocation(size_t ort_value_index, const struct OrtAllocatorInfo& info) override {
+    allocation_plan[ort_value_index].location = info;
+  }
+
+  std::set<OrtAllocatorInfo> GetAllLocations() const override {
+    std::set<OrtAllocatorInfo> locations;
+    for (auto& alloc_plan : allocation_plan) {
+      if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
+    }
+    return locations;
+  }
 };
 
 // Output details of an execution plan:

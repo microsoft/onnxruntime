@@ -11,14 +11,14 @@ namespace onnxruntime {
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
-common::Status IOBinding::BindInput(const std::string& name, const MLValue& ml_value) {
+common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
   if (!ml_value.IsTensor()) {
     feed_names_.push_back(name);
     feeds_.push_back(ml_value);
     return Status::OK();
   }
 
-  MLValue new_mlvalue;
+  OrtValue new_mlvalue;
   ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
   feed_names_.push_back(name);
   feeds_.push_back(new_mlvalue);
@@ -65,7 +65,7 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& output_n
   return {true, it - std::begin(output_names)};
 }
 
-common::Status IOBinding::BindOutput(const std::string& name, const MLValue& ml_value) {
+common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
   auto rc = Contains(output_names_, name);
   if (rc.first) {
     outputs_[rc.second] = ml_value;
@@ -81,17 +81,13 @@ const std::vector<std::string>& IOBinding::GetOutputNames() const {
   return output_names_;
 }
 
-std::vector<MLValue>& IOBinding::GetOutputs() {
-  return outputs_;
-}
+std::vector<OrtValue>& IOBinding::GetOutputs() { return outputs_; }
 
 const std::vector<std::string>& IOBinding::GetInputNames() const {
   return feed_names_;
 }
 
-const std::vector<MLValue>& IOBinding::GetInputs() const {
-  return feeds_;
-}
+const std::vector<OrtValue>& IOBinding::GetInputs() const { return feeds_; }
 
 AllocatorPtr IOBinding::GetCPUAllocator(int id, onnxruntime::ProviderType provider_type) const {
   auto& exec_providers = session_state_.GetExecutionProviders();

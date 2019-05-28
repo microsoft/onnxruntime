@@ -104,4 +104,9 @@ const InitializedTensorSet& GraphViewer::GetAllInitializedTensors() const noexce
 const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {
   return graph_->GetNodeArg(name);
 }
+
+bool GraphViewer::IsSubgraph() const {
+  return graph_->IsSubgraph();
+}
+
 }  // namespace onnxruntime

@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <string>
+#include <unordered_set>
 
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
@@ -16,8 +18,8 @@ The interface for in-place transformation of a Graph.
 */
 class GraphTransformer {
  public:
-  GraphTransformer(const std::string& name, const std::string& desc, const std::unordered_set<std::string>& compatible_execution_providers = {})
-      : name_(name), desc_(desc), compatible_provider_types_(compatible_execution_providers) {
+  GraphTransformer(const std::string& name, const std::unordered_set<std::string>& compatible_execution_providers = {})
+      : name_(name), compatible_provider_types_(compatible_execution_providers) {
   }
 
   virtual ~GraphTransformer() = default;
@@ -25,11 +27,6 @@ class GraphTransformer {
   /** Gets the name of this graph transformer. */
   const std::string& Name() const noexcept {
     return name_;
-  }
-
-  /** Gets the description of this graph transformer. */
-  const std::string& Description() const noexcept {
-    return desc_;
   }
 
   const std::unordered_set<std::string>& GetCompatibleExecutionProviders() const noexcept {
@@ -64,10 +61,9 @@ class GraphTransformer {
   // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases
   // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
   // completes (if 'modified' is true) should suffice.
-  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level = 0) const = 0;
+  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const = 0;
 
   const std::string name_;
-  const std::string desc_;
   const std::unordered_set<std::string> compatible_provider_types_;
 };
 }  // namespace onnxruntime

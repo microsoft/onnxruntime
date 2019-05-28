@@ -124,5 +124,27 @@ TEST(ScatterOpTest, IndicesUpdatesDimsDonotMatch) {
   test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2");
 }
+
+TEST(ScatterOpTest, ValidIndex) {
+  OpTester test("Scatter", Scatter_ver);
+  test.AddAttribute<int64_t>("axis", 0);
+
+  test.AddInput<float>("data", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<int64_t>("indices", {1, 1, 1}, {3});
+  test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
+  test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
+  test.Run();
+}
+
+TEST(ScatterOpTest, InvalidIndex) {
+  OpTester test("Scatter", Scatter_ver);
+  test.AddAttribute<int64_t>("axis", 0);
+
+  test.AddInput<float>("data", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<int64_t>("indices", {1, 1, 1}, {4});
+  test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
+  test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=4 data_dim=4");
+}
 }  // namespace test
 }  // namespace onnxruntime

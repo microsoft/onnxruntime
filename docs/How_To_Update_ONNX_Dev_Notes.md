@@ -15,7 +15,8 @@ git add onnx
 2. Update [cgmanifest.json](/cgmanifest.json)        
 Search 'https://github.com/onnx/onnx.git', update the commitHash with it.
 
-3. Update [tools/ci_build/github/linux/docker/scripts/install_deps.sh](/tools/ci_build/github/linux/docker/scripts/install_deps.sh)        
+3. Update [tools/ci_build/github/linux/docker/scripts/install_deps.sh](/tools/ci_build/github/linux/docker/scripts/install_deps.sh) 
+and [tools/ci_build/github/linux/docker/scripts/install_deps_x86.sh](/tools/ci_build/github/linux/docker/scripts/install_deps_x86.sh) 
 Search 'for onnx_version in', update the commit hashes. The list should contain every release version from ONNX 1.2, and the latest one in our cmake/external/onnx folder.
 
 4. Update onnxruntime/core/protobuf        

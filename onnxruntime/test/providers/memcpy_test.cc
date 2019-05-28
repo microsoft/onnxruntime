@@ -26,7 +26,7 @@ TEST(MemcpyTest, copy1) {
   CPUExecutionProviderInfo epi;
   auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  SessionState s{execution_providers};
+  SessionState s{execution_providers, true};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
   kernel_registry_manager.RegisterKernels(execution_providers);
@@ -42,8 +42,8 @@ TEST(MemcpyTest, copy1) {
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   s.SetGraphViewer(std::make_unique<GraphViewer>(model.MainGraph()));
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);
-  SessionStateInitializer session_initializer{ORT_TSTR(""), model.MainGraph(), s, execution_providers,
-                                              kernel_registry_manager};
+  SessionStateInitializer session_initializer{true, ORT_TSTR(""), model.MainGraph(),
+                                              s, execution_providers, kernel_registry_manager};
   st = session_initializer.CreatePlan(nullptr, {}, true);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   st = session_initializer.InitializeAndSave(nullptr);
@@ -54,10 +54,10 @@ TEST(MemcpyTest, copy1) {
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
   float data[] = {1.f, 1.f, 0.f, 1.f, 1.f, 1.f};
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-  MLValue input =
-      MLValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  OrtValue input =
+      OrtValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 
-  MLValue output;
+  OrtValue output;
   st = utils::CopyOneInputAcrossDevices(s, "X", input, output);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }

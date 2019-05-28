@@ -7,6 +7,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types or limits
+// in its parser: axis >=0 && axis < nbDims. Those Tests will fallback to other EPs
+
 TEST(MathOpTest, Concat1D_string) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});

@@ -10,6 +10,9 @@
 #ifdef USE_MKLDNN
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #endif
+#ifdef USE_NGRAPH
+#include "core/providers/ngraph/ngraph_provider_factory.h"
+#endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif

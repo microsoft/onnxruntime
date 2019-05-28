@@ -197,16 +197,23 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     }
     if (calculate_sqt_) {
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-            &one, input_tensor, input_data,
-            &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
-    } else {
-      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
           CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
+          &one, input_tensor, input_data,
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+    } else {
+      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      if (input_count == output_count) {
+        if (Y->template MutableData<T>() != X->template Data<T>()) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
+        }
+      } else {
+        CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+            CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+            &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
+            &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+      }
     }
-  } else { // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
+  } else {  // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     if (temp_X) {
       auto temp_output = GetScratchBuffer<float>(output_count);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(

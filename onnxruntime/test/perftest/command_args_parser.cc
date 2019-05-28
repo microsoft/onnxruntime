@@ -26,10 +26,13 @@ namespace perftest {
   printf(
       "perf_test [options...] model_path result_file\n"
       "Options:\n"
-      "\t-m [test_mode]: Specifies the test mode. Value coulde be 'duration' or 'times'.\n"
+      "\t-m [test_mode]: Specifies the test mode. Value could be 'duration' or 'times'.\n"
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. "
-      "Default:'duration'.\n"
-      "\t-e [cpu|cuda|mkldnn|tensorrt]: Specifies the provider 'cpu','cuda','mkldnn' or 'tensorrt'. Default:'cpu'.\n"
+      "\t-M: Disable memory pattern.\n"
+      "\t-A: Disable memory arena\n"
+      "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
+      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt' or 'ngraph'. "
+      "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
@@ -43,7 +46,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:o:vhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:c:o:AMvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -60,6 +63,12 @@ namespace perftest {
       case 'p':
         test_config.run_config.profile_file = optarg;
         break;
+      case 'M':
+        test_config.run_config.enable_memory_pattern = false;
+        break;
+      case 'A':
+        test_config.run_config.enable_cpu_mem_arena = false;
+        break;
       case 'e':
         if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
@@ -67,6 +76,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kMklDnnExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
@@ -99,6 +110,13 @@ namespace perftest {
         test_config.run_config.enable_sequential_execution = false;
         test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.session_thread_pool_size <= 0) {
+          return false;
+        }
+        break;
+      case 'c':
+        test_config.run_config.concurrent_session_runs =
+            static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+        if (test_config.run_config.concurrent_session_runs <= 0) {
           return false;
         }
         break;

@@ -197,7 +197,7 @@ static std::vector<T> ConcatDup(const std::vector<T>& src) {
 template <typename T>
 static std::vector<T> ConcatLastDim(const std::vector<T>& a, const std::vector<T>& b, int depth) {
   std::vector<T> dst(2 * a.size());
-  for (int s = 0; s < a.size(); s += depth) {
+  for (size_t s = 0; s < a.size(); s += depth) {
     std::copy(a.cbegin() + s, a.cbegin() + s + depth, dst.begin() + 2 * s);
     std::copy(b.cbegin() + s, b.cbegin() + s + depth, dst.begin() + 2 * s + depth);
   }
@@ -237,7 +237,7 @@ static std::vector<T> ConvertBatchSeqToSeqBatch(
 template <typename T>
 static std::vector<T> ConvertIcfoToIofc(const std::vector<T>& icfo, int cell_hidden_size) {
   std::vector<T> iofc(icfo.size());
-  for (int i = 0; i < icfo.size(); i += 4 * cell_hidden_size) {
+  for (size_t i = 0; i < icfo.size(); i += 4 * cell_hidden_size) {
     auto src = icfo.cbegin() + i;
     auto dst = iofc.begin() + i;
 

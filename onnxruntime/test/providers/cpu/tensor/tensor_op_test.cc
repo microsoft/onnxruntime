@@ -12,6 +12,9 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
+// Those tests will fallback to other EPs.
+
 TEST(TensorOpTest, Reshape) {
   OpTester test("Reshape");
 
@@ -60,7 +63,7 @@ TEST(TensorOpTest, ShapeTest2D) {
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
   test.AddOutput<int64_t>("shape", {2}, {2, 3});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: volume of dimensions is not consistent with weights size
 }
 
 TEST(TensorOpTest, ShapeTest3D) {
@@ -68,7 +71,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 
   test.AddInput<float>("data", {2, 3, 4}, std::vector<float>(24, 1.0f));
   test.AddOutput<int64_t>("shape", {3}, {2, 3, 4});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: volume of dimensions is not consistent with weights size
 }
 
 template <typename SrcType,
@@ -83,7 +86,7 @@ void TestCastOp(const std::initializer_list<SrcType>& input,
   test.AddAttribute("to", toType);
   test.AddInput<SrcType>("input", dimensions, input);
   test.AddOutput<DstType>("output", dimensions, output);
-  test.Run(expect_result, expected_failure_string);
+  test.Run(expect_result, expected_failure_string, {kTensorrtExecutionProvider});
 }
 
 template <typename SrcType>
@@ -512,7 +515,7 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   MeanVarianceNormalizationPerChannel(false, false);
 
   // across_channels: false, normalize_variance: true
-  MeanVarianceNormalizationPerChannel(false, true);  
+  MeanVarianceNormalizationPerChannel(false, true);
 }
 #endif
 
@@ -603,7 +606,7 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
-  
+
   // axes: {0, 1, 2, 3} for across_channels
   MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
 

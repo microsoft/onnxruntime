@@ -23,17 +23,17 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                   \
-  template <>                                                                                             \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                          \
-    UnaryElementwisePreparation p;                                                                        \
-    UnaryElementwise::Prepare(context, &p);                                                               \
-    Impl_##x(                                                                                             \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),  \
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()),\
-        p.output_tensor->Shape().Size());                                                                 \
-                                                                                                          \
-    return Status::OK();                                                                                  \
+#define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                    \
+  template <>                                                                                              \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
+    UnaryElementwisePreparation p;                                                                         \
+    UnaryElementwise::Prepare(context, &p);                                                                \
+    Impl_##x(                                                                                              \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \
+        p.output_tensor->Shape().Size());                                                                  \
+                                                                                                           \
+    return Status::OK();                                                                                   \
   }
 
 #define UNARY_OP_TYPED(name, ver, T)              \
@@ -81,6 +81,7 @@ UNARY_OP_HFD(Reciprocal, 6)
 UNARY_OP_HFD(Sqrt, 6)
 UNARY_OP_HFD(Log, 6)
 UNARY_OP_HFD(Exp, 6)
+UNARY_OP_HFD(Erf, 9)
 
 }  // namespace cuda
 }  // namespace onnxruntime
