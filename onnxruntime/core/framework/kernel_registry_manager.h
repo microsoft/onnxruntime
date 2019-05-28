@@ -83,6 +83,5 @@ class KernelRegistryManager {
   // Each kernel registry may contain kernels from many different providers.
   // in order to search kernels from a specific provider, we have to iterate all its elements
   std::list<std::shared_ptr<KernelRegistry>> custom_kernel_registries_;
-  mutable OrtMutex lock_;
 };
 }  // namespace onnxruntime
