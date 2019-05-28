@@ -670,6 +670,24 @@ inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernel
   return out;
 }
 
+template <>
+inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::string out;
+  OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
+
+  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the string
+  if (OrtGetErrorCode(status) == ORT_INVALID_ARGUMENT) {
+    OrtReleaseStatus(status);
+    out.resize(size);
+    ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
+    out.resize(size - 1); // remove the terminating character '\0'
+  } else {
+    ORT_THROW_ON_ERROR(status);
+  }
+  return out;
+}
+
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
