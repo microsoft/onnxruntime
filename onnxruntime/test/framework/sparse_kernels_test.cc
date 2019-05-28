@@ -177,7 +177,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
 
       // compute output values:
       auto* output_values = output->Values().MutableData<int64_t>();
-      for (int i = 0; i < nnz; ++i)
+      for (size_t i = 0; i < nnz; ++i)
         output_values[i] = std::abs(input_values[i]);
 
       // Currently, there is no way to share the indices/shape between two sparse-tensors.
@@ -292,7 +292,8 @@ class SparseTensorTests : public testing::Test {
           .SetDomain(onnxruntime::kMLDomain)
           .SinceVersion(10)
           .Provider(onnxruntime::kCpuExecutionProvider);
-      EXPECT_TRUE(registry->RegisterCustomKernel(kernel_def_builder, [](const OpKernelInfo& info) { return new Op::OpKernelImpl(info); }).IsOK());
+      KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename Op::OpKernelImpl(info); };
+      EXPECT_TRUE(registry->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
     };
     register_actions.push_back(register_kernel);
   }
@@ -388,7 +389,7 @@ class SparseTensorTests : public testing::Test {
     EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
     ASSERT_EQ(expected_output.size(), fetches.size());
-    for (int i = 0; i < fetches.size(); ++i) {
+    for (size_t i = 0; i < fetches.size(); ++i) {
       ExpectEq(fetches[i], expected_output[i]);
     }
   }
