@@ -204,11 +204,12 @@ class OnnxModelInfo : public TestModelInfo {
     if (!model_pb.ParseFromZeroCopyStream(&f)) {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
-    std::string url_string;
-    OrtPathToString(model_url, url_string);
+#ifdef __GNUG__
+    std::string url_string{model_url};
     if (url_string.size() >= 51) {
       onnx_commit_ = {url_string.begin()+11, url_string.begin()+51};  
     }
+#endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();
