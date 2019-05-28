@@ -75,5 +75,5 @@ class TestResultStat {
   mutable onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
-  std::vector< std::pair<std::string, std::string> > failed_test_cases;
+  std::vector< std::pair<std::string, std::string> > failed_test_cases; // pairs of test name and version
 };
