@@ -4,6 +4,7 @@ set -e -o -x
 while getopts r:i:c:p:b: parameter_Option
 do case "${parameter_Option}"
 in
+a) AZCOPY_DIR=${OPTARG};;
 r) BINARY_DIR=${OPTARG};;
 i) BUILD_ID=${OPTARG};;
 c) LAST_COMMIT_ID=${OPTARG};;
@@ -26,6 +27,6 @@ echo "Build parameters: $BUILD_PARAMETERS" >> build_info.txt
 echo "Last commit id: $LAST_COMMIT_ID" >> build_info.txt
 
 echo "Upload the folder to blob storage ..."
-azcopy copy $BINARY_DIR/$BUILD_ID $BLOB_SAS_URL --recursive=true
+$AZCOPY_DIR/azcopy cp $BINARY_DIR/$BUILD_ID $BLOB_SAS_URL --recursive=true
 
 echo "Done!"
