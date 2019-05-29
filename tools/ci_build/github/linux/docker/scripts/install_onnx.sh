@@ -24,7 +24,11 @@ for onnx_version in ${!version2tag[@]}; do
   cd /tmp/src/onnx-$onnx_version
   git clone https://github.com/pybind/pybind11.git third_party/pybind11
   python3 setup.py bdist_wheel
-  pip3 install -q dist/*`uname -p`".whl"
+  if [ `uname -p` = "x86_64" ]; then
+    pip3 install -q dist/*
+  else
+    pip3 install -q onnx
+  fi
   mkdir -p /data/onnx/${version2tag[$onnx_version]}
   backend-test-tools generate-data -o /data/onnx/${version2tag[$onnx_version]}
   echo $onnx_version":"${version2tag[$onnx_version]} >> /data/onnx/version2tag
