@@ -160,11 +160,16 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             return result;
         }
 
-        if(node->OpType() == "Sum")
-            OpSum = true;
+        if(node->OpType() == "Sum"){
 
-        if(node->OpType() == "Gemm")
+            OpSum = true;
+        }
+
+        if(node->OpType() == "Gemm"){
+
             OpGemm = true;
+
+        }
 
 
         //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
@@ -184,11 +189,24 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             }
         }
 
-        if(device_id == "MYRIAD"){
+        if(device_id == "MYRIAD" || device_id == "HDDL"){
 
             if(node->OpType() == "Reshape" || node->OpType() == "Unsqueeze" || node->OpType() == "Flatten"){
 
                 if(input_arrays[0][0] != 1) {
+                    return result;
+                }
+            }
+            if(node->OpType() == "Gemm"){
+                int count = 0;
+                for(auto input : node->InputDefs()){
+                    auto name = input->Name();
+                    auto it = initializers.find(name);
+                    if(it == initializers.end()){
+                        count++;
+                    }
+                }
+                if(count > 1){
                     return result;
                 }
             }
@@ -385,11 +403,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
                 return result;
         }
 
-        if(OpSum == true && OpGemm == false){
-            if(device_id == "MYRIAD" || device_id == "HDDL")
-                return result;
-        }
-
 
         if(node->OpType() == "Flatten"){
             auto attributes = node->GetAttributes();
@@ -401,6 +414,12 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
             }
         }
 
+    }
+    //Disable Resnet DUC for MYRIAD and HDDL
+    if(OpSum == true && OpGemm == false){
+        if(device_id == "MYRIAD" || device_id == "HDDL"){
+            return result;
+        }
     }
     std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
