@@ -31,5 +31,5 @@ The C API details are [here](https://github.com/Microsoft/onnxruntime/blob/maste
 ## Python
 When using the python wheel from the ONNX Runtime built with MKL-DNN execution provider, it will be automatically prioritized over the CPU execution provider. Python APIs details are [here](https://github.com/Microsoft/onnxruntime/blob/master/docs/python/api_summary.rst#api-summary).
 
-## Using onnxruntime_perf_test
-You can test the performance of your ONNX Model with the MKL-DNN execution provider. Use the flag -e mkldnn in [onnxruntime_perf_test](https://github.com/Microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test).
+## Using onnxruntime_perf_test and onnx_test_runner
+You can test the performance of your ONNX Model with the MKL-DNN execution provider. Use the flag -e mkldnn in [onnxruntime_perf_test](https://github.com/Microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test) and [onnx_test_runner](https://github.com/Microsoft/onnxruntime/tree/master/onnxruntime/test/onnx/README.txt)..

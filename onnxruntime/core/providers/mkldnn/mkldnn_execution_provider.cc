@@ -136,14 +136,13 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
   bool use_subgraph = true;
 
   const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
-  int use_subgraph_env = 0;
-  if (env != nullptr)
-    use_subgraph_env = atoi(env);
-
-  if (use_subgraph_env == 0) {
-    use_subgraph = false;
-    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+  if (env != nullptr) {
+    if (atoi(env) == 0) {
+      use_subgraph = false;
+      result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+    }
   }
+
   return use_subgraph;
 }
 
