@@ -14,6 +14,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "openvino_execution_provider.h"
 #include "openvino_layer.h"
@@ -516,14 +517,13 @@ common::Status OpenVINOExecutionProvider::Compile(
         };
 
     compute_info.compute_func =
-        [](FunctionState state, ONNXRunTimeTensor* input_tensors, size_t num_inputs,
-           ONNXRunTimeTensor* output_tensors, size_t num_outputs) {
-          (void)num_outputs;
+        [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+          Ort::CustomOpApi ort{*api};
+
           auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
 
           try {
-            function_state->openvino_graph->Infer(input_tensors, num_inputs, output_tensors,
-                                                  num_outputs, function_state->allocate_func, function_state->allocator_handle);
+            function_state->openvino_graph->Infer(ort, context);
           } catch (const char* msg) {
             std::cerr << "Caught Runtime exception: " << msg << std::endl;
             return common::StatusCode::RUNTIME_EXCEPTION;

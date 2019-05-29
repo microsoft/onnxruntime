@@ -10,7 +10,7 @@
 #include <cpp/ie_infer_request.hpp>
 
 #include "core/framework/func_api.h"
-
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/graph.h"
 
 #ifndef OPENVINO_EP__OPENVINO_GRAPH_H
@@ -27,10 +27,7 @@ class OpenVINOGraph {
 
   std::shared_ptr<InferenceEngine::CNNNetwork> GetCNNNetwork();
 
-  void Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
-             size_t num_inputs, onnxruntime::ONNXRunTimeTensor* output_tensors,
-             size_t num_outputs, onnxruntime::AllocateFunc& output_allocator_func,
-             onnxruntime::AllocatorHandle& output_allocator_handle);
+  void Infer(Ort::CustomOpApi ort, OrtKernelContext* context);
 
  private:
   std::shared_ptr<InferenceEngine::CNNNetwork> BuildCNNNetworkWithMO();
@@ -39,19 +36,24 @@ class OpenVINOGraph {
       std::shared_ptr<InferenceEngine::CNNNetwork> network,
       const std::string& device, InferenceEngine::Precision precision);
 
-  size_t DeduceBatchSize(onnxruntime::ONNXRunTimeTensor* input_tensor,
-                         InferenceEngine::SizeVector graph_dims);
+  size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
+                                      InferenceEngine::SizeVector graph_dims);
 
-  void AllocateOutputTensors(size_t batch_size,
-                             onnxruntime::ONNXRunTimeTensor* output_tensors,
-                             onnxruntime::AllocateFunc& output_allocator_func,
-                             onnxruntime::AllocatorHandle& output_allocator_handle);
+  void GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[]);
 
-  void StartAsyncInference(onnxruntime::ONNXRunTimeTensor* input_tensors,
-                           size_t batch_idx, size_t infer_req_idx);
 
-  void CompleteAsyncInference(onnxruntime::ONNXRunTimeTensor* output_tensors,
-                              size_t batch_idx, size_t infer_req_idx);
+  void GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size);
+//  void AllocateOutputTensors(size_t batch_size,
+//                             onnxruntime::ONNXRunTimeTensor* output_tensors,
+//                             onnxruntime::AllocateFunc& output_allocator_func,
+//                             onnxruntime::AllocatorHandle& output_allocator_handle);
+
+
+  void StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[], size_t batch_slice_idx, size_t infer_req_idx);
+
+
+  void CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[], size_t batch_slice_idx, size_t infer_req_idx);
+
 
   std::vector<std::string> GetEnvLdLibraryPath();
 

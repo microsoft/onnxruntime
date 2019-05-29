@@ -15,6 +15,7 @@
 
 #include "core/graph/graph.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "openvino_graph.h"
 
@@ -257,13 +258,17 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::GetCNNNetwork() {
   return cnn_network_;
 }
 
-size_t OpenVINOGraph::DeduceBatchSize(onnxruntime::ONNXRunTimeTensor* input_tensor,
+size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
                                       InferenceEngine::SizeVector graph_dims) {
   size_t batch_size = 1;
 
+  // All the inputs and outputs are batched the same way.
+  // So it is sufficient to use any one of these tensors to deduce the batch size.
+  const auto& input_shape = ort.GetTensorShape(ort.GetTensorTypeAndShape(input_tensor));
+
   std::cout << "[OpenVINO-EP] Input dims: ";
-  for (size_t i = 0; i < input_tensor->ndim; i++) {
-    std::cout << input_tensor->shape[i] << ", ";
+  for (size_t i = 0; i < input_shape.size(); i++) {
+    std::cout << input_shape[i] << ", ";
   }
   std::cout << std::endl;
 
@@ -273,13 +278,14 @@ size_t OpenVINOGraph::DeduceBatchSize(onnxruntime::ONNXRunTimeTensor* input_tens
   }
   std::cout << std::endl;
 
-  if ((input_tensor->ndim == graph_dims.size() && input_tensor->shape[0] > 1 && graph_dims[0] == 1) || (input_tensor->ndim == graph_dims.size() + 1)) {
-    batch_size = input_tensor->shape[0];
+  if ((input_shape.size() == graph_dims.size() && input_shape[0] > 1 && graph_dims[0] == 1) || (input_shape.size() == graph_dims.size() + 1)) {
+    batch_size = input_shape[0];
   }
 
   return batch_size;
 }
 
+/*
 void OpenVINOGraph::AllocateOutputTensors(
     size_t batch_size,
     onnxruntime::ONNXRunTimeTensor* output_tensors,
@@ -319,8 +325,9 @@ void OpenVINOGraph::AllocateOutputTensors(
                                                       64, output_blob_size * batch_size);
   }
 }
+*/
 
-void OpenVINOGraph::StartAsyncInference(onnxruntime::ONNXRunTimeTensor* input_tensors,
+void OpenVINOGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[],
                                         size_t batch_slice_idx,
                                         size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
@@ -329,6 +336,7 @@ void OpenVINOGraph::StartAsyncInference(onnxruntime::ONNXRunTimeTensor* input_te
   size_t i = 0;
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter, ++i) {
+
     // Get OpenVINO's input buffer
     auto graph_input_blob = infer_request->GetBlob(input_info_iter->first);
     auto graph_input_buffer =
@@ -336,7 +344,10 @@ void OpenVINOGraph::StartAsyncInference(onnxruntime::ONNXRunTimeTensor* input_te
 
     size_t input_data_size = graph_input_blob->byteSize();
 
-    char* batch_memory_offset = (char*)(input_tensors[i].data) + input_data_size * batch_slice_idx;
+
+    const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
+
+    const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
 
     // Copy input data into OpenVINO's input buffer
     std::memcpy(graph_input_buffer, batch_memory_offset, input_data_size);
@@ -346,7 +357,7 @@ void OpenVINOGraph::StartAsyncInference(onnxruntime::ONNXRunTimeTensor* input_te
   infer_request->StartAsync();
 }
 
-void OpenVINOGraph::CompleteAsyncInference(onnxruntime::ONNXRunTimeTensor* output_tensors,
+void OpenVINOGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[],
                                            size_t batch_slice_idx,
                                            size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
@@ -358,51 +369,93 @@ void OpenVINOGraph::CompleteAsyncInference(onnxruntime::ONNXRunTimeTensor* outpu
   size_t i = 0;
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
+
+    // Get OpenVINO's output blob
     auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
     auto graph_output_buffer =
         graph_output_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
     size_t output_data_size = graph_output_blob->byteSize();
 
-    char* batch_memory_offset = (char*)(output_tensors[i].data) + output_data_size * batch_slice_idx;
+    char* tensor_data = ort.GetTensorMutableData<char>(output_tensors[i]);
+
+    char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
 
     std::memcpy(batch_memory_offset, graph_output_buffer, output_data_size);
   }
 }
 
-void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
-                          size_t num_inputs,
-                          onnxruntime::ONNXRunTimeTensor* output_tensors,
-                          size_t num_outputs,
-                          onnxruntime::AllocateFunc& output_allocator_func,
-                          onnxruntime::AllocatorHandle& output_allocator_handle) {
+void OpenVINOGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[]) {
+  size_t input_count = cnn_network_->getInputsInfo().size();
+
+  for(size_t i=0; i< input_count; i++) {
+    input_tensors[i] = ort.KernelContext_GetInput(context, i);
+  }
+}
+
+
+void OpenVINOGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size) {
+
+  auto graph_output_info = cnn_network_->getOutputsInfo();
+
+  // All infer_requests process identical tensor slices from the batch.
+  // So using info from first infer_request to allocate all output tensors.
+  auto infer_request = infer_requests_[0];
+
+  size_t i = 0;
+  for (auto output_info_iter = graph_output_info.begin();
+       output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
+    auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
+//    auto output_blob_size = graph_output_blob->byteSize();
+    auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
+
+    if (batch_size > 1) {
+      // Add the batch size as dim 0.
+      graph_output_dims.insert(graph_output_dims.begin(), batch_size);
+    }
+
+    size_t num_dims = graph_output_dims.size();
+
+    // TODO: Memory Leak!!!!
+    // Allocate using the AllocateFunc instead???
+    // fix before shipping.
+    auto* output_shape = new int64_t[num_dims];
+    for (size_t j = 0; j < num_dims; j++) {
+      output_shape[j] = (int64_t)graph_output_dims[j];
+    }
+
+    output_tensors[i] = ort.KernelContext_GetOutput(context, i, output_shape, num_dims);
+  }
+}
+
+void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
+
   // Preliminary thread safety mechanism
   // TODO: reduce lock scope to just infer_request objects
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   std::cout << "[OpenVINO-EP] Inference Started\n";
-  // Check I/O sizes
-  auto graph_input_info = cnn_network_->getInputsInfo();
-  std::cout << "[OpenVINO-EP] num_inputs: " << num_inputs << std::endl;
-  if (num_inputs != graph_input_info.size()) {
-    throw "OpenVINO Inference: Inputs count mismatch!";
-  }
 
-  auto graph_output_info = cnn_network_->getOutputsInfo();
-  std::cout << "[OpenVINO-EP] num_outputs: " << num_outputs << std::endl;
-  if (num_outputs != graph_output_info.size()) {
-    throw "OpenVINO Inference: Outputs count mismatch!";
-  }
+  // Get Input and Output tensors
+  size_t input_count = cnn_network_->getInputsInfo().size();
+  size_t output_count = cnn_network_->getOutputsInfo().size();
+  const OrtValue* input_tensors[input_count];
+  OrtValue* output_tensors[output_count];
 
-  auto batch_size = DeduceBatchSize(input_tensors,
+  GetInputTensors(ort, context, input_tensors);
+
+
+  auto batch_size = DeduceBatchSize(ort, input_tensors[0],
                                     cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
   std::cout << "[OpenVINO-EP] Batch Size: " << batch_size << std::endl;
 
   size_t full_parallel_runs = batch_size / num_inf_reqs_;
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
-  AllocateOutputTensors(batch_size, output_tensors, output_allocator_func,
-                        output_allocator_handle);
+  GetOutputTensors(ort, context, output_tensors, batch_size);
+
+//  AllocateOutputTensors(batch_size, output_tensors, output_allocator_func,
+//                        output_allocator_handle);
 
   // Run parallel inferences as sets of num_inf_reqs_
   for (size_t set = 0; set < full_parallel_runs; set++) {
@@ -410,11 +463,11 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
               << " parallel inferences\n";
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
-      StartAsyncInference(input_tensors, batch_slice_idx, inf_req_idx);
+      StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx);
     }
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
-      CompleteAsyncInference(output_tensors, batch_slice_idx, inf_req_idx);
+      CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
     }
   }
 
@@ -423,11 +476,11 @@ void OpenVINOGraph::Infer(onnxruntime::ONNXRunTimeTensor* input_tensors,
             << " parallel inferences\n";
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    StartAsyncInference(input_tensors, batch_slice_idx, inf_req_idx);
+    StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx);
   }
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    CompleteAsyncInference(output_tensors, batch_slice_idx, inf_req_idx);
+    CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
   }
 }
 
