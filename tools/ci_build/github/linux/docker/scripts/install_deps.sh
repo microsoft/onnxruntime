@@ -46,6 +46,7 @@ else
                 ["9e55ace55aad1ada27516038dfbdc66a8a0763db"]="onnx141"
                 ["7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef"]="onnx150"
                 ["5d0975f43c1224edce17177783b859fca4b8e2b1"]="onnxtip")
+  touch /data/onnx/version2tag
   for onnx_version in ${!version2tag[@]}; do
     if [ -z ${lastest_onnx_version+x} ]; then
       echo "first pass";
@@ -62,6 +63,7 @@ else
     pip3 install -q dist/*
     mkdir -p /data/onnx/${version2tag[$onnx_version]}
     backend-test-tools generate-data -o /data/onnx/${version2tag[$onnx_version]}
+    echo $onnx_version":"${version2tag[$onnx_version]} >> version2tag
   done
 fi
 
