@@ -44,7 +44,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
 
   BinaryElementwisePreparation prepare(this);
   SetInOutIndexBeforePrepare(2, 0);
-  Prepare(ctx, 0, &prepare);
+  Prepare(ctx, ctx->GetDeviceId(), &prepare);
   ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
 
   // gradients = gradients * eta(scalar);
@@ -63,7 +63,7 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   // weights = weights - gradient - inplace update
   BinaryElementwisePreparation prepareForUpdate(this);
   SetInOutIndexBeforePrepare(1, 2);
-  Prepare(ctx, 0, &prepareForUpdate);
+  Prepare(ctx, ctx->GetDeviceId(), &prepareForUpdate);
   ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
   Impl_Sub<typename ToCudaType<float>::MappedType>(
       prepareForUpdate.output_rank_or_simple_broadcast,

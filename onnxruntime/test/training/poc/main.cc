@@ -5,15 +5,26 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/environment.h"
 #include "core/training/training_optimizer.h"
-#include "core/training/weight_updater.h"
 #include "core/training/training_session.h"
+#include "core/training/weight_updater.h"
 #include "test/training/poc/mnist_data_provider.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
 
+#ifdef USE_HOROVOD
+#include "core/graph/training/horovod_adapters.h"
+#include <mpi.h>
+#endif
+
+#include <condition_variable>
+#include <mutex>
+#include <tuple>
+
 using namespace onnxruntime;
 using namespace onnxruntime::training;
 using namespace std;
+
+using namespace onnxruntime;
 
 const static int NUM_OF_EPOCH = 2;
 const static float LEARNING_RATE = 0.1f;
@@ -24,7 +35,8 @@ const static vector<int64_t> IMAGE_DIMS = {1, 784};  //{1, 1, 28, 28} for mnist_
 const static vector<int64_t> LABEL_DIMS = {1, 10};
 const static std::string MNIST_DATA_PATH = "mnist_data";
 
-int main(int argc, char* args[]) {
+int validate_params(int argc, char* args[])
+{
   if (argc < 2) {
     printf("Incorrect command line for %s\n", args[0]);
 #ifdef USE_CUDA
@@ -34,27 +46,40 @@ int main(int argc, char* args[]) {
 #endif
     return -1;
   }
+  return 0;
+}
 
-  string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                  logging::Severity::kWARNING,
-                                                  false,
-                                                  logging::LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
+#ifdef USE_HOROVOD
+std::pair<int,int> setup_horovod()
+{
+  using namespace horovod::common;
+  // setup MPI amd horovod
+  MPI_Init(0, 0);
 
-  unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(env).IsOK());
+  int world_size;
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-  DataSet trainingData({"X", "labels"});
-  DataSet testData({"X", "labels"});
-  // Uncomment below line to load only shard-0 training data (total shards = 3), for data parallelism.
-  // PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData, 0, 3);
-  PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData);
+  int world_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  TrainingRunner::Parameters params;
+  int *ranks = (int*)malloc(sizeof(int)* world_size);
+  MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
 
-  // Init params.
-  std::string model_name = args[1];
+  horovod_init(ranks, world_size);
+
+  return {world_rank, world_size};
+}
+
+void shutdown_horovod()
+{
+  horovod::common::horovod_shutdown();
+  MPI_Finalize();
+}
+
+#endif
+
+void setup_training_params(std::string& model_name, TrainingRunner::Parameters& params )
+{
   params.model_path_ = model_name + ".onnx";
   params.model_with_loss_func_path_ = model_name + "_with_cost.onnx";
   params.model_with_training_graph_path_ = model_name + "_bw.onnx";
@@ -121,17 +146,56 @@ int main(int argc, char* args[]) {
     true_count = 0;
     total_loss = 0.0f;
   };
+}
+
+int main(int argc, char* args[]) {
+
+  if (validate_params(argc, args) == -1) return -1;
+
+  // setup logger
+  string default_logger_id{"Default"};
+  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+                                                  logging::Severity::kWARNING,
+                                                  false,
+                                                  logging::LoggingManager::InstanceType::Default,
+                                                  &default_logger_id};
+
+  // setup onnxruntime env
+  unique_ptr<Environment> env;
+  ORT_ENFORCE(Environment::Create(env).IsOK());
+
+  // setup training params
+  TrainingRunner::Parameters params;
+  std::string model_name = args[1];
+  setup_training_params(model_name, params);
+ 
+
+  // setup horovod
+  int device_id = 0, device_count = 1;
+
+#ifdef USE_HOROVOD
+  std::tie(device_id, device_count) = setup_horovod();
+#endif
 
 #ifdef USE_CUDA
   params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
-
-  if (params.use_cuda_ && argc > 3) {
-    params.world_rank_ = stoi(string(args[3]));
-  }
+  params.learning_rate_ /= device_count;
+  params.world_rank_ = device_id;
   printf("Using cuda device #%d \n", params.world_rank_);
 #endif
 
+  // setup data
+  DataSet trainingData({"X", "labels"});
+  DataSet testData({"X", "labels"});
+  PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData, device_id /* shard_to_load */, device_count /* total_shards */);
+
+
+  // start training session
   TrainingRunner runner(trainingData, testData, params);
   RETURN_IF_FAIL(runner.Initialize());
   RETURN_IF_FAIL(runner.Run());
+
+#ifdef USE_HOROVOD
+  shutdown_horovod();
+#endif
 }

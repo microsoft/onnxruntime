@@ -71,6 +71,7 @@ option(onnxruntime_ENABLE_LTO "Enable link time optimization, which is not stabl
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -543,6 +544,20 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
+
+if (onnxruntime_USE_HOROVOD)
+  if (Win32)
+    message( FATAL_ERROR "Horovod is not supported on Windows." )
+  elseif(UNIX)
+    find_package(MPI REQUIRED)
+    add_definitions(-DUSE_HOROVOD=1)
+    set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
+    set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common" ${MPI_CXX_INCLUDE_PATH})
+    add_subdirectory(horovod EXCLUDE_FROM_ALL)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod  /usr/lib/x86_64-linux-gnu/libnccl.so ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+  endif()
+endif()
+
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
@@ -567,9 +582,6 @@ else()
   set(onnxruntime_EXTERNAL_LIBRARIES_DEBUG ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-include(onnxruntime_training.cmake)
-endif()
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
@@ -602,4 +614,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
   set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
   include(onnxruntime_unittests.cmake)
+endif()
+
+
+if (onnxruntime_ENABLE_TRAINING)
+  include(onnxruntime_training.cmake)
 endif()

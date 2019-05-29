@@ -29,6 +29,10 @@ class OptimizerBuilder {
 
  private:
   std::string name_;
+
+  common::Status BuildAllReduceNode(const std::vector<std::string>& gradients, 
+                                   GraphAugmenter::GraphDefs& graph_defs,
+                                   std::vector<ArgDef>& agg_grads) const;
 };
 
 class OptimizerBuilderRegistry : public GenericRegistry<OptimizerBuilder> {

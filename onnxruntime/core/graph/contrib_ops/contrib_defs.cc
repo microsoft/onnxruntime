@@ -1384,6 +1384,16 @@ Example 4:
           "Constrain to float, float16 and double tensors.")
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduceOp)
+     .SetDomain(kOnnxDomain)
+     .SinceVersion(1)
+     .Input(0, "input", "tensor to be reduced", "T")
+     .Output(0, "output", "reduced tensor", "T")
+     .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.");
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

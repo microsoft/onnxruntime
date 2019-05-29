@@ -10,6 +10,7 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx)
 onnxruntime_add_include_to_target(onnxruntime_training  onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
+
 target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_srcs})
@@ -44,6 +45,10 @@ file(GLOB_RECURSE training_poc_src
 add_executable(onnxruntime_training_poc ${training_poc_src})
 onnxruntime_add_include_to_target(onnxruntime_training_poc onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_poc PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
+
+if (onnxruntime_USE_HOROVOD)
+target_include_directories(onnxruntime_training_poc PUBLIC ${HOROVOD_INCLUDE_DIRS})
+endif()
 
 set(ONNXRUNTIME_LIBS onnxruntime_session ${onnxruntime_libs} ${PROVIDERS_CUDA} ${PROVIDERS_MKLDNN} onnxruntime_optimizer onnxruntime_providers onnxruntime_util onnxruntime_framework onnxruntime_util onnxruntime_graph onnxruntime_common onnxruntime_mlas)
 

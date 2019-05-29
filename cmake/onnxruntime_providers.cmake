@@ -18,6 +18,12 @@ file(GLOB onnxruntime_providers_common_srcs
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
+if (NOT onnxruntime_USE_HOROVOD)
+  list(REMOVE_ITEM onnxruntime_providers_srcs
+  "${ONNXRUNTIME_ROOT}/core/providers/cpu/collectives/horovod_kernels.cc"
+  )
+endif()
+
 if(onnxruntime_USE_MKLDNN)
   set(PROVIDERS_MKLDNN onnxruntime_providers_mkldnn)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES mkldnn)
@@ -50,6 +56,10 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cp
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
+if (onnxruntime_USE_HOROVOD)
+  target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
+endif()
+
 if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
@@ -59,6 +69,13 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
+
+  if (NOT onnxruntime_USE_HOROVOD)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/horovod_kernels.cc"
+    )
+  endif()
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   if (UNIX)
@@ -71,6 +88,11 @@ if (onnxruntime_USE_CUDA)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
+
+  if (onnxruntime_USE_HOROVOD)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
+  endif()
+
   if (WIN32)
     # *.cu cannot use PCH
     foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})

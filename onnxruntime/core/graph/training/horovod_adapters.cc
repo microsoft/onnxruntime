@@ -1,0 +1,121 @@
+
+
+#include "horovod_adapters.h"
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-qualifiers"
+#endif
+
+namespace onnxruntime {
+
+common::Status ConvertStatus(const hvd::Status& status) {
+switch (status.type()) {
+  case hvd::OK:
+    return Status::OK();
+  case hvd::INVALID_ARGUMENT:
+    return common::Status(common::StatusCategory::ONNXRUNTIME, 3 /* MLStatus::InvalidArgument */);
+  default:
+    return common::Status(common::StatusCategory::ONNXRUNTIME, 1 /* MLStatus::Fail */);
+  }
+}
+
+hvd::Status ConvertStatus(const common::Status& status) {
+
+  switch (status.Code()) {
+  case  0:
+    return hvd::Status::OK();
+  case 3:
+    return hvd::Status::InvalidArgument(status.ErrorMessage());
+  default:
+    return hvd::Status::UnknownError("Unknown error.");
+  }
+}
+
+ORTTensor::ORTTensor(const onnxruntime::Tensor* tensor) : tensor_(tensor) {}
+
+const hvd::DataType ORTTensor::dtype() const {
+
+  auto type = tensor_->DataType();
+  if(type == DataTypeImpl::GetType<uint8_t>()) {
+    return hvd::HOROVOD_UINT8;
+  } else if (type == DataTypeImpl::GetType<int8_t>()) {
+    return hvd::HOROVOD_INT8;
+  } else if (type == DataTypeImpl::GetType<uint16_t>()) {
+    return hvd::HOROVOD_UINT16;
+  } else if (type == DataTypeImpl::GetType<int16_t>()) {
+    return hvd::HOROVOD_INT16;
+  } else if (type == DataTypeImpl::GetType<int32_t>()) {
+    return hvd::HOROVOD_INT32;
+  } else if(type == DataTypeImpl::GetType<int64_t>()) {
+    return hvd::HOROVOD_INT64;
+  } else if(type == DataTypeImpl::GetType<float>()) {
+    return hvd::HOROVOD_FLOAT32;
+  } else if(type == DataTypeImpl::GetType<double>()) {
+    return hvd::HOROVOD_FLOAT64;
+  } else if(type == DataTypeImpl::GetType<bool>()) {
+    return hvd::HOROVOD_BOOL;
+  } else if(type == DataTypeImpl::GetType<BFloat16>()) {
+    return hvd::HOROVOD_FLOAT16;
+  }
+  else {
+    throw std::logic_error("Invalid tensor type.");
+  }
+}
+
+const hvd::TensorShape ORTTensor::shape() const {
+  hvd::TensorShape shape;
+  const std::vector<int64_t> original_shape = tensor_->Shape().GetDims();
+  for (auto dim : original_shape){
+    shape.AddDim(dim);
+  }
+  return shape;
+}
+
+const void* ORTTensor::data() const {
+  return tensor_->DataRaw();
+}
+
+int64_t ORTTensor::size() const {
+ return (int64_t)tensor_->Shape().Size();
+}
+
+ORTPersistentBuffer::ORTPersistentBuffer(OpKernelContext* context, int64_t size) {
+    AllocatorPtr allocator;
+    ORT_ENFORCE(context->GetTempSpaceAllocator(&allocator).IsOK());
+    buffer_ = allocator->Alloc(size);
+}
+
+const void* ORTPersistentBuffer::AccessData(std::shared_ptr<hvd::OpContext>) const {
+    return buffer_;
+}
+
+ORTOpContext::ORTOpContext(OpKernelContext* context) : context_(context) {}
+
+hvd::Status ORTOpContext::AllocatePersistent(int64_t size, std::shared_ptr<hvd::PersistentBuffer>* tensor) {
+    *tensor = std::make_shared<ORTPersistentBuffer>(context_, size);
+    return hvd::Status::OK();
+}
+
+hvd::Status ORTOpContext::AllocateOutput(hvd::TensorShape shape, std::shared_ptr<hvd::Tensor>* tensor) {
+  std::vector<int64_t> tensor_shape;
+  for (int idx = 0; idx < shape.dims(); idx++)
+  {
+     tensor_shape.push_back(shape.dim_size(idx));
+  }
+
+  *tensor = std::make_shared<ORTTensor>(context_->Output(0, TensorShape(tensor_shape)));
+
+  return hvd::Status::OK();
+}
+
+hvd::Framework ORTOpContext::framework() const {
+  // TODO: create ORT in horovod and change this
+  return hvd::Framework::TENSORFLOW;
+}
+
+}
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
