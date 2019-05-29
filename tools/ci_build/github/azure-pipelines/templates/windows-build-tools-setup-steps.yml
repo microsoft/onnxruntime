@@ -63,6 +63,7 @@ steps:
       inputs:
         targetType: 'inline'
         script: '
+          New-Item -Path "$(Build.BinariesDirectory)\installer" -ItemType "directory"
           New-Item -Path "$(Build.BinariesDirectory)\installer\opencppcoverage" -ItemType "directory"
           Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe
           '
