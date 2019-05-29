@@ -16,16 +16,16 @@ steps:
         feedsToUse: config
         nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
         restoreDirectory: '$(Build.SourcesDirectory)\csharp'
-    - task: UniversalPackages@0
-      displayName: 'Download python'
-      inputs:
-        command: download
-        vstsFeed: '$(System.TeamProject)'
-        vstsFeedPackage: 'miniconda3_win64'
-        vstsPackageVersion: '4.5.11'
-        downloadDirectory: '$(Build.BinariesDirectory)\python'
+    # - task: UniversalPackages@0
+    #   displayName: 'Download python'
+    #   inputs:
+    #     command: download
+    #     vstsFeed: '$(System.TeamProject)'
+    #     vstsFeedPackage: 'miniconda3_win64'
+    #     vstsPackageVersion: '4.5.11'
+    #     downloadDirectory: '$(Build.BinariesDirectory)\python'
 
-    Temporary bypass of artifacts permission issue
+    # Temporary bypass of artifacts permission issue
     - task: PowerShell@2
       displayName: 'Download python'
       inputs:
