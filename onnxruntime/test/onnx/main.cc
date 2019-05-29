@@ -292,7 +292,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   {
     std::string test_name_;
     std::string reason_;
-    std::set<std::string> broken_commits_ = {}; // apply to all versions if empty
+    std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
     bool operator < (const struct BrokenTest& test) const {
         return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
     }
@@ -433,7 +433,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() ||
-       (p.second != "" && !iter->broken_commits_.empty() && iter->broken_commits_.find(p.second) == iter->broken_commits_.end())) {
+       (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }
