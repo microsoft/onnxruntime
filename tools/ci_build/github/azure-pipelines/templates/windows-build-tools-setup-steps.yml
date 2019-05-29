@@ -66,7 +66,7 @@ steps:
           New-Item -Path "$(Build.BinariesDirectory)\installer" -ItemType "directory"
 
           New-Item -Path "$(Build.BinariesDirectory)\installer\opencppcoverage" -ItemType "directory"
-          
+
           Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe
           '
 
@@ -75,12 +75,6 @@ steps:
       inputs:
         filename: '$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe'
         arguments: '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$(Build.BinariesDirectory)\OpenCppCoverage"'
-
-    - task: CmdLine@2
-      displayName: 'Try OpenCPPCoverage'
-      inputs:
-        script: 'dir $(Build.BinariesDirectory)\OpenCppCoverage /s
-                 $(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
 
     - task: BatchScript@1
       displayName: 'Setup VS2017 env vars'
