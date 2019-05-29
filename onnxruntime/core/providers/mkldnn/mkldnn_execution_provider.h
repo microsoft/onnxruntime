@@ -83,7 +83,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   void CreateOrUpdateMklDnnNode(const Node* node,
                                 mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                 bool fused,
-                                std::map<std::string, int>& output_to_source_node_map,
+                                std::map<std::string, size_t>& output_to_source_node_map,
                                 NodeAttributes& subgraph_attributes) const;
 
   // Create MklDnn node, update inputs, outputs and parent nodes

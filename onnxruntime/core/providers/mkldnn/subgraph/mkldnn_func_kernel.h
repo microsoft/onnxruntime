@@ -38,7 +38,7 @@ class MkldnnFuncKernel {
       params_.subgraph_id = sub_it->second.s();
       params_.subgraph = provider->GetMklDnnSubgraph(params_.subgraph_id);
       std::ostringstream key_os;
-      key_os << params_.subgraph_id << "-" << params_.subgraph->mklnodes.back().name << "-" << params_.subgraph->mklnodes.back().output_name;
+      key_os << params_.subgraph_id << "-" << params_.subgraph->mkldnn_nodes.back().name << "-" << params_.subgraph->mkldnn_nodes.back().output_name;
       params_.subgraph_key = key_os.str();
     }
   }

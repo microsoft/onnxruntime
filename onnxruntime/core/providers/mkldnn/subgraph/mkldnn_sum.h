@@ -15,7 +15,7 @@ template <typename T>
 class MklDnnSum : public MklDnnKernel {
  public:
   explicit MklDnnSum(MklDnnNode& node,
-                  MKLDNNExecutionProvider* provider,
+                     MKLDNNExecutionProvider* provider,
                      const NodeAttributes& attributes,
                      const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
@@ -65,7 +65,7 @@ class MklDnnSum : public MklDnnKernel {
         auto xdim = tensor_shape.size();
         mkldnn::memory::dims dims(xdim);
 
-		ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
+        ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
         x_shape1 = TensorShape(xshape, xdim);
         mkldnn::memory::dims src_dims_mkl(
             x_shape1.GetDims().begin(), x_shape1.GetDims().end());
@@ -136,11 +136,11 @@ class MklDnnSum : public MklDnnKernel {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     if (mklnode_ptr_->parent_nodes.size() == 0) {
-	  for (int i = 0; i < num_inputs; i++) {
-        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index+i);
+      for (int i = 0; i < num_inputs; i++) {
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + i);
         const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
         srcs_memory_[i].set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
-		}
+      }
     }
 
     if (mklnode_ptr_->output_index >= 0) {
