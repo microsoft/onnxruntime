@@ -28,7 +28,7 @@ INSTALLED_PYTHON_VERSION=$(python3 -c 'import sys; version=sys.version_info[:2];
 if [ "$INSTALLED_PYTHON_VERSION" = "3.7" ];then
   pip3 install --upgrade setuptools
 else
-  source ./install_onnx.sh
+  source /tmp/scripts/install_onnx.sh
 fi
 
 #The last onnx version will be kept
