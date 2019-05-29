@@ -82,7 +82,7 @@ void onnxruntime::ConstantOfShape::SetValue(const ONNX_NAMESPACE::TensorProto& t
       FETCH_VALUE_DATA(value_.ui64_, uint64_t);
       break;
     default:
-      ORT_THROW("Unsupported value attribute datatype: ", TensorProto::DataType_Name(tensor_type_));
+      ORT_THROW("Unsupported value attribute datatype: ", tensor_type_);
       break;
   }
 }
@@ -144,7 +144,7 @@ void onnxruntime::ConstantOfShape::DispatchTypeAndFillOutput(Tensor* output_tens
       FilloutOutput(value_.GetFromUnsigned<uint64_t>(), output_tensor);
       break;
     default:
-      ORT_THROW("Unsupported value attribute datatype: ", TensorProto::DataType_Name(tensor_type_));
+      ORT_THROW("Unsupported value attribute datatype: ", tensor_type_);
       break;
   }
 }

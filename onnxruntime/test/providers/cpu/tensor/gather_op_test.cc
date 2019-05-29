@@ -7,6 +7,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
+// Those tests will fallback to other EPs
+
 TEST(GatherOpTest, Gather_axis0) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -92,7 +95,7 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
                          0.0f, 0.0f, 0.0f, 0.0f});
 
   //On GPU, just set the value to 0 instead of report error. exclude all other providers
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kMklDnnExecutionProvider, kNupharExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kMklDnnExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 #endif
 
@@ -183,7 +186,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Input batch size is inconsistent
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {

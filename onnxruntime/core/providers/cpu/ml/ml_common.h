@@ -28,19 +28,23 @@ enum class NODE_MODE {
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_LEQ") {
     return NODE_MODE::BRANCH_LEQ;
-  } else if (input == "LEAF") {
-    return NODE_MODE::LEAF;
-  } else if (input == "BRANCH_LT") {
-    return NODE_MODE::BRANCH_LT;
-  } else if (input == "BRANCH_GTE") {
-    return NODE_MODE::BRANCH_GTE;
-  } else if (input == "BRANCH_GT") {
-    return NODE_MODE::BRANCH_GT;
-  } else if (input == "BRANCH_EQ") {
-    return NODE_MODE::BRANCH_EQ;
-  } else {
-    return NODE_MODE::BRANCH_NEQ;
   }
+  if (input == "LEAF") {
+    return NODE_MODE::LEAF;
+  }
+  if (input == "BRANCH_LT") {
+    return NODE_MODE::BRANCH_LT;
+  }
+  if (input == "BRANCH_GTE") {
+    return NODE_MODE::BRANCH_GTE;
+  }
+  if (input == "BRANCH_GT") {
+    return NODE_MODE::BRANCH_GT;
+  }
+  if (input == "BRANCH_EQ") {
+    return NODE_MODE::BRANCH_EQ;
+  }
+  return NODE_MODE::BRANCH_NEQ;
 }
 
 enum class POST_EVAL_TRANSFORM {
@@ -54,15 +58,17 @@ enum class POST_EVAL_TRANSFORM {
 static inline POST_EVAL_TRANSFORM MakeTransform(const std::string& input) {
   if (input == "NONE") {
     return POST_EVAL_TRANSFORM::NONE;
-  } else if (input == "LOGISTIC") {
-    return POST_EVAL_TRANSFORM::LOGISTIC;
-  } else if (input == "SOFTMAX") {
-    return POST_EVAL_TRANSFORM::SOFTMAX;
-  } else if (input == "SOFTMAX_ZERO") {
-    return POST_EVAL_TRANSFORM::SOFTMAX_ZERO;
-  } else {
-    return POST_EVAL_TRANSFORM::PROBIT;
   }
+  if (input == "LOGISTIC") {
+    return POST_EVAL_TRANSFORM::LOGISTIC;
+  }
+  if (input == "SOFTMAX") {
+    return POST_EVAL_TRANSFORM::SOFTMAX;
+  }
+  if (input == "SOFTMAX_ZERO") {
+    return POST_EVAL_TRANSFORM::SOFTMAX_ZERO;
+  }
+  return POST_EVAL_TRANSFORM::PROBIT;
 }
 
 enum class AGGREGATE_FUNCTION {
@@ -75,13 +81,14 @@ enum class AGGREGATE_FUNCTION {
 static inline AGGREGATE_FUNCTION MakeAggregateFunction(const std::string& input) {
   if (input == "AVERAGE") {
     return AGGREGATE_FUNCTION::AVERAGE;
-  } else if (input == "SUM") {
-    return AGGREGATE_FUNCTION::SUM;
-  } else if (input == "MIN") {
-    return AGGREGATE_FUNCTION::MIN;
-  } else {
-    return AGGREGATE_FUNCTION::MAX;
   }
+  if (input == "SUM") {
+    return AGGREGATE_FUNCTION::SUM;
+  }
+  if (input == "MIN") {
+    return AGGREGATE_FUNCTION::MIN;
+  }
+  return AGGREGATE_FUNCTION::MAX;
 }
 
 enum class CAST_TO {
@@ -93,13 +100,14 @@ enum class CAST_TO {
 static inline CAST_TO MakeCast(const std::string& input) {
   if (input == "TO_FLOAT") {
     return CAST_TO::TO_FLOAT;
-  } else if (input == "TO_STRING") {
-    return CAST_TO::TO_STRING;
-  } else if (input == "TO_INT64") {
-    return CAST_TO::TO_INT64;
-  } else {
-    ORT_THROW("Invalid CAST_TO value of ", input, " Expected TO_FLOAT, TO_STRING or TO_INT64");
   }
+  if (input == "TO_STRING") {
+    return CAST_TO::TO_STRING;
+  }
+  if (input == "TO_INT64") {
+    return CAST_TO::TO_INT64;
+  }
+  ORT_THROW("Invalid CAST_TO value of ", input, " Expected TO_FLOAT, TO_STRING or TO_INT64");
 }
 
 enum PACK_MAP {
@@ -110,11 +118,11 @@ enum PACK_MAP {
 static inline PACK_MAP MakePack(const std::string& input) {
   if (input == "DENSE") {
     return PACK_MAP::DENSE;
-  } else if (input == "SPARSE") {
-    return PACK_MAP::SPARSE;
-  } else {
-    ORT_THROW("Invalid PACK_MAP value of ", input, " Expected DENSE or SPARSE");
   }
+  if (input == "SPARSE") {
+    return PACK_MAP::SPARSE;
+  }
+  ORT_THROW("Invalid PACK_MAP value of ", input, " Expected DENSE or SPARSE");
 }
 
 enum KERNEL {
@@ -127,13 +135,14 @@ enum KERNEL {
 static inline KERNEL MakeKernel(const std::string& input) {
   if (input == "LINEAR") {
     return KERNEL::LINEAR;
-  } else if (input == "POLY") {
-    return KERNEL::POLY;
-  } else if (input == "RBF") {
-    return KERNEL::RBF;
-  } else {
-    return KERNEL::SIGMOID;
   }
+  if (input == "POLY") {
+    return KERNEL::POLY;
+  }
+  if (input == "RBF") {
+    return KERNEL::RBF;
+  }
+  return KERNEL::SIGMOID;
 }
 
 enum NORMALIZE {
@@ -145,13 +154,14 @@ enum NORMALIZE {
 static inline NORMALIZE MakeNormalize(const std::string& input) {
   if (input == "MAX") {
     return NORMALIZE::NMAX;
-  } else if (input == "L1") {
-    return NORMALIZE::L1;
-  } else if (input == "L2") {
-    return NORMALIZE::L2;
-  } else {
-    ORT_THROW("Invalid normalize value of ", input);
   }
+  if (input == "L1") {
+    return NORMALIZE::L1;
+  }
+  if (input == "L2") {
+    return NORMALIZE::L2;
+  }
+  ORT_THROW("Invalid normalize value of ", input);
 }
 
 enum class SVM_TYPE {
@@ -159,7 +169,7 @@ enum class SVM_TYPE {
   SVM_SVC
 };
 
-static inline float ml_inv_erf(float x) {
+static inline float ErfInv(float x) {
   float sgn = x < 0 ? -1.0f : 1.0f;
   x = (1 - x) * (1 + x);
   float log = std::log(x);
@@ -224,19 +234,23 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
   }
 }
 
-static inline float ml_logit(float val) {
+static const float ml_sqrt2 = 1.41421356f;
+
+static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));
   return (val < 0) ? (1 - v) : v;
 }
 
-static inline float sigmoid_probability(float score, float proba, float probb) {
-  float val = score * proba + probb;
-  return 1 - ml_logit(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
+static inline float ComputeProbit(float val) {
+  return ml_sqrt2 * ErfInv(2 * val - 1);
 }
 
-static const float ml_sqrt2 = 1.41421356f;
+static inline float sigmoid_probability(float score, float proba, float probb) {
+  float val = score * proba + probb;
+  return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
+}
 
-static inline void compute_softmax(std::vector<float>& values) {
+static inline void ComputeSoftmax(std::vector<float>& values) {
   std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
@@ -256,7 +270,7 @@ static inline void compute_softmax(std::vector<float>& values) {
 }
 
 //this function skips zero values (since exp(0) is non zero)
-static inline void compute_softmax_zero(std::vector<float>& values) {
+static inline void ComputeSoftmaxZero(std::vector<float>& values) {
   std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
@@ -280,48 +294,68 @@ static inline void compute_softmax_zero(std::vector<float>& values) {
   }
 }
 
-static inline void write_scores(std::vector<float>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z, int add_second_class) {
-  if (post_transform == POST_EVAL_TRANSFORM::PROBIT && scores.size() == 1) {
-    scores[0] = ml_sqrt2 * ml_inv_erf(2 * scores[0] - 1);
-    Z->template MutableData<float>()[write_index] = scores[0];
-  } else if (scores.size() >= 2) {  //multiclass
-    if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-      for (float& score : scores) {
-        score = ml_logit(score);
-      }
-    } else if (post_transform == POST_EVAL_TRANSFORM::SOFTMAX) {
-      compute_softmax(scores);
-    } else if (post_transform == POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
-      compute_softmax_zero(scores);
+template <typename T>
+void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+                  int add_second_class) {
+  if (scores.size() >= 2) {
+    switch (post_transform) {
+      case POST_EVAL_TRANSFORM::PROBIT:
+        for (float& score : scores)
+          score = ComputeProbit(score);
+        break;
+      case POST_EVAL_TRANSFORM::LOGISTIC:
+        for (float& score : scores)
+          score = ComputeLogistic(score);
+        break;
+      case POST_EVAL_TRANSFORM::SOFTMAX:
+        ComputeSoftmax(scores);
+        break;
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
+        ComputeSoftmaxZero(scores);
+        break;
+      default:
+      case POST_EVAL_TRANSFORM::NONE:
+        break;
     }
-  } else {                                              //binary case
-    if (add_second_class == 0 && scores.size() == 1) {  //0=all positive weights, winning class is positive
-      scores.push_back(scores[0]);
-      scores[0] = 1.f - scores[0];                             //put opposite score in positive slot
-    } else if (add_second_class == 1 && scores.size() == 1) {  //1 = all positive weights, winning class is negative
-      scores.push_back(scores[0]);
-      scores[0] = 1.f - scores[0];                             //put opposite score in positive slot
-    } else if (add_second_class == 2 && scores.size() == 1) {  //2 = mixed weights, winning class is positive
-      if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-        scores.push_back(ml_logit(scores[0]));  //ml_logit(scores[k]);
-        scores[0] = ml_logit(-scores[0]);
-      } else {
-        scores.push_back(scores[0]);
-        scores[0] = -scores[0];
-      }
-    } else if (add_second_class == 3 && scores.size() == 1) {  //3 = mixed weights, winning class is negative
-      if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-        scores.push_back(ml_logit(scores[0]));  //ml_logit(scores[k]);
-        scores[0] = ml_logit(-scores[0]);
-      } else {
-        scores.push_back(-scores[0]);
+  } else if (scores.size() == 1) {  //binary case
+    if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
+      scores[0] = ComputeProbit(scores[0]);
+    } else {
+      switch (add_second_class) {
+        case 0:  //0=all positive weights, winning class is positive
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          break;
+        case 1:  //1 = all positive weights, winning class is negative
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          break;
+        case 2:  //2 = mixed weights, winning class is positive
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
+            scores[0] = ComputeLogistic(-scores[0]);
+          } else {
+            scores.push_back(scores[0]);
+            scores[0] = -scores[0];
+          }
+          break;
+        case 3:  //3 = mixed weights, winning class is negative
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
+            scores[0] = ComputeLogistic(-scores[0]);
+          } else {
+            scores.push_back(-scores[0]);
+          }
+          break;
       }
     }
   }
-  for (float score : scores) {
-    Z->template MutableData<float>()[write_index] = score;
-    write_index++;
+  T* out_p = Z->template MutableData<T>() + write_index;
+  size_t len;
+  if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
+    ORT_THROW("length overflow");
   }
+  memcpy(out_p, scores.data(), len);
 }
 
 }  // namespace ml

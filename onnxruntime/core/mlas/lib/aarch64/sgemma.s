@@ -453,7 +453,7 @@ MlasSgemmKernel\Mode\():
 .L\Mode\().ExitKernel:
         mov     x0,x4
         ldp     d10,d11,[sp,16]
-        ldp     d8,d9,[sp,32]!
+        ldp     d8,d9,[sp],32
         ret
 
 //

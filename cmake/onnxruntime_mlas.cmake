@@ -10,23 +10,24 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/activate.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
 )
 
-if (MSVC)
+if(MSVC)
 
-  if (CMAKE_GENERATOR_PLATFORM STREQUAL "ARM")
+  if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM")
 
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
 
-  elseif (CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
 
     set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/sgemma.asm)
     set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/sgemma.i)
     set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/sgemma.obj)
 
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
       set(ARMASM_FLAGS "-g")
     else()
       set(ARMASM_FLAGS "")
@@ -42,7 +43,7 @@ if (MSVC)
 
     set(mlas_platform_srcs ${obj_filename})
 
-  elseif (CMAKE_GENERATOR_PLATFORM STREQUAL "Win32")
+  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "Win32")
 
     enable_language(ASM_MASM)
 
@@ -52,7 +53,7 @@ if (MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/sgemma.asm
     )
 
-  elseif (CMAKE_GENERATOR_PLATFORM STREQUAL "x64")
+  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "x64")
 
     enable_language(ASM_MASM)
 
@@ -65,7 +66,26 @@ if (MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/cvtfp16a.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
     )
+
+  endif()
+
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+
+  if(CMAKE_ANDROID_ARCH_ABI MATCHES "^arm.*")
+
+    if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
+    endif()
+
+    set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
+    )
+
+  else()
+
+    message(FATAL_ERROR "Android build is not supported on non-ARM platform now")
 
   endif()
 
@@ -77,7 +97,7 @@ else()
     ERROR_QUIET
   )
 
-  if (dumpmachine_output MATCHES "^arm.*")
+  if(dumpmachine_output MATCHES "^arm.*")
 
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
 
@@ -85,7 +105,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
 
-  elseif (dumpmachine_output MATCHES "^aarch64.*")
+  elseif(dumpmachine_output MATCHES "^aarch64.*")
 
     enable_language(ASM)
 
@@ -93,7 +113,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/sgemma.s
     )
 
-  elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
 
     enable_language(ASM)
 
@@ -112,7 +132,7 @@ else()
       ${mlas_platform_srcs_avx}
     )
 
-  elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
 
     enable_language(ASM)
 
@@ -139,6 +159,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 

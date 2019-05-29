@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <sstream>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
@@ -21,12 +22,10 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-Status SequentialExecutor::Execute(const SessionState& session_state,
-                                   const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<MLValue>& feeds,
-                                   const std::vector<int>& fetch_mlvalue_idxs,
-                                   std::vector<MLValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                   std::vector<OrtValue>& fetches,
+                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
   TimePoint tp;
@@ -112,13 +111,24 @@ Status SequentialExecutor::Execute(const SessionState& session_state,
 
       kernel_begin_time = session_state.Profiler().StartTime();
     }
-    ORT_RETURN_IF_ERROR(p_op_kernel->Compute(&op_kernel_context));
+
+    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
+    if (!compute_status.IsOK()) {
+      std::ostringstream ss;
+      ss << "Non-zero status code returned while running Node: " <<
+            p_op_kernel->Node().Name() <<
+            " Status Message: " <<
+            compute_status.ErrorMessage();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(compute_status.Category(), compute_status.Code(), msg_string);
+    }
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
 
       sync_time_begin = session_state.Profiler().StartTime();
     }
@@ -193,9 +203,9 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger) {
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
-    auto mlvalue_idx = seq_exec_plan.to_be_freed[i];
-    VLOGS(logger, 1) << "Releasing mlvalue with index: " << mlvalue_idx;
-    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(mlvalue_idx));
+    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
+    ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }
 
   return Status::OK();

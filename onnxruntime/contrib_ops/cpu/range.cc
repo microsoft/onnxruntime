@@ -36,7 +36,7 @@ static Status ComputeRange(OpKernelContext* ctx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,  "delta in Range operator can not be zero!");
   }
   int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
-  if (n <= 0) n = 1;
+  if (n <= 0) n = 0;
   TensorShape shape = {n};
   T* y = ctx->Output(0, shape)->template MutableData<T>();
   for (int64_t i = 0; i < n; ++i) {

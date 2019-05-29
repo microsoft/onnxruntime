@@ -8,17 +8,6 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
-    /// Various providers of ONNX operators
-    /// </summary>
-    public enum ExecutionProvider
-    {
-        Cpu,
-        MklDnn,
-        Cuda
-        //TODO: add more providers gradually
-    };
-
-    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions:IDisposable
@@ -33,6 +22,39 @@ namespace Microsoft.ML.OnnxRuntime
         public SessionOptions()
         {
             _nativePtr = NativeMethods.OrtCreateSessionOptions();
+        }
+
+        /// <summary>
+        /// Sets the graph optimization level for the session. Default is set to 1.        
+        /// </summary>
+        /// <param name="optimization_level">optimization level for the session</param>
+        /// Available options are : 0, 1, 2
+        /// 0 -> Disable all optimizations
+        /// 1 -> Enable basic optimizations
+        /// 2 -> Enable all optimizations
+        /// <returns>True on success and false otherwise</returns>
+        public bool SetSessionGraphOptimizationLevel(uint optimization_level)
+        {
+            var result = NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level);
+            return result == 0;
+        }
+
+        /// <summary>
+        /// Enable Sequential Execution. By default, it is enabled.
+        /// </summary>
+        /// </param>
+        public void EnableSequentialExecution()
+        {
+            NativeMethods.OrtEnableSequentialExecution(_nativePtr);
+        }
+
+        /// <summary>
+        /// Disable Sequential Execution and enable Parallel Execution.
+        /// </summary>
+        /// </param>
+        public void DisableSequentialExecution()
+        {
+            NativeMethods.OrtDisableSequentialExecution(_nativePtr);
         }
 
         /// <summary>

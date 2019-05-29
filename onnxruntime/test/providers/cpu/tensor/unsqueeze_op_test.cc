@@ -7,13 +7,15 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on the tests because of SegFault errors in the parser
+
 TEST(TensorOpTest, Unsqueeze_1) {
   OpTester test("Unsqueeze");
 
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Unsqueeze_1_int32) {
@@ -22,7 +24,7 @@ TEST(TensorOpTest, Unsqueeze_1_int32) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddInput<int32_t>("input", {2, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
   test.AddOutput<int32_t>("output", {2, 1, 3, 4}, std::vector<int32_t>(2 * 3 * 4, 1));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Unsqueeze_2) {

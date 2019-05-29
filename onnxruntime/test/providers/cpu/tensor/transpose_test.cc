@@ -7,17 +7,27 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because of errors.
+// Those tests will fallback to other EPs.
+
+template <class T>
 void TransposeTest(std::vector<int64_t>& input_shape,
-                   std::vector<float>& input_vals,
+                   std::vector<T>& input_vals,
                    std::vector<int64_t>* p_perm,
                    std::vector<int64_t> expected_shape,
-                   std::initializer_list<float>& expected_vals) {
+                   std::initializer_list<T>& expected_vals,
+                   bool is_tensorrt_supported = true) {
   OpTester test("Transpose");
   if (nullptr != p_perm)
     test.AddAttribute("perm", *p_perm);
-  test.AddInput<float>("X", input_shape, input_vals);
-  test.AddOutput<float>("Y", expected_shape, expected_vals);
-  test.Run();
+  test.AddInput<T>("X", input_shape, input_vals);
+  test.AddOutput<T>("Y", expected_shape, expected_vals);
+  // Disable TensorRT on unsupported tests
+  std::unordered_set<std::string> excluded_providers;
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 // Test 2 dimensional transpose, with no permutation attribute specified
@@ -32,6 +42,21 @@ TEST(TransposeOpTest, TwoDimNoAttr) {
       1.0f, 4.0f,
       2.0f, 5.0f,
       3.0f, 6.0f};
+
+  TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals, false);//TensorRT: SegFault error
+}
+
+TEST(TransposeOpTest, TwoDimNoAttrStr) {
+  std::vector<int64_t> input_shape({2, 3});
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6"};
+
+  std::vector<int64_t> expected_shape({3, 2});
+  std::initializer_list<std::string> expected_vals = {
+      "1", "4",
+      "2", "5",
+      "3", "6"};
 
   TransposeTest(input_shape, input_vals, nullptr, expected_shape, expected_vals);
 }
@@ -49,6 +74,22 @@ TEST(TransposeOpTest, TwoDim) {
       1.0f, 4.0f,
       2.0f, 5.0f,
       3.0f, 6.0f};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
+}
+
+TEST(TransposeOpTest, TwoDimStr) {
+  std::vector<int64_t> input_shape({2, 3});
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6"};
+
+  std::vector<int64_t> perm = {1, 0};
+  std::vector<int64_t> expected_shape({3, 2});
+  std::initializer_list<std::string> expected_vals = {
+      "1", "4",
+      "2", "5",
+      "3", "6"};
 
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
@@ -99,6 +140,57 @@ TEST(TransposeOpTest, ThreeDim) {
       5.3f,
       3.3f,
       6.3f,
+
+  };
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false); //TensorRT: illegal error
+}
+
+TEST(TransposeOpTest, ThreeDimStr) {
+  std::vector<int64_t> input_shape({4, 2, 3});
+  std::vector<std::string> input_vals = {
+      "1", "2", "3",
+      "4", "5", "6",
+
+      "1", "2", "3",
+      "4", "5", "6",
+
+      "1", "2", "3",
+      "4", "5", "6",
+
+      "1", "2", "3",
+      "4", "5", "6"};
+
+  std::vector<int64_t> perm = {0, 2, 1};
+  std::vector<int64_t> expected_shape({4, 3, 2});
+  std::initializer_list<std::string> expected_vals = {
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6",
+
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6",
+
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6",
+
+      "1",
+      "4",
+      "2",
+      "5",
+      "3",
+      "6"
 
   };
 

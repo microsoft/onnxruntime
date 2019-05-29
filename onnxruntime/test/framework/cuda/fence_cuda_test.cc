@@ -23,6 +23,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
+#include "core/util/protobuf_parsing_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -33,6 +34,16 @@ namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
+class FenceCudaTestInferenceSession : public InferenceSession {
+ public:
+  FenceCudaTestInferenceSession(const SessionOptions& so) : InferenceSession(so) {}
+  Status LoadModel(onnxruntime::Model& model) {
+    auto model_proto = model.ToProto();
+    auto st = Load(model_proto);
+    return st;
+  }
+};
+
 size_t CountCopyNodes(const onnxruntime::Graph& graph) {
   size_t num_copy_nodes = 0;
   for (auto& p : graph.Nodes())
@@ -40,10 +51,8 @@ size_t CountCopyNodes(const onnxruntime::Graph& graph) {
   return num_copy_nodes;
 }
 
-static common::Status LoadInferenceSessionFromModel(InferenceSession& session, onnxruntime::Model& model) {
-  std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
-  return session.Load(s1);
+static common::Status LoadInferenceSessionFromModel(FenceCudaTestInferenceSession& session, onnxruntime::Model& model) {
+  return session.LoadModel(model);
 }
 
 #define CREATE_INITIALIZER_FUNC(T, PROTO_DATATYPE, PROTO_ADD_DATA)                                          \
@@ -99,23 +108,21 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
       shape,
       cpu_allocator);
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  InferenceSession session(so);
+  FenceCudaTestInferenceSession session(so);
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   ASSERT_TRUE(session.Initialize().IsOK());
   ASSERT_TRUE(1 == CountCopyNodes(graph));
 
-  vector<MLValue> outputs;
-  session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Out"},
-              &outputs);
+  vector<OrtValue> outputs;
+  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   EXPECT_EQ(output.Shape(), shape);
@@ -154,22 +161,20 @@ TEST(CUDAFenceTests, TileWithInitializer) {
       cpu_allocator);
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
 
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  InferenceSession session(so);
+  FenceCudaTestInferenceSession session(so);
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   ASSERT_TRUE(session.Initialize().IsOK());
 
-  vector<MLValue> outputs;
-  session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Y"},
-              &outputs);
+  vector<OrtValue> outputs;
+  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   EXPECT_EQ(output.Shape(), TensorShape({2, 4}));
@@ -218,22 +223,20 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
       cpu_allocator);
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
 
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   SessionOptions so;
-  InferenceSession session(so);
+  FenceCudaTestInferenceSession session(so);
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   ASSERT_TRUE(session.Initialize().IsOK());
 
-  vector<MLValue> outputs;
-  session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Out"},
-              &outputs);
+  vector<OrtValue> outputs;
+  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   EXPECT_EQ(output.Shape(), TensorShape({4, 4}));

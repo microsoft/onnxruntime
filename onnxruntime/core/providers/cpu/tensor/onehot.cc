@@ -15,18 +15,7 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/tensor/onehot.h"
-
-// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
-// warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4554)
-#endif
 #include "core/util/eigen_common_wrapper.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 #include "core/platform/env.h"
 
 #define EIGEN_USE_THREADS
@@ -56,8 +45,8 @@ REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
 REG_ONE_HOT_OP(int64_t, string, int64_t);
 REG_ONE_HOT_OP(float, string, int64_t);
-REG_ONE_HOT_OP(float, float, float); // added this to satisfy onnx model tests
-REG_ONE_HOT_OP(int64_t, int32_t, float); // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
+REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 
 Status ValidateInputs(const Tensor* depth,
                       const Tensor* values) {
@@ -121,7 +110,8 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   // prepare output shape
   const auto* depth_data = depth->Data<depth_type>();
-  const int64_t depth_val = static_cast<int64_t>(*depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
+  const auto depth_val = static_cast<int64_t>(
+      *depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
   if (depth_val <= 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Depth is negative.");
   }
@@ -145,13 +135,15 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const int64_t suffix_dim_size = indices_shape.Size() / prefix_dim_size;
 
   // Split indices into matrix of size prefix_dim_size x suffix_dim_size
-  Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {{prefix_dim_size, suffix_dim_size}};
+  Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {
+    {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
   const auto* indices_data = indices->Data<in_type>();
   typename EigenTensorTypes<in_type, 2>::ConstEigenTensorMap indices_tensor_e(indices_data, indices_dims_e);
 
   // Split output into 3-Tensor of size:
   //   prefix_dim_size x depth x suffix_dim_size.
-  Eigen::array<Eigen::DenseIndex, 3> output_dims_e = {{prefix_dim_size, depth_val, suffix_dim_size}};
+  Eigen::array<Eigen::DenseIndex, 3> output_dims_e = {
+    {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(depth_val), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
   auto* output_data = output->MutableData<out_type>();
   typename EigenTensorTypes<out_type, 3>::EigenTensorMap output_tensor_e(output_data, output_dims_e);
 

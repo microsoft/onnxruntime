@@ -44,8 +44,8 @@ rm -rf /tmp/azcopy
 #install protobuf
 mkdir -p /tmp/src
 mkdir -p /opt/cmake
-aria2c -q -d /tmp/src   https://cmake.org/files/v3.12/cmake-3.12.1-Linux-x86_64.tar.gz
-tar -xf /tmp/src/cmake-3.12.1-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake
+aria2c -q -d /tmp/src   https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz
+tar -xf /tmp/src/cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake
 aria2c -q -d /tmp/src https://github.com/protocolbuffers/protobuf/archive/v3.6.1.tar.gz
 tar -xf /tmp/src/protobuf-3.6.1.tar.gz -C /tmp/src
 cd /tmp/src/protobuf-3.6.1
@@ -72,9 +72,6 @@ for onnx_version in "3376d4438aaadfba483399fa249b841153152bc0" "6f91908b6a894278
   pip3 uninstall -y onnx
 done
 
-aria2c -q -d /tmp/src  http://bitbucket.org/eigen/eigen/get/3.3.5.tar.bz2
-tar -jxf /tmp/src/eigen-eigen-b3f3d4950030.tar.bz2 -C /usr/include
-mv /usr/include/eigen-eigen-b3f3d4950030 /usr/include/eigen3
 chmod 0777 /data/onnx
 rm -rf /tmp/src
 

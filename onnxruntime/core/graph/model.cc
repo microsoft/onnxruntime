@@ -13,7 +13,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/util/protobuf_parsing_utils.h"
 
 #include "gsl/pointers"
 #include "gsl/gsl_util"
@@ -42,7 +42,7 @@ Model::Model(const std::string& graph_name,
   }
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
-  for (auto schema_collection : local_registries) {
+  for (const auto& schema_collection : local_registries) {
     schema_registry->RegisterRegistry(schema_collection);
   }
 
@@ -53,7 +53,7 @@ Model::Model(const std::string& graph_name,
     p_domain_to_version = &domain_to_version_static;
   }
 
-  for (auto domain : *p_domain_to_version) {
+  for (const auto& domain : *p_domain_to_version) {
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
     opset_id_proto->set_domain(domain.first);
     opset_id_proto->set_version(domain.second);
@@ -97,7 +97,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
   if (local_registries != nullptr) {
-    for (auto schema_collection : *local_registries) {
+    for (const auto& schema_collection : *local_registries) {
       schema_registry->RegisterRegistry(schema_collection);
     }
   }
@@ -108,7 +108,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
-  for (auto domain : domain_map) {
+  for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
@@ -207,7 +207,8 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
-  const bool result = p_model_proto->ParseFromIstream(&model_istream);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
@@ -352,18 +353,20 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
 
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  if (!model_proto->ParseFromFileDescriptor(fd)) {
+  FileInputStream fs(fd);
+  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #else
   // CNTK uses ORT as a submodule in order to use its GraphIR code.
   // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
-  // This code block is needed to support CNTK and any other 
+  // This code block is needed to support CNTK and any other
   // GraphIR client that will be built with protobuf at a version older than 3.2.0.
   FileInputStream fs(fd);
   CodedInputStream cis(&fs);
 
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB. 
+  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
   cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
   if (!model_proto->ParseFromCodedStream(&cis)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
@@ -384,11 +387,11 @@ Status Model::Save(Model& model, int p_fd) {
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToProto();
-  const bool result = model_proto.SerializeToFileDescriptor(p_fd);
+  google::protobuf::io::FileOutputStream output(p_fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
-  } else {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
   }
+  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 }  // namespace onnxruntime

@@ -76,13 +76,14 @@ Abstract:
 // Select the threading model.
 //
 
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#include "core/platform/threadpool.h"
+#endif
+
 #if defined(_OPENMP)
 #include <omp.h>
-#define MLAS_USE_OPENMP
-#define MLAS_HAS_THREADING_SUPPORT
 #elif defined(_WIN32)
 #define MLAS_USE_WIN32_THREADPOOL
-#define MLAS_HAS_THREADING_SUPPORT
 #endif
 
 //
@@ -173,6 +174,16 @@ void
 
 typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
 
+typedef
+void
+(MLASCALL MLAS_ERF_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_ERF_KERNEL_ROUTINE* PMLAS_ERF_KERNEL_ROUTINE;
+
 extern "C" {
 
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
@@ -202,9 +213,11 @@ extern "C" {
 
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
     MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
+    MLAS_ERF_KERNEL_ROUTINE MlasErfKernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
     MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_ERF_KERNEL_ROUTINE MlasErfKernelFma3;
 #endif
 
 }
@@ -218,7 +231,7 @@ extern "C" {
 // that workload. See EvaluateThreadingPerformance() in the unit test.
 //
 
-#if defined(MLAS_USE_OPENMP)
+#if defined(_OPENMP)
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #else
 #if defined(MLAS_TARGET_AMD64)
@@ -268,25 +281,12 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
     int32_t MaximumThreadCount;
 #endif
-
-    int32_t
-    GetMaximumThreadCount(
-        void
-        )
-    {
-#if defined(MLAS_USE_OPENMP)
-        return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#elif defined(MLAS_USE_WIN32_THREADPOOL)
-        return MaximumThreadCount;
-#else
-        return 1;
-#endif
-    }
 };
 
 extern MLAS_PLATFORM MlasPlatform;
@@ -308,8 +308,32 @@ void
 MlasExecuteThreaded(
     PMLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
-    int32_t Iterations
+    int32_t Iterations,
+    MLAS_THREADPOOL* ThreadPool
     );
+
+inline
+int32_t
+MlasGetMaximumThreadCount(
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#else
+    if (ThreadPool != nullptr) {
+        return ThreadPool->NumThreads();
+    }
+#endif
+
+#if defined(MLAS_USE_WIN32_THREADPOOL)
+    return MlasPlatform.MaximumThreadCount;
+#elif _OPENMP
+    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
+#else
+    return 1;
+#endif
+}
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
@@ -560,6 +584,75 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vminq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vcgtq_f32(Vector1, Vector2));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cmpgt_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_and_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_or_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vandq_u32(vmvnq_u32(vreinterpretq_u32_f32(VectorNot)), vreinterpretq_u32_f32(Vector)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_andnot_ps(VectorNot, Vector);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_xor_ps(Vector1, Vector2);
+#endif
+}
+
+// calc 2^int(N)
+inline
+MLAS_FLOAT32X4
+MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    int32x4_t emm0 = vaddq_s32(vcvtq_s32_f32(Vector), vdupq_n_s32(0x7f));
+    return vreinterpretq_f32_s32(vshlq_n_s32(emm0, 23));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    __m128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
+    return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
 #endif
 }
 

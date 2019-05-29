@@ -73,7 +73,8 @@ void
 MlasExecuteThreaded(
     MLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
-    int32_t Iterations
+    int32_t Iterations,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     //
@@ -84,6 +85,19 @@ MlasExecuteThreaded(
         ThreadedRoutine(Context, 0);
         return;
     }
+
+#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#else
+    //
+    // Schedule the threaded iterations using the thread pool object.
+    //
+
+    if (ThreadPool != nullptr) {
+        ThreadPool->ParallelFor(Iterations, [&](int32_t tid) { ThreadedRoutine(Context, tid); });
+        return;
+    }
+#endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
 
@@ -130,7 +144,8 @@ MlasExecuteThreaded(
     //
     // Execute the routine for the specified number of iterations.
     //
-#if defined(_OPENMP)
+
+#ifdef _OPENMP
 #pragma omp parallel for
 #endif
     for (int32_t tid = 0; tid < Iterations; tid++) {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/common.h"
 #include "onnx_protobuf.h"
 
 #include "test_fixture.h"
@@ -61,6 +62,7 @@ TEST_F(CApiTest, load_simple_float_tensor) {
   ASSERT_EQ(real_output[1], 2.2f);
   ASSERT_EQ(real_output[2], 3.5f);
   OrtReleaseValue(value);
+  OrtRunCallback(deleter);
 }
 
 template <bool use_current_dir>
@@ -116,6 +118,7 @@ static void run_external_data_test() {
   ASSERT_EQ(real_output[1], 2.2f);
   ASSERT_EQ(real_output[2], 3.5f);
   OrtReleaseValue(value);
+  OrtRunCallback(deleter);
 }
 TEST_F(CApiTest, load_float_tensor_with_external_data) {
   run_external_data_test<true>();
@@ -164,6 +167,7 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
     ASSERT_EQ(1, buffer[i]);
   }
   OrtReleaseValue(value);
+  OrtRunCallback(deleter);
 }
 #endif
 }  // namespace test

@@ -66,7 +66,7 @@ class TaskThreadPool {
     std::packaged_task<void()> no_id;
     std::packaged_task<void(std::size_t)> with_id;
 
-    task_element_t(task_element_t&& other) {
+    task_element_t(task_element_t&& other) noexcept {
       run_with_id = other.run_with_id;
       no_id = std::move(other.no_id);
       with_id = std::move(other.with_id);
@@ -116,6 +116,15 @@ class TaskThreadPool {
     catch (const std::exception& ex) {
       LOGS_DEFAULT(ERROR) << "Exception joining threads in TaskThreadPool: " << ex.what();
     }
+  }
+
+  int NumThreads() const {
+    return (int)threads_.size();
+  }
+
+  // This thread pool does not support ids
+  int CurrentThreadId() const {
+    return -1;
   }
 
   void RunTask(std::packaged_task<void()>&& task) {

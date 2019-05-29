@@ -3,6 +3,7 @@
 parameters:
   buildConfig: 'RelWithDebInfo'
   artifactName: 'onnxruntime-win-x64'
+  comitId: ''
 steps:
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
@@ -21,6 +22,8 @@ steps:
           copy $(Build.SourcesDirectory)\docs\C_API.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\C_API.md
           copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
           copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
+          copy $(Build.SourcesDirectory)/VERSION_NUMBER $(Build.BinariesDirectory)\${{parameters.artifactName}}\VERSION_NUMBER
+          @echo ${{parameters.commitId}} > $(Build.BinariesDirectory)\${{parameters.artifactName}}\GIT_COMMIT_ID
 
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
 

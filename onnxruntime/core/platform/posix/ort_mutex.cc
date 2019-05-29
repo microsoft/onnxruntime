@@ -57,7 +57,7 @@ OrtCondVar::~OrtCondVar() {
 
 void OrtCondVar::notify_one() noexcept {
 #ifdef USE_NSYNC
-  nsync_cv_signal(&native_cv_object);
+  nsync::nsync_cv_signal(&native_cv_object);
 #else
   pthread_cond_signal(&native_cv_object);
 #endif
@@ -65,7 +65,7 @@ void OrtCondVar::notify_one() noexcept {
 
 void OrtCondVar::notify_all() noexcept {
 #ifdef USE_NSYNC
-  nsync_cv_broadcast(&native_cv_object);
+  nsync::nsync_cv_broadcast(&native_cv_object);
 #else
   pthread_cond_broadcast(&native_cv_object);
 #endif
@@ -75,7 +75,7 @@ void OrtCondVar::wait(std::unique_lock<OrtMutex>& lk) {
   if (!lk.owns_lock())
     throw std::runtime_error("OrtCondVar wait failed: mutex not locked");
 #ifdef USE_NSYNC
-  nsync_cv_wait(&native_cv_object, lk.mutex()->native_handle());
+  nsync::nsync_cv_wait(&native_cv_object, lk.mutex()->native_handle());
 #else
   int ec = pthread_cond_wait(&native_cv_object, lk.mutex()->native_handle());
   if (ec) {
@@ -106,7 +106,7 @@ void OrtCondVar::timed_wait_impl(std::unique_lock<OrtMutex>& lk,
     abs_deadline.tv_nsec = 999999999;
   }
 #ifdef USE_NSYNC
-  nsync_cv_wait_with_deadline(&native_cv_object, lk.mutex()->native_handle(), abs_deadline, nullptr);
+  nsync::nsync_cv_wait_with_deadline(&native_cv_object, lk.mutex()->native_handle(), abs_deadline, nullptr);
 #else
   int ec = pthread_cond_timedwait(&native_cv_object, lk.mutex()->native_handle(), &abs_deadline);
   if (ec != 0 && ec != ETIMEDOUT) {

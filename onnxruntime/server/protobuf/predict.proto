@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+import "onnx-ml.proto";
+
+package onnxruntime.server;
+
+// PredictRequest specifies how inputs are mapped to tensors  
+// and how outputs are filtered before returning to user. 
+message PredictRequest { 
+    reserved 1;
+
+    // Input Tensors.
+    // This is a mapping between output name and tensor.
+    map<string, onnx.TensorProto> inputs = 2;
+
+    // Output Filters.
+    // This field is to specify which output fields need to be returned.
+    // If the list is empty, all outputs will be included.
+    repeated string output_filter = 3; 
+} 
+
+// Response for PredictRequest on successful run. 
+message PredictResponse {
+    // Output Tensors.
+    // This is a mapping between output name and tensor.
+    map<string, onnx.TensorProto> outputs = 1;
+}

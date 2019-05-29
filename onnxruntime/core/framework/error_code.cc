@@ -15,7 +15,8 @@ struct OrtStatus {
 ORT_API(OrtStatus*, OrtCreateStatus, OrtErrorCode code, _In_ const char* msg) {
   assert(!(code == 0 && msg != nullptr));
   size_t clen = strlen(msg);
-  OrtStatus* p = reinterpret_cast<OrtStatus*>(new char[sizeof(OrtStatus) + clen]);
+  OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
+  if (p == nullptr) return nullptr;  // OOM
   p->code = code;
   memcpy(p->msg, msg, clen);
   p->msg[clen] = '\0';
@@ -27,7 +28,7 @@ OrtStatus* ToOrtStatus(const Status& st) {
   if (st.IsOK())
     return nullptr;
   size_t clen = st.ErrorMessage().length();
-  OrtStatus* p = reinterpret_cast<OrtStatus*>(new char[sizeof(OrtStatus) + clen]);
+  OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
   p->code = static_cast<OrtErrorCode>(st.Code());
   memcpy(p->msg, st.ErrorMessage().c_str(), clen);
   p->msg[clen] = '\0';
@@ -42,4 +43,4 @@ ORT_API(const char*, OrtGetErrorMessage, _In_ const OrtStatus* status) {
   return status->msg;
 }
 
-ORT_API(void, OrtReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) { delete[] reinterpret_cast<char*>(value); }
+ORT_API(void, OrtReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) { ::free(value); }

@@ -6,9 +6,15 @@
 #include <memory>
 struct OrtCallback;
 
+/**
+ * A holder for delay freed buffers
+ */
 class HeapBuffer {
  public:
   HeapBuffer() = default;
+  /**
+   * free all the buffers allocated from 'AllocMemory' function
+   */
   ~HeapBuffer();
   void* AllocMemory(size_t size) {
     void* p = malloc(size);

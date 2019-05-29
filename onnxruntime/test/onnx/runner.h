@@ -27,7 +27,6 @@ struct TestCaseTask {
 };
 
 void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
-//TODO: implement this function for Linux
 void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
 ::onnxruntime::common::Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result);
 
@@ -128,9 +127,13 @@ struct DataTask {
   const size_t task_id;
 };
 
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases);
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::function<void(ITestCase*)>& process_function);
+
 //Do not run this function in the thread pool passed in
 ::onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);
-void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);
+void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs,
+                       size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);
