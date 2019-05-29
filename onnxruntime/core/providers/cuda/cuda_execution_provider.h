@@ -90,6 +90,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
+
  private:
   cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;
@@ -169,9 +170,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   mutable OrtMutex context_pool_mutex_;
 
   void ReleasePerThreadStuffs() const;
-
-  bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
-  bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) const;
 };
 
 }  // namespace onnxruntime

@@ -10,7 +10,7 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   // Get "axes" attribute.
   const ONNX_NAMESPACE::AttributeProto* attr = graph_utils::GetNodeAttribute(node, "axes");
   if (attr == nullptr || attr->type() != AttributeProto_AttributeType_INTS) {
@@ -74,7 +74,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   return Status::OK();
 }  // namespace onnxruntime
 
-bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) {
+bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) const {
   // Attempt to remove an Unsqueeze operator only if it gets an initializer as input.
   return node.GetInputEdgesCount() == 0 &&
          !graph.IsNodeOutputsInGraphOutputs(node);
