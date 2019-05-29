@@ -19,10 +19,22 @@ namespace cuda {
                          InputMemoryType<OrtMemTypeCPUInput>(3).                          \
                          TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,false>);
+      Slice<TIND, false>);                                                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
+      Slice,                                                                              \
+      kOnnxDomain,                                                                        \
+      10,                                                                                 \
+      TIND,                                                                               \
+      kCudaExecutionProvider,                                                             \
+      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
+                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
+      Slice<TIND, true>);
 
-REGISTER_VERSIONED_TYPED_SLICE(int32_t) 
-REGISTER_VERSIONED_TYPED_SLICE(int64_t) 
+REGISTER_VERSIONED_TYPED_SLICE(int32_t)
+REGISTER_VERSIONED_TYPED_SLICE(int64_t)
       
 #define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
@@ -36,7 +48,7 @@ REGISTER_VERSIONED_TYPED_SLICE(int64_t)
                          InputMemoryType<OrtMemTypeCPUInput>(3).                          \
                          TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,true>);
+      Slice<TIND, true>);
 
 REGISTER_TYPED_DYNAMICSLICE(int32_t) 
 REGISTER_TYPED_DYNAMICSLICE(int64_t)
