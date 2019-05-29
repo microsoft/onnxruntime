@@ -841,12 +841,10 @@ def main():
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)
-
-    if args.build_server and args.enable_server_tests:
-        run_server_tests(build_dir, configs)
-
-    if args.build_server and args.enable_server_model_tests:
-        run_server_model_tests(build_dir, configs)
+        if args.enable_server_tests:
+            run_server_tests(build_dir, configs)
+        if args.enable_server_model_tests:
+            run_server_model_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:
