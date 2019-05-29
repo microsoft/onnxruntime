@@ -578,13 +578,16 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
 
 
 def split_server_binary_and_symbol(build_dir, configs):
-    # TODO: Make it support Windows
-    for config in configs:
-        if config == 'RelWithDebInfo':
-            config_build_dir = get_config_build_dir(build_dir, config)
-            run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
-            run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
-            run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
+    if is_windows():
+        # TODO: Windows support
+        pass
+    else:
+        for config in configs:
+            if config == 'RelWithDebInfo':
+                config_build_dir = get_config_build_dir(build_dir, config)
+                run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
+                run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
             
 
 def run_server_tests(build_dir, configs):
