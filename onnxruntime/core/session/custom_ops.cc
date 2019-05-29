@@ -131,7 +131,7 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
           .SinceVersion(1);
-      if (&op->GetExecutionProviderType) {
+      if (op->GetExecutionProviderType) {
         def_builder.Provider(op->GetExecutionProviderType(op));
       } else {
         def_builder.Provider(onnxruntime::kCpuExecutionProvider);
