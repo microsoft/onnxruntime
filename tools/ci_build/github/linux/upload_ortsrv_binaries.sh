@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e -o -x
 
-while getopts r:i:c:p:b: parameter_Option
+while getopts a:r:i:c:p:b: parameter_Option
 do case "${parameter_Option}"
 in
 a) AZCOPY_DIR=${OPTARG};;
@@ -14,7 +14,7 @@ esac
 done
 
 echo ""
-echo "bd=$BINARY_DIR bi=$BUILD_ID lci=$LAST_COMMIT_ID bc=$BUILD_COMMAND bsu=$BLOB_SAS_URL"
+echo "ad=$AZCOPY_DIR bd=$BINARY_DIR bi=$BUILD_ID lci=$LAST_COMMIT_ID bc=$BUILD_COMMAND bsu=$BLOB_SAS_URL"
 
 echo ""
 echo "Creating temp folder $BINARY_DIR/$BUILD_ID ... "
