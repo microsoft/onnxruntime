@@ -63,7 +63,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf,"CPU"));
+    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, "CPU"));
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
