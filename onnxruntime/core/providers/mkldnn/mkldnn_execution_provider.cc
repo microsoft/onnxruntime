@@ -268,7 +268,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             size_t inputs_count = 1;
             if (next_node->OpType() == "Sum")
               inputs_count = next_node_inputs.size();
-            for (int i = 0; i < inputs_count; i++) {
+            for (size_t i = 0; i < inputs_count; i++) {
               auto in = next_node_inputs[i];
               auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), in->Name());
               if (itr == sub_var.outputs.end()) {
