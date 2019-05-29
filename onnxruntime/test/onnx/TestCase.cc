@@ -177,7 +177,7 @@ using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
-  std::string onnx_commit_ = "";
+  std::string onnx_commit_tag_ = "";
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -206,8 +206,8 @@ class OnnxModelInfo : public TestModelInfo {
     }
 #ifdef __GNUG__
     std::string url_string{model_url};
-    if (url_string.size() >= 51) {
-      onnx_commit_ = {url_string.begin()+11, url_string.begin()+51};  
+    if (url_string.size() >= 18) {
+      onnx_commit_tag_ = {url_string.begin()+11, url_string.begin()+18};  
     }
 #endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
@@ -227,7 +227,7 @@ class OnnxModelInfo : public TestModelInfo {
   }
 
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
-  std::string GetModelVersion() const override { return onnx_commit_; }
+  std::string GetModelVersion() const override { return onnx_commit_tag_; }
 
   const std::string& GetNodeName() const override { return node_name_; }
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {

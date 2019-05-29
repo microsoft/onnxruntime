@@ -315,8 +315,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_float_ones", "test data bug"},
       {"constantofshape_int_zeros", "test data bug"},
 #else
-      {"constantofshape_float_ones", "test data bug", {"9e55ace55aad1ada27516038dfbdc66a8a0763db","7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef"}},
-      {"constantofshape_int_zeros", "test data bug", {"9e55ace55aad1ada27516038dfbdc66a8a0763db","7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef"}},
+      {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
+      {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
 #endif
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
@@ -354,7 +354,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"9e55ace55aad1ada27516038dfbdc66a8a0763db"}},
+      {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
@@ -425,7 +425,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"dynamic_slice", "This model uses contrib ops."});
   broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
   broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
-  broken_tests.insert({"mvn", "This model uses contrib ops.", {"bae6333e149a59a3faa9c4d9c44974373dcf5256"}});
+  broken_tests.insert({"mvn", "This model uses contrib ops.", {"onnx130"}});
 #endif
 
   int result = 0;
