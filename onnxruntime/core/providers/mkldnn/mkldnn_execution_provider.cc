@@ -149,38 +149,38 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
 void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
                                                        mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                                        bool fused,
-                                                       std::map<std::string, int>& output_to_source_node_map,
+                                                       std::map<std::string, size_t>& output_to_source_node_map,
                                                        NodeAttributes& subgraph_attributes) const {
   const auto& node_inputs = node->InputDefs();
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
   if (!fused) {
-    mkl_dnn::MklDnnNode mklnode;
-    mklnode.name = node->OpType();
-    mklnode.num_inputs = static_cast<int>(node->InputDefs().size());
-    mklnode.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
-    mklnode.node_index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size()) + 1;
+    mkl_dnn::MklDnnNode mkldnn_node;
+    mkldnn_node.name = node->OpType();
+    mkldnn_node.num_inputs = static_cast<int>(node->InputDefs().size());
+    mkldnn_node.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
+    mkldnn_node.node_index = static_cast<int>(sub_var.subgraph_ptr->mkldnn_nodes.size()) + 1;
     const auto& node_outputs = node->OutputDefs();
-    mklnode.output_name = node_outputs[0]->Name();
+    mkldnn_node.output_name = node_outputs[0]->Name();
     if (node->OpType() == "Conv") {
-      mklnode.weight_name = node->InputDefs()[1]->Name();
+      mkldnn_node.weight_name = node->InputDefs()[1]->Name();
     }
-    for (int i = 0; i < static_cast<int>(node_inputs.size()); i++) {
+    for (size_t i = 0; i < node_inputs.size(); i++) {
       auto iter = output_to_source_node_map.find(node_inputs[i]->Name());
       if (iter != output_to_source_node_map.end())
-        mklnode.parent_nodes.push_back(iter->second);
+        mkldnn_node.parent_nodes.push_back(iter->second);
     }
-    sub_var.subgraph_ptr->mklnodes.push_back(mklnode);
-    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
+    sub_var.subgraph_ptr->mkldnn_nodes.push_back(mkldnn_node);
+    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), sub_var.subgraph_ptr->mkldnn_nodes.size() - 1));
   } else {
     const auto& node_outputs = node->OutputDefs();
-    output_to_source_node_map.erase(sub_var.subgraph_ptr->mklnodes.back().output_name);
-    sub_var.subgraph_ptr->mklnodes.back().output_name = node_outputs[0]->Name();
-    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), static_cast<int>(sub_var.subgraph_ptr->mklnodes.size() - 1)));
+    output_to_source_node_map.erase(sub_var.subgraph_ptr->mkldnn_nodes.back().output_name);
+    sub_var.subgraph_ptr->mkldnn_nodes.back().output_name = node_outputs[0]->Name();
+    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), sub_var.subgraph_ptr->mkldnn_nodes.size() - 1));
   }
 
   // Add inputs which are not in the outputs vector.
-  for (int i = 0; i < static_cast<int>(node_inputs.size()); i++) {
+  for (size_t i = 0; i < node_inputs.size(); i++) {
     auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), node_inputs[i]->Name());
     if (itr == sub_var.outputs.end()) {
       sub_var.inputs.push_back(node_inputs[i]->Name());
@@ -194,7 +194,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
 
   NodeAttributes attributes = node->GetAttributes();
   if (attributes.size() > 0) {
-    int index = static_cast<int>(sub_var.subgraph_ptr->mklnodes.size());
+    size_t index = sub_var.subgraph_ptr->mkldnn_nodes.size();
 
     for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
       std::string key = node->OpType() + "-" + std::to_string(index) + "-" + att_it->first;
@@ -220,7 +220,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   mkl_dnn::Subgraph::SubgraphVariables sub_var;
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
-  std::map<std::string, int> output_to_source_node_map;
+  std::map<std::string, size_t> output_to_source_node_map;
   NodeAttributes subgraph_attributes;
   int node_index = 0;
 
@@ -238,8 +238,8 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       // can we fuse (at mkldnn level) nodes?
       bool fused = false;
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
-        if (sub_var.subgraph_ptr->mklnodes.back().name == "BatchNormalization" || sub_var.subgraph_ptr->mklnodes.back().name == "Conv") {
-          sub_var.subgraph_ptr->mklnodes.back().name += "-Relu";
+        if (sub_var.subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || sub_var.subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
+          sub_var.subgraph_ptr->mkldnn_nodes.back().name += "-Relu";
           fused = true;
         }
       }
@@ -265,9 +265,9 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
           if (sub_it != mkldnn_ops_.end()) {
             const auto& next_node_inputs = next_node->InputDefs();
             bool input_from_subgraph = true;
-            int inputs_count = 1;
+            size_t inputs_count = 1;
             if (next_node->OpType() == "Sum")
-              inputs_count = static_cast<int>(next_node_inputs.size());
+              inputs_count = next_node_inputs.size();
             for (int i = 0; i < inputs_count; i++) {
               auto in = next_node_inputs[i];
               auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), in->Name());
@@ -283,7 +283,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
           }
         }
         if (!sub_var.subgraph_node_indexes.empty()) {
-          if (static_cast<int>(node->GetOutputEdgesCount()) > 1) {
+          if (node->GetOutputEdgesCount() > 1) {
             // If current node has branches
             //    iterate and see if all nodes are mkldnn ops OR
             //      it ends in node with same number of input edges (mkldnn node or cpu node)
@@ -374,7 +374,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   meta_def->attributes.insert(subgraph_attributes.begin(), subgraph_attributes.end());
 
   // Find the end nodes
-  for (auto& mklnode : sub_var.subgraph_ptr->mklnodes) {
+  for (auto& mklnode : sub_var.subgraph_ptr->mkldnn_nodes) {
     auto itr = std::find(sub_var.outputs_as_input_other_node.begin(),
                          sub_var.outputs_as_input_other_node.end(), mklnode.output_name);
     if (itr == sub_var.outputs_as_input_other_node.end()) {

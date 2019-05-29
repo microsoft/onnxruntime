@@ -14,7 +14,7 @@ template <typename T>
 class MklDnnPool : public MklDnnKernel {
  public:
   MklDnnPool(MklDnnNode& node,
-          MKLDNNExecutionProvider* provider,
+             MKLDNNExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
     op_name_ = node.name;
@@ -239,7 +239,7 @@ class MklDnnPool : public MklDnnKernel {
     return Status::OK();
   }
 
-private:
+ private:
   void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");

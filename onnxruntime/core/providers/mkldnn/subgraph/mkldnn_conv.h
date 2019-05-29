@@ -98,7 +98,7 @@ class MklDnnConv : public MklDnnKernel {
       auto xshape = tensor_shape.data();
       auto xdim = tensor_shape.size();
 
-	  x_shape = TensorShape(xshape, xdim);
+      x_shape = TensorShape(xshape, xdim);
 
       mkldnn::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
       src_md_.reset(new mkldnn::memory::desc(
@@ -339,8 +339,8 @@ class MklDnnConv : public MklDnnKernel {
   virtual void ReorderWeights(const OrtCustomOpApi* api, OrtKernelContext* context, mkldnn::engine& cpu_engine) override {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
-    
-	const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index+1);
+
+    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
     auto tensor_shape = ort.GetTensorShape(tensor_info);
     ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
@@ -397,21 +397,21 @@ class MklDnnConv : public MklDnnKernel {
       //AllocateOutputTensor(output_tensors, mklnode_ptr_->output_index, xshape, xdim, input_tensors[0].dtype);
       return primitive_created_;
     }
-    const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index+1);
+    const OrtValue* winput_tensor = ort.KernelContext_GetInput(context, input_index + 1);
     const T* filter_data = const_cast<T*>(ort.GetTensorData<T>(winput_tensor));
-    
-	const T* bias_data = nullptr;
+
+    const T* bias_data = nullptr;
     if (mklnode_ptr_->num_inputs == 3) {
       const OrtValue* binput_tensor = ort.KernelContext_GetInput(context, input_index + 2);
       bias_data = const_cast<T*>(ort.GetTensorData<T>(binput_tensor));
-   	}
+    }
     std::shared_ptr<mkldnn::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     if (filter_dst_mem == nullptr) {
       ReorderWeights(api, context, GetEngine());
       filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
     }
-	filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
-	
+    filter_data = static_cast<T*>(filter_dst_mem->get_data_handle());
+
     filter_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(filter_data)));
     if (bias_data != nullptr) {
       bias_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(bias_data)));
