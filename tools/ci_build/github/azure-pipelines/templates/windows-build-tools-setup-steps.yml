@@ -26,43 +26,47 @@ steps:
     #    downloadDirectory: '$(Build.BinariesDirectory)\python'
 
     # Temporary bypass of artifacts permission issue
-    - task: PowerShell@2
-      displayName: 'Download python'
-      inputs:
-        targetType: 'inline'
-        script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
-        workingDirectory: '$(Build.BinariesDirectory)'
+    # - task: PowerShell@2
+    #   displayName: 'Download python'
+    #   inputs:
+    #     targetType: 'inline'
+    #     script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
+    #     workingDirectory: '$(Build.BinariesDirectory)'
 
-    - task: CmdLine@1
-      displayName: 'Run python installer'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\installer.exe'
-        arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
-      timeoutInMinutes: 10
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{parameters.EnvSetupScript}}'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
-    - task: CmdLine@1
-      displayName: 'Install conda modules'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
-        arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
-      timeoutInMinutes: 10
+    # - task: CmdLine@1
+    #   displayName: 'Run python installer'
+    #   inputs:
+    #     filename: '$(Build.BinariesDirectory)\installer.exe'
+    #     arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
+    #   timeoutInMinutes: 10
+    # - task: BatchScript@1
+    #   displayName: 'setup env'
+    #   inputs:
+    #     filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{parameters.EnvSetupScript}}'
+    #     modifyEnvironment: true
+    #     workingFolder: '$(Build.BinariesDirectory)'
+    # - task: CmdLine@1
+    #   displayName: 'Install conda modules'
+    #   inputs:
+    #     filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
+    #     arguments: 'install -q --insecure -y pyopenssl setuptools wheel numpy'
+    #   timeoutInMinutes: 10
 
-    - task: CmdLine@1
-      displayName: 'Download cmake'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+    # - task: CmdLine@1
+    #   displayName: 'Download cmake'
+    #   inputs:
+    #     filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+    #     arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
     
     - task: PowerShell@2
       displayName: 'Download OpenCppCoverage installer'
       inputs:
         targetType: 'inline'
-        script: 'Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe'
+        script: '
+          New-Item -ItemType "directory" -Path $(Build.BinariesDirectory)\installer\opencppcoverage
+          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe
+          '
+
 
     - task: CmdLine@1
       displayName: 'Run OpenCPPCoverage installer'
