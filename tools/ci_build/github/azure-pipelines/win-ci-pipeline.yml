@@ -9,29 +9,34 @@ jobs:
         EnvSetupScript: 'setup_env.bat'
         buildArch: 'x64'
         setVcvars: false
-    # - task: CmdLine@1
-    #   displayName: 'Download test data and generate cmake config'
-    #   inputs:
-    #     filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-    #     arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --update'
-    #     workingDirectory: "$(Build.BinariesDirectory)"
+    - task: CmdLine@1
+      displayName: 'Download test data and generate cmake config'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --update'
+        workingDirectory: "$(Build.BinariesDirectory)"
 
-    # - task: VSBuild@1
-    #   displayName: 'Build Debug'
-    #   inputs:
-    #     solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-    #     platform: 'x64'
-    #     configuration: 'Debug'
-    #     msbuildArgs: '/m'
-    #     msbuildArchitecture: 'x64'
-    #     logProjectEvents: true
-    #     workingFolder: '$(Build.BinariesDirectory)\Debug'
-    # - task: BatchScript@1
-    #   displayName: 'Test Debug'
-    #   inputs:
-    #     filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-    #     arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --test'
-    #     workingFolder: '$(Build.BinariesDirectory)'
+    - task: VSBuild@1
+      displayName: 'Build Debug'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
+        platform: 'x64'
+        configuration: 'Debug'
+        msbuildArgs: '/m'
+        msbuildArchitecture: 'x64'
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\Debug'
+    - task: BatchScript@1
+      displayName: 'Test Debug'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --test'
+        workingFolder: '$(Build.BinariesDirectory)'
+    - task: PowerShell@2
+      inputs:
+        filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
+        arguments: '"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" "$(Build.SourcesDirectory)" "$(Build.BinariesDirectory)\$BuildConfig\$BuildConfig"'
+
     # - task: VSBuild@1
     #   displayName: 'Build C# Debug'
     #   inputs:

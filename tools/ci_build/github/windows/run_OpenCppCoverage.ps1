@@ -57,10 +57,6 @@ $outputXml = Join-Path $buildDir "cobertura.xml"
 $outputDir = Join-Path $buildDir "OpenCppCoverageResults"
 $modelDir = Join-Path $BuildRoot "..\models" 
 
-# Lotus unit tests
-$onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all ("binary:" + (Join-Path $buildDir "onnxruntime_test_all.cov"))
-
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
 $otr_1 = "$onnx_test_runner " + $modelDir #(Join-Path $sourceRoot "cmake/external/onnx/onnx/backend/test/data/pytorch-converted")
@@ -79,3 +75,7 @@ RunTest $mlas_test ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"
 # Session Without Environment test
 $session_test = Join-Path $buildDir "onnxruntime_test_framework_session_without_environment_standalone.exe"
 RunTest $session_test ("binary:" + (Join-Path $buildDir "onnxruntime_session_without_environment_test.cov"))
+
+# Lotus unit tests
+$onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
+RunTest $onnxruntime_test_all ("cobertura:$outputXml", "html:$outputDir") ("otr_1.cov","onnxruntime_shared_lib_test.cov","onnxruntime_mlas_test.cov","onnxruntime_session_without_environment_test.cov")
