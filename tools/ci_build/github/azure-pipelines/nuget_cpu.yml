@@ -32,7 +32,7 @@ jobs:
     - Cmd
     - msbuild
   timeoutInMinutes: 90
-  dependsON:
+  dependsOn:
   - phase1
   - phase2
   condition: and(succeeded())
