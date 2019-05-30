@@ -1,30 +1,14 @@
 jobs: 
-- template: win.yml 
-- template: linux.yml
-- template: macos.yml
-
-
-- job: Package 
+- job: Win 
   pool:
     name: Win-CPU
     demands:
     - Cmd
     - msbuild
   timeoutInMinutes: 90
-  dependsOn:
-  - Win
-  - Linux
-  - MacOS
-  condition: succeeded()
   steps:
   - script: |
      dir
      echo -----
      dir
     displayName: 'Command Line Script'
-
-
-
-
-
-

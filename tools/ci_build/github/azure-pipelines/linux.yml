@@ -1,0 +1,10 @@
+- job: Linux 
+  pool:
+    name: Linux-CPU
+  timeoutInMinutes: 90
+  steps:
+  - script: |
+     ls
+     echo -----
+     ls
+    displayName: 'Command Line Script'

@@ -1,0 +1,10 @@
+- job: MacOS 
+  pool:
+    name: Hosted macOS
+  timeoutInMinutes: 90
+  steps:
+  - script: |
+     ls
+     echo -----
+     ls
+    displayName: 'Command Line Script'
