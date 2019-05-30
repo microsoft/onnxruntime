@@ -10,9 +10,9 @@ Param(
 
 $coreSources = Join-Path $SourceRoot "onnxruntime" 
 $headerSources = Join-Path $SourceRoot "include" 
-$buildDir = Join-Path $BuildRoot "Debug"
+$buildDir = Join-Path $BuildRoot "Debug\Debug" -Resolve
 
-function RunTest([string]$test_cmd, [string[]]$export_types, [string[]]$inputs)
+function RunTest([string]$test_cmd, [string[]]$test_cmd_args, [string[]]$export_types, [string[]]$inputs)
 {
     $cmd = "$OpenCppCoverageExe"
     $cmdParams = @("--sources=$headerSources","--sources=$coreSources","--modules=$buildDir","--working_dir=$buildDir")
@@ -29,6 +29,7 @@ function RunTest([string]$test_cmd, [string[]]$export_types, [string[]]$inputs)
     }
 
     $cmdParams += @("--","$test_cmd")
+    $cmdParams += $test_cmd_args
 
     & $cmd $cmdParams
 }
@@ -38,24 +39,26 @@ $outputXml = Join-Path $buildDir "cobertura.xml"
 $outputDir = Join-Path $buildDir "OpenCppCoverageResults"
 $modelDir = Join-Path $BuildRoot "models" 
 
+
 # ONNX test runner tests. 
-$onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
+$onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" -Resolve
 $otr = "$onnx_test_runner " + $modelDir 
-RunTest $otr ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
+RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
 # C-API/Shared-lib test
 $shared_lib_test = Join-Path $buildDir "onnxruntime_shared_lib_test.exe"
-RunTest $shared_lib_test ("binary:" + (Join-Path $buildDir "onnxruntime_shared_lib_test.cov"))
+RunTest $shared_lib_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_shared_lib_test.cov"))
+
 
 # MLAS test
 $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
-RunTest $mlas_test ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
+RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
 
 # Session Without Environment test
 $session_test = Join-Path $buildDir "onnxruntime_test_framework_session_without_environment_standalone.exe"
-RunTest $session_test ("binary:" + (Join-Path $buildDir "onnxruntime_session_without_environment_test.cov"))
+RunTest $session_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_session_without_environment_test.cov"))
 
 # Lotus unit tests
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all ("cobertura:$outputXml", "html:$outputDir") ("onnx_test_runner.cov","onnxruntime_shared_lib_test.cov","onnxruntime_mlas_test.cov","onnxruntime_session_without_environment_test.cov")
+RunTest $onnxruntime_test_all @() ("cobertura:$outputXml", "html:$outputDir") ("onnx_test_runner.cov","onnxruntime_shared_lib_test.cov","onnxruntime_mlas_test.cov","onnxruntime_session_without_environment_test.cov")
