@@ -23,6 +23,7 @@ jobs:
      dir
     displayName: 'Command Line Script'
 - template: nuget-packaging.yml
+- template: nuget_test_win.yml
 
 
 
