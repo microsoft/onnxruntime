@@ -205,9 +205,11 @@ class OnnxModelInfo : public TestModelInfo {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
 #ifdef __GNUG__
+    std::smatch match;
     std::string url_string{model_url};
-    if (url_string.size() >= 18) {
-      onnx_commit_tag_ = {url_string.begin()+11, url_string.begin()+18};  
+    const std::regex onnx_tag_regex("onnx[0-9a-z]{3}"); //e.g. onnx141, onnx150, onnxtip
+    if (std::regex_search(url_string, match, onnx_tag_regex)) {
+      onnx_commit_tag_ = match[0].str();   
     }
 #endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();

@@ -22,11 +22,13 @@ def GetVersionTag():
            for line in f.readlines():
                fields = line.strip().split(':')
                version2tag[fields[0]] = fields[1]
+    print ("version2tag map", version2tag)
     if onnx.version.git_version in version2tag:
         return version2tag[onnx.version.git_version]
     else: return "unknown"
         
 version_tag = GetVersionTag()
+print ("git version", onnx.version.git_version)
 print ("VERSION TAG:", version_tag)
 
 class OrtBackendTest(onnx.backend.test.BackendTest):
