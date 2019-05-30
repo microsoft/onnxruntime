@@ -385,7 +385,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert({"nonzero_example", "failed: type mismatch"});
+  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx567"}});
   broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
   broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif

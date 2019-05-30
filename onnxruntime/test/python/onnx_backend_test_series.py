@@ -28,6 +28,7 @@ def GetVersionTag():
     else: return "unknown"
         
 version_tag = GetVersionTag()
+print ("onnx version:", onnx.__version__)
 print ("git version:", onnx.version.git_version)
 print ("VERSION TAG:", version_tag)
 
