@@ -43,17 +43,10 @@ class OpenVINOGraph {
 
 
   void GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size);
-//  void AllocateOutputTensors(size_t batch_size,
-//                             onnxruntime::ONNXRunTimeTensor* output_tensors,
-//                             onnxruntime::AllocateFunc& output_allocator_func,
-//                             onnxruntime::AllocatorHandle& output_allocator_handle);
-
 
   void StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[], size_t batch_slice_idx, size_t infer_req_idx);
 
-
   void CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[], size_t batch_slice_idx, size_t infer_req_idx);
-
 
   std::vector<std::string> GetEnvLdLibraryPath();
 
