@@ -1,5 +1,6 @@
 jobs:
 - job: Windows_CI_Dev
+  pool: Win-CPU
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:

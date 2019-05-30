@@ -1,5 +1,5 @@
 jobs:
-- job: Linux_CI_Dev
+- job: Linux_CI_Dev_x86
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml
