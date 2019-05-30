@@ -1,8 +1,6 @@
 jobs:
 - job: NuGet Packaging
   pool: Win-CPU
-  pool:
-    name: AI-Win-CPU
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Win-x86'
