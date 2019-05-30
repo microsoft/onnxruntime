@@ -60,6 +60,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_CUDA}
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_NNAPI}
     ${PROVIDERS_TENSORRT}
     onnxruntime_optimizer
     onnxruntime_providers

@@ -24,5 +24,12 @@ IExecutionProvider* TestTensorrtExecutionProvider() {
   return &trt_provider;
 }
 #endif
+
+#ifdef USE_NNAPI
+IExecutionProvider* TestNnapiExecutionProvider() {
+  static NnapiExecutionProvider nnapi_provider;
+  return &nnapi_provider;
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

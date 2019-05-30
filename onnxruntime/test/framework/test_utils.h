@@ -12,6 +12,9 @@
 #ifdef USE_TENSORRT 
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #endif
+#ifdef USE_NNAPI
+#include "core/providers/nnapi/nnapi_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -26,6 +29,11 @@ IExecutionProvider* TestCudaExecutionProvider();
 #ifdef USE_TENSORRT
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestTensorrtExecutionProvider();
+#endif
+
+#ifdef USE_NNAPI
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
+IExecutionProvider* TestNnapiExecutionProvider();
 #endif
 
 template <typename T>
