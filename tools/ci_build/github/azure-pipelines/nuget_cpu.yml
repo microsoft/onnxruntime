@@ -5,7 +5,7 @@ jobs:
 - template: linux-x86-ci-pipeline.yml
 - template: mac-ci-pipeline.yml
 
-- job: Package 
+- job: Wait
   pool:
     name: Win-CPU
     demands:
@@ -25,6 +25,7 @@ jobs:
      echo -----
      dir
     displayName: 'Command Line Script'
+- template: nuget-packaging.yml
 
 
 
