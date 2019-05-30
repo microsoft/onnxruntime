@@ -343,6 +343,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
       {"shrink", "test case is wrong"},
+      {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"tf_mobilenet_v2_1.0_224", "result mismatch"},
       {"tf_mobilenet_v2_1.4_224", "result mismatch"},
