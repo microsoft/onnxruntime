@@ -33,6 +33,22 @@ jobs:
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
       displayName: 'Command Line Script'
 
+    - script: |
+       set -e -x
+       mkdir $(Build.BinariesDirectory)/linux-x64
+       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
+       cd $(Build.BinariesDirectory)
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory/*.zip $(Build.ArtifactStagingDirectory)
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
       condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
