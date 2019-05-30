@@ -15,7 +15,7 @@ $buildDir = Join-Path $BuildRoot "Debug\Debug" -Resolve
 function RunTest([string]$test_cmd, [string[]]$test_cmd_args, [string[]]$export_types, [string[]]$inputs)
 {
     $cmd = "$OpenCppCoverageExe"
-    $cmdParams = @("--sources=$headerSources","--sources=$coreSources","--modules=$buildDir","--working_dir=$buildDir")
+    $cmdParams = @("--sources=$headerSources","--sources=$coreSources","--modules=$buildDir\*","--working_dir=$buildDir")
 
     foreach($input in $inputs)
     {
@@ -63,6 +63,6 @@ RunTest $session_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_session
 
 # Lotus unit tests
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all @() ("cobertura:$outputXml", "html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnxruntime_session_without_environment_test.cov")
+RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnxruntime_session_without_environment_test.cov")
 #"onnx_test_runner.cov",
 #"onnxruntime_mlas_test.cov",
