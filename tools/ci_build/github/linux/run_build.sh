@@ -17,7 +17,7 @@ done
 if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
-    /opt/cmake/bin/cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_CPP_FEATURES=exceptions -DANDROID_PLATFORM=android-28 -DANDROID_ABI=arm64-v8a -DCMAKE_BUILD_TYPE=Release -Donnxruntime_CROSS_COMPILING=ON -Donnxruntime_BUILD_x86=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
+    /opt/cmake/bin/cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
     /opt/cmake/bin/cmake --build . -- -j$(nproc)
 else
     COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp"

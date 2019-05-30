@@ -25,7 +25,7 @@ class KernelRegistry {
   // itself.
   // TODO(Task:132) Make usage of unique_ptr/shared_ptr as out param consistent
   Status TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
-                         const std::unordered_map<int, MLValue>& initialized_tensors,
+                         const std::unordered_map<int, OrtValue>& initialized_tensors,
                          const MLValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
                          std::unique_ptr<OpKernel>& op_kernel) const;
 

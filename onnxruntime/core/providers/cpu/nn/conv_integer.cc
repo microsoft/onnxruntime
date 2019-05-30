@@ -26,12 +26,12 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status ConvInteger::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(1);
   int32_t input_offset = 0;
   int32_t filter_offset = 0;
   if (num_inputs >= 3) {
-    const Tensor* X_Zero_Point = context->Input<Tensor>(2);
+    const auto* X_Zero_Point = context->Input<Tensor>(2);
     if (X_Zero_Point->Shape().NumDimensions() == 0 ||
         (X_Zero_Point->Shape().NumDimensions() == 1 && X_Zero_Point->Shape().GetDims().size() == 1)) {
       input_offset = static_cast<int32_t>(*(X_Zero_Point->Data<uint8_t>()));
@@ -41,7 +41,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     }
   }
   if (num_inputs >= 4) {
-    const Tensor* W_Zero_Point = context->Input<Tensor>(3);
+    const auto* W_Zero_Point = context->Input<Tensor>(3);
     if (W_Zero_Point->Shape().NumDimensions() == 0 ||
         (W_Zero_Point->Shape().NumDimensions() == 1 && W_Zero_Point->Shape().GetDims().size() == 1)) {
       filter_offset = static_cast<int32_t>(*(W_Zero_Point->Data<uint8_t>()));
@@ -82,8 +82,8 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const uint8_t* Xdata = X->template Data<uint8_t>();
-  int32_t* Ydata = Y->template MutableData<int32_t>();
+  const auto* Xdata = X->template Data<uint8_t>();
+  auto* Ydata = Y->template MutableData<int32_t>();
 
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
@@ -96,7 +96,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
-  uint8_t* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
+  auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
   TensorShape image_shape = X->Shape().Slice(1);
   std::vector<int64_t> col_buffer_shape{kernel_dim};

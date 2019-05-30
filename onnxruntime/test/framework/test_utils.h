@@ -36,10 +36,8 @@ IExecutionProvider* TestOpenVINOExecutionProvider();
 #endif
 
 template <typename T>
-void CreateMLValue(AllocatorPtr alloc,
-                   const std::vector<int64_t>& dims,
-                   const std::vector<T>& value,
-                   MLValue* p_mlvalue) {
+void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const std::vector<T>& value,
+                   OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
@@ -54,9 +52,7 @@ void CreateMLValue(AllocatorPtr alloc,
 }
 
 template <typename T>
-void AllocateMLValue(AllocatorPtr alloc,
-                     const std::vector<int64_t>& dims,
-                     MLValue* p_mlvalue) {
+void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,

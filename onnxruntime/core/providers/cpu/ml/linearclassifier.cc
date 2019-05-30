@@ -54,7 +54,7 @@ LinearClassifier<T>::LinearClassifier(const OpKernelInfo& info) : OpKernel(info)
 
 template <typename T>
 Status LinearClassifier<T>::Compute(OpKernelContext* ctx) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto* X = ctx->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
   if (shape.NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
@@ -76,7 +76,7 @@ Status LinearClassifier<T>::Compute(OpKernelContext* ctx) const {
   int64_t zindex = 0;
   const auto* x_data = X->template Data<T>();
 
-  size_t class_count = static_cast<size_t>(class_count_);
+  auto class_count = static_cast<size_t>(class_count_);
   std::vector<float> scores;
   scores.reserve(class_count);
   for (int64_t i = 0; i < N; i++)  //for each point

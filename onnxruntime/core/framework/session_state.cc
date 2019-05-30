@@ -36,17 +36,17 @@ void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_s
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
-Status SessionState::AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d) {
-  ORT_ENFORCE(mlvalue_index >= 0 && mlvalue_index <= mlvalue_name_idx_map_.MaxIdx());
-  auto p = initialized_tensors_.insert({mlvalue_index, mlvalue});
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d) {
+  ORT_ENFORCE(ort_value_index >= 0 && ort_value_index <= ort_value_name_idx_map_.MaxIdx());
+  auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated mlvalue index:", mlvalue_index,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-  if (d != nullptr && d->f != nullptr) deleter_for_initialized_tensors_[mlvalue_index] = *d;
+  if (d != nullptr && d->f != nullptr) deleter_for_initialized_tensors_[ort_value_index] = *d;
   return Status::OK();
 }
 
-const std::unordered_map<int, MLValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
+const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;
@@ -201,7 +201,7 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
 
 void SessionState::CalculateNodeIndexInfo() {
   ORT_ENFORCE(graph_viewer_);
-  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, mlvalue_name_idx_map_);
+  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
 
   for (auto& node_to_map_pair : subgraph_session_states_) {
     for (auto& attr_name_to_subgraph : node_to_map_pair.second) {

@@ -50,7 +50,7 @@ common::Status BinarizerOp<T>::Compute(OpKernelContext* context) const {
     T x_val = x_data[i];
     T& y_val = y_data[i];
 
-    float tmp = static_cast<float>(x_val);  // this cast is necessary because isnan doesn't work otherwise.
+    auto tmp = static_cast<float>(x_val);  // this cast is necessary because isnan doesn't work otherwise.
     if (std::isnan(tmp)) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Input data with index: " + std::to_string(i) + " is NaN");
     }

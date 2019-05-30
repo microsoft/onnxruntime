@@ -9,7 +9,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) {
+Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
   auto& conv_node = node;
   const auto& add_node = *conv_node.OutputNodesBegin();
   const auto& conv_inputs = conv_node.InputDefs();
@@ -107,7 +107,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   return Status::OK();
 }
 
-bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) {
+bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;

@@ -95,7 +95,8 @@ bool PyObjectCheck_Array(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
 
-void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject, MLValue* p_mlvalue) {
+void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
+                         OrtValue* p_mlvalue) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   if (darray == NULL) {
     throw std::runtime_error(std::string("The object must be a contiguous array for input '") + name_input + std::string("'."));
@@ -248,9 +249,8 @@ void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const std::st
 
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                          PyObject* item,
-                          AllocatorPtr /*alloc*/, MLValue* p_mlvalue,
-                          KeyGetterType keyGetter, ValueGetterType valueGetter) {
+                          PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
+                          ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
   dst = std::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
@@ -260,8 +260,7 @@ void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& na
 
 template <typename KeyType, typename ValueType, typename KeyGetterType, typename ValueGetterType>
 void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                PyObject* iterator, PyObject* item,
-                                AllocatorPtr /*alloc*/, MLValue* p_mlvalue,
+                                PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
   dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
@@ -278,8 +277,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
 }
 
 void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
-                                  PyObject* iterator, PyObject* item,
-                                  AllocatorPtr alloc, MLValue* p_mlvalue) {
+                                  PyObject* iterator, PyObject* item, AllocatorPtr alloc, OrtValue* p_mlvalue) {
   // If iterator is NULL, it returns a single Map,
   // if is not NULL, it returns a VectorMap.
   auto int64Getter = [](PyObject* obj, int64_t& value) -> bool {
@@ -349,7 +347,8 @@ void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::st
   }
 }
 
-void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc, const std::string& name_input, MLValue* p_mlvalue) {
+void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc,
+                                        const std::string& name_input, OrtValue* p_mlvalue) {
   // CreateMapMLValue is called by CreateGenericTerableMLValue
   // or CreateGenericMLValue which ensures
   // item is a dictionary, no need to check type again.
@@ -373,9 +372,10 @@ void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, Allo
   }
 }
 
-void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input, MLValue* p_mlvalue) {
+void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
+                                  OrtValue* p_mlvalue) {
   PyObject* item;
-  MLValue ml_value;
+  OrtValue ml_value;
   item = PyIter_Next(iterator);
   if (item == NULL) {
     throw std::runtime_error("Input '" + name_input + "' must not be empty.");
@@ -399,7 +399,7 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
   }
 }
 
-void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, MLValue* p_mlvalue) {
+void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, OrtValue* p_mlvalue) {
   if (PyObjectCheck_Array(value.ptr())) {
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());

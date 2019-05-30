@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime
                 int width = 0;
                 _onnxValueHandle = onnxValueHandle;
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeAndType(onnxValueHandle, out typeAndShape));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
                 TensorElementType elemType = NativeMethods.OrtGetTensorElementType(typeAndShape);
                 TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
 
@@ -41,7 +41,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 _elementWidth = width;
 
-                ulong dimension = NativeMethods.OrtGetDimensionsCount(typeAndShape);
+                var dimension = NativeMethods.OrtGetDimensionsCount(typeAndShape).ToUInt64();
                 long count = NativeMethods.OrtGetTensorShapeElementCount(typeAndShape);  // count can be negative. 
                 if (count < 0)
                 {
@@ -49,7 +49,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 long[] shape = new long[dimension];
-                NativeMethods.OrtGetDimensions(typeAndShape, shape, dimension); //Note: shape must be alive during the call
+                NativeMethods.OrtGetDimensions(typeAndShape, shape, (UIntPtr) dimension); //Note: shape must be alive during the call
 
                 _elementCount = (int)count;
                 _dimensions = new int[dimension];
@@ -66,15 +66,15 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     if (typeof(T) != typeof(byte))
                         throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " T = " + nameof(T) + ". Should = byte, when isStringTensor is true");
-                    ulong strLen;
-                    var offsets = new ulong[_elementCount];
+                    UIntPtr strLen;
+                    var offsets = new UIntPtr[_elementCount];
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
-                    var dataBuffer = new byte[strLen];
+                    var dataBuffer = new byte[strLen.ToUInt64()];
                     var dataBufferMemory = new Memory<byte>(dataBuffer);
                     var dataBufferHandle = dataBufferMemory.Pin();
                     IntPtr dataBufferPointer = IntPtr.Zero;
 
-                    var offsetMemory = new Memory<ulong>(offsets);
+                    var offsetMemory = new Memory<UIntPtr>(offsets);
                     var offsetMemoryHandle = offsetMemory.Pin();
                     IntPtr offsetBufferPointer = IntPtr.Zero;
                     unsafe
@@ -82,15 +82,15 @@ namespace Microsoft.ML.OnnxRuntime
                         dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
                         offsetBufferPointer = (IntPtr)offsetMemoryHandle.Pointer;
                     }
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorContent(_onnxValueHandle, dataBufferPointer, strLen, offsetBufferPointer, Convert.ToUInt64(_elementCount)));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorContent(_onnxValueHandle, dataBufferPointer, strLen, offsetBufferPointer, (UIntPtr)_elementCount));
                     _dataBufferPointer = dataBufferPointer;
                     _dataBufferAsString = new string[_elementCount];
 
                     for (var i = 0; i < offsets.Length; i++)
                     {
                         var length = (i == offsets.Length - 1)
-                            ? strLen - offsets[i]
-                            : offsets[i + 1] - offsets[i];
+                            ? strLen.ToUInt64() - offsets[i].ToUInt64()
+                            : offsets[i + 1].ToUInt64() - offsets[i].ToUInt64();
                         // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
                         _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
                     }

@@ -100,3 +100,4 @@ jobs:
       condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
+

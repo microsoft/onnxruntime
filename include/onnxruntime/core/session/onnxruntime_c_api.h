@@ -188,11 +188,11 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
-ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, int model_data_len,
+ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
-               _In_ OrtRunOptions* run_options,
+               _In_ const OrtRunOptions* run_options,
                _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
 
@@ -407,7 +407,7 @@ ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShape
 /**
  * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
  */
-ORT_API_STATUS(OrtGetTensorShapeAndType, _In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
+ORT_API_STATUS(OrtGetTensorTypeAndShape, _In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
 /**
  * Get the type information of an OrtValue
@@ -550,9 +550,11 @@ struct OrtCustomOpApi {
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_float)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
   OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_int64)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
 
-  OrtStatus*(ORT_API_CALL* GetTensorShapeAndType)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
+  OrtStatus*(ORT_API_CALL* GetTensorTypeAndShape)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
   int64_t(ORT_API_CALL* GetTensorShapeElementCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
+  enum ONNXTensorElementDataType(ORT_API_CALL* GetTensorElementType)(_In_ const OrtTensorTypeAndShapeInfo*);
+
   size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
   void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
@@ -560,7 +562,9 @@ struct OrtCustomOpApi {
 
   void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
 
+  size_t(ORT_API_CALL* KernelContext_GetInputCount)(const OrtKernelContext* context);
   const OrtValue*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index);
+  size_t(ORT_API_CALL* KernelContext_GetOutputCount)(const OrtKernelContext* context);
   OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;
@@ -585,7 +589,6 @@ struct OrtCustomOp {
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
 
   // Op kernel callbacks
-  void(ORT_API_CALL* KernelGetOutputShape)(_In_ void* op_kernel, _In_ OrtKernelContext* context, _In_ size_t output_index, _In_ OrtTensorTypeAndShapeInfo* output);
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 };

@@ -103,7 +103,7 @@ class AllocationPlanTestUtility {
       EXPECT_GE(index, 0);
       EXPECT_LT(index, num_ml_values);
       // An index should not be freed more than once
-      EXPECT_EQ(freed.count(index), 0) << "MLValue " << index << " freed multiple times";
+      EXPECT_EQ(freed.count(index), 0) << "OrtValue " << index << " freed multiple times";
       freed.insert(index);
     }
     // Check the free-index information for every execution step: they should cover the
