@@ -63,4 +63,6 @@ RunTest $session_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_session
 
 # Lotus unit tests
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all @() ("cobertura:$outputXml", "html:$outputDir") ("onnx_test_runner.cov","onnxruntime_shared_lib_test.cov","onnxruntime_mlas_test.cov","onnxruntime_session_without_environment_test.cov")
+RunTest $onnxruntime_test_all @() ("cobertura:$outputXml", "html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnxruntime_session_without_environment_test.cov")
+#"onnx_test_runner.cov",
+#"onnxruntime_mlas_test.cov",
