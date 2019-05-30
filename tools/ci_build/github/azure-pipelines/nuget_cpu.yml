@@ -1,0 +1,50 @@
+jobs: 
+- job: phase1 
+  pool:
+    name: Win-CPU
+    demands:
+    - Cmd
+    - msbuild
+  timeoutInMinutes: 90
+  steps:
+  - script: |
+     dir
+     echo -----
+     dir
+    displayName: 'Command Line Script'
+
+
+- job: phase2 
+  pool:
+    name: Linux-CPU
+  timeoutInMinutes: 90
+  steps:
+  - script: |
+     ls
+     echo -----
+     ls
+    displayName: 'Command Line Script'
+
+- job: phase3 
+  pool:
+    name: Win-CPU
+    demands:
+    - Cmd
+    - msbuild
+  timeoutInMinutes: 90
+  dependsON:
+  - phase1
+  - phase2
+  condition: and(succeeded())
+  steps:
+  - script: |
+     dir
+     echo -----
+     dir
+    displayName: 'Command Line Script'
+
+
+
+
+
+
