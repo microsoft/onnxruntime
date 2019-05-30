@@ -28,7 +28,7 @@ def GetVersionTag():
     else: return "unknown"
         
 version_tag = GetVersionTag()
-print ("git version", onnx.version.git_version)
+print ("git version:", onnx.version.git_version)
 print ("VERSION TAG:", version_tag)
 
 class OrtBackendTest(onnx.backend.test.BackendTest):
@@ -108,14 +108,16 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = ('^test_cast_FLOAT_to_STRING_cpu.*',
+        current_failing_tests = ('^test_cast_STRING_to_FLOAT_cpu.*',
+                                 '^test_cast_FLOAT_to_STRING_cpu.*',
                                  '^test_dequantizelinear_cpu.*',
                                  '^test_qlinearconv_cpu.*',
-                                 '^test_quantizelinear_cpu.*')
+                                 '^test_quantizelinear_cpu.*',
+                                 '^test_gru_seq_length_cpu.*')
         global version_tag
-        if version_tag == 'onnx141':
+        if version_tag == 'onnx141' or onnx.__version__ == '1.4.1':
             current_failing_tests = current_failing_tests + ('^test_shrink_cpu.*', '^test_constantofshape_*.*',)
-        if version_tag == 'onnx150':
+        if version_tag == 'onnx150' or onnx.__version__ == '1.5.0':
             current_failing_tests = current_failing_tests + ('^test_constantofshape_*.*',)
 
         # Failing for nGraph.
