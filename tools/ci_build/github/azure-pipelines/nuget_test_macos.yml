@@ -1,0 +1,49 @@
+jobs:
+- job: Linux_CI_Dev_x86
+  pool: Hosted macOS
+  dependsOn:
+  - NuGet_Packaging
+  condition: succeeded()
+  steps:
+  - script: |
+     set -e -x
+     ls -al $(Build.BinariesDirectory)
+     rm -rf  $(Build.BinariesDirectory)/*
+     ls -al $(Build.BinariesDirectory)
+     pushd $(Build.BinariesDirectory)
+     curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+     tar -zxvf azcopy.tar.gz --strip 1
+     fname=`basename "$(TestDataUrl)"`
+     curl -s -o $fname "$(TestDataUrl)"
+     unzip -qd models $fname
+     popd
+     ls -al $(Build.BinariesDirectory)
+    displayName: 'Download Test Data'
+    env:
+      OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - script: |
+     $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
+               $(Build.BinariesDirectory)/nuget-artifact \
+               $(Build.SourcesDirectory) \
+               $(Build.BinariesDirectory) 
+
+     if [ $? -ne 0 ]; then
+         echo "Failed to run test"
+         exit 1
+     fi
+    displayName: 'Run Test'
+    env:
+      OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+
