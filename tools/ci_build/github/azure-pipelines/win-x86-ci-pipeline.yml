@@ -47,7 +47,7 @@ jobs:
         msbuildArchitecture: 'x86'
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:RuntimeIdentifier=win-x86'
 
     - task: VSTest@2
       displayName: 'VsTest - C# Release'
