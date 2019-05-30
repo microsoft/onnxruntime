@@ -35,7 +35,7 @@ jobs:
   dependsOn:
   - phase1
   - phase2
-  condition: and(succeeded())
+  condition: succeeded()
   steps:
   - script: |
      dir
