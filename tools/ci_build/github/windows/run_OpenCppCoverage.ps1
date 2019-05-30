@@ -42,6 +42,9 @@ $modelDir = Join-Path $BuildRoot "models"
 
 # Lotus unit tests
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
+Write-Host "Just try running the test_all.exe"
+& $OpenCppCoverageExe --sources="$coreSources" --modules="$buildDir\*" --working_dir=$buildDir -- $onnxruntime_test_all 
+
 RunTest $onnxruntime_test_all @() ("binary:" + (Join-Path $buildDir "onnxruntime_test_all.cov"))
 
 
