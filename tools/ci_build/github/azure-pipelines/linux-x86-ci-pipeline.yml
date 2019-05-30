@@ -40,7 +40,7 @@ jobs:
        cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
        cd $(Build.BinariesDirectory)
        zip -r linux-x86.zip linux-x86
-       cp $(Build.BinariesDirectory/*.zip $(Build.ArtifactStagingDirectory)
+       cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
