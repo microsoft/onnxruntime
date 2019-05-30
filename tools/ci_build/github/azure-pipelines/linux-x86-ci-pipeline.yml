@@ -47,7 +47,7 @@ jobs:
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
-        artifactName: 'drop-linux'
+        artifactName: 'drop-linux-x86'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
