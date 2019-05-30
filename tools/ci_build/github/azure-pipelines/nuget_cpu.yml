@@ -8,9 +8,6 @@ jobs:
 - job: Wait
   pool:
     name: Win-CPU
-    demands:
-    - Cmd
-    - msbuild
   timeoutInMinutes: 90
   dependsOn:
   - Windows_CI_Dev
