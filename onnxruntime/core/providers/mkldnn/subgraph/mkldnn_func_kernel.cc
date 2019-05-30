@@ -35,8 +35,16 @@ class SubgraphPrimitive : public PrimitiveBase {
     }
   }
 
+  void UpdateProvider(const SubgraphParams& params) {
+    if (context_.kernels.size() > 0 && context_.kernels[0]->GetProvider() != params.provider)
+      for (auto& kernel : context_.kernels) {
+        kernel->SetProvider(params.provider);
+      }
+  }
+
   Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) {
     Status status;
+
     for (auto& kernel : context_.kernels) {
       status = kernel->Bind(api, context);
       if (!status.IsOK())
@@ -237,6 +245,7 @@ Status MkldnnFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext*
   Status status;
   try {
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
+    primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
