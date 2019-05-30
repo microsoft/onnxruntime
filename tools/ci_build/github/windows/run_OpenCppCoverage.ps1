@@ -43,7 +43,8 @@ $modelDir = Join-Path $BuildRoot "models"
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" -Resolve
 $otr = "$onnx_test_runner " + $modelDir 
-RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
+# TODO: Disabling due to long time taken
+# RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
 # C-API/Shared-lib test
@@ -53,7 +54,8 @@ RunTest $shared_lib_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_shar
 
 # MLAS test
 $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
-RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
+# TODO: Disabling due to long time taken
+# RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
 
 # Session Without Environment test
 $session_test = Join-Path $buildDir "onnxruntime_test_framework_session_without_environment_standalone.exe"
