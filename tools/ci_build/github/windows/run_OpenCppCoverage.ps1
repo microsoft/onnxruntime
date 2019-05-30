@@ -36,7 +36,7 @@ function RunTest([string]$test_cmd, [string[]]$export_types, [string[]]$inputs)
 # generate cobertura xml output and html report
 $outputXml = Join-Path $buildDir "cobertura.xml"
 $outputDir = Join-Path $buildDir "OpenCppCoverageResults"
-$modelDir = Join-Path $BuildRoot "..\models" 
+$modelDir = Join-Path $BuildRoot "models" 
 
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
