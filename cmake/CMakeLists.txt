@@ -82,6 +82,11 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
+if(onnxruntime_USE_MKLML AND onnxruntime_USE_OPENMP)
+  #if you enabled both of them, the code can still be built and run, but you may see
+  # 10x performance degradation
+  message(FATAL_ERROR "use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
+endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
   if(onnxruntime_USE_NSYNC)
