@@ -36,6 +36,12 @@ class MklDnnKernel {
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
   }
+  virtual void SetProvider(MKLDNNExecutionProvider* provider) {
+    provider_ = provider;
+  }
+  MKLDNNExecutionProvider* GetProvider() {
+    return provider_;
+  }
 
   virtual Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) = 0;
 

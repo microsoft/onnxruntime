@@ -229,6 +229,11 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     if (node == nullptr) {
       node_index++;
       continue;
+    }
+
+	if (IsDimensionSupported(node) == false) {
+      node_index++;
+      continue;
 	}
 
     auto op_it = mkldnn_ops_.find(node->OpType());
