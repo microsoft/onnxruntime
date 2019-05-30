@@ -88,13 +88,13 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
     bool supported = true;
     if (node->OpType() == "BatchNormalization") {
       auto node_inputs = node->InputDefs();
-      if (node_inputs[0]->Shape()->dim_size() == 3) {
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 3) {
         supported = false;
       }
     }
     if (node->OpType().find("Pool") != std::string::npos) {
       auto node_inputs = node->InputDefs();
-      if (node_inputs[0]->Shape()->dim_size() <= 3) {
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
         supported = false;
       }
     }
