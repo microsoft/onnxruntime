@@ -1,5 +1,5 @@
 jobs:
-- job: Linux_CI_Dev_x86
+- job: NuGet_Test_MacOS
   pool: Hosted macOS
   dependsOn:
   - NuGet_Packaging
