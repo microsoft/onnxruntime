@@ -177,6 +177,7 @@ using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
+  std::string onnx_commit_tag_ = "";
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -203,7 +204,14 @@ class OnnxModelInfo : public TestModelInfo {
     if (!model_pb.ParseFromZeroCopyStream(&f)) {
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
-
+#ifdef __GNUG__
+    std::smatch match;
+    std::string url_string{model_url};
+    const std::regex onnx_tag_regex("onnx[0-9a-z]{3}"); //e.g. onnx141, onnx150, onnxtip
+    if (std::regex_search(url_string, match, onnx_tag_regex)) {
+      onnx_commit_tag_ = match[0].str();   
+    }
+#endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
     if (graph.node().size() == 1) {
       node_name_ = graph.node()[0].op_type();
@@ -221,6 +229,7 @@ class OnnxModelInfo : public TestModelInfo {
   }
 
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
+  std::string GetModelVersion() const override { return onnx_commit_tag_; }
 
   const std::string& GetNodeName() const override { return node_name_; }
   const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const override {
@@ -406,6 +415,9 @@ class OnnxTestCase : public ITestCase {
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_info_->GetModelUrl(); }
   const std::string& GetTestCaseName() const override {
     return test_case_name_;
+  }
+  std::string GetTestCaseVersion() const override {
+    return model_info_->GetModelVersion();
   }
   void LoadTestData(size_t id, HeapBuffer& b, std::unordered_map<std::string, OrtValue*>&, bool is_input) override;
 };
