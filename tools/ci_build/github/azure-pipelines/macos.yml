@@ -1,3 +1,4 @@
+jobs: 
 - job: MacOS 
   pool:
     name: Hosted macOS

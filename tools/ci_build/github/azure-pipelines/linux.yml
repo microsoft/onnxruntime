@@ -1,3 +1,4 @@
+jobs: 
 - job: Linux 
   pool:
     name: Linux-CPU
