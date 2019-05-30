@@ -40,6 +40,13 @@ jobs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
         arguments: '"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" "$(Build.SourcesDirectory)" "$(Build.BinariesDirectory)"'
 
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
+        pathToSources: '$(Build.SourcesDirectory)'
+        reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
+    
     # - task: VSBuild@1
     #   displayName: 'Build C# Debug'
     #   inputs:
