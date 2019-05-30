@@ -19,7 +19,7 @@ int real_main(int argc, char* argv[], OrtEnv** p_env) {
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_FATAL;
   OrtEnv* env;
   {
     OrtStatus* ost = OrtCreateEnv(logging_level, "Default", &env);

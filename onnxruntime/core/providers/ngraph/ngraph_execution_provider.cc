@@ -107,6 +107,18 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
     return initializers.find(shape_arg->Name()) == initializers.end();
+  } else if (optype == "Gather") {
+    std::cout<< "Returning op not supported for gather" << std::endl;
+    //nGraph Gather is failing so removig from supported optype.
+    return true;
+  } /*else if (optype == "Sub") {
+    std::cout<< "Returning op not supported for sub" << std::endl;
+    //nGraph Gather is failing so removig from supported optype.
+    return true;
+  } */else if (optype == "LSTM") {
+    std::cout<< "Returning op not supported for LSTM" << std::endl;
+    //nGraph Gather is failing so removig from supported optype.
+    return true;
   } else if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
     if (node->OutputDefs().size() > 1) {
