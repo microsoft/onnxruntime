@@ -30,5 +30,18 @@ class Softmax final : public CudaKernel {
   int64_t axis_;
 };
 
+template <typename T>
+class SoftmaxGrad final : public CudaKernel {
+ public:
+  SoftmaxGrad(const OpKernelInfo& info) : CudaKernel{info} {
+    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(1));
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t axis_;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

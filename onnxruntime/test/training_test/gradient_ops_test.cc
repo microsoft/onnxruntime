@@ -279,30 +279,6 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
   EXPECT_TRUE(max_error <= 1e-2);
 }
 
-TEST(GradientCheckerTest, SoftMaxGrad) {
-  TensorShape shape({3, 4, 5});
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"Softmax"};
-
-  // default_axis
-  {
-    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error);
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
-
-  // axis=0
-  {
-    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(0))});
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
-
-  // axis=2
-  {
-    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))});
-    EXPECT_TRUE(max_error <= 1e-2);
-  }
-}
 
 TEST(GradientCheckerTest, SplitGrad) {
   TensorShape shape({9, 5});
@@ -637,6 +613,31 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
 
     gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error, x_datas);
     EXPECT_TRUE(max_error <= error_tolerance) << "max_error: " << max_error;
+  }
+}
+
+TEST(GradientCheckerTest, SoftMaxGrad) {
+  TensorShape shape({3, 4, 5});
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Softmax"};
+
+  // default_axis
+  {
+    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error);
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  // axis=0
+  {
+    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(0))});
+    EXPECT_TRUE(max_error <= 1e-2);
+  }
+
+  // axis=2
+  {
+    gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))});
+    EXPECT_TRUE(max_error <= 1e-2);
   }
 }
 
