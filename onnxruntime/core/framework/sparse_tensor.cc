@@ -14,20 +14,20 @@ SparseTensor::SparseTensor(MLDataType elt_type,
                            void* values_data,
                            void* indices_data,
                            const OrtAllocatorInfo& allocator_info)
-    : shape_(shape),
-      values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), values_data, allocator_info, 0),
+    : values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), values_data, allocator_info, 0),
       indices_(DataTypeImpl::GetType<int64_t>(),
                TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),
-               indices_data, allocator_info, 0) {}
+               indices_data, allocator_info, 0),
+      shape_(shape) {}
 
 SparseTensor::SparseTensor(MLDataType elt_type,
                            const TensorShape& shape,
                            size_t nnz,
                            std::shared_ptr<IAllocator> allocator)
-    : shape_(shape),
-      values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), allocator, 0),
+    : values_(elt_type, TensorShape({static_cast<int64_t>(nnz)}), allocator, 0),
       indices_(DataTypeImpl::GetType<int64_t>(),
                TensorShape({static_cast<int64_t>(nnz), static_cast<int64_t>(shape.NumDimensions())}),
-               allocator, 0) {}
+               allocator, 0),
+      shape_(shape) {}
 
 }  // namespace onnxruntime
