@@ -676,27 +676,26 @@ namespace CustomOpImpl {
   // SFINAE definition to determine whether class T as GetExecutionProviderType interface
   template <typename T, typename... Args>
   class HasProvider {
-    template <typename U,
+    template <typename U = T,
               typename = decltype( std::declval<U>().GetExecutionProviderType(std::declval<Args>()...) )>
-    static std::true_type test();
-    template <typename U>
+    static std::true_type test(int);
+    template <typename U = T>
     static std::false_type test(...);
   public:
-    static constexpr bool value = decltype(test<T>())::value;
+    static constexpr bool value = decltype(test(0))::value;
   };
 
+  // SFINAE definitions to get the execution provider of op.
+  // If type T has GetExecutionProviderType, use the result of op->GetExecutionProviderType().
+  // Otherwise, use kCpuExecutionProvider by default.
   template <typename T>
-  struct GetProvider {
-    // SFINAE definitions to get the execution provider of op.
-    // If type T as GetExecutionProviderType, use the result of op->GetExecutionProviderType().
-    // Otherwise, use kCpuExecutionProvider by default.
-    static std::enable_if_t<HasProvider<T>::value, const char *> get(T *op) {
-      return op->GetExecutionProviderType();
-    }
-    static std::enable_if_t<!HasProvider<T>::value, const char *> get(T *op) {
-      return "CPUExecutionProvider";
-    }
-  };
+  std::enable_if_t<HasProvider<T>::value, const char*> GetProvider(T* op) {
+    return op->GetExecutionProviderType();
+  }
+  template <typename T>
+  std::enable_if_t<!HasProvider<T>::value, const char*> GetProvider(T*) {
+    return "CPUExecutionProvider";
+  }
 } // namespace CustomOpImpl
 
 template <typename TOp, typename TKernel>
@@ -707,7 +706,7 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetName = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetName(); };
 
     // If OrtCustomOp does not have a definition of GetExecutionProviderType, use CPUExecutorProvider by default
-    OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return CustomOpImpl::GetProvider<TOp>::get(static_cast<TOp*>(this_)); };
+    OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return CustomOpImpl::GetProvider<TOp>(static_cast<TOp*>(this_)); };
 
     OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](OrtCustomOp* this_, size_t index) { return static_cast<TOp*>(this_)->GetInputType(index); };
