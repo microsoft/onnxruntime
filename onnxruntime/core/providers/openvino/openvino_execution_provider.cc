@@ -455,7 +455,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
         for(auto index : node_indexes){
             sub_graph->nodes.push_back(index);
         }
-        for(auto input : graph_viewer.GetInputs()){
+        for(auto input : graph_viewer.GetInputsIncludingInitializers()){
             fused_inputs.insert(input);
         }
         for(auto output : graph_viewer.GetOutputs()){
