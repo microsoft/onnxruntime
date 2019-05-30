@@ -8,27 +8,14 @@ Param(
     [Parameter(Mandatory=$true, HelpMessage="Build root.")][string]$BuildRoot
 )
 
-#"OpenCppCoverageExe=$OpenCppCoverageExe"
-#"SourceRoot=$SourceRoot"
-#"BuildRoot=$BuildRoot"
-
 $coreSources = Join-Path $SourceRoot "onnxruntime" 
 $headerSources = Join-Path $SourceRoot "include" 
 $buildDir = Join-Path $BuildRoot "Debug"
-
-Write-Host "sources = " $coreSources $headerSources
-Write-Host "buildDir = " $buildDir
-Write-Host "OpenCppCoverageExe = " $OpenCppCoverageExe
-Write-Host "SourceRoot = " $SourceRoot
-Write-Host "BuildRoot = " $BuildRoot
-
-
 
 function RunTest([string]$test_cmd, [string[]]$export_types, [string[]]$inputs)
 {
     $cmd = "$OpenCppCoverageExe"
     $cmdParams = @("--sources=$headerSources","--sources=$coreSources","--modules=$buildDir","--working_dir=$buildDir")
-#    Write-Host "cmd = " $cmd
 
     foreach($input in $inputs)
     {
@@ -42,14 +29,8 @@ function RunTest([string]$test_cmd, [string[]]$export_types, [string[]]$inputs)
     }
 
     $cmdParams += @("--","$test_cmd")
-    # $cmd += $cmdParams
-    #Write-Host "final cmd = " $cmd
-    #Write-Host "final cmdParams = " $cmdParams
 
-    # Invoke-Expression -Command:$cmd  
-    # echoargs.exe "$cmdParams"
-    #& $cmd $cmdParams
-    Start-Process -Wait -FilePath $cmd -ArgumentList $cmdParams 
+    & $cmd $cmdParams
 }
 
 # generate cobertura xml output and html report
@@ -59,10 +40,9 @@ $modelDir = Join-Path $BuildRoot "..\models"
 
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
-$otr_1 = "$onnx_test_runner " + $modelDir #(Join-Path $sourceRoot "cmake/external/onnx/onnx/backend/test/data/pytorch-converted")
-#$otr_2 = "$onnx_test_runner " + $modelDir #(Join-Path $sourceRoot "cmake/external/onnx/onnx/backend/test/data/pytorch-operator")
-RunTest $otr_1 ("binary:"  + (Join-Path $buildDir "otr_1.cov"))
-#RunTest $otr_2 ("cobertura:$outputXml", "html:$outputDir") ("onnxruntime_test_all.cov", "otr_1.cov")
+$otr = "$onnx_test_runner " + $modelDir 
+RunTest $otr ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
+
 
 # C-API/Shared-lib test
 $shared_lib_test = Join-Path $buildDir "onnxruntime_shared_lib_test.exe"
@@ -78,4 +58,4 @@ RunTest $session_test ("binary:" + (Join-Path $buildDir "onnxruntime_session_wit
 
 # Lotus unit tests
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all ("cobertura:$outputXml", "html:$outputDir") ("otr_1.cov","onnxruntime_shared_lib_test.cov","onnxruntime_mlas_test.cov","onnxruntime_session_without_environment_test.cov")
+RunTest $onnxruntime_test_all ("cobertura:$outputXml", "html:$outputDir") ("onnx_test_runner.cov","onnxruntime_shared_lib_test.cov","onnxruntime_mlas_test.cov","onnxruntime_session_without_environment_test.cov")
