@@ -1,11 +1,9 @@
-variables:
-  PlatformTarget: x86
-
 jobs:
 - job: Windows_CI_Dev_x86
   pool: Win-CPU
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    PlatformTarget: x86
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
