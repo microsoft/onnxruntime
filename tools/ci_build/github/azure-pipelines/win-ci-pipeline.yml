@@ -35,9 +35,10 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
     
     - task: PowerShell@2
+      displayName: 'Run Test Coverage'
       inputs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
-        arguments: '"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" "$(Build.SourcesDirectory)" "$(Build.BinariesDirectory)\$BuildConfig\$BuildConfig"'
+        arguments: '"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" "$(Build.SourcesDirectory)" "$(Build.BinariesDirectory)\Debug\Debug"'
 
     # - task: VSBuild@1
     #   displayName: 'Build C# Debug'
