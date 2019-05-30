@@ -40,6 +40,11 @@ $outputDir = Join-Path $buildDir "OpenCppCoverageResults"
 $modelDir = Join-Path $BuildRoot "models" 
 
 
+# Lotus unit tests
+$onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
+RunTest $onnxruntime_test_all @() ("binary:" + (Join-Path $buildDir "onnxruntime_test_all.cov"))
+
+
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" -Resolve
 $otr = "$onnx_test_runner " + $modelDir 
@@ -62,7 +67,7 @@ $session_test = Join-Path $buildDir "onnxruntime_test_framework_session_without_
 RunTest $session_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_session_without_environment_test.cov"))
 
 # Lotus unit tests
-$onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnxruntime_session_without_environment_test.cov")
+#$onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
+#RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnxruntime_session_without_environment_test.cov")
 #"onnx_test_runner.cov",
 #"onnxruntime_mlas_test.cov",
