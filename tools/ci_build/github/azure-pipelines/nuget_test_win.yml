@@ -11,7 +11,7 @@ jobs:
      IF EXIST $(buildDirectory)\RelWithDebInfo rmdir /s /q $(buildDirectory)\RelWithDebInfo
     displayName: 'Clean up stale files if any'
 
-
+  - template: templates/windows-build-tools-setup-steps.yml
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
