@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "roialign.h"
+
+#include <cmath>
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
@@ -107,8 +109,8 @@ void pre_calc_for_bilinear_interpolate(
             x = 0;
           }
 
-          int64_t y_low = static_cast<int64_t>(y);
-          int64_t x_low = static_cast<int64_t>(x);
+          auto y_low = static_cast<int64_t>(y);
+          auto x_low = static_cast<int64_t>(x);
           int64_t y_high;
           int64_t x_high;
 
@@ -128,8 +130,12 @@ void pre_calc_for_bilinear_interpolate(
 
           T ly = y - y_low;
           T lx = x - x_low;
-          T hy = static_cast<T>(1.) - ly, hx = static_cast<T>(1.) - lx;
-          T w1 = hy * hx, w2 = hy * lx, w3 = ly * hx, w4 = ly * lx;
+          T hy = static_cast<T>(1.) - ly;
+          T hx = static_cast<T>(1.) - lx;
+          T w1 = hy * hx;
+          T w2 = hy * lx;
+          T w3 = ly * hx;
+          T w4 = ly * lx;
 
           // save weights and indeces
           PreCalc<T> pc;
@@ -282,19 +288,19 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   using namespace onnxruntime::common;
 
   // X
-  const Tensor* X_ptr = context->Input<Tensor>(0);
+  const auto* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
   }
 
   // rois
-  const Tensor* rois_ptr = context->Input<Tensor>(1);
+  const auto* rois_ptr = context->Input<Tensor>(1);
   if (!rois_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
   }
 
   // batch indices
-  const Tensor* batch_indices_ptr = context->Input<Tensor>(2);
+  const auto* batch_indices_ptr = context->Input<Tensor>(2);
   if (!batch_indices_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
   }

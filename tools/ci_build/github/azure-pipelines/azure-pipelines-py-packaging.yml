@@ -32,7 +32,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel"'
+        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -69,8 +69,8 @@ jobs:
       displayName: 'Clean untagged docker images'
       inputs:
         script: |
-          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
-          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
+          docker container prune -f
+          docker image prune -f
         workingDirectory: $(Build.BinariesDirectory)
       continueOnError: true
       condition: always()
@@ -95,7 +95,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--use_openmp --build_wheel"'
+        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel"'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
@@ -139,7 +139,7 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
+        arguments: ' --build_dir $(buildDirectory) --config Release --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
@@ -206,7 +206,7 @@ jobs:
       inputs:
         filename: 'build.bat'
         arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0"
-      --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
+      --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2

@@ -12,10 +12,10 @@ namespace onnxruntime {
 
 namespace {
 bool IsFusableActivation(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", 6) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", 6) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", 6) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", 6);
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6});
 }
 
 void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_gemm) {
@@ -46,8 +46,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
-    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 7) ||
-          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", 9)) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
@@ -78,9 +77,9 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {
-      const NodeAttributes attrs = act_node.GetAttributes();
-      for (auto it = attrs.begin(); it != attrs.end(); ++it) {
-        fused_gemm.AddAttribute("leaky_relu_" + it->first, it->second);
+      const NodeAttributes& attrs = act_node.GetAttributes();
+      for (const auto& attr : attrs) {
+        fused_gemm.AddAttribute("leaky_relu_" + attr.first, attr.second);
       }
     }
 

@@ -364,17 +364,17 @@ TEST_F(OpaqueTypeTests, RunModel) {
   std::vector<int64_t> val_dims = {2};
   std::vector<int64_t> values = {1, 2};
   // prepare inputs
-  MLValue ml_values;
+  OrtValue ml_values;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), val_dims, values, &ml_values);
 
   std::vector<int64_t> ind_dims = {2};
   std::vector<int64_t> indicies = {1, 4};
-  MLValue ml_indicies;
+  OrtValue ml_indicies;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), ind_dims, indicies, &ml_indicies);
 
   std::vector<int64_t> shape_dims = {1};
   std::vector<int64_t> shape = {5};
-  MLValue ml_shape;
+  OrtValue ml_shape;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape_dims, shape, &ml_shape);
 
   NameMLValMap feeds;
@@ -388,7 +388,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
 
   std::vector<std::string> output_names;
   output_names.push_back("sparse_tensor_shape");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
   ASSERT_EQ(1, fetches.size());

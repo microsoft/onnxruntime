@@ -44,7 +44,12 @@ int main(int argc, char* argv[]) {
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
   OrtSession* session;
+#ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
+#else
+  const char* model_path = "squeezenet.onnx";
+#endif
+
   CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************
@@ -52,7 +57,7 @@ int main(int argc, char* argv[]) {
   size_t num_input_nodes;
   OrtStatus* status;
   OrtAllocator* allocator;
-  OrtCreateDefaultAllocator(&allocator);
+  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
 
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
@@ -78,7 +83,7 @@ int main(int argc, char* argv[]) {
     printf("Input %zu : type=%d\n", i, type);
 
     // print input shapes/dims
-    size_t num_dims = OrtGetNumOfDimensions(tensor_info);
+    size_t num_dims = OrtGetDimensionsCount(tensor_info);
     printf("Input %zu : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
@@ -132,7 +137,7 @@ int main(int argc, char* argv[]) {
 
   // Get pointer to output tensor float values
   float* floatarr;
-  OrtGetTensorMutableData(output_tensor, (void**)&floatarr);
+  CHECK_STATUS(OrtGetTensorMutableData(output_tensor, (void**)&floatarr));
   assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes

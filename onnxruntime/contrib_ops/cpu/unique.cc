@@ -1,70 +1,90 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
 #include "unique.h"
-
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
-#include <unordered_set>
+#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-Status Unique::Compute(OpKernelContext* ctx) const {
-  const Tensor& sequence_0 = *(ctx->Input<Tensor>(0));          // sequence_0: [sequence_length, 1]
+ONNX_OPERATOR_KERNEL_EX(Unique,
+                        kMSDomain,
+                        1,
+                        kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        Unique<float>);
 
-  const TensorShape& sequence_0_shape = sequence_0.Shape();
+template <>
+Status Unique<float>::Compute(OpKernelContext* ctx) const {
+  const Tensor* input = ctx->Input<Tensor>(0);
 
-  int64_t seq_len_0 = sequence_0_shape[0];
+  // validate input
+  if (input->Shape().NumDimensions() != 1)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor to Unique op should be 1D");
 
-  const int32_t* seq_0_ptr = sequence_0.Data<int32_t>();
+  // obtain raw input data
+  const float* input_data = input->Data<float>();
+  size_t num_elements = static_cast<size_t>(input->Shape().Size());
 
-  std::unordered_set<int32_t> seq_set;
-  for (int64_t i = 0; i < seq_len_0; i++)
-  {
-      seq_set.insert(seq_0_ptr[i]);
+  // 'idx' output has same output shape as input
+  Tensor* output_idx = ctx->Output(1, input->Shape());
+  int64_t* output_idx_data = output_idx->template MutableData<int64_t>();
+
+  // container to hold the unique elements (in the order it was first seen)
+  std::vector<float> unique_elements;
+  // number of unique elements is atmost number of elements in the raw data
+  unique_elements.reserve(num_elements);
+
+  // containers to store other metadata needed for other output tensors
+  std::unordered_map<float, size_t> mapped_indices;
+  std::unordered_map<float, size_t> element_counts;
+
+  // processing
+  for (size_t i = 0; i < num_elements; ++i) {
+    float temp = input_data[i];
+
+    const auto iter = mapped_indices.find(temp);
+    if (iter == mapped_indices.end()) {
+      // element is being seen for the first time
+      element_counts[temp] = 1;
+      output_idx_data[i] = mapped_indices[temp] = unique_elements.size();
+      unique_elements.push_back(temp);
+    } else {
+      // element has been seen before
+      output_idx_data[i] = iter->second;
+      ++element_counts[temp];
+    }
   }
 
-  int64_t output_size = static_cast<int64_t>(seq_set.size());
+  // 'uniques' output
+  TensorShape output_shape({static_cast<int64_t>(unique_elements.size())});
+  Tensor* output_uniques = ctx->Output(0, output_shape);
+  float* output_uniques_data = output_uniques->template MutableData<float>();
 
-  TensorShape Y_dims{output_size};
-  Tensor* Y0 = ctx->Output(/*index*/ 0, Y_dims);
+  // 'counts' output
+  Tensor* output_counts = ctx->Output(2, output_shape);
+  int64_t* output_counts_data = output_counts->template MutableData<int64_t>();
 
-  int32_t* result_ptr = Y0->MutableData<int32_t>();
-  size_t count=0;
-  for (const auto& elem: seq_set) {
-      result_ptr[count++] = elem;
-  }
+  size_t iter = 0;
+  for (const float& e : unique_elements) {
+    // 'uniques' data
+    output_uniques_data[iter] = e;
 
-  TensorShape Y_1_dims{seq_len_0};
-  Tensor* Y1 = ctx->Output(/*index*/ 1, Y_1_dims);
+    // 'counts' data
+    const auto iter_map = element_counts.find(e);
+    output_counts_data[iter] = static_cast<int64_t>(iter_map->second);
 
-  int32_t* result_1_ptr = Y1->MutableData<int32_t>();
-
-  for (int32_t i = 0; i < seq_len_0; i++)
-  {
-      for (int32_t j = 0; j < output_size; j++)
-      {
-          if (result_ptr[j] == seq_0_ptr[i])
-          {
-               result_1_ptr[i] = j;
-               break;
-          }
-      }
+    ++iter;
   }
 
   return Status::OK();
 }
 
-/* Range operator */
-ONNX_OPERATOR_KERNEL_EX(
-    Unique,  //name
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
-    Unique);
-
 }  // namespace contrib
-}  // namespace onnxruntime
+};  // namespace onnxruntime

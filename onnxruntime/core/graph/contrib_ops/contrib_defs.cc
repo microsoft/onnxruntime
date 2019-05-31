@@ -530,6 +530,61 @@ Sample echo operator.)DOC");
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr("output_padding",
+            "",
+            AttributeProto::INTS,
+            OPTIONAL)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "group",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Input(
+          0,
+          "X",
+          "",
+          "T")
+      .Input(
+          1,
+          "W",
+          "",
+          "T")
+      .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
+      .Input(3, "B", "", "T", OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "",
+          "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -929,8 +984,8 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasNInputShapes(ctx, 2)) {
-			return;
-        }		
+          return;
+        }
         auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         auto data_rank = data_shape.dim_size();
@@ -1013,45 +1068,7 @@ Example 4:
           "Constrain to tensor(float).")
       .SetDoc(R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DenseIntersection)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr(
-          "set_operation",
-          "set operation.",
-          AttributeProto::STRING)
-      .Attr(
-          "validate_indices",
-          "validate_indices.",
-          AttributeProto::INT)
-      .Input(0, "Sequence_0", "Sequence 0 for intersection", "T")
-      .Input(1, "Sequence_1", "Sequence 1 for intersection", "T")
-      .Output(0, "Y", "output", "T")
-      .Output(1, "Y1", "output_temp", "T")
-      .Output(2, "Y2", "output_temp_2", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain to tensor(int32), tensor(int64).")
-      .SetDoc(R"DOC(The DenseIntersection takes in two sequence calculate the intersection.)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Unique)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr(
-          "out_idx",
-          "out idx.",
-          AttributeProto::INT)
-      .Input(0, "Sequence", "Sequence 0 for unique", "T")
-      .Output(0, "Y", "output", "T")
-      .Output(1, "Y1", "output_temp", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(int32)"},
-          "Constrain to tensor(int32).")
-      .SetDoc(R"DOC(The Unique.)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicPad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Pad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr(
@@ -1084,65 +1101,65 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-    // Type inference
-    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-    // Shape inference needs the input data shape
-    if (!hasNInputShapes(ctx, 1)) {
-      return;
-    }
-    const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-    const auto input_rank = input_shape.dim_size();
-
-    // Infer output shape if 'pads' tensor is available
-    const auto* pads_initializer = ctx.getInputData(1);
-    if (nullptr != pads_initializer) {
-      const auto& pads_shape = ctx.getInputType(1)->tensor_type().shape();
-      if ((pads_initializer->dims_size() != 1 &&
-           pads_initializer->dims_size() != 2) ||
-          (pads_initializer->dims_size() == 2 &&
-           pads_shape.dim((int)0).dim_value() != 1) ||
-          pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
-        fail_shape_inference(
-            "'pads' input must be a 1D (shape: [input_rank]) "
-            "or 2D tensor (shape: [1, input_rank]) of type int64");
-
-      // make a copy of the returned const vector - may have to resize
-      // this in next step
-      std::vector<int64_t> pads_data;
-      if (pads_initializer->has_raw_data())
-        return;
-      else
-        pads_data.insert(
-            pads_data.end(),
-            pads_initializer->int64_data().begin(),
-            pads_initializer->int64_data().end());
-
-      // fill with zeros if needed to reach appropriate size
-      if (pads_data.size() != static_cast<size_t>(2 * input_rank))
-        pads_data.resize(2 * input_rank, 0);
-
-      const auto& output_shape =
-          ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-      for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-        const auto& input_dim = input_shape.dim((int)i);
-        auto* output_dim = output_shape->add_dim();
-        if (input_dim.has_dim_value()) {
-          output_dim->set_dim_value(
-              input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
-        } else if (pads_data[i] + pads_data[i + input_rank] == 0) {
-          *output_dim = input_dim;
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference needs the input data shape
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
         }
-      }
-    } else {
-      // Infer ouput shapes' rank in any case
-      auto* output_shape_0 = getOutputShape(ctx, 0);
-      for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-        output_shape_0->add_dim();
-      }
-    }
-    return;
-    })
-    .SetDoc(R"DOC(
+        const auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        const auto input_rank = input_shape.dim_size();
+
+        // Infer output shape if 'pads' tensor is available
+        const auto* pads_initializer = ctx.getInputData(1);
+        if (nullptr != pads_initializer) {
+          const auto& pads_shape = ctx.getInputType(1)->tensor_type().shape();
+          if ((pads_initializer->dims_size() != 1 &&
+               pads_initializer->dims_size() != 2) ||
+              (pads_initializer->dims_size() == 2 &&
+               pads_shape.dim((int)0).dim_value() != 1) ||
+              pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
+            fail_shape_inference(
+                "'pads' input must be a 1D (shape: [input_rank]) "
+                "or 2D tensor (shape: [1, input_rank]) of type int64");
+
+          // make a copy of the returned const vector - may have to resize
+          // this in next step
+          std::vector<int64_t> pads_data;
+          if (pads_initializer->has_raw_data())
+            return;
+          else
+            pads_data.insert(
+                pads_data.end(),
+                pads_initializer->int64_data().begin(),
+                pads_initializer->int64_data().end());
+
+          // fill with zeros if needed to reach appropriate size
+          if (pads_data.size() != static_cast<size_t>(2 * input_rank))
+            pads_data.resize(2 * input_rank, 0);
+
+          const auto& output_shape =
+              ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+            const auto& input_dim = input_shape.dim((int)i);
+            auto* output_dim = output_shape->add_dim();
+            if (input_dim.has_dim_value()) {
+              output_dim->set_dim_value(
+                  input_dim.dim_value() + pads_data[i] + pads_data[i + input_rank]);
+            } else if (pads_data[i] + pads_data[i + input_rank] == 0) {
+              *output_dim = input_dim;
+            }
+          }
+        } else {
+          // Infer ouput shapes' rank in any case
+          auto* output_shape_0 = getOutputShape(ctx, 0);
+          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+            output_shape_0->add_dim();
+          }
+        }
+        return;
+      })
+      .SetDoc(R"DOC(
             Given `data` tensor, pads, mode, and value.
             Example:
             Insert 0 pads to the beginning of the second dimension.
@@ -1161,10 +1178,75 @@ Example 4:
                     ]
             )DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Unique)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "x", "A 1-D input tensor that is to be processed.", "T")
+      .Output(0, "y",
+              "A 1-D tensor of the same type as 'x' "
+              "containing all the unique values in 'x' sorted "
+              "in the same order that they occur in the input 'x'",
+              "T")
+      .Output(1, "idx",
+              "A 1-D INT64 tensor of the same size as 'x' "
+              "containing the indices for each value in 'x' "
+              "in the output 'uniques'",
+              "tensor(int64)")
+      .Output(2, "counts",
+              "A 1-D INT64 tensor containing the "
+              "the count of each element "
+              "of 'uniques' in the input 'x'",
+              "tensor(int64)")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::INT64);
+        ONNX_NAMESPACE::updateOutputElemType(ctx, 2, ONNX_NAMESPACE::TensorProto::INT64);
+
+        // Shape inference
+
+        // shape of output 'uniques' and 'counts'
+        // depends on actual input data, but the rank is always 1
+        ctx.getOutputType(0)
+            ->mutable_tensor_type()
+            ->mutable_shape()
+            ->add_dim();
+
+        ctx.getOutputType(2)
+            ->mutable_tensor_type()
+            ->mutable_shape()
+            ->add_dim();
+
+        // if the input shape doesn't exist, further shape inference is not possible
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // 'idx' output has same shape as input
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 1);
+
+        return;
+      })
+      .SetDoc(R"DOC(
+              Finds all the unique values (deduped list) present in the given input tensor. 
+              This operator returns 3 outputs. 
+              The first output tensor 'uniques' contains all of the unique elements of the input, 
+              sorted in the same order that they occur in the input.
+              The second output tensor 'idx' is the same size as the input and it contains the index 
+              of each value of the input in 'uniques'.
+              The third output tensor 'counts' contains the count of each element of 'uniques' in the input.
+              Example:
+                input_x = [2, 1, 1, 3, 4, 3]
+                output_uniques = [2, 1, 3, 4]
+                output_idx = [0, 1, 1, 2, 3, 2]
+                output_counts = [1, 2, 2, 1]
+              )DOC");
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
 #endif
-}
+}  // namespace contrib
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -164,33 +164,19 @@ namespace detail {
 template <typename T>
 class UniDirectionalGru {
  public:
-  UniDirectionalGru(AllocatorPtr allocator,
-                    const logging::Logger& logger,
-                    const int seq_length,
-                    const int batch_size,
-                    const int input_size,
-                    const int hidden_size,
-                    const bool linear_before_reset,
-                    Direction direction,
-                    const gsl::span<const T>& bias,
-                    const gsl::span<const T>& initial_hidden_state,
-                    const ActivationFuncs::Entry& activation_func_f,
-                    const ActivationFuncs::Entry& activation_func_g,
-                    const float clip);
+  UniDirectionalGru(AllocatorPtr allocator, int seq_length, int batch_size, int input_size, int hidden_size,
+                    bool linear_before_reset, Direction direction, const gsl::span<const T>& bias,
+                    const gsl::span<const T>& initial_hidden_state, const ActivationFuncs::Entry& activation_func_f,
+                    const ActivationFuncs::Entry& activation_func_g, float clip);
 
-  void Compute(const gsl::span<const T>& inputs,
-               const gsl::span<const int>& sequence_lengths,
-               const int num_directions,
-               const gsl::span<const T>& input_weights,
-               const gsl::span<const T>& recurrent_weights,
-               gsl::span<T>& outputs,
-               gsl::span<T>& final_hidden_state);
+  void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
+               const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state);
 
   ~UniDirectionalGru() = default;
 
  private:
   AllocatorPtr allocator_;
-  const logging::Logger& logger_;
 
   int seq_length_;
   int batch_size_;
@@ -277,16 +263,14 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
-  auto& logger = context.Logger();
-
   const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
   const Tensor& W = *context.Input<Tensor>(1);  // weights. [num_directions, 3*hidden_size, input_size]
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 3*hidden_size, hidden_size]
 
   // optional
-  const Tensor* B = context.Input<Tensor>(3);              // bias. [num_directions, 6*hidden_size]
-  const Tensor* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
-  const Tensor* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
+  const auto* B = context.Input<Tensor>(3);              // bias. [num_directions, 6*hidden_size]
+  const auto* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
+  const auto* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
 
   auto& X_shape = X.Shape();
 
@@ -380,8 +364,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                                          hidden_output_size_per_direction);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kForward,
+        alloc,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        Direction::kForward,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
@@ -389,8 +378,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, Direction::kReverse,
+        alloc,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        Direction::kReverse,
         bias_2, initial_hidden_2,
         activation_funcs_.Entries()[2],
         activation_funcs_.Entries()[3],
@@ -398,8 +392,13 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc, logger,
-        seq_length, batch_size, input_size, hidden_size_, linear_before_reset_, direction_,
+        alloc,
+        seq_length,
+        batch_size,
+        input_size,
+        hidden_size_,
+        linear_before_reset_,
+        direction_,
         bias_1, initial_hidden_1,
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
@@ -422,7 +421,6 @@ namespace detail {
 
 template <typename T>
 UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
-                                        const logging::Logger& logger,
                                         const int seq_length,
                                         const int batch_size,
                                         const int input_size,
@@ -435,7 +433,6 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const ActivationFuncs::Entry& activation_func_g,
                                         const float clip)
     : allocator_(allocator),
-      logger_(logger),
       seq_length_(seq_length),
       batch_size_(batch_size),
       input_size_(input_size),
@@ -798,7 +795,8 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
       std::fill_n(final_hidden_state_dst, hidden_size_, T{});
       continue;
-    } else if (output_sequence) {
+    }
+    if (output_sequence) {
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);

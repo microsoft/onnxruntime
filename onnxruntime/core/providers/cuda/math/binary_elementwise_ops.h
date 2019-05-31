@@ -203,5 +203,23 @@ class Greater final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
+
+template <typename T>
+class Max final : public CudaKernel {
+ public:
+  Max(const OpKernelInfo& info) : CudaKernel(info) {
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class Min final : public CudaKernel {
+ public:
+  Min(const OpKernelInfo& info) : CudaKernel(info) {
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -12,6 +12,7 @@ Developers can now tap into the power of nGraph through ONNX Runtime to accelera
 While the nGraph Compiler stack supports various operating systems and backends ([full list available here](https://www.ngraph.ai/ecosystem)), the nGraph execution provider for ONNX Runtime is validated for the following:  
 ### Supported OS
 *	Ubuntu 16.04
+* Windows 10 (`DEX_ONLY` mode is only one supported for the moment, codegen mode is work-in-progress.)
 * More to be added soon!
 
 ### Supported backend

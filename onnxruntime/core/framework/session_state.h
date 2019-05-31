@@ -20,7 +20,7 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
 #include "core/common/callback.h"
-#include "core/framework/mlvalue_name_idx_map.h"
+#include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
@@ -42,9 +42,8 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers)
-      : execution_providers_{execution_providers} {
-  }
+  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern)
+      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern) {}
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -65,23 +64,23 @@ class SessionState {
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
-  const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return mlvalue_name_idx_map_; }
-  MLValueNameIdxMap& GetMLValueNameIdxMap() noexcept { return mlvalue_name_idx_map_; }
+  const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
+  MLValueNameIdxMap& GetMLValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
 
   // initialized tensors
   /**
-  * Adds an initialized tensor (weight) so that it can be used by the
-  * execution frame to setup the appropriate MLValue vectors.
-  * This function will take a shallow copy of d if d is not NULL
-  */
-  Status AddInitializedTensor(int mlvalue_index, const MLValue& mlvalue, const OrtCallback* d);
+   * Adds an initialized tensor (weight) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * This function will take a shallow copy of d if d is not NULL
+   */
+  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d);
 
   /**
-  * Gets the list of all initialized tensors (weights) so that it can be used by the
-  * execution frame to setup the appropriate MLValue vectors.
-  * The lifetime of returned MLValues are limited by this SessionState object.
-  */
-  const std::unordered_map<int, MLValue>& GetInitializedTensors() const;
+   * Gets the list of all initialized tensors (weights) so that it can be used by the
+   * execution frame to setup the appropriate OrtValue vectors.
+   * The lifetime of returned MLValues are limited by this SessionState object.
+   */
+  const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
@@ -120,11 +119,6 @@ class SessionState {
   */
   Status UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
-
-  /**
-  Set enable memory pattern flag
-  */
-  void SetEnableMemoryPattern(bool flag);
 
   /**
   Get enable memory pattern flag
@@ -180,7 +174,7 @@ class SessionState {
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
-  std::map<OrtAllocatorInfo, BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
+  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
 
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -194,21 +188,21 @@ class SessionState {
   std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
-  MLValueNameIdxMap mlvalue_name_idx_map_;
+  MLValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensorset
-  std::unordered_map<int, MLValue> initialized_tensors_;  // key is mlvalue_index
+  std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
   // This data structure is for unintializing string tensors and
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
-  std::map<OrtAllocatorInfo, BufferUniquePtr> weights_buffers_;
+  std::vector<BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_;
 
   // switch for enable memory pattern optimization or not.
-  bool enable_mem_pattern_ = true;
+  const bool enable_mem_pattern_;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.

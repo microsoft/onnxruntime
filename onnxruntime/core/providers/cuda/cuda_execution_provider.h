@@ -42,11 +42,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
-  const void* GetExecutionHandle() const noexcept override {
-    // The CUDA interface does not return anything interesting.
-    return nullptr;
-  }
-
   cublasHandle_t PerThreadCublasHandle() {
     // Assure each thread has its TLS context.
     if (!per_thread_context_)
@@ -90,6 +85,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
+
  private:
   cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;
@@ -169,9 +165,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   mutable OrtMutex context_pool_mutex_;
 
   void ReleasePerThreadStuffs() const;
-
-  bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
-  bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) const;
 };
 
 }  // namespace onnxruntime

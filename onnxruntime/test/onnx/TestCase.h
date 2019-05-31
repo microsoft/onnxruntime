@@ -5,6 +5,7 @@
 #include <vector>
 #include <mutex>
 #include <unordered_map>
+#include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/framework/path_lib.h>
@@ -24,6 +25,7 @@ class ITestCase {
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
 
   virtual const std::string& GetTestCaseName() const = 0;
+  virtual std::string GetTestCaseVersion() const = 0;
   //a string to help identify the dataset
   virtual std::string GetDatasetDebugInfoString(size_t dataset_id) = 0;
   //The number of input/output pairs
@@ -51,6 +53,7 @@ class TestModelInfo {
   virtual int GetOutputCount() const = 0;
   virtual const std::string& GetInputName(size_t i) const = 0;
   virtual const std::string& GetOutputName(size_t i) const = 0;
+  virtual std::string GetModelVersion() const {return "";}
   virtual ~TestModelInfo() = default;
 
   static TestModelInfo* LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);

@@ -179,7 +179,7 @@ class OpTester {
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
     std::unique_ptr<std::map<TKey, TVal>> ptr = std::make_unique<std::map<TKey, TVal>>(val);
-    MLValue value;
+    OrtValue value;
     value.Init(ptr.release(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>()->GetDeleteFunc());
@@ -212,7 +212,7 @@ class OpTester {
   template <typename TKey, typename TVal>
   void AddOutput(const char* name, const std::vector<std::map<TKey, TVal>>& val) {
     auto ptr = std::make_unique<std::vector<std::map<TKey, TVal>>>(val);
-    MLValue ml_value;
+    OrtValue ml_value;
     ml_value.Init(ptr.release(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>()->GetDeleteFunc());
@@ -248,7 +248,7 @@ class OpTester {
 
   struct Data {
     onnxruntime::NodeArg def_;
-    MLValue data_;
+    OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
   };
@@ -261,7 +261,7 @@ class OpTester {
 
   void AddInitializers(onnxruntime::Graph& graph);
 
-  void FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
+  void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names);
 
   std::unique_ptr<onnxruntime::Model> BuildGraph();
@@ -299,7 +299,7 @@ class OpTester {
       }
 
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
-      MLValue value;
+      OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>()});
       if (is_initializer)
@@ -310,13 +310,9 @@ class OpTester {
     }
   }
 
-  void ExecuteModel(Model& model,
-                    InferenceSession& session_object,
-                    ExpectResult expect_result,
-                    const std::string& expected_failure_string,
-                    const RunOptions* run_options,
-                    std::unordered_map<std::string, MLValue> feeds,
-                    std::vector<std::string> output_names,
+  void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
+                    const std::string& expected_failure_string, const RunOptions* run_options,
+                    std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
                     const std::string& provider_type);
 
   const char* domain_;

@@ -10,7 +10,7 @@ namespace onnxruntime {
 
 template <typename T, typename PoolType>
 Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
@@ -27,8 +27,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-  const float* X_data = X->template Data<float>();
-  float* Y_data = Y->template MutableData<float>();
+  const auto* X_data = X->template Data<float>();
+  auto* Y_data = Y->template MutableData<float>();
 
   // The main loop
   int64_t channels = x_shape[1];
@@ -169,7 +169,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 }
 
 Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
   size_t input_dims = x_shape.NumDimensions();
@@ -229,7 +229,7 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
     return PoolBase::Compute(context, MlasMaximumPooling);
   }
 
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
@@ -241,8 +241,8 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   Tensor* Y = context->Output(0, TensorShape(output_dims));
   Tensor* I = context->Output(1, TensorShape(output_dims));
 
-  const float* X_data = X->template Data<float>();
-  float* Y_data = Y->template MutableData<float>();
+  const auto* X_data = X->template Data<float>();
+  auto* Y_data = Y->template MutableData<float>();
   int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
 
   // The main loop

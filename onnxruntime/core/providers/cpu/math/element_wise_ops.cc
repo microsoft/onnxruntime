@@ -4,6 +4,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
+#include "core/mlas/inc/mlas.h"
 
 #include <cmath>
 
@@ -974,7 +975,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
   // Turn the shape tensor data into an actual shape
-  const int64_t* p_shape = tensor_shape.template Data<int64_t>();
+  const auto* p_shape = tensor_shape.template Data<int64_t>();
   std::vector<int64_t> shape{p_shape, p_shape + tensor_shape.Shape().Size()};
 
   TBroadcasterExpand<T> bc(*context->Input<Tensor>(0), shape);
@@ -1032,7 +1033,8 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X_ptr != nullptr);
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
-  EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
+
+  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
 
   return Status::OK();
 }

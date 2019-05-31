@@ -11,7 +11,7 @@ namespace onnxruntime {
 Handle a potentially negative axis. Enforces negative axis is valid.
 @param axis Axis to convert from negative to positive if needed.
 @param tensor_rank Rank of tensor axis applies to. Tensor::Shape()::NumDimensions().
-@returns Positive axis.
+@returns non-negative axis.
 */
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
   ORT_ENFORCE(axis >= -tensor_rank && axis <= tensor_rank - 1, "axis ", axis,

@@ -8,18 +8,18 @@
 
 namespace onnxruntime {
 
-Status EliminateSlice::Apply(Graph& graph, Node& node, bool& modified, bool& removed) {
-  if (graph_utils::RemoveSingleInputNode(graph, node)) {
-    removed = modified = true;
+Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+  if (graph_utils::RemoveNode(graph, node)) {
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
   return Status::OK();
 }
 
-bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
+bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) const {
   // We currently support elimination for Slice operator v1.
   // TODO Extend to support Slice operator v10, which includes "steps" and all attributes are now given as inputs.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", 1)) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1})) {
     return false;
   }
   
@@ -37,7 +37,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) {
   }
   std::vector<int64_t> axes;
   if (!graph_utils::GetRepeatedNodeAttributeValues(node, "axes", axes)) {
-    for (int i = 0; (size_t)i < starts.size(); ++i) {
+    for (int i = 0; static_cast<size_t>(i) < starts.size(); ++i) {
       axes.push_back(i);
     }
   } else if (axes.size() != starts.size()) {

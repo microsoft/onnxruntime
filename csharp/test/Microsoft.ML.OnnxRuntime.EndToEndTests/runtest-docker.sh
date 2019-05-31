@@ -4,20 +4,26 @@
 
 # build docker image for CPU
 
-#TODO: Get this working, not tested yet
 set -x
-
-
 
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
-IMAGE="ubuntu16.04"
+Arch=${4:-x64}          # x32, x64
+PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
+RunTestCsharp=${RunTestCsharp:-true}
+RunTestNative=${RunTestNative:-true}
 PYTHON_VER=3.5
-OldDir=$(pwd)
-cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
-docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+IMAGE="ubuntu16.04_$Arch"
 
+OldDir=$(pwd)
+
+cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
+if [ $Arch = "x86" ]; then
+   docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
+else
+   docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+fi
 
 docker rm -f "onnxruntime-cpu" || true
 
@@ -33,9 +39,11 @@ docker run -h $HOSTNAME \
         -e "IsReleaseBuild=$IsReleaseBuild" \
         -e "PackageName=$PackageName" \
         -e "DisableContribOps=$DisableContribOps" \
+        -e "RunTestCsharp=$RunTestCsharp" \
+        -e "RunTestNative=$RunTestNative" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
-        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $TestDataUrl $TestDataChecksum &
+        /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev &
 
 wait -n
 
@@ -43,6 +51,4 @@ EXIT_CODE=$?
 
 set -e
 exit $EXIT_CODE
-
-
 cd $OldDir

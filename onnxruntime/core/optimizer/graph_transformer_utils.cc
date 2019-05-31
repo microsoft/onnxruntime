@@ -11,6 +11,8 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
+#include "core/optimizer/relu_clip_fusion.h"
 
 namespace onnxruntime {
 
@@ -27,9 +29,15 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
       rules.push_back(std::make_unique<EliminateSlice>());
+      rules.push_back(std::make_unique<UnsqueezeElimination>());
+      rules.push_back(std::make_unique<EliminateDropout>());
+      rules.push_back(std::make_unique<FuseReluClip>());
       break;
 
     case TransformerLevel::Level2:
+      rules.push_back(std::make_unique<ConvAddFusion>());
+      rules.push_back(std::make_unique<ConvMulFusion>());
+      rules.push_back(std::make_unique<ConvBNFusion>());
       break;
     default:
       ORT_ENFORCE(false, "Unsupported level" + std::to_string(static_cast<uint32_t>(level)));
@@ -93,9 +101,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l2_execution_providers));
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(l2_execution_providers));
 #endif
-      transformers.emplace_back(std::make_unique<ConvAddFusion>());
-      transformers.emplace_back(std::make_unique<ConvMulFusion>());
-      transformers.emplace_back(std::make_unique<ConvBNFusion>());
     } break;
 
     default:
@@ -110,24 +115,22 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(std::move(rule_transformer));
     }
     return transformers;
-
-  } else {
-    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
-    // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
-    if (rule_transformer != nullptr) {
-      filtered_list.emplace_back(std::move(rule_transformer));
-    }
-    // pick custom transformers enabled for this session
-    for (const auto& t_name : transformers_and_rules_to_enable) {
-      std::for_each(transformers.begin(), transformers.end(),
-                    [&](std::unique_ptr<GraphTransformer>& item) {
-                      if ((item != nullptr) && (item->Name() == t_name)) {
-                        filtered_list.push_back(std::move(item));
-                      }
-                    });
-    }
-    return filtered_list;
   }
+  std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
+  // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
+  if (rule_transformer != nullptr) {
+    filtered_list.emplace_back(std::move(rule_transformer));
+  }
+  // pick custom transformers enabled for this session
+  for (const auto& t_name : transformers_and_rules_to_enable) {
+    std::for_each(transformers.begin(), transformers.end(),
+                  [&](std::unique_ptr<GraphTransformer>& item) {
+                    if ((item != nullptr) && (item->Name() == t_name)) {
+                      filtered_list.push_back(std::move(item));
+                    }
+                  });
+  }
+  return filtered_list;
 }
 
 }  // namespace transformer_utils
