@@ -8,7 +8,22 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<typename T>
+template <typename T>
+void Add(const T* a, const T* b, T* o, size_t N);
+
+template <typename T>
+void GRUZRActivation(T* outputZRH, const T* bias, size_t N);
+
+template <typename T>
+void GRUHActivation(T* outputZRH, const T* bias, size_t N);
+
+template <typename T>
+void GRUOutput(const T* zt, const T* ht, const T* Ht_1, T* Ht, size_t N);
+
+template <typename T>
+void HadamardProduct(const T* a, const T* b, T* o, size_t N);
+
+template <typename T>
 void ReverseBySequence(const int32_t seq_length,
                        const int32_t batch_size,
                        const int32_t input_or_hidden_size,

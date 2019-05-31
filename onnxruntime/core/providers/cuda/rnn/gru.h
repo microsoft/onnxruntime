@@ -31,12 +31,12 @@ class GRU final : public CudnnRnnBase<T> {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
-  Status ComputeOneDirection(const T* input,
+  void ComputeOneDirection(const T* input,
                              const T* w,
                              const T* r,
                              const T* b,
+                             const T* initial_h,
                              T* y,
-                             T* y_h,
                              int batch_size,
                              int input_size,
                              int hidden_size,

@@ -8,6 +8,71 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
+__global__ void _Add(const T* a, const T* b, T* o, CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  o[id] = a[id] + b[id];
+}
+
+template <typename T>
+void Add(const T* a, const T* b, T* o, size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _Add<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(a, b, o, N);
+}
+
+template <typename T>
+__device__ __inline__ T Sigmoid(const T& a) const {
+  return a > T(0) ? (T)1 / ((T)1. + _Exp(-_Abs(a))) : (T)1 - (T)1 / ((T)1 + _Exp(-_Abs(a)));
+}
+
+template <typename T>
+__global__ void _GRUZRActivation(T* outputZRH, const T* bias, CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  outputZRH[id] = Sigmoid(outputZRH[id] + bias[id]);
+}
+
+template <typename T>
+void GRUZRActivation(T* outputZRH, const T* bias, size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _GRUZRActivation<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(a, b, o, N);
+}
+
+template <typename T>
+__global__ void _GRUHActivation(T* outputH, const T* bias, CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  outputZRH[id] = _Tanh(outputH[id] + bias[id]);
+}
+
+template <typename T>
+void GRUHActivation(T* outputZRH, const T* bias, size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _GRUHActivation<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(a, b, o, N);
+}
+
+template <typename T>
+__global__ void _GRUOutput(const T* zt, const T* ht, const T* Ht_1, T* Ht, CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  Ht[id] = (1 - zt[id]) * ht[id] + zt[id] * Ht_1[id];
+}
+
+template <typename T>
+void GRUOutput(const T* zt, const T* ht, const T* Ht_1, T* Ht, size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _GRUOutput<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(zt, ht, Ht_1, Ht, N);
+}
+
+template <typename T>
+__global__ void _HadamardProduct(const T* a, const T* b, T* o, CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  o[id] = a[id] * b[id];
+}
+
+template <typename T>
+void HadamardProduct(const T* a, const T* b, T* o, size_t N) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _HadamardProduct<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(a, b, o, N);
+}
+
+template <typename T>
 __global__ void _ReverseBySequenceKernel(const int32_t seq_length,
                                          const int32_t block_size,
                                          const fast_divmod div_batch_block,
@@ -67,7 +132,7 @@ void ReorderBidirectionalDataInSequence(const int32_t seq_length,
                                         const T* data,
                                         T* reordered_data,
                                         const size_t N) {
-  // The cudnn Y output is organize like [Y1, YB1] [Y2, YB2] ... 
+  // The cudnn Y output is organize like [Y1, YB1] [Y2, YB2] ...
   // need to reorganize it to [Y1, Y2, ...] [YB1, YB2, ...]
   int32_t seq_block_size = 2 * batch_size * hidden_size;
   fast_divmod div_seq_block(seq_block_size);
@@ -108,7 +173,7 @@ __global__ void _RnnMaskKernel(const int32_t seq_length,
     return;
   }
 
-  if ((y_h_output_data != nullptr) && 
+  if ((y_h_output_data != nullptr) &&
       ((direction_id == 0 && (seq_id + 1) == batch_seq_length) || (direction_id == 1 && seq_id == 0))) {
     int hy_idx = direction_id * batch_size * hidden_size + batch_id * hidden_size + offset;
     y_h_output_data[hy_idx] = y_output_data[id];
@@ -133,27 +198,28 @@ void RnnMaskImpl(const int32_t num_directions,
       div_dir_block, div_batch_block, y_output_data, y_h_output_data, (CUDA_LONG)N);
 }
 
-#define SPECIALIZED_RNN_IMPL(T)                                                 \
-  template void RnnMaskImpl<T>(const int32_t num_directions,                    \
-                               const int32_t seq_length,                        \
-                               const int32_t batch_size,                        \
-                               const int32_t hidden_size,                       \
-                               const int32_t* sequence_lens,                    \
-                               T* y_output_data,                                \
-                               T* y_h_output_data,                              \
-                               const size_t N);                                 \
-  template void ReverseBySequence<T>(const int32_t seq_length,                  \
-                                     const int32_t batch_size,                  \
-                                     const int32_t hidden_size,                 \
-                                     const T* data,                             \
-                                     T* reversed_data,                          \
-                                     const size_t N);                           \
-  template void ReorderBidirectionalDataInSequence<T>(const int32_t seq_length, \
-                                                      const int32_t batch_size, \
-                                                      const int32_t hidden_size,\
-                                                      const T* data,            \
-                                                      T* reordered_data,        \
-                                                     const size_t N);
+#define SPECIALIZED_RNN_IMPL(T)                                                  \
+  template void Add<T>(const T* a, const T* b, T* c, size_t N);                  \
+  template void RnnMaskImpl<T>(const int32_t num_directions,                     \
+                               const int32_t seq_length,                         \
+                               const int32_t batch_size,                         \
+                               const int32_t hidden_size,                        \
+                               const int32_t* sequence_lens,                     \
+                               T* y_output_data,                                 \
+                               T* y_h_output_data,                               \
+                               const size_t N);                                  \
+  template void ReverseBySequence<T>(const int32_t seq_length,                   \
+                                     const int32_t batch_size,                   \
+                                     const int32_t hidden_size,                  \
+                                     const T* data,                              \
+                                     T* reversed_data,                           \
+                                     const size_t N);                            \
+  template void ReorderBidirectionalDataInSequence<T>(const int32_t seq_length,  \
+                                                      const int32_t batch_size,  \
+                                                      const int32_t hidden_size, \
+                                                      const T* data,             \
+                                                      T* reordered_data,         \
+                                                      const size_t N);
 
 SPECIALIZED_RNN_IMPL(half)
 SPECIALIZED_RNN_IMPL(float)
