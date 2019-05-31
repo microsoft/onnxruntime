@@ -8,6 +8,8 @@ Param(
     [Parameter(Mandatory=$true, HelpMessage="Build root.")][string]$BuildRoot
 )
 
+Get-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB
+
 $coreSources = Join-Path $SourceRoot "onnxruntime" 
 $headerSources = Join-Path $SourceRoot "include" 
 $buildDir = Join-Path $BuildRoot "Debug\Debug" -Resolve
