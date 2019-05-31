@@ -35,8 +35,7 @@ const static vector<int64_t> IMAGE_DIMS = {1, 784};  //{1, 1, 28, 28} for mnist_
 const static vector<int64_t> LABEL_DIMS = {1, 10};
 const static std::string MNIST_DATA_PATH = "mnist_data";
 
-int validate_params(int argc, char* args[])
-{
+int validate_params(int argc, char* args[]) {
   if (argc < 2) {
     printf("Incorrect command line for %s\n", args[0]);
 #ifdef USE_CUDA
@@ -50,8 +49,7 @@ int validate_params(int argc, char* args[])
 }
 
 #ifdef USE_HOROVOD
-std::pair<int,int> setup_horovod()
-{
+std::pair<int, int> setup_horovod() {
   using namespace horovod::common;
   // setup MPI amd horovod
   MPI_Init(0, 0);
@@ -62,7 +60,8 @@ std::pair<int,int> setup_horovod()
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  int *ranks = (int*)malloc(sizeof(int)* world_size);
+  int* ranks = (int*)malloc(sizeof(int) * world_size);
+
   MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
 
   horovod_init(ranks, world_size);
@@ -70,16 +69,18 @@ std::pair<int,int> setup_horovod()
   return {world_rank, world_size};
 }
 
-void shutdown_horovod()
-{
+void shutdown_horovod() {
   horovod::common::horovod_shutdown();
   MPI_Finalize();
 }
 
 #endif
 
-void setup_training_params(std::string& model_name, TrainingRunner::Parameters& params )
-{
+// NOTE: these variables need to be alive when the error_function is called.
+int true_count = 0;
+float total_loss = 0.0f;
+
+void setup_training_params(std::string& model_name, TrainingRunner::Parameters& params) {
   params.model_path_ = model_name + ".onnx";
   params.model_with_loss_func_path_ = model_name + "_with_cost.onnx";
   params.model_with_training_graph_path_ = model_name + "_bw.onnx";
@@ -96,17 +97,13 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
-  // Uncomment following line to enable in-graph optimizer, which currently only when in GPU
-  params.in_graph_optimizer_name_ = "SGDOptimizer";
+  params.in_graph_optimizer_name_ = params.use_cuda_ ? "SGDOptimizer" : "";
 #else
   params.learning_rate_ = LEARNING_RATE;
 #endif
   params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
 
-  int true_count = 0;
-  float total_loss = 0.0f;
-
-  params.error_function_ = [&true_count, &total_loss](const MLValue& predict, const MLValue& label, const MLValue& loss) {
+  params.error_function_ = [](const MLValue& predict, const MLValue& label, const MLValue& loss) {
     const Tensor& predict_t = predict.Get<Tensor>();
     const Tensor& label_t = label.Get<Tensor>();
     const Tensor& loss_t = loss.Get<Tensor>();
@@ -135,7 +132,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
     total_loss += *loss_data;
   };
 
-  params.post_evaluation_callback_ = [&true_count, &total_loss](size_t num_samples) {
+  params.post_evaluation_callback_ = [](size_t num_samples) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
     printf("#examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
@@ -149,7 +146,6 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
 }
 
 int main(int argc, char* args[]) {
-
   if (validate_params(argc, args) == -1) return -1;
 
   // setup logger
@@ -167,28 +163,31 @@ int main(int argc, char* args[]) {
   // setup training params
   TrainingRunner::Parameters params;
   std::string model_name = args[1];
+#ifdef USE_CUDA
+  params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
+#endif
   setup_training_params(model_name, params);
- 
 
   // setup horovod
-  int device_id = 0, device_count = 1;
+  int device_id = 0,
+      device_count = 1;
 
 #ifdef USE_HOROVOD
   std::tie(device_id, device_count) = setup_horovod();
 #endif
 
 #ifdef USE_CUDA
-  params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
   params.learning_rate_ /= device_count;
   params.world_rank_ = device_id;
-  printf("Using cuda device #%d \n", params.world_rank_);
+  if (params.use_cuda_) {
+    printf("Using cuda device #%d \n", params.world_rank_);
+  }
 #endif
 
   // setup data
   DataSet trainingData({"X", "labels"});
   DataSet testData({"X", "labels"});
   PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData, device_id /* shard_to_load */, device_count /* total_shards */);
-
 
   // start training session
   TrainingRunner runner(trainingData, testData, params);

@@ -77,7 +77,10 @@ class TrainingSession : public InferenceSession {
 
   // TODO: remove or refine below temp interfaces.
   NameMLValMap GetWeights() const;
-  common::Status UpdateWeights(const NameMLValMap& new_weights);
+
+  // (To be deprecated)
+  // Update the weights when updater is not part of the training graph
+  common::Status UpdateWeightsInSessionState(const NameMLValMap& new_weights);
   std::unordered_set<std::string> GetModelInputNames() const;
   std::unordered_set<std::string> GetModelOutputNames() const;
   std::unordered_set<std::string> GetModelInitializers() const;

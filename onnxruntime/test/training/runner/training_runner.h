@@ -72,6 +72,7 @@ class TrainingRunner {
   Status TrainingLoop();
   Status EndTraining();
   Status Evaluate(InferenceSession& session, bool use_full_set = false);
+  Status LoadAndEvaluate(const std::string& model_path);
 
   DataSet& training_data_;
   DataSet& test_data_;

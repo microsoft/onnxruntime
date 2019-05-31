@@ -20,6 +20,7 @@
 
 #include "core/platform/env.h"
 #include "core/graph/schema_registry.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
@@ -198,31 +199,6 @@ void Model::AddFunction(const ONNX_NAMESPACE::FunctionProto& func_proto) {
 ModelProto Model::ToProto() {
   *(model_proto_->mutable_graph()) = graph_->ToGraphProto();
   return *model_proto_;
-}
-
-common::Status Model::UpdateWeights(const NameMLValMap& weights) {
-  // MLValue -> TensorProto
-  for (const auto& name_and_ml_value : weights) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    if (graph_->GetInitializedTensor(name_and_ml_value.first, tensor_proto)) {
-      const auto& src_tensor = name_and_ml_value.second.Get<Tensor>();
-      auto* dst_tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(tensor_proto);
-
-      if (dst_tensor_proto->has_raw_data()) {
-        auto tensor_shape_size = src_tensor.Shape().Size();
-        auto data_size = src_tensor.DataType()->Size() * tensor_shape_size;
-        dst_tensor_proto->set_raw_data(src_tensor.DataRaw(src_tensor.DataType()), data_size);
-      } else {
-        // TODO: support more types than float
-        ORT_ENFORCE(dst_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT);
-        const float* tensor_data = src_tensor.Data<float>();
-        for (int i = 0; i < dst_tensor_proto->float_data_size(); ++i) {
-          dst_tensor_proto->set_float_data(i, tensor_data[i]);
-        }
-      }
-    }
-  }
-  return Status::OK();
 }
 
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {

@@ -29,7 +29,7 @@ class WeightUpdater {
     }
 
     current_weights_ = optimizer_.CalculateNewWeights(current_weights_, gradients, batch_size);
-    return training_session_.UpdateWeights(current_weights_);
+    return training_session_.UpdateWeightsInSessionState(current_weights_);
   }
 
   const NameMLValMap& GetCurrentWeight() const {

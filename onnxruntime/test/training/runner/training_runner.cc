@@ -91,8 +91,9 @@ Status TrainingRunner::Run() {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD));
   }
 
+  // Load and test the original model.
   printf("Before training \n");
-  ORT_RETURN_IF_ERROR(Evaluate(session_, false));
+  ORT_RETURN_IF_ERROR(LoadAndEvaluate(params_.model_with_loss_func_path_));
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
 
@@ -189,23 +190,36 @@ Status TrainingRunner::EndTraining() {
   }
 
   // Load and test the trained model.
-  SessionOptions test_so;
-  InferenceSession test_session{test_so};
-
-  ORT_RETURN_IF_ERROR(test_session.Load(params_.model_trained_with_loss_func_path_));
-  ORT_RETURN_IF_ERROR(test_session.Initialize());
   printf("\nTesting the saved model: %s\n", params_.model_trained_with_loss_func_path_.c_str());
-  return Evaluate(test_session, true /*use full test set*/);
+  return LoadAndEvaluate(params_.model_trained_with_loss_func_path_);
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
+  bool in_training_session = typeid(session) == typeid(TrainingSession);
+
+  // !!!! NOTE: calling Evaluate() has side effects (weights are updated unexpectedly) by in-place SGD in CUDA mode.
+  // Because ORT always runs the entire graph regarless of what the fetches are.
+  // Need to fix that before removing this "if"
+#ifdef USE_CUDA
+  if (params_.use_cuda_ && in_training_session) {
+    printf(
+        "Skipping evaluation during training as ORT always runs the entire graph, "
+        "there are side effects when in-place SGD in CUDA is used. (TO be fixed)\n");
+    return Status::OK();
+  }
+#endif
+
   if (params_.world_rank_ != 0) {
-    printf("Skipping evaluation on Device #%d, as it's not the root.", params_.world_rank_);
+    printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.world_rank_);
     return Status::OK();
   }
 
   // A static batch index representing current test batch
   static size_t current_batch = 0;
+
+  if (use_full_set) {
+    current_batch = 0;
+  }
 
   if (current_batch == 0 && !use_full_set) {
     test_data_.RandomShuffle();
@@ -223,7 +237,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
 
   vector<string> feed_names = test_data_.TensorNames();
   std::vector<MLValue> feeds = test_data_.GetKthBatch(evaluation_batch_size, current_batch);
-  if (use_in_graph_optimizer) {
+  if (in_training_session && use_in_graph_optimizer) {
     feed_names.insert(feed_names.begin(), SGD_LEARNING_RATE_STRING);
 
     MLValue learning_rate_ml_value;
@@ -250,8 +264,19 @@ Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
     params_.post_evaluation_callback_(evaluation_batch_size);
   }
 
-  current_batch++;
+  // Set to next batch
+  if (++current_batch >= test_data_.TotalBatch(evaluation_batch_size)) {
+    current_batch = 0;
+  }
   return Status::OK();
 }
+
+Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
+  InferenceSession s{SessionOptions()};
+  ORT_RETURN_IF_ERROR(s.Load(model_path));
+  ORT_RETURN_IF_ERROR(s.Initialize());
+  return Evaluate(s, true /*use full test set*/);
+}
+
 }  // namespace training
 }  // namespace onnxruntime

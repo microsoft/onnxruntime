@@ -9,6 +9,11 @@
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/training_session.h"
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#endif
+
 using namespace std;
 
 namespace onnxruntime {
@@ -62,9 +67,54 @@ NameMLValMap TrainingSession::GetWeights() const {
   return session_state_.GetInitializedTensors(weights_to_train_);
 }
 
-Status TrainingSession::UpdateWeights(const NameMLValMap& new_weights) {
+Status TrainingSession::UpdateWeightsInSessionState(const NameMLValMap& new_weights) {
   session_state_.UpdateInitializedTensors(new_weights);
   VLOGS(*session_logger_, 1) << "Done updating weights";
+  return Status::OK();
+}
+
+static Status UpdateWeightsBeforeSaving(Graph& graph, const NameMLValMap& weights) {
+  // Store MLValue (either in CPU or CUDA) into TensorProto
+  // TODO: support more types than float
+
+  for (const auto& name_and_ml_value : weights) {
+    // Set src_data pointer
+    const auto& src_tensor = name_and_ml_value.second.Get<Tensor>();
+    const void* src_data = src_tensor.DataRaw(src_tensor.DataType());
+
+    // Set dst_data pointer
+    const ONNX_NAMESPACE::TensorProto* old_tensor_proto = nullptr;
+    if (!graph.GetInitializedTensor(name_and_ml_value.first, old_tensor_proto)) {
+      continue;
+    }
+    ONNX_NAMESPACE::TensorProto new_tensor_proto = *old_tensor_proto;
+    void* dst_data = nullptr;
+    if (new_tensor_proto.has_raw_data()) {
+      dst_data = const_cast<char*>(new_tensor_proto.mutable_raw_data()->data());
+    } else {
+      ORT_ENFORCE(new_tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT);
+      dst_data = new_tensor_proto.mutable_float_data()->mutable_data();
+    }
+
+    // Copy from src_data to dst_data.
+    auto data_size = src_tensor.Size();
+    if (strcmp(src_tensor.Location().name, CPU) == 0) {
+      memcpy(dst_data, src_data, data_size);
+    }
+#ifdef USE_CUDA
+    else if (strcmp(src_tensor.Location().name, CUDA) == 0) {
+      ORT_RETURN_IF_NOT(cudaSuccess == cudaMemcpy(dst_data, src_data, data_size, cudaMemcpyDeviceToHost),
+                        "cudaMemcpy returns error");
+    }
+#endif
+    else {
+      ORT_THROW("Device is not supported:", src_tensor.Location().name);
+    }
+
+    // Replace the TensorProto in the model.
+    graph.RemoveInitializedTensor(old_tensor_proto->name());
+    graph.AddInitializedTensor(new_tensor_proto);
+  }
   return Status::OK();
 }
 
@@ -80,7 +130,7 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
   shared_ptr<Model> new_model;
   ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model));
-  ORT_RETURN_IF_ERROR(new_model->UpdateWeights(GetWeights()));
+  ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(new_model->MainGraph(), GetWeights()));
 
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
       opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {

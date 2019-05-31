@@ -11,7 +11,12 @@ add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx)
 onnxruntime_add_include_to_target(onnxruntime_training  onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
 
+if (onnxruntime_USE_CUDA)
+target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+else()
 target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
+endif()
+
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_srcs})
 
