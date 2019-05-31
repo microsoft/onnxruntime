@@ -8,10 +8,15 @@
 #include "dnnlibrary/OnnxReader.h"
 
 namespace onnxruntime {
+
+constexpr const char* NNAPI = "Nnapi";
+
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return std::make_unique<CPUAllocator>(); },
+                                              [](int) { return std::make_unique<CPUAllocator>(
+                                                  std::make_unique<OrtAllocatorInfo>(NNAPI, 
+                                                    OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(
       std::shared_ptr<IArenaAllocator>(
@@ -205,12 +210,12 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     dnn::OnnxReader onnx_reader;
     dnn::ModelBuilder model_builder;
     onnx_reader.ReadOnnx(model_proto, model_builder);
+    auto dnn_model = model_builder.Compile(model_builder.PREFERENCE_SUSTAINED_SPEED);
+    dnn_models_.emplace(fused_node->Name(), std::move(dnn_model));
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
-      ORT_UNUSED_PARAMETER(context);
-      auto model = model_builder.Compile(model_builder.PREFERENCE_SUSTAINED_SPEED);
-      *state = model.release();
+      *state = dnn_models_[context->node_name].get();
       return 0;
     };
 
@@ -223,17 +228,34 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       dnn::Model* model = reinterpret_cast<dnn::Model*>(state);
-      size_t num_inputs = ort.KernelContext_GetInputCount(context);
-      ORT_ENFORCE(num_inputs == 1, "");
+      const size_t num_inputs = ort.KernelContext_GetInputCount(context);
+      const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
+      ORT_ENFORCE(model->GetOutputs().size() == num_outputs, "Inconsistent output sizes");
+      for (size_t i = 0; i < num_outputs; i++) {
+        const auto output_name = model->GetOutputs()[i];
+        const auto output_shape = model->GetShape(output_name);
+        std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
+        if (int64_output_shape.size() == 4) {
+            // NHWC to NCHW
+            std::swap(int64_output_shape[1], int64_output_shape[3]);
+            std::swap(int64_output_shape[2], int64_output_shape[3]);
+        }
+        auto *output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
+        model->SetOutputBuffer(i, ort.GetTensorMutableData<float>(output_tensor));
+      }
+      std::vector<float *> inputs;
       for (size_t i = 0; i < num_inputs; i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-        const float* input = ort.GetTensorData<float>(input_tensor);
-        model->Predict(input);
+        float* input = const_cast<float *>(ort.GetTensorData<float>(input_tensor));
+        inputs.push_back(input);
       }
+      model->Predict(inputs);
       return 0;
     };
+
+    node_compute_funcs.push_back(compute_info);
   }
   return Status::OK();
 }

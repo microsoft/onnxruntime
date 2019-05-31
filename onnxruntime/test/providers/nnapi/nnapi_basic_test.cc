@@ -32,6 +32,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   ONNX_NAMESPACE::TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
 
@@ -57,10 +58,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::string model_file_name = "nnapi_execution_provider_test_graph.onnx";
   status = onnxruntime::Model::Save(model, model_file_name);
 
-  using namespace ::onnxruntime::logging;
-  auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
-
-  std::vector<int64_t> dims_mul_x = {1, 3, 2};
+  std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
   CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
@@ -79,7 +77,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::vector<OrtValue> fetches;
 
   // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+  std::vector<int64_t> expected_dims_mul_m = {1, 1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
   SessionOptions so;
@@ -88,7 +86,8 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so};
-  session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::NnapiExecutionProvider>());
+  status = session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::NnapiExecutionProvider>());
+  ASSERT_TRUE(status.IsOK());
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
