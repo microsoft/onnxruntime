@@ -162,5 +162,11 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
+
+TEST(ONNXModelsTest, TestModelLoadWithOpsetBelow7) {
+  std::shared_ptr<Model> model;
+  EXPECT_FALSE(Model::Load("testdata/VGG-19.onnx", model).IsOK());
+}
+
 }  // namespace test
 }  // namespace onnxruntime

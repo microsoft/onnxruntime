@@ -104,7 +104,17 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_->opset_import()) {
-    domain_to_version[opSet.domain()] = gsl::narrow_cast<int>(opSet.version());
+    const auto& domain = opSet.domain();
+    const auto version = opSet.version();
+    // empty domain and 'ai.onnx' are equivalent
+    if ((domain.empty() || std::string("ai.onnx").compare(domain) == 0) &&
+        version < 6) {
+      // Currently ONNX Runtime only supports opset 7 and onwards in the ai.onnx domain
+      throw std::invalid_argument(
+          "ONNX Runtime only supports models stamped with opset version 7 "
+          "or above for the opset domain 'ai.onnx'");
+    }
+    domain_to_version[domain] = gsl::narrow_cast<int>(version);
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
