@@ -4,7 +4,6 @@
 import unittest
 import random
 import os
-import test_util
 import sys
 
 
@@ -101,6 +100,11 @@ class ModelZooTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    sys.path.append(sys.argv[4])
+    sys.path.append(sys.argv[5])
+
+    import test_util
+
     loader = unittest.TestLoader()
 
     test_classes = [ModelZooTests]

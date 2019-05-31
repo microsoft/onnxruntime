@@ -60,9 +60,8 @@ static T GetFirstElement(const TensorProto* shapeInitializer) {
     if (shapeInitializer->has_raw_data()) {
         const std::string& bytes = shapeInitializer->raw_data();
         return *reinterpret_cast<const T*>(bytes.c_str());
-    } else {
-        return get_data<T>(shapeInitializer);
     }
+    return get_data<T>(shapeInitializer);
 }
 
 template <typename T>

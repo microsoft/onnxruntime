@@ -78,7 +78,7 @@ TEST(OptimizerTest, Basic) {
 
     kernel->Compute(&op_kernel_context);
 
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);
     auto& tensor = fetches[0].Get<Tensor>();
     const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);

@@ -36,7 +36,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
-  SessionState s{execution_providers};
+  SessionState s{execution_providers, true};
 
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();

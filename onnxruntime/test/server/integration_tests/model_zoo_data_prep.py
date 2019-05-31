@@ -4,15 +4,9 @@
 import os
 import sys
 import shutil
-
-import onnx
-import onnxruntime
 import json
 
 from google.protobuf.json_format import MessageToJson
-
-import predict_pb2
-import onnx_ml_pb2
 
 # Current models only have one input and one output
 def get_io_name(model_file_name):
@@ -44,7 +38,7 @@ def gen_output_pb(pb_full_path, output_name, response_file_path):
 
 
 def tensor2dict(full_path):
-  t = onnx.TensorProto()
+  t = onnx_ml_pb2.TensorProto()
   with open(full_path, 'rb') as f:
     t.ParseFromString(f.read())
 
@@ -139,6 +133,13 @@ def gen_req_resp(model_zoo, test_data, copy_model=False):
 if __name__ == '__main__':
   model_zoo = os.path.realpath(sys.argv[1])
   test_data = os.path.realpath(sys.argv[2])
+
+  sys.path.append(os.path.realpath(sys.argv[3]))
+  sys.path.append(os.path.realpath(sys.argv[4]))
+
+  import onnxruntime
+  import predict_pb2
+  import onnx_ml_pb2
 
   os.makedirs(test_data, exist_ok=True)
   gen_req_resp(model_zoo, test_data)

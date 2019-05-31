@@ -15,9 +15,8 @@ class NodeArg;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
-class MLValue;
 using InputDefList = std::vector<const onnxruntime::NodeArg*>;
 using OutputDefList = std::vector<const onnxruntime::NodeArg*>;
 
-using NameMLValMap = std::unordered_map<std::string, MLValue>;
+using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime

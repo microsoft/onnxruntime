@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/session/onnxruntime_cxx_api.h>
+#include <set>
 #include <iostream>
 #include <fstream>
 #ifdef _WIN32
@@ -28,11 +29,13 @@ void usage() {
       "Options:\n"
       "\t-j [models]: Specifies the number of models to run simultaneously.\n"
       "\t-A : Disable memory arena\n"
+      "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. Default: 'cpu'.\n"
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. "
+      "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
 }
@@ -62,7 +65,7 @@ int GetNumCpuCores() {
   return processorCoreCount;
 }
 #else
-int GetNumCpuCores() { return std::thread::hardware_concurrency(); }
+int GetNumCpuCores() { return static_cast<int>(std::thread::hardware_concurrency()); }
 #endif
 }  // namespace
 
@@ -83,10 +86,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
+  bool enable_mem_pattern = true;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:m:n:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xv"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -115,8 +119,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             return -1;
           }
           break;
-        case 'm':
-          // ignore.
+        case 'M':
+          enable_mem_pattern = false;
           break;
         case 'n':
           // run only some whitelisted tests
@@ -187,6 +191,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableCpuMemArena();
     else
       sf.DisableCpuMemArena();
+    if (enable_mem_pattern)
+      sf.EnableMemPattern();
+    else
+      sf.DisableMemPattern();
     if (enable_sequential_execution)
       sf.EnableSequentialExecution();
     else
@@ -245,7 +253,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       }
       TestResultStat per_case_stat;
       std::vector<ITestCase*> per_case_tests = {l};
-      TestEnv per_case_args(per_case_tests, per_case_stat, env ,sf);
+      TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
       RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
       stat += per_case_stat;
     });
@@ -279,7 +287,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
   // clang-format off
-  std::map<std::string, std::string> broken_tests{
+
+  struct BrokenTest
+  {
+    std::string test_name_;
+    std::string reason_;
+    std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
+    bool operator < (const struct BrokenTest& test) const {
+        return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
+    }
+  };
+
+  std::set<BrokenTest> broken_tests = {
       {"AvgPool1d", "disable reason"},
       {"AvgPool1d_stride", "disable reason"},
       {"AvgPool2d", "disable reason"},
@@ -292,8 +311,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BatchNorm2d_momentum_eval", "disable reason"},
       {"BatchNorm3d_eval", "disable reason"},
       {"BatchNorm3d_momentum_eval", "disable reason"},
+#if defined(__GNUG__) && !defined(__LP64__)
       {"constantofshape_float_ones", "test data bug"},
       {"constantofshape_int_zeros", "test data bug"},
+#else
+      {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
+      {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
+#endif
       {"GLU", "disable reason"},
       {"GLU_dim", "disable reason"},
       {"Linear", "disable reason"},
@@ -307,21 +331,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
-      {"flatten_axis0", "disable reason"},
-      {"flatten_axis1", "disable reason"},
-      {"flatten_axis2", "disable reason"},
-      {"flatten_axis3", "disable reason"},
-      {"flatten_default_axis", "disable reason"},
       {"gemm_broadcast", "disable reason"},
       {"gemm_nobroadcast", "disable reason"},
-      {"greater", "disable reason"},
-      {"greater_bcast", "disable reason"},
-      {"less", "disable reason"},
-      {"less_bcast", "disable reason"},
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"mvn", "disable reason"},
       {"operator_add_broadcast", "disable reason"},
       {"operator_add_size1_broadcast", "disable reason"},
       {"operator_add_size1_right_broadcast", "disable reason"},
@@ -329,15 +343,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"operator_addconstant", "disable reason"},
       {"operator_addmm", "disable reason"},
       {"operator_basic", "disable reason"},
-      {"operator_lstm", "disable reason"},
       {"operator_mm", "disable reason"},
       {"operator_non_float_params", "disable reason"},
       {"operator_params", "disable reason"},
       {"operator_pow", "disable reason"},
-      {"operator_rnn", "disable reason"},
-      {"operator_rnn_single_layer", "disable reason"},
-      {"prelu_broadcast", "disable reason"},
-      {"prelu_example", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -345,7 +354,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong"},
+      {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
       {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
@@ -358,70 +367,77 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
 #ifdef USE_NGRAPH
-  broken_tests["dequantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
-  broken_tests["qlinearconv"] = "ambiguity in scalar dimensions [] vs [1]";
-  broken_tests["quantizelinear"] = "ambiguity in scalar dimensions [] vs [1]";
+  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
+  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
+  broken_tests.insert({"tiny_yolov2", "temporarily disable due to graph resolve failure."});
+  broken_tests.insert({"operator_repeat_dim_overflow", "temporarily disable due to graph resolve failure."});
 #endif
 
 #ifdef USE_CUDA
-  broken_tests["mxnet_arcface"] = "result mismatch";
-  broken_tests["tf_inception_v1"] = "flaky test"; //TODO: Investigate cause for flakiness
+  broken_tests.insert({"mxnet_arcface", "result mismatch"});
+  broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
 #endif
   // clang-format on
 
 #if defined(_WIN32) && !defined(_WIN64)
-  broken_tests["vgg19"] = "failed: bad allocation";
+  broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests["nonzero_example"] = "failed: type mismatch";
+  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123","onnx130","onnx141","onnx150","onnxtip"}});
+  broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
+  broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS
-  broken_tests["coreml_SqueezeNet_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Permute_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_ReLU_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Padding-Upsampling-Normalizer_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["tiny_yolov2"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Pooling_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Padding_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Normalizer_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_ImageNet_small"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_ImageNet_large"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_linear_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_leakyrelu_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_hard_sigmoid_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_elu_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Dense_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_Conv2D_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_VGG16_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_Resnet50_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_Inceptionv3_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_FNS-Candy_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["coreml_AgeNet_ImageNet"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_thresholdedrelu_ImageNet_large"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_thresholdedrelu_ImageNet_small"] = "This model uses contrib ops.";
-  broken_tests["keras2coreml_thresholdedrelu_sklearn_load_breast_cancer"] = "This model uses contrib ops.";
-  broken_tests["thresholdedrelu"] = "This model uses contrib ops.";
-  broken_tests["thresholdedrelu_default"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_default_axes"] = "This model uses contrib ops.";
-  broken_tests["thresholdedrelu_example"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_neg failed"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_start_out_of_bounds"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_end_out_of_bounds"] = "This model uses contrib ops.";
-  broken_tests["dynamic_slice_neg"] = "This model uses contrib ops.";
+  broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_sklearn_load_breast_cancer", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_ImageNet_small", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_ImageNet_large", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_linear_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_leakyrelu_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_hard_sigmoid_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_elu_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Dense_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_Conv2D_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_VGG16_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_Resnet50_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_Inceptionv3_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_FNS-Candy_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"coreml_AgeNet_ImageNet", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_thresholdedrelu_ImageNet_large", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_thresholdedrelu_ImageNet_small", "This model uses contrib ops."});
+  broken_tests.insert({"keras2coreml_thresholdedrelu_sklearn_load_breast_cancer", "This model uses contrib ops."});
+  broken_tests.insert({"thresholdedrelu", "This model uses contrib ops."});
+  broken_tests.insert({"thresholdedrelu_default", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_default_axes", "This model uses contrib ops."});
+  broken_tests.insert({"thresholdedrelu_example", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_neg failed", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_start_out_of_bounds", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_end_out_of_bounds", "This model uses contrib ops."});
+  broken_tests.insert({"dynamic_slice_neg", "This model uses contrib ops."});
+  broken_tests.insert({"mvn", "This model uses contrib ops.", {"onnx130"}});
 #endif
 
   int result = 0;
-  for (const std::string& s : stat.GetFailedTest()) {
-    if (broken_tests.find(s) == broken_tests.end()) {
-      fprintf(stderr, "test %s failed, please fix it\n", s.c_str());
+  for (const auto& p: stat.GetFailedTest()) {
+    BrokenTest t = {p.first, ""};
+    auto iter = broken_tests.find(t);
+    if (iter == broken_tests.end() ||
+       (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+      fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }
   }
-
   return result;
 }
 #ifdef _WIN32

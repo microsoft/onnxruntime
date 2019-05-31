@@ -12,7 +12,8 @@ namespace onnxruntime {
 class ReverseSequenceOp : public OpKernel {
  public:
   explicit ReverseSequenceOp(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t batch_axis, time_axis;
+    int64_t batch_axis;
+    int64_t time_axis;
     ORT_ENFORCE(info.GetAttr<int64_t>("batch_axis", &batch_axis).IsOK());
     ORT_ENFORCE(info.GetAttr<int64_t>("time_axis", &time_axis).IsOK());
 

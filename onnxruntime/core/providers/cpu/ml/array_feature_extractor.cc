@@ -64,7 +64,7 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
 
   const Tensor& Y = *context->Input<Tensor>(1);
   const TensorShape& y_shape = Y.Shape();
-  const int64_t* y_data = Y.template Data<int64_t>();
+  const auto* y_data = Y.template Data<int64_t>();
   const int64_t num_indices = y_shape.Size();
 
   // validate Y
