@@ -26,14 +26,22 @@ the model doesn't use ops that were newly introduced in opset ver 9.
 
 ### Version matrix
 Following table summarizes the relationship between the ONNX Runtime version and the ONNX
-opset version implemented in that release.
+opset version implemented in that release. Please note the Backward and Forward compatiblity notes above.
+For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
 
-| ONNX Runtime release version | ONNX opset version <br> implemented in this release | ONNX ML opset version <br> implemented in this release | Supported ONNX IR version |
-|------------------------------|--------------------|----------------------|------------------|
-| 0.4.0 | 10 | 1 | 5 |
-| 0.3.1 | 9 | 1 | 3 |
-| 0.3.0 | 9 | 1 | 3 |
-| 0.2.1 | 8 | 1 | 3 |
-| 0.2.0 | 8 | 1 | 3 |
-| 0.1.5 | 8 | 1 | 3 |
-| 0.1.4 | 8 | 1 | 3 |
+| ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [WinML compatibility](https://docs.microsoft.com/en-us/windows/ai/windows-ml/)|
+|------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
+| 0.4.0 | 1.5 | 10 | 1 | 5 | -- |
+| 0.3.1<br>0.3.0 | 1.4 | 9 | 1 | 3 | -- |
+| 0.2.1<br>0.2.0 | 1.3 | 8 | 1 | 3 | 1903 (19H1)+ |
+| 0.1.5<br>0.1.4 | 1.3 | 8 | 1 | 3 | 1809 (RS5)+ |
+
+
+## Tool Compatibility
+A variety of tools can be used to create ONNX models. This table shows the versions of these tools that produce various ONNX model versions. Join this with the table above to evaluate ONNX Runtime compatibility.
+| [ONNX release version](https://github.com/onnx/onnx/releases) | [Pytorch](https://pytorch.org/get-started/locally/) | [ONNXMLTools](https://pypi.org/project/onnxmltools/) CoreML, LightGBM, XGBoost, LibSVM | [ONNXMLTools](https://pypi.org/project/onnxmltools/) SparkML | [SKLearn-ONNX](https://pypi.org/project/skl2onnx/) | [Keras-ONNX](https://pypi.org/project/keras2onnx/) | [Tensorflow-ONNX](https://pypi.org/project/tf2onnx/) | [WinMLTools](https://pypi.org/project/winmltools/) | [AutoML](https://pypi.org/project/azureml-automl-core/)|
+
+
+*need to user ONNX version converter to convert to supported opset based on [version matrix above](https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md#version-matrix)
+
+
