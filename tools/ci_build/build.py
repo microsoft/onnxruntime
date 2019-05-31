@@ -126,7 +126,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
     parser.add_argument("--use_tvm", action="store_true", help="Build with tvm")
-    parser.add_argument("--use_openmp", action='store_true', help="Build with OpenMP.")
     parser.add_argument("--use_llvm", action="store_true", help="Build tvm with llvm")
     parser.add_argument("--use_eigenthreadpool", action="store_true", help="Build with eigenthreadpool")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
@@ -320,7 +319,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
-                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),

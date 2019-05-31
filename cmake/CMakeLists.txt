@@ -62,7 +62,6 @@ option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
-option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
@@ -82,19 +81,6 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
-if(onnxruntime_USE_OPENMP AND UNIX)
-  #if you enabled both of them, the code can still be built and run, but you may see
-  # 10x performance degradation, because one process should only have one openmp implementation
-  # mkl(or mklml) depends on Intel OpenMP
-  # GCC does not support linking against the Intel OpenMP runtime library
-  # Clang should be ok, but it's not in our consideration right now.
-  if(onnxruntime_USE_MKLML)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-  endif()
-  if(onnxruntime_USE_NGRAPH)
-    message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
-  endif()
-endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
   if(onnxruntime_USE_NSYNC)
@@ -114,15 +100,6 @@ endif()
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" VERSION_NUMBER)
-
-if(onnxruntime_USE_OPENMP)
-  find_package(OpenMP)
-  if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
-  endif()
-endif()
 
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
@@ -488,9 +465,6 @@ if (onnxruntime_USE_MKLDNN)
 endif()
 
 if (onnxruntime_USE_NGRAPH)
-  #if (onnxruntime_USE_OPENMP)
-  #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
-  #endif()
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
   endif()
