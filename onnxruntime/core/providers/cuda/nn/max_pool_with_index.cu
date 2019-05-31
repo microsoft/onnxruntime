@@ -53,15 +53,6 @@ __global__ void MaxPoolWithIndexKernel(
   int64_t d_start = d_index * stride_d - pad_d;
   int64_t w_start = w_index * stride_w - pad_w;
   int64_t h_start = h_index * stride_h - pad_h;
-  while (d_start < 0) {
-    d_start += dilation_d;
-  }
-  while (w_start < 0) {
-    w_start += dilation_w;
-  }
-  while (h_start < 0) {
-    h_start += dilation_h;
-  }
 
   int64_t d_end = _Min<int64_t>(d_start + (kernel_d - 1) * dilation_d + 1, depth);
   int64_t w_end = _Min<int64_t>(w_start + (kernel_w - 1) * dilation_w + 1, width);

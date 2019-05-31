@@ -136,10 +136,7 @@ class PoolBase {
       }
 
       if (op_name_ == "MaxPool") {
-        int start;
-        int end;
-        info.GetKernelDef().SinceVersion(&start, &end);
-        if (start == 8) {
+        if (start_version_ == 8) {
           storage_order_ = info.GetAttrOrDefault<int64_t>("storage_order", 0 /*default_value*/);
         }
       }
