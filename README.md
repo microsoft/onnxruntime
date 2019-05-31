@@ -10,53 +10,21 @@
 
 ONNX is an open format for machine learning (ML) models that is supported by various ML and DNN frameworks and tools. This format makes it easier to interoperate between frameworks and to maximize the reach of your hardware optimization investments. Learn more about ONNX on [https://onnx.ai](https://onnx.ai) or view the [Github Repo](https://github.com/onnx/onnx).
 
-# Why use ONNX Runtime
-ONNX Runtime has an open architecture that is continually evolving to address the newest developments and challenges in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard, supporting all ONNX releases with future compatibility and maintaining backwards compatibility with prior releases.
-
-ONNX Runtime continuously strives to provide top performance for a broad and growing number of usage scenarios in Machine Learning. Our investments focus on:
-1. Run any ONNX model
-2. High performance
-3. Cross platform
-
-## Run any ONNX model
-
-### Alignment with ONNX Releases
-ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See ONNX version release details [here](https://github.com/onnx/onnx/releases).
-
-As of May 2019, ONNX Runtime supports ONNX 1.5 (opset10). See [this table](https://github.com/Microsoft/onnxruntime/blob/master/docs/Versioning.md#version-matrix) for details on ONNX Runtime and ONNX versioning compatibility, 
-
-### Traditional ML support
-ONNX Runtime fully supports the ONNX-ML profile of the ONNX spec for traditional ML scenarios.
-
-## High Performance
-ONNX Runtime supports both CPU and GPU hardware through a variety of execution providers. With a variety of graph optimizations and accelerators, ONNX Runtime often provides lower latency and higher efficiency compared to other runtimes. This provides faster end-to-end customer experiences and lower costs from improved machine utilization.
-
-Currently ONNX Runtime supports CUDA, TensorRT, MLAS (Microsoft Linear Algebra Subprograms), MKL-DNN, MKL-ML, and nGraph for computation acceleration. See more details on available build options [here](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md).
-
-We are continuously working to integrate new execution providers to provide improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
-
-## Cross Platform
-ONNX Runtime offers:
-* APIs for Python, C#, and C
-* Available for Linux, Windows, and Mac 
-
-See API documentation and package installation instructions [below](#Installation).
-
-We have ongoing investments to make ONNX Runtime compatible with more platforms and architectures. If you have specific scenarios that are not currently supported, please share your suggestions via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
-
 # Getting Started
-ONNX models:
-* Check out the [ONNX Model Zoo](https://github.com/onnx/models) for ready-to-use pre-trained models.
-* To get an ONNX model by exporting from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials).
+* [Installation](#installation)
+* [APIs and Official Binaries](#apis-and-official-builds)
+* [Building from Source](#building-from-source)
+* [Deploying ONNX Runtime](#deploying-onnx-runtime)
+* [Getting ONNX Models](#getting-onnx-models)
+* [Examples and Tutorials](#examples-and-tutorials)
 
-Once you have an ONNX model, you can [install the runtime](#Installation) for your machine to try it out. There is also an [ONNX-Ecosystem Docker container](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) available and ready for use with the Python API.
+## Installation
+**Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
 
-One easy way to deploy the model on the cloud is by using [Azure Machine Learning](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx). 
+Additional dockerfiles for some features can be found [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles).
 
-
-# Installation
-## System Requirements
-* ONNX Runtime binaries in CPU packages use OpenMP and depends on the library being available at runtime in the
+### System Requirements
+* ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, OpenMP support comes as part of VC runtime. It is also available as redist packages:
     [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
@@ -66,8 +34,10 @@ system.
 * Certain operators makes use of system locales. At the very least you will need to install English language package and configure en_US.UTF-8 locale.
   * For Ubuntu install language-pack-en package
   * Run the following commands:
-    * locale-gen en_US.UTF-8
-    * update-locale LANG=en_US.UTF-8
+  
+    `locale-gen en_US.UTF-8`
+    
+    `update-locale LANG=en_US.UTF-8`
   * Follow similar procedure to configure other locales on other platforms.
 
 ## APIs and Official Builds
@@ -78,24 +48,81 @@ system.
 | [C](docs/C_API.md) | **Available on Nuget :**<br/>[MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul><br/>[MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><hr>[Binaries (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Binaries (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
 | [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
 
-For builds using other execution providers, see Build Details below.
+## Building from Source
+If additional build flavors are preferred, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
-## Build Details
-For details on the build configurations and information on how to create a build, see [Build ONNX Runtime](BUILD.md).
+## Deploying ONNX Runtime
+ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx).
 
-## Versioning
-See more details on API and ABI Versioning and ONNX Compatibility in [Versioning](docs/Versioning.md).
+**ONNX Runtime Server (beta)** is a hosted application for serving ONNX models using ONNX Runtime, providing a REST API for prediction. Usage details can be found [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md), and image installation instructions are [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#onnx-runtime-server-preview).
+
+## Examples and Tutorials
+
+## Getting ONNX Models
+* The [ONNX Model Zoo](https://github.com/onnx/models) has popular ready-to-use pre-trained models.
+* To export or convert a trained ONNX model trained from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials). Versioning comptability information can be found under [Versioning](docs/Versioning.md#tool-compatibility)
+* Other services that can be used to create ONNX models include:
+  * [Automated ML](aka.ms/automatedmldocs)
+  * [Custom Vision](https://www.customvision.ai/)
+  * [E2E training on Azure Machine Learning Services](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx)
+
+# About ONNX Runtime
+* [Why use ONNX Runtime](#why-use-onnx-runtime)
+* [Design and Key Features](#design-and-key-features)
+
+## Why use ONNX Runtime
+ONNX Runtime has an open architecture that is continually evolving to address the newest developments and challenges in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard, supporting all ONNX releases with future compatibility and maintaining backwards compatibility with prior releases.
+
+ONNX Runtime continuously strives to provide top performance for a broad and growing number of usage scenarios in Machine Learning. Our investments focus on:
+1. Run any ONNX model
+2. High performance
+3. Cross platform
+
+## Run any ONNX model
+**As of May 2019, ONNX Runtime supports up to ONNX 1.5 (opset10).**
+ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See version compatibility details [here](https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md).
+
+**Traditional ML support**
+ONNX Runtime fully supports the [ONNX-ML profile](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) of the ONNX spec for traditional ML scenarios.
+
+## High Performance
+ONNX Runtime supports both CPU and GPU hardware. Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
+
+Currently ONNX Runtime supports the following accelerators:
+* CPU
+  * MLAS (Microsoft Linear Algebra Subprograms)
+  * MKL-DNN
+  * MKL-ML
+  * Intel nGraph
+* GPU
+  * CUDA
+  * TensorRT
+
+Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following the instructions [here](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md).
+
+We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
+
+## Cross Platform
+ONNX Runtime offers:
+* APIs for Python, C#, and C
+* Available for Linux, Windows, and Mac 
+
+[API documentation and package installation](#Installation)
+
+There are ongoing investments to make ONNX Runtime compatible with more platforms and architectures. If you have specific scenarios that are not currently supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 
 # Design and Key Features
-For an overview of the high level architecture and key decisions in the technical design of ONNX Runtime, see [Engineering Design](docs/HighLevelDesign.md).
+[High level architectural design](docs/HighLevelDesign.md)
 
-ONNX Runtime is built with an extensible design that makes it versatile to support a wide array of models with high performance.
-
+## Extensibility 
 * [Add a custom operator/kernel](docs/AddingCustomOp.md)
 * [Add an execution provider](docs/AddingExecutionProvider.md)
 * [Add a new graph
 transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
+
+# Versioning
+See more details on API and ABI Versioning and ONNX Compatibility in [Versioning](docs/Versioning.md).
 
 # Contribute
 We welcome your contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
