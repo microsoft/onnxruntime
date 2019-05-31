@@ -9,15 +9,25 @@
 **ONNX Runtime** is an open-source scoring engine for Open Neural Network Exchange (ONNX) models.
 
 ONNX is an open format for machine learning (ML) models that is supported by various ML and DNN frameworks and tools. This format makes it easier to interoperate between frameworks and to maximize the reach of your hardware optimization investments. Learn more about ONNX on [https://onnx.ai](https://onnx.ai) or view the [Github Repo](https://github.com/onnx/onnx).
-
-# Getting Started
+***
+**Setup**
 * [Installation](#installation)
 * [APIs and Official Binaries](#apis-and-official-builds)
 * [Building from Source](#building-from-source)
+
+**Getting Started**
 * [Deploying ONNX Runtime](#deploying-onnx-runtime)
 * [Getting ONNX Models](#getting-onnx-models)
 * [Examples and Tutorials](#examples-and-tutorials)
 
+**About ONNX Runtime**
+* [Why use ONNX Runtime](#why-use-onnx-runtime)
+* [Design and Key Features](#design-and-key-features)
+
+**[Contributions and Feedback](#contribute)**
+
+**[License](#license)**
+***
 ## Installation
 **Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
 
@@ -41,15 +51,22 @@ system.
   * Follow similar procedure to configure other locales on other platforms.
 
 ## APIs and Official Builds
-| API Documentation | CPU package | GPU package |
-|-----|-------------|-------------|
-| [Python](https://aka.ms/onnxruntime-python) | [Available on Pypi](https://pypi.org/project/onnxruntime)<br/><ul><li> Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><br/> | [Available on Pypi](https://pypi.org/project/onnxruntime-gpu) <br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/><br/> |
-| [C#](docs/CSharp_API.md) | **Available on Nuget :**<br/>[MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul><br/>[MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)<ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul>| [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li> Windows: x64</li><li>Linux: x64</li></ul><br/>|
-| [C](docs/C_API.md) | **Available on Nuget :**<br/>[MLAS+Eigen](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul><br/>[MKL-ML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li><li>Mac OS X: x64</li></ul><hr>[Binaries (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64, x86</li><li>Linux: x64, x86</li><li>Mac OS X: x64</li></ul> | [Available on Nuget](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/><br/>[Binaries (.zip, .tgz)](https://aka.ms/onnxruntime-release)<br/><ul><li>Windows: x64</li><li>Linux: x64</li></ul><br/> |
-| [C++](onnxruntime/core/session/inference_session.h) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) | [Build from source](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md) |
+
+### APIs
+* [Python](https://aka.ms/onnxruntime-python)
+* [C](docs/C_API.md)
+* [C#](docs/CSharp_API.md)
+* [C++](onnxruntime/core/session/inference_session.h)
+
+### Official Builds
+| | CPU (MLAS+Eigen) | CPU (MKL-ML) | GPU (CUDA)
+|---|:---|:---|:---|
+| **Python** | **[pypi: onnxruntime](https://pypi.org/project/onnxruntime)**<br><br>Windows (x64)<br>Linux (x64)<br>Mac OS X (x64) | -- | **[pypi: onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)**<br><br>Windows (x64)<br>Linux (x64) |
+| **C#** | **[Nuget: Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)**<br><br>Windows (x64, x86)<br>Linux (x64, x86)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.MKLML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)**<br><br>Windows (x64)<br>Linux (x64)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)**<br><br>Windows (x64)<br>Linux (x64) |
+| **C** | **[Nuget: Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)**<br><br>**[.zip, .tgz](https://aka.ms/onnxruntime-release)**<br><br>Windows (x64, x86)<br>Linux (x64, x86)<br>Mac OS X (x64 | **[Nuget: Microsoft.ML.OnnxRuntime.MKLML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)**<br><br>Windows (x64)<br>Linux (x64)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)**<br><br>**[.zip, .tgz](https://aka.ms/onnxruntime-release)**<br><br>Windows (x64)<br>Linux (x64) |
 
 ## Building from Source
-If additional build flavors are preferred, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
+If additional build flavors are needed, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 ## Deploying ONNX Runtime
 ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx).
@@ -65,10 +82,6 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
   * [Automated ML](aka.ms/automatedmldocs)
   * [Custom Vision](https://www.customvision.ai/)
   * [E2E training on Azure Machine Learning Services](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx)
-
-# About ONNX Runtime
-* [Why use ONNX Runtime](#why-use-onnx-runtime)
-* [Design and Key Features](#design-and-key-features)
 
 ## Why use ONNX Runtime
 ONNX Runtime has an open architecture that is continually evolving to address the newest developments and challenges in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard, supporting all ONNX releases with future compatibility and maintaining backwards compatibility with prior releases.
@@ -112,17 +125,15 @@ ONNX Runtime offers:
 There are ongoing investments to make ONNX Runtime compatible with more platforms and architectures. If you have specific scenarios that are not currently supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 
 # Design and Key Features
-[High level architectural design](docs/HighLevelDesign.md)
+* [High level architectural design](docs/HighLevelDesign.md)
+* [Versioning](docs/Versioning.md)
 
-## Extensibility 
+## Extensibility Options
 * [Add a custom operator/kernel](docs/AddingCustomOp.md)
 * [Add an execution provider](docs/AddingExecutionProvider.md)
 * [Add a new graph
 transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
-
-# Versioning
-See more details on API and ABI Versioning and ONNX Compatibility in [Versioning](docs/Versioning.md).
 
 # Contribute
 We welcome your contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
