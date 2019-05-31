@@ -21,7 +21,6 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   }
   Status status;
   {
-    std::lock_guard<OrtMutex> lock(lock_);
     for (auto& registry : custom_kernel_registries_) {
       status = registry->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
                                          session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
@@ -32,11 +31,8 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   }
 
   KernelRegistry* p = nullptr;
-  {
-    std::lock_guard<OrtMutex> lock(lock_);
-    auto iter = provider_type_to_registry_.find(ptype);
-    if (iter != provider_type_to_registry_.end()) p = iter->second.get();
-  }
+  auto iter = provider_type_to_registry_.find(ptype);
+  if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
     status = p->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
                                 session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
@@ -53,7 +49,6 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
 }
 
 Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& execution_providers) {
-  std::lock_guard<OrtMutex> lock(lock_);
   for (auto& provider : execution_providers) {
     auto iter = provider_type_to_registry_.find(provider->Type());
     if (iter != provider_type_to_registry_.end()) {
@@ -76,7 +71,6 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
   if (nullptr == kernel_registry) {
     return;
   }
-  std::lock_guard<OrtMutex> lock(lock_);
   custom_kernel_registries_.push_front(kernel_registry);
 }
 
@@ -98,7 +92,6 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   }
   Status status;
   {
-    std::lock_guard<OrtMutex> lock(lock_);
     for (auto& registry : custom_kernel_registries_) {
       *kernel_create_info = registry->TryFindKernel(node, "");  // the last argument is ignored
       if (*kernel_create_info != nullptr) {
@@ -108,11 +101,8 @@ Status KernelRegistryManager::SearchKernelRegistry(const onnxruntime::Node& node
   }
 
   KernelRegistry* p = nullptr;
-  {
-    std::lock_guard<OrtMutex> lock(lock_);
-    auto iter = provider_type_to_registry_.find(ptype);
-    if (iter != provider_type_to_registry_.end()) p = iter->second.get();
-  }
+  auto iter = provider_type_to_registry_.find(ptype);
+  if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
     *kernel_create_info = p->TryFindKernel(node, "");  // the last argument is ignored
     if (*kernel_create_info != nullptr) {

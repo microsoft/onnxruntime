@@ -119,9 +119,6 @@ class FuseExecutionProvider : public IExecutionProvider {
     return Status::OK();
   }
 
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
 };
 
 namespace test {

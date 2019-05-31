@@ -13,7 +13,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
 # Set C++14 as standard for the whole project
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "")
+set(CMAKE_CXX_STANDARD 14)
 
 # General C# prperties
 if (onnxruntime_BUILD_CSHARP)
@@ -82,6 +82,19 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
+if(onnxruntime_USE_OPENMP AND UNIX)
+  #if you enabled both of them, the code can still be built and run, but you may see
+  # 10x performance degradation, because one process should only have one openmp implementation
+  # mkl(or mklml) depends on Intel OpenMP
+  # GCC does not support linking against the Intel OpenMP runtime library
+  # Clang should be ok, but it's not in our consideration right now.
+  if(onnxruntime_USE_MKLML)
+    message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
+  endif()
+  if(onnxruntime_USE_NGRAPH)
+    message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+  endif()
+endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
   if(onnxruntime_USE_NSYNC)
