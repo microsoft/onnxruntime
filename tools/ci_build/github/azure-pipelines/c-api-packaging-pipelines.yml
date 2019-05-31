@@ -59,7 +59,7 @@ jobs:
 
     - script: |
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
       displayName: 'Build and Test MacOS'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -90,7 +90,6 @@ jobs:
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp '
         buildArch: $(buildArch)
         msbuildPlatform: $(buildArch)
         buildConfig: $(buildConfig)
@@ -122,7 +121,7 @@ jobs:
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp --x86 '
+        buildAdditionalParams: ' --x86 '
         buildArch: $(buildArch)
         msbuildPlatform: 'Win32'
         buildConfig: $(buildConfig)
