@@ -14,10 +14,7 @@ namespace cuda {
       1, 9,                                                                               \
       TIND,                                                                               \
       kCudaExecutionProvider,                                                             \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(2).                          \
-                         InputMemoryType<OrtMemTypeCPUInput>(3).                          \
-                         TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+      KernelDefBuilder().TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
       Slice<TIND,false>);
 
