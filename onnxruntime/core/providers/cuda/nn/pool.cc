@@ -188,8 +188,8 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   Tensor* I = context->Output(1, TensorShape(y_dims));
-  if (nullptr != I || this->start_version_ == 10) {
-    auto i_data = nullptr != I ? I->template MutableData<int64_t>() : nullptr;
+  if (nullptr != I || !default_dilations_) {
+    auto i_data = nullptr == I ? nullptr : I->template MutableData<int64_t>();
     MaxPoolWithIndex<CudaT>(
         x_shape,
         TensorShape(y_dims),

@@ -50,11 +50,11 @@ class AveragePool {
   static const PoolType type = PoolType::kAveragePool;
 };
 
-template <int VERSION>
+template <int START_VERSION>
 class MaxPool;
 
 template <>
-class MaxPool<1 /*VERSION*/> {
+class MaxPool<1 /*START_VERSION*/> {
  public:
   static float Initialize() {
     return std::numeric_limits<float>::lowest();
@@ -74,7 +74,7 @@ class MaxPool<1 /*VERSION*/> {
 };
 
 template <>
-class MaxPool<8 /*VERSION*/> {
+class MaxPool<8 /*START_VERSION*/> {
  public:
   static const PoolType type = PoolType::kMaxPool;
 };
@@ -125,8 +125,12 @@ class PoolBase {
         ceil_mode_ = 0;
       }
 
+      default_dilations_ = false;
       if (!info.GetAttrs<int64_t>("dilations", dilations_).IsOK() || dilations_.empty()) {
         dilations_.resize(kernel_shape_.size(), 1);
+        default_dilations_ = true;
+      } else {
+        default_dilations_ = std::all_of(dilations_.begin(), dilations_.end(), [](int64_t i) { return i == 1; });
       }
 
       if (op_name_ == "AveragePool") {
@@ -261,6 +265,8 @@ class PoolBase {
   std::vector<int64_t> strides_;
   std::vector<int64_t> dilations_;  // Introduced in MaxPool_10
   int start_version_;
+  // default_dilations_ is true if dilations_ is not set or all dilations_ are 1
+  bool default_dilations_;
 
   AutoPadType auto_pad_;
 
