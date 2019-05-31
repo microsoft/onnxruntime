@@ -162,5 +162,14 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
+
+TEST(ONNXModelsTest, TestModelLoadWithOpsetBelow7) {
+  std::shared_ptr<Model> model;
+  const auto& status = Model::Load("testdata/subgraph_implicit_input_from_initializer_opset3.onnx", model);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_TRUE(status.ErrorMessage().find(
+                  "ONNX Runtime only supports models stamped with opset version 7 "
+                  "or above for the opset domain 'ai.onnx'") != std::string::npos);
+}
 }  // namespace test
 }  // namespace onnxruntime

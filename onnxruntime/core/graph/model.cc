@@ -3,6 +3,7 @@
 
 #include "core/graph/model.h"
 #include <memory>
+#include "core/common/logging/logging.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -104,7 +105,27 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_->opset_import()) {
-    domain_to_version[opSet.domain()] = gsl::narrow_cast<int>(opSet.version());
+    const auto& domain = opSet.domain();
+    const auto version = opSet.version();
+    // empty domain and 'ai.onnx' are equivalent
+    if ((domain.empty() || std::string("ai.onnx").compare(domain) == 0) &&
+        version < 7) {
+      if (version == 6) {
+        // needed to pass CI
+        // TODO: Check if we can upgrade all the current opset 6 models that are being tested
+        // to opset 7 or above
+        LOGS_DEFAULT(WARNING) << "ONNX Runtime only guarantees support for models "
+                                 "with opset version 7 or above for opset domain 'ai.onnx'. "
+                                 "However, this opset 6 model may run depending upon "
+                                 "legacy support of some older opset version operators.";
+      } else {
+        // Currently ONNX Runtime only (guarantees) support opset 7 and onwards in the ai.onnx domain
+        throw std::invalid_argument(
+            "ONNX Runtime only supports models stamped with opset version 7 "
+            "or above for the opset domain 'ai.onnx'");
+      }
+    }
+    domain_to_version[domain] = gsl::narrow_cast<int>(version);
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
