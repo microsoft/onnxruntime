@@ -1,6 +1,6 @@
 # Hardware Enabled with OpenVINO Execution Provider
 
-OpenVINO Execution Provider enables deep learning inference on Intel CPUs,  integrated GPUs and Intel® Movidius® Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
+OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel integrated GPUs and Intel<sup>®</sup> Movidius<sup>TM</sup> Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 # ONNX Layers supported using OpenVINO
 
@@ -22,7 +22,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Identity | Ignored | Yes | Yes | Yes
 | ImageScaler | ScaleShift  | Yes  | Yes  | Yes
 | LRN  | Norm | Yes | Yes | Yes
-| MatMul* | FullyConnected | Yes | Yes | No
+| MatMul | FullyConnected | Yes | Yes* | No
 | MaxPool | Pooling(pool\_method=max) | Yes | Yes | Yes
 | Mul | Eltwise(operation=mul) | Yes | Yes | Yes
 | Relu |  ReLU  | Yes | Yes | Yes
@@ -33,7 +33,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | UnSqueeze | Reshape  | Yes  | Yes  | Yes
 | LeakyRelu | ReLU | Yes  | Yes  | Yes
 
-*MatMul is only supported in CPU and GPU when the following layer is an Add layer in the topology.  
+*MatMul is supported in GPU only when the following layer is an Add layer in the topology.  
 
 # Topology Support
 
@@ -82,7 +82,7 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 
 # Application code changes for VAD-R performance scaling
 
-VAD-R has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use Batching approach for performance scaling on VAD-R. 
+VAD-R has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use batching approach for performance scaling on VAD-R. 
 
 Below python code snippets provide sample classification code to batch input images, load a model and process the output results. 
 
