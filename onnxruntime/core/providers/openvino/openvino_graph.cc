@@ -62,6 +62,26 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
 
   fused_node_ = fused_node;
 
+  // Save the indexes of graph inputs among fused_node's inputDefs
+  // (which also contains initializers).
+  std::map<std::string, int> inputdef_index_map;
+  auto input_defs = fused_node_->InputDefs();
+  int i=0;
+  for(auto idef : input_defs) {
+    inputdef_index_map.insert({idef->Name(), i});
+    i++;
+  }
+
+  auto inputs = fused_node_->GetFunctionBody()->Body().GetInputs();
+  for (auto input: inputs) {
+    if(inputdef_index_map.find(input->Name()) == inputdef_index_map.end()) {
+      throw "Input not found in the input defs list";
+    }
+
+    int index = inputdef_index_map[input->Name()];
+    input_indexes_.push_back(index);
+  }
+
   cnn_network_ = BuildCNNNetworkWithMO();
 
   infer_requests_ = GetExecutableHandle(cnn_network_, device_id_, precision_);
@@ -347,7 +367,7 @@ void OpenVINOGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* cont
   size_t input_count = cnn_network_->getInputsInfo().size();
 
   for(size_t i=0; i< input_count; i++) {
-    input_tensors[i] = ort.KernelContext_GetInput(context, i);
+    input_tensors[i] = ort.KernelContext_GetInput(context, input_indexes_[i]);
   }
 }
 

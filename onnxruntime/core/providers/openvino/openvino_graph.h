@@ -56,6 +56,7 @@ class OpenVINOGraph {
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
   mutable std::mutex compute_lock_;
+  std::vector<int> input_indexes_;
 };
 }  // namespace openvino_ep
 
