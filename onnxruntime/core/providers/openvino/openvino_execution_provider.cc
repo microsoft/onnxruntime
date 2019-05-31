@@ -473,12 +473,25 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
         for(auto index : node_indexes){
             sub_graph->nodes.push_back(index);
-        }
-        for(auto input : graph_viewer.GetInputsIncludingInitializers()){
-            fused_inputs.insert(input);
-        }
-        for(auto output : graph_viewer.GetOutputs()){
-            fused_outputs.insert(output);
+            auto* node = graph_viewer.GetNode(index);
+
+            // Track graph inputs and initializers
+            for(auto input_def : node->InputDefs()) {
+              if(fused_outputs.find(input_def) == fused_outputs.end()) {
+                fused_inputs.insert(input_def);
+              } else {
+                fused_outputs.erase(input_def);
+              }
+            }
+
+            // Track graph outputs
+            for(auto output_def : node->OutputDefs()) {
+              if(fused_inputs.find(output_def) == fused_inputs.end()) {
+                fused_outputs.insert(output_def);
+              } else {
+                fused_inputs.erase(output_def);
+              }
+            }
         }
 
         ONNX_NAMESPACE::AttributeProto model_proto_str_attr;
