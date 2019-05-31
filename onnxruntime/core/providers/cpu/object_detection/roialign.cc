@@ -288,19 +288,19 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   using namespace onnxruntime::common;
 
   // X
-  const auto* X_ptr = context->Input<Tensor>(0);
+  const Tensor* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
   }
 
   // rois
-  const auto* rois_ptr = context->Input<Tensor>(1);
+  const Tensor* rois_ptr = context->Input<Tensor>(1);
   if (!rois_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
   }
 
   // batch indices
-  const auto* batch_indices_ptr = context->Input<Tensor>(2);
+  const Tensor* batch_indices_ptr = context->Input<Tensor>(2);
   if (!batch_indices_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
   }

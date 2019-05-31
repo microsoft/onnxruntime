@@ -62,14 +62,15 @@ Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int
   // Will return axis_ as is if positive or fixes it in case it is negative
   auto axis_parsed = HandleNegativeAxis(axis, in_dims.size());
   // Check to ensure k is within the bounds of what is available in that specific axis
+
   unsigned k = k0;
   if (in_dims.at(axis_parsed) < k0) {
-	k = static_cast<unsigned>(in_dims.at(axis_parsed));
-	/*
-    ostringstream err_msg;
-    err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
-    return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
-	*/
+	  k = static_cast<unsigned>(in_dims.at(axis_parsed));
+	  /*
+	  ostringstream err_msg;
+	  err_msg << "k argment [" << k << "] should not be greater than specified axis dim value [" << in_dims.at(axis_parsed) << "]";
+	  return Status(common::ONNXRUNTIME, common::FAIL, err_msg.str());
+	  */
   }
 
   if (k == 0) {

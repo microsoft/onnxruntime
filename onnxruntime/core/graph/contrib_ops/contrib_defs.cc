@@ -1241,6 +1241,41 @@ Example 4:
                 output_uniques = [2, 1, 3, 4]
                 output_idx = [0, 1, 1, 2, 3, 2]
                 output_counts = [1, 2, 2, 1]
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DenseToDenseSetOperation)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("default_value", "", AttributeProto::INT, OPTIONAL)
+      .Input(0, "x", "N dimensional input tensor that is to be processed.", "T")
+      .Input(1, "y", "N dimensional input tensor that is to be processed. First N-1 dimensions must match x. Type must match x", "T")
+      .Output(0, "z",
+              "A  N dimensional tensor of the same type as 'x' and 'y'. "
+              "First N-1 dimensions match 'x' and 'y'. The last dimension is equal to size of largest subset intersection of 'x' and 'y' ",
+              "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
+      .SetDoc(R"DOC(
+              Finds all in deduped intersecting values in 'x' and 'y'.
+              This operator returns 1 output.
+	      The output is a densetensor containing the intersections of the subsets
+	      in the two input tensors. The first N-1 dimenstions match 'x' and 'y'.
+	      The last dimension is equal to the size of the largest subset intersection of
+	      'x' and 'y'. It is 0 if no common values are found in the subsets.
+
+              Example:
+                input_x = [[[1 2 0 0]
+						    [3 0 0 0]]
+						   [[4 0 0 0]
+						    [5 6 9 0]]]
+
+				input_y = [[[1 0 0 0]
+						    [0 0 0 0]]
+						   [[4 0 0 0]
+						    [5 6 7 8]]]
+
+                output_z = [[[1 0]
+						     [0 0]]
+						    [[4 0]
+						     [5 6]]]
               )DOC");
 
 #ifdef MICROSOFT_INTERNAL
