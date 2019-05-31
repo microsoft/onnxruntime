@@ -1,4 +1,5 @@
 # Build ONNX Runtime
+Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.
 
 ## Supported architectures
 
