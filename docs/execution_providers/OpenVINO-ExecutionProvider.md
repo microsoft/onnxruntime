@@ -1,6 +1,6 @@
 # Hardware Enabled with OpenVINO Execution Provider
 
-OpenVINO Execution Provider enables deep learning inference on Intel CPUs,  integrated GPUs and Intel® Movidius® Vision Processing Unit (VPU). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
+OpenVINO Execution Provider enables deep learning inference on Intel CPUs,  integrated GPUs and Intel® Movidius® Vision Processing Units (VPUs). Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 # ONNX Layers supported using OpenVINO
 
@@ -84,23 +84,55 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 
 VAD-R has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use Batching approach for performance scaling on VAD-R. 
 
-Below python code snippets provide sample code to batch input images at the application code level:
+Below python code snippets provide sample code to batch input images, load a model(here,classification) and process the output results. 
+
+~~~
+import onnxruntime as rt
+from onnxruntime import get_device
+import os
+import os.path
+import sys
+import cv2
+import numpy
+import time
+import glob 
+~~~
+### Load the input onnx model
+
+~~~
+sess = rt.InferenceSession(str(sys.argv[1]))
+print("\n")
+~~~
 
 ### Preprocessing input images
 ~~~
-for img in images:
-   # resizing the image
-   img = cv2.resize(img, (224,224))  
-   # convert image to numpy 
-   x = numpy.asarray(img).astype(numpy.float32) 
-   x = numpy.transpose(x, (2,0,1)) 
-   # expand the dimension and batch the images
-   x = numpy.expand_dims(x,axis=0) 
-   if y is None: 
-      y = x 
-   else: 
-      y = numpy.concatenate((y,x), axis=0) 
+for i in range(iters):
+   y = None
+   images = [cv2.imread(file) for file in glob.glob(str(sys.argv[2])+'/*.jpg')]
+   for img in images:
+     # resizing the image
+     img = cv2.resize(img, (224,224))  
+     # convert image to numpy 
+     x = numpy.asarray(img).astype(numpy.float32) 
+     x = numpy.transpose(x, (2,0,1)) 
+     # expand the dimension and batch the images
+     x = numpy.expand_dims(x,axis=0) 
+     if y is None: 
+        y = x 
+     else: 
+        y = numpy.concatenate((y,x), axis=0) 
 ~~~
 
-Output results will be batched as well. Post-processing steps need to be added depending on the type of topology used (classification/object detection/etc.)
+### Start Inference 
+~~~
+   res = sess.run([sess.get_outputs()[0].name], {sess.get_inputs()[0].name: y})
+~~~
+### Post-processing output results
+~~~
+   print("Output probabilities:")
+   i = 0
+   for k in range(batch_size):
+       for prob in res[0][k][0]:
+          print("%d : %7.4f" % (i, prob))
+~~~
 

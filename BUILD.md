@@ -143,13 +143,13 @@ ONNX Runtime supports OpenVINO Execution Provider to enable deep learning infere
 The OpenVINO Execution Provider can be built using the following commands:
 
 - Install the OpenVINO 2018 R5.0.1 release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+
 - Install the model optimizer prerequisites for ONNX by running 
-<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh
-</code> 
+<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code> 
+
 - Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
  
    <code>source setupvars.sh</code>
-
 
 - Build ONNX Runtime using the below command.
 
@@ -157,15 +157,15 @@ The OpenVINO Execution Provider can be built using the following commands:
 
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
-  <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+   <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
-  | Hardware Option | Target Device |
-  | --- | --- | --- | --- | --- | --- |
-  | <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
-  | <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
-  | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
-  | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
-  | <code>VAD-R_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs | 
+| Hardware Option | Target Device |
+| --- | --- | --- | --- | --- | --- |
+| <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
+| <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
+| <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
+| <code>VAD-R_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs | 
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
 
