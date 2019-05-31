@@ -15,7 +15,20 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                           \
       BatchNormalization,                                            \
       kOnnxDomain,                                                   \
-      7, 9,                                                          \
+      7, 8,                                                          \
+      T,                                                             \
+      kCudaExecutionProvider,                                        \
+      KernelDefBuilder()                                             \
+          .TypeConstraint("X", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("scale", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("B", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("mean", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("var", DataTypeImpl::GetTensorType<T>()),  \
+      BatchNorm<T>);                                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+      BatchNormalization,                                            \
+      kOnnxDomain,                                                   \
+      9,                                                             \
       T,                                                             \
       kCudaExecutionProvider,                                        \
       KernelDefBuilder()                                             \

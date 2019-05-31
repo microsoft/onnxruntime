@@ -19,14 +19,14 @@ class Reshape final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     // Copy the second input tensor into the shape vector
-    const Tensor* shapeTensor = context->Input<Tensor>(1);
+    const auto* shapeTensor = context->Input<Tensor>(1);
     ORT_ENFORCE(shapeTensor->Shape().NumDimensions() == 1,
                 "A shape tensor must be a vector tensor.");
-    size_t nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
-    const int64_t* data = shapeTensor->template Data<int64_t>();
+    auto nDims = static_cast<size_t>(shapeTensor->Shape()[0]);
+    const auto* data = shapeTensor->template Data<int64_t>();
     std::vector<int64_t> shape(data, data + nDims);
 
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
     ReshapeHelper helper(X_shape, shape);
@@ -48,7 +48,7 @@ class Reshape_1 final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     std::vector<int64_t> shape = shape_;
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
     ReshapeHelper helper(X_shape, shape);

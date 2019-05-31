@@ -84,7 +84,7 @@ Use the individual flags to only run the specified stages.
     # Python bindings
     parser.add_argument("--enable_pybind", action='store_true', help="Enable Python Bindings.")
     parser.add_argument("--build_wheel", action='store_true', help="Build Python Wheel. ")
-    parser.add_argument("--numpy_version", default='1.15.0', help="Installs a specific version of numpy "
+    parser.add_argument("--numpy_version", help="Installs a specific version of numpy "
                         "before building the python binding.")
     parser.add_argument("--skip-keras-test", action='store_true', help="Skip tests with Keras if keras is installed")
 
@@ -219,7 +219,7 @@ def install_ubuntu_deps(args):
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel']
-    dep_packages.append('numpy==%s' % numpy_version if numpy_version else 'numpy')
+    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -270,8 +270,10 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
         shutil.rmtree(models_dir)
     if shutil.which('unzip'):
         run_subprocess(['unzip','-qd', models_dir, local_zip_file])
-    elif shutil.which('7za'):
-        run_subprocess(['7za','x', local_zip_file, '-y', '-o' + models_dir])
+    elif shutil.which('7z'):  # 7-Zip
+        run_subprocess(['7z','x', local_zip_file, '-y', '-o' + models_dir])
+    elif shutil.which('7za'):  # 7-Zip standalone
+        run_subprocess(['7za', 'x', local_zip_file, '-y', '-o' + models_dir])
     else:
         #TODO: use python for unzip
         log.error("No unzip tool for use")
@@ -318,7 +320,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
-                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp else "OFF"),
+                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
@@ -493,8 +495,11 @@ def setup_tensorrt_vars(args):
         # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests 
         os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
 
-        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes).  
+        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)  
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"  
+
+        # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
+        os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
         
     return tensorrt_home
 
@@ -572,6 +577,19 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 
+def split_server_binary_and_symbol(build_dir, configs):
+    if is_windows():
+        # TODO: Windows support
+        pass
+    else:
+        for config in configs:
+            if config == 'RelWithDebInfo':
+                config_build_dir = get_config_build_dir(build_dir, config)
+                run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
+                run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
+            
+
 def run_server_tests(build_dir, configs):
     pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
     installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
@@ -587,27 +605,32 @@ def run_server_tests(build_dir, configs):
         config_build_dir = get_config_build_dir(build_dir, config)
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
+            python_package_path = os.path.join(config_build_dir, config)
         else:
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
+            python_package_path = config_build_dir
         server_test_folder = os.path.join(config_build_dir, 'server_test')
         server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
-        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
 def run_server_model_tests(build_dir, configs):
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
+        server_test_folder = os.path.join(config_build_dir, 'server_test')
+        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
+ 
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
             test_raw_data_folder = os.path.join(config_build_dir, 'models')
+            python_package_path = os.path.join(config_build_dir, config)
         else:
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             test_raw_data_folder = os.path.join(build_dir, 'models')
-
-        server_test_folder = os.path.join(config_build_dir, 'server_test')
-        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
-        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
-        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder], cwd=server_test_folder, dll_path=None)
+            python_package_path = config_build_dir
+        
+        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
+        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, nightly_build = False):
@@ -706,7 +729,7 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.build_wheel:
+    if args.build_wheel or args.enable_server_model_tests:
         args.enable_pybind = True
 
     if args.build_csharp:
@@ -730,7 +753,6 @@ def main():
     os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
-    os.environ["PATH"] = os.environ["PATH"] + os.pathsep + os.path.dirname(sys.executable)
     if (args.update):
         cmake_extra_args = []
         if(is_windows()):
@@ -792,7 +814,7 @@ def main():
 
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.enable_pybind if not args.skip_onnx_tests else False,
+                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt, args.use_ngraph)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
@@ -817,11 +839,12 @@ def main():
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
-    if args.build_server and args.enable_server_tests:
-        run_server_tests(build_dir, configs)
-
-    if args.build_server and args.enable_server_model_tests:
-        run_server_model_tests(build_dir, configs)
+    if args.build_server:
+        split_server_binary_and_symbol(build_dir, configs)
+        if args.enable_server_tests:
+            run_server_tests(build_dir, configs)
+        if args.enable_server_model_tests:
+            run_server_model_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:

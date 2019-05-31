@@ -51,19 +51,19 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     kernel->Compute(&op_kernel_context);
 
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);
 
     // Go over all output node args and substitute them with the newly computed tensors, which will be
     // added to the graph as initializers.
     ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
     for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-      MLValue& mlvalue = fetches[fetch_idx];
+      OrtValue& ort_value = fetches[fetch_idx];
 
-      // Build the TensorProto that corresponds to the computed MLValue and add it as initializer to the graph.
+      // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
       ONNX_NAMESPACE::TensorProto out_tensorproto;
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
-      BuildTensorProtoForInitializer(mlvalue, *constant_arg_out, out_tensorproto);
+      BuildTensorProtoForInitializer(ort_value, *constant_arg_out, out_tensorproto);
 
       graph.AddInitializedTensor(out_tensorproto);
     }
@@ -81,11 +81,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   return Status::OK();
 }  // namespace onnxruntime
 
-void ConstantFolding::BuildTensorProtoForInitializer(const MLValue& mlvalue,
-                                                     const NodeArg& constant_node_arg,
+void ConstantFolding::BuildTensorProtoForInitializer(const OrtValue& ort_value, const NodeArg& constant_node_arg,
                                                      ONNX_NAMESPACE::TensorProto& tensorproto) const {
-  ORT_ENFORCE(mlvalue.IsTensor());
-  const Tensor& out_tensor = mlvalue.Get<Tensor>();
+  ORT_ENFORCE(ort_value.IsTensor());
+  const Tensor& out_tensor = ort_value.Get<Tensor>();
 
   // Set name, dimensions, type, and data of the TensorProto.
   tensorproto.set_name(constant_node_arg.Name());

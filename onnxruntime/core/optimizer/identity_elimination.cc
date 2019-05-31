@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) {
+Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   if (graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
@@ -18,7 +18,7 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
   return Status::OK();
 }
 
-bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node) {
+bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node) const {
   return graph_utils::IsSingleInSingleOutNode(node) &&
          !graph.IsNodeOutputsInGraphOutputs(node);
 }

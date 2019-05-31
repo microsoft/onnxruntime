@@ -14,10 +14,10 @@
 namespace onnxruntime {
 
 /**
-Class to provide a slicing service over a Tensor stored within an MLValue with shape
+Class to provide a slicing service over a Tensor stored within an OrtValue with shape
 {batch size, sequence length, <input shape>}. Access to the slices is via an iterator interface.
 
-For each iteration an MLValue will be returned containing a sub-Tensor of the original Tensor.
+For each iteration an OrtValue will be returned containing a sub-Tensor of the original Tensor.
 The sub-Tensor applies the relevant offset to the data address from the original Tensor in order
 to avoid any memory allocations/copies for the tensor data.
 */
@@ -26,14 +26,14 @@ class MLValueTensorSlicer {
  public:
   /**
   Create a new instance to slice the Tensor contained in an MLValue
-  into sub-Tensors contained within new MLValue instances that are accessed via the Iterator.
-  T must be 'MLValue' or 'const MLValue'
+  into sub-Tensors contained within new OrtValue instances that are accessed via the Iterator.
+  T must be 'OrtValue' or 'const OrtValue'
     @param slice_dimension Dimension to slice on.
     @param dim0_offset Offset to start at. Only meaningful if slice_dimension != 0.
            e.g. if input is [batch, seq_len, data] and you want to slice the seq_len dimension, you need to
                 create an Iterator instance for each batch item, incrementing dim0_offset for each one.
   */
-  static MLValueTensorSlicer Create(T& mlvalue, int64_t slice_dimension = 0, int64_t dim0_offset = 0);
+  static MLValueTensorSlicer Create(T& ort_value, int64_t slice_dimension = 0, int64_t dim0_offset = 0);
 
   class Iterator {
    public:
@@ -44,19 +44,16 @@ class MLValueTensorSlicer {
     using reference = T&;
     using const_reference = std::add_const_t<reference>;
 
-    enum class Direction { kForward,
-                           kReverse };
+    enum class Direction { kForward, kReverse };
 
-    explicit Iterator(T& mlvalue, size_t slice_dimension, size_t dim0_offset,
-                      int64_t position, Direction direction = Direction::kForward);
+    explicit Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
+                      Direction direction = Direction::kForward);
 
     bool operator==(const Iterator& other) const noexcept {
-      return mlvalue_ == other.mlvalue_ && position_ == other.position_;
+      return ort_value_ == other.ort_value_ && position_ == other.position_;
     }
 
-    bool operator!=(const Iterator& other) const noexcept {
-      return !(*this == other);
-    }
+    bool operator!=(const Iterator& other) const noexcept { return !(*this == other); }
 
     Iterator& operator++() {
       position_ += increment_by_;
@@ -85,7 +82,7 @@ class MLValueTensorSlicer {
       return current_;
     }
 
-    // non-const is only enabled if T is not const (i.e. is 'MLValue' not 'const MLValue')
+    // non-const is only enabled if T is not const (i.e. is 'OrtValue' not 'const OrtValue')
     std::enable_if_t<!std::is_const<reference>::value, reference> operator*() {
       ORT_ENFORCE(position_ >= 0 && position_ < sequence_length_);
       if (position_ != position_materialized_) {
@@ -98,7 +95,7 @@ class MLValueTensorSlicer {
    private:
     void MaterializeMLValue() const;
 
-    T* mlvalue_;
+    T* ort_value_;
     int64_t position_;
 
     // 1 for forward, -1 for reverse
@@ -116,31 +113,28 @@ class MLValueTensorSlicer {
     size_t per_iteration_offset_;
 
     mutable int64_t position_materialized_;  // position_ when current_ was created
-    mutable MLValue current_;
+    mutable OrtValue current_;
   };
 
-  Iterator begin() const noexcept { return Iterator(*mlvalue_, slice_dimension_, dim0_offset_, 0); }
-  Iterator end() const noexcept { return Iterator(*mlvalue_, slice_dimension_, dim0_offset_,
-                                                  std::numeric_limits<int64_t>::max()); }
+  Iterator begin() const noexcept { return Iterator(*ort_value_, slice_dimension_, dim0_offset_, 0); }
+  Iterator end() const noexcept {
+    return Iterator(*ort_value_, slice_dimension_, dim0_offset_, std::numeric_limits<int64_t>::max());
+  }
 
   Iterator rbegin() const noexcept {
-    return Iterator(*mlvalue_, slice_dimension_, dim0_offset_, std::numeric_limits<int64_t>::max(),
+    return Iterator(*ort_value_, slice_dimension_, dim0_offset_, std::numeric_limits<int64_t>::max(),
                     Iterator::Direction::kReverse);
   }
 
   Iterator rend() const noexcept {
-    return Iterator(*mlvalue_, slice_dimension_, dim0_offset_, -1,
-                    Iterator::Direction::kReverse);
+    return Iterator(*ort_value_, slice_dimension_, dim0_offset_, -1, Iterator::Direction::kReverse);
   }
 
  private:
-  MLValueTensorSlicer(T& mlvalue, int64_t slice_dimension, int64_t dim0_offset) noexcept
-      : mlvalue_{&mlvalue},
-        slice_dimension_{slice_dimension},
-        dim0_offset_{dim0_offset} {
-  }
+  MLValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
+      : ort_value_{&ort_value}, slice_dimension_{slice_dimension}, dim0_offset_{dim0_offset} {}
 
-  T* mlvalue_;
+  T* ort_value_;
   int64_t slice_dimension_;
   int64_t dim0_offset_;
 };

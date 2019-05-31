@@ -138,8 +138,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* /*raw
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
 
   auto& string_data = tensor.string_data();
-  for (auto iter = string_data.cbegin(); iter != string_data.cend(); ++iter) {
-    *p_data++ = *iter;
+  for (const auto& iter : string_data) {
+    *p_data++ = iter;
   }
 
   return Status::OK();
@@ -163,8 +163,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   if (tensor.int32_data_size() != expected_size)
     return Status(common::ONNXRUNTIME, common::FAIL,
                   "UnpackTensor: the pre-allocate size does not match the size in proto");
-  for (auto iter = tensor.int32_data().cbegin(); iter != tensor.int32_data().cend(); ++iter) {
-    *p_data++ = static_cast<bool>(*iter);
+  for (int iter : tensor.int32_data()) {
+    *p_data++ = static_cast<bool>(iter);
   }
 
   return Status::OK();
@@ -208,8 +208,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
     if (size == 0)
       return Status::OK();
-    else
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
   if (ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16 != tensor.data_type()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
@@ -246,11 +246,11 @@ template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out) {
   const auto& dims = tensor_proto.dims();
   size_t size = 1;
-  for (int i = 0; i < dims.size(); ++i) {
-    if (dims[i] < 0) {
+  for (google::protobuf::int64 dim : dims) {
+    if (dim < 0 || static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max()) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Invalid TensorProto");
     }
-    if (!IAllocator::CalcMemSizeForArray(size, static_cast<size_t>(dims[i]), &size)) {
+    if (!IAllocator::CalcMemSizeForArray(size, static_cast<size_t>(dim), &size)) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Invalid TensorProto");
     }
   }
@@ -363,7 +363,7 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 }
 
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                            const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, MLValue& value,
+                            const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);

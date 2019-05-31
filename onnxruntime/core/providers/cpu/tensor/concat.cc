@@ -21,11 +21,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   const size_t inputs_0_rank = inputs_0_dims.size();
   ORT_RETURN_IF_NOT(inputs_0_rank > 0, "Cannot concatenate scalars");
 
-  auto axis = HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions());
+  uint64_t axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions()));
 
   // cache num of elements in tensor for later use
   // as it's expensive to call Size() on TensorShape over and over
-  std::vector<size_t> tensor_num_elements(input_count);
+  std::vector<size_t> tensor_num_elements(static_cast<size_t>(input_count));
   // Ensure all of the non concatenated axes match each other
   for (int index = 1; index < input_count; index++) {
     size_t num_elements = 1;
@@ -37,7 +37,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     ORT_ENFORCE(inputs_n_rank == inputs_0_rank, "Ranks of input data are different, cannot concatenate them, "
                 "expected rank: ", std::to_string(inputs_0_rank), " got: ", std::to_string(inputs_n_rank));
     // Ensure all the other (non-concat) axes match
-    for (int axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
+    for (size_t axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
       num_elements *= inputs_n_dims[axis_index];
       if (axis_index == axis)
         continue;
@@ -59,7 +59,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   // Calculate the shape of the output tensor
   std::vector<int64_t> dims(inputs_0_rank);
   size_t num_elements = 1; // cache size of the first input along the way
-  for (int dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
+  for (size_t dimension_index = 0; dimension_index < inputs_0_rank; dimension_index++) {
     dims[dimension_index] = inputs_0_dims[dimension_index];
     num_elements *= inputs_0_dims[dimension_index];
   }
@@ -78,8 +78,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
   p.output_axis_pitch = 1;
-  for (auto i = int64_t(inputs_0_rank); i-- > axis;)
-    p.output_axis_pitch *= dims[i];
+  for (size_t i = inputs_0_rank; i-- > axis;) p.output_axis_pitch *= dims[i];
 
   for (int input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = ctx->Input<Tensor>(input_index);
@@ -90,8 +89,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
-    for (int i = static_cast<int>(inputs_0_rank); i-- > axis;)
-      input_axis_pitch *= data_dims[i];
+    for (size_t i = inputs_0_rank; i-- > axis;) input_axis_pitch *= data_dims[i];
 
     p.inputs.push_back({&data_n, tensor_num_elements[input_index], input_axis_pitch});
   }
@@ -125,7 +123,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
     uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
-    for (int idxCopy = 0; idxCopy < input_size / input_axis_pitch; ++idxCopy) {
+    for (size_t idxCopy = 0; idxCopy < input_size / input_axis_pitch; ++idxCopy) {
       if (is_string_type) {
         for (int idxItem = 0; idxItem < input_axis_pitch; ++idxItem)
           reinterpret_cast<std::string*>(output)[output_offset + idxCopy * p.output_axis_pitch + idxItem] =

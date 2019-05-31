@@ -25,13 +25,13 @@ TVMGraph::TensorDescriptor::TensorDescriptor(MLDataType type, onnxruntime::Provi
 
 class IdGenerator {
  public:
-  IdGenerator() : cur_(0) {}
+  IdGenerator() {}
   int GetNext() {
     return cur_++;
   }
 
  private:
-  int cur_;
+  int cur_{0};
 };
 
 // This is a special compiler step for the test case that sum two 1-D tensors
@@ -40,7 +40,8 @@ static void Compile1DAddToTVM(const onnxruntime::Node& node, std::unordered_map<
   tvm::Array<tvm::Expr> shape;
   shape.push_back(tvm::var("n1"));
 
-  tvm::Tensor t1, t2;
+  tvm::Tensor t1;
+  tvm::Tensor t2;
   auto it = tvm_tensors.find(node.InputDefs()[0]->Name());
   if (it == tvm_tensors.end()) {
     tvm_tensors[node.InputDefs()[0]->Name()] = TVMGraph::TensorDescriptor(

@@ -110,7 +110,8 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   // prepare output shape
   const auto* depth_data = depth->Data<depth_type>();
-  const int64_t depth_val = static_cast<int64_t>(*depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
+  const auto depth_val = static_cast<int64_t>(
+      *depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
   if (depth_val <= 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Depth is negative.");
   }

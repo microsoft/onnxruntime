@@ -51,7 +51,7 @@ TEST(PoolTest, MaxPool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: result differs
 }
 
 // Only CUDA kernel has float 16 support
@@ -104,7 +104,7 @@ TEST(PoolTest, MaxPool_F16) {
 
   test.AddInput<MLFloat16>("X", x_dims, f_X);
   test.AddOutput<MLFloat16>("Y", expected_dims, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Assertion `!attrs.count("pads")' failed
 }
 #endif
 
@@ -214,7 +214,7 @@ TEST(PoolTest, MaxPool_10_Dilation_1d) {
 
   test.AddAttribute("auto_pad", "");
   test.AddAttribute("strides", std::vector<int64_t>{1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
   test.AddAttribute("kernel_shape", vector<int64_t>{3});
   test.AddAttribute("dilations", vector<int64_t>{3});
 
@@ -569,9 +569,9 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
   test.AddAttribute("ceil_mode", (int64_t) 1);
 
   std::vector<float> x_vals = {
-	  1,  3,  2,  4, 
+	  1,  3,  2,  4,
 	  5,  7,  6,  8,
-	  9,  11, 10, 12, 
+	  9,  11, 10, 12,
 	  13, 15, 14, 16,
       };
   std::vector<int64_t> x_dims = {1, 1, 4, 4};
