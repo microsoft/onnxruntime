@@ -121,9 +121,9 @@ def create_backend_test(testname=None):
         if version_tag == 'onnx150' or onnx.__version__ == '1.5.0':
             current_failing_tests = current_failing_tests + ('^test_constantofshape_*.*',)
 
-        # Failing for nGraph.
-        if c2.supports_device('NGRAPH'):
-            current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
+        # Example of how to disable tests for a specific provider.
+        # if c2.supports_device('NGRAPH'):
+        #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \

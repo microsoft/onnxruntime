@@ -409,6 +409,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {
       cluster_initializers.push_back(in_arg);
+      cluster_inputs.push_back(in_arg);
     } else if (!output_args.count(in_arg)) {
       cluster_inputs.push_back(in_arg);
     }
