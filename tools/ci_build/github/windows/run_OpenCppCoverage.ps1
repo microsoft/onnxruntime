@@ -51,8 +51,7 @@ $modelDir = Join-Path $BuildRoot "models"
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" -Resolve
 $otr = "$onnx_test_runner " + $modelDir 
-# TODO: Disabling due to long time taken
-# RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
+RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
 # C-API/Shared-lib test
@@ -72,6 +71,6 @@ $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
 # Lotus unit tests
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
 RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov")
-#"onnx_test_runner.cov",
+#,"onnx_test_runner.cov"
 #"onnxruntime_mlas_test.cov",
 #,"onnxruntime_session_without_environment_test.cov"
