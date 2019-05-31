@@ -102,6 +102,9 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
       coordinate_size, num_non_zero_values};
   y_matrix = non_zero_indices_matrix.transpose();
 
+  if (Info().node().Name() == "Postprocessor/BatchMultiClassNonMaxSuppression/map/while/MultiClassNonMaxSuppression/FilterGreaterThan_89/Where")
+    std::cout << "NonZero";
+
   return Status::OK();
 }  // namespace onnxruntime
 }  // namespace onnxruntime

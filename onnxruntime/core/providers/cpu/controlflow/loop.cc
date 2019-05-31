@@ -400,7 +400,7 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
     }
 
     // create empty outputs for loop outputs
-    TensorShape empty;
+    TensorShape empty({0});
     for (int i = num_loop_carried_vars_; i < num_outputs_; ++i) {
       ORT_IGNORE_RETURN_VALUE(context_.Output(i, empty));
     }

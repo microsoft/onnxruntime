@@ -17,15 +17,19 @@ Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const
   p.input_tensor = context->Input<Tensor>(0);
   const TensorShape& input_data_shape = p.input_tensor->Shape();
   p.indices_tensor = context->Input<Tensor>(1);
+
   const TensorShape& indices_shape = p.indices_tensor->Shape();
+  if (indices_shape.NumDimensions() == 0)
+    p.output_tensor = context->Output(0, TensorShape({0}));
+  else {
+    p.axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
 
-  p.axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
+    std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end());
+    shape.insert(shape.begin(), input_data_shape.GetDims().begin(), input_data_shape.GetDims().begin() + p.axis);
+    shape.insert(shape.end(), input_data_shape.GetDims().begin() + p.axis + 1, input_data_shape.GetDims().end());
 
-  std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end());
-  shape.insert(shape.begin(), input_data_shape.GetDims().begin(), input_data_shape.GetDims().begin() + p.axis);
-  shape.insert(shape.end(), input_data_shape.GetDims().begin() + p.axis + 1, input_data_shape.GetDims().end());
-
-  p.output_tensor = context->Output(0, TensorShape(shape));
+    p.output_tensor = context->Output(0, TensorShape(shape));
+  }
 
   return Status::OK();
 }
@@ -74,6 +78,16 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 Status Gather::Compute(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
+
+  if (Info().node().Name() == "Postprocessor/BatchMultiClassNonMaxSuppression/map/while/MultiClassNonMaxSuppression/FilterGreaterThan_89/Gather/Gather_2" ||
+      Info().node().Name() == "Postprocessor/BatchMultiClassNonMaxSuppression/map/while/MultiClassNonMaxSuppression/ClipToWindow_89/Gather/Gather_2" ||
+      Info().node().Name() == "Postprocessor/BatchMultiClassNonMaxSuppression/map/while/MultiClassNonMaxSuppression/Gather_89/Gather_2") {
+    std::cout << "Gather\n";
+  }
+
+  // special case empty data
+  if (p.output_tensor->Shape().Size() == 0)
+    return Status::OK();
 
   const TensorShape& input_data_shape = p.input_tensor->Shape();
 

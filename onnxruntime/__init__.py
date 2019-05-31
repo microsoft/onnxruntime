@@ -17,5 +17,6 @@ __author__ = "Microsoft"
 
 from onnxruntime.capi import onnxruntime_validation
 onnxruntime_validation.check_distro_info()
+#from onnxruntime.capi import set_logging_severity
 from onnxruntime.capi.session import InferenceSession
 from onnxruntime.capi._pybind_state import RunOptions, SessionOptions, get_device, NodeArg, ModelMetadata

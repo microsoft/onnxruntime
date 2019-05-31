@@ -270,7 +270,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
       if (block) {
         auto it = buffers_.find(location);
         // if the block is not correct, log message then fall back to default behavior
-        if (it != buffers_.end() && block->size_ == size) {
+        // Allow block->size_ >= size as the output from some operators (e.g. NonZero) is dependent on the input
+        // We can re-use any buffer that is large enough so don't need exact match on size.
+        if (it != buffers_.end() && block->size_ >= size) {
           void* buffer = it->second.get();
           auto status = AllocateTensorWithPreAllocateBufferHelper(
               ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
