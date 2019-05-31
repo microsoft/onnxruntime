@@ -8,6 +8,7 @@
 #include "cuda_allocator.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "contrib_ops/contrib_kernels.h"
 
 using namespace onnxruntime::common;
 
@@ -881,6 +882,8 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
 std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   RegisterCudaKernels(*kernel_registry);
+  ::onnxruntime::contrib::cuda::RegisterCudaContribKernels(*kernel_registry);
+
   return kernel_registry;
 }
 
