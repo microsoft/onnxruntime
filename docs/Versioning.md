@@ -12,7 +12,8 @@ The version number of the current stable release can be found
 ## Release cadence
 See [Release Management](ReleaseManagement.md)
 
-## Compatibility with ONNX opsets
+# Compatibility
+## ONNX Compatibility
 ONNX Runtime supports both backwards and forward compatibility.
 
 ### Backwards compatibility
@@ -39,9 +40,14 @@ For more details on ONNX Release versions, see [this page](https://github.com/on
 
 ## Tool Compatibility
 A variety of tools can be used to create ONNX models. This table shows the versions of these tools that produce various ONNX model versions. Join this with the table above to evaluate ONNX Runtime compatibility.
-| [ONNX release version](https://github.com/onnx/onnx/releases) | [Pytorch](https://pytorch.org/get-started/locally/) | [ONNXMLTools](https://pypi.org/project/onnxmltools/) CoreML, LightGBM, XGBoost, LibSVM | [ONNXMLTools](https://pypi.org/project/onnxmltools/) SparkML | [SKLearn-ONNX](https://pypi.org/project/skl2onnx/) | [Keras-ONNX](https://pypi.org/project/keras2onnx/) | [Tensorflow-ONNX](https://pypi.org/project/tf2onnx/) | [WinMLTools](https://pypi.org/project/winmltools/) | [AutoML](https://pypi.org/project/azureml-automl-core/)|
 
+| [ONNX release version](https://github.com/onnx/onnx/releases) | [Pytorch](https://pytorch.org/get-started/locally/) | [ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CoreML, LightGBM, XGBoost, LibSVM | [ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML | [SKLearn-ONNX](https://pypi.org/project/skl2onnx/) | [Keras-ONNX](https://pypi.org/project/keras2onnx/) | [Tensorflow-ONNX](https://pypi.org/project/tf2onnx/) | [WinMLTools](https://pypi.org/project/winmltools/) | [AutoML](https://pypi.org/project/azureml-automl-core/)|
+|---|---|---|---|---|---|---|---|---|
+| 1.5 | 1.1+* | in progress | in progress | in progress | in progress | 1.5.1+ | in progress | 1.0.39 |
+| 1.4 | 1.1+* | 1.4.1+ | 1.4.1+ | 1.4.6+ | 1.4.0+ | 1.4.1+ | 1.4+ | 1.0.33 |
+| 1.3 | 1.1+* | 1.3+ | -- | 1.4.0+ | 1.3+ | 0.4.1+ | 1.3+ | -- |
+| 1.2 | 1.1+* | 1.2+ | -- | 1.4.0+ | 1.3+ | 0.3.1+ | 1.2+ | -- |
 
-*need to user ONNX version converter to convert to supported opset based on [version matrix above](https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md#version-matrix)
+*may need to use [ONNX version converter](https://github.com/onnx/onnx/blob/master/docs/VersionConverter.md) to convert to desired opset # within the ONNX release version
 
 
