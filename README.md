@@ -8,7 +8,7 @@
 
 **ONNX Runtime** is an open-source high performance complete scoring engine for Open Neural Network Exchange (ONNX) models.
 
-ONNX[https://github.com/onnx/onnx] is an interoperable format for machine learning models supported by various ML and DNN frameworks and tools. The universal format makes it easier to interoperate between frameworks and maximize the reach of hardware optimization investments.
+[ONNX](https://github.com/onnx/onnx) is an interoperable format for machine learning models supported by various ML and DNN frameworks and tools. The universal format makes it easier to interoperate between frameworks and maximize the reach of hardware optimization investments.
 ***
 **Setup**
 * [Installation](#installation)
@@ -40,7 +40,7 @@ system.
     [vc_redist.x64.exe](https://aka.ms/vs/15/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/15/release/vc_redist.x86.exe)
   * For Linux, the system must have the libgomp.so.1 which can be installed using ```apt-get install libgomp1```.
 * The official GPU builds require the CUDA 9.1 and cuDNN 7.1 runtime libraries being installed in the system.
-* Python binaries are compatible with Python 3.5-3.7.
+* Python binaries are compatible with Python 3.5-3.7. See [Python Dev Notes](https://github.com/microsoft/onnxruntime/blob/master/docs/Python_Dev_Notes.md)
 * Certain operators makes use of system locales. At the very least you will need to install English language package and configure en_US.UTF-8 locale.
   * For Ubuntu install language-pack-en package
   * Run the following commands:
@@ -68,6 +68,8 @@ system.
 ## Building from Source
 If additional build flavors are needed, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
+Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/faxu-doc-updates/tools/ci_build/github/linux/docker) to help you get started.
+
 ## Deploying ONNX Runtime
 ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service). See [detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx) and [sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx).
 
@@ -81,11 +83,10 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 * [Convert and Inference a Keras model](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
 
 **Deployment with AzureML**
-* [Inferencing Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb)
-* [Inferencing MNIST Handwritten Digits](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb)
-* [Train and Inference model from Pytorch](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
-* [Inferencing Resnet50 Image Classification](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb)
-* [Inferencing TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
+* Inferencing: [Inferencing Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb), [Inferencing MNIST Handwritten Digits](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb), [ Resnet50 Image Classification](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb), [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
+* [Train and Inference MNIST from Pytorch](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
+* [FER+ on Azure Kubernetes Service with TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
+
 ### C#
 * [Inferencing Tutorial](https://github.com/microsoft/onnxruntime/blob/master/docs/CSharp_API.md#getting-started)
 
@@ -108,14 +109,18 @@ ONNX Runtime provides top performance for a broad and growing number of importan
 2. High performance
 3. Cross platform
 
-## Run any ONNX model
+### Run any ONNX model
 **As of May 2019, ONNX Runtime supports up to ONNX 1.5 (opset10).**
+
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See version compatibility details [here](https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md).
 
+*Note: Some operators not supported in the current ONNX version may be available as a [Contrib Operator](https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md)*
+
 **Traditional ML support**
+
 ONNX Runtime fully supports the [ONNX-ML profile](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) of the ONNX spec for traditional ML scenarios.
 
-## High Performance
+### High Performance
 ONNX Runtime supports both CPU and GPU hardware. Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
 
 Currently ONNX Runtime supports the following accelerators:
@@ -123,16 +128,16 @@ Currently ONNX Runtime supports the following accelerators:
   * MLAS (Microsoft Linear Algebra Subprograms)
   * MKL-DNN
   * MKL-ML
-  * Intel nGraph
+  * [Intel nGraph](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/nGraph-ExecutionProvider.md)
 * GPU
   * CUDA
-  * TensorRT
+  * [TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md)
 
 Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md).
 
 We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
-## Cross Platform
+### Cross Platform
 [API documentation and package installation](https://github.com/microsoft/onnxruntime#installation)
 
 ONNX Runtime is available for Linux, Windows, Mac with Python, C#, and C APIs. More in progress and coming soon!
@@ -141,6 +146,7 @@ If you have specific scenarios that are not currently supported, please share yo
 # Design and Key Features
 * [High level architectural design](docs/HighLevelDesign.md)
 * [Versioning](docs/Versioning.md)
+* [Running ONNX model tests](https://github.com/microsoft/onnxruntime/blob/master/docs/Model_Test.md)
 
 ## Extensibility Options
 * [Add a custom operator/kernel](docs/AddingCustomOp.md)
