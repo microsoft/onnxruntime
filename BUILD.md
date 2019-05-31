@@ -160,7 +160,7 @@ The OpenVINO Execution Provider can be built using the following commands:
    <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
-| --- | --- | --- | --- | --- | --- |
+| --------------- | ------------------------| 
 | <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
 | <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |

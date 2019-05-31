@@ -84,7 +84,7 @@ Below topologies are supported from ONNX open model zoo using OpenVINO Execution
 
 VAD-R has 8 VPUs and is suitable for applications that require multiple inferences to run in parallel. We use Batching approach for performance scaling on VAD-R. 
 
-Below python code snippets provide sample code to batch input images, load a model(here,classification) and process the output results. 
+Below python code snippets provide sample classification code to batch input images, load a model and process the output results. 
 
 ~~~
 import onnxruntime as rt
