@@ -929,7 +929,7 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasNInputShapes(ctx, 2)) {
-          fail_shape_inference("GatherND requires two tensor inputs.");
+          return;
         }
         auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
