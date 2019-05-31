@@ -102,6 +102,8 @@ class PoolBase {
   PoolBase(const OpKernelInfo& info) {
     op_name_ = info.GetKernelDef().OpName();
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
+    int end;
+    info.GetKernelDef().SinceVersion(&start_version_, &end);
 
     if (!global_pooling_) {
       ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
@@ -261,6 +263,7 @@ class PoolBase {
   std::vector<int64_t> pads_;
   std::vector<int64_t> strides_;
   std::vector<int64_t> dilations_;  // Introduced in MaxPool_10
+  int start_version_;
 
   AutoPadType auto_pad_;
 

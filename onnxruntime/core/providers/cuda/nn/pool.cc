@@ -33,6 +33,9 @@ namespace cuda {
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 7, 9)
+POOLING_KERNEL(AveragePool, float, AveragePool, 10)
+POOLING_KERNEL(AveragePool, double, AveragePool, 10)
+POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 10)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1)
 POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1)
 POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1)
@@ -42,6 +45,9 @@ POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<1>, 1, 7)
 POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 8, 9)
 POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 8, 9)
 POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 8, 9)
+POOLING_KERNEL(MaxPool, float, MaxPool<8>, 10)
+POOLING_KERNEL(MaxPool, double, MaxPool<8>, 10)
+POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 10)
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1)
@@ -182,14 +188,15 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   Tensor* I = context->Output(1, TensorShape(y_dims));
-  if (nullptr != I) {
-    auto i_data = I->template MutableData<int64_t>();
+  if (nullptr != I || this->start_version_ == 10) {
+    auto i_data = nullptr != I ? I->template MutableData<int64_t>() : nullptr;
     MaxPoolWithIndex<CudaT>(
         x_shape,
         TensorShape(y_dims),
         kernel_shape,
         strides,
         pads,
+        this->dilations_,
         this->storage_order_,
         x_data,
         y_data,
