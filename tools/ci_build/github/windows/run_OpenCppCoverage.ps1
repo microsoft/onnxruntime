@@ -8,7 +8,9 @@ Param(
     [Parameter(Mandatory=$true, HelpMessage="Build root.")][string]$BuildRoot
 )
 
-Get-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB
+$oldMemorySize = Get-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB
+Set-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB 4294967294‬
+Enable-WindowsErrorReporting
 
 $coreSources = Join-Path $SourceRoot "onnxruntime" 
 $headerSources = Join-Path $SourceRoot "include" 
@@ -79,3 +81,5 @@ RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("o
 #,"onnx_test_runner.cov"
 #"onnxruntime_mlas_test.cov",
 #,"onnxruntime_session_without_environment_test.cov"
+
+Set-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB $oldMemorySize
