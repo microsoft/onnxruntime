@@ -56,7 +56,7 @@ struct ValueCmp {
 };
 
 // Core TopK implementation
-Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, const unsigned k0) {
+Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* X, const int axis, const unsigned k) {
 
   const vector<int64_t>& in_dims = X->Shape().GetDims();
   // Will return axis_ as is if positive or fixes it in case it is negative
