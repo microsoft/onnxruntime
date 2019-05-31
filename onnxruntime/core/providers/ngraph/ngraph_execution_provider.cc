@@ -547,10 +547,7 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-
-      const Status compute_status = ng_custom_op->Compute(api, context);
-
-      return compute_status == Status::OK() ? 0 : 1;
+      return ng_custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);

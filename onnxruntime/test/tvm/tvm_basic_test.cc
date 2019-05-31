@@ -270,12 +270,12 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         try {
           evaluate_func_.CallPacked(tvm_args, &rvalue);
         } catch (std::exception ex) {
-          return -1;
+          return Status(common::ONNXRUNTIME, common::FAIL);  // TODO: Translate exception to error code
         }
         if (rvalue.type_code() != kNull) {
-          return -1;  // TODO: get error code.
+          return Status(common::ONNXRUNTIME, common::FAIL);  // TODO: get error code.
         } else {
-          return 0;
+          return Status::OK();
         }
       };
       node_compute_funcs.push_back(compute_info);
