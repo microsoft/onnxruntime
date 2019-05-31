@@ -58,7 +58,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build ONNX Runtime Server on Linux
 
-1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server --parallel`
 
 ## Build/Test Flavors for CI
 
@@ -147,12 +147,6 @@ Once you have the OpenBLAS binaries, build ONNX Runtime with `./build.bat --use_
 #### Linux
 For Linux (e.g. Ubuntu 16.04), install libopenblas-dev package
 `sudo apt-get install libopenblas-dev` and build with `./build.sh --use_openblas`
-
-### OpenMP
-```
-./build.sh --use_openmp (for Linux)
-./build.bat --use_openmp (for Windows)
-```
 
 ### Build with Docker on Linux
 Install Docker: `https://docs.docker.com/install/`
