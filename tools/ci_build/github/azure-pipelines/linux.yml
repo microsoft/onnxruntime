@@ -15,11 +15,11 @@ jobs:
   steps:
 
   - ${{ if eq(parameters.doskip, 'false') }}:
-  - script: |
-     ls
-     echo -----
-     ls
-    displayName: 'step1'
+    - script: |
+       ls
+       echo -----
+       ls
+      displayName: 'step1'
 
   - script: |
      ls
