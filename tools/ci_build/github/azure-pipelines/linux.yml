@@ -1,9 +1,9 @@
 
-parameters:
-  doskipp: 'true'
-
 variables:
   doskipv: 'true'
+
+parameters:
+  doskipp: 'true'
 
 jobs: 
 - job: Linux 
