@@ -14,7 +14,7 @@ jobs:
 
   steps:
 
-  - ${{ if eq(parameters.doskipp, 'true') }}:
+  - ${{ if eq(parameters['doskipp'], 'true') }}:
     - script: |
        ls
        echo -----
