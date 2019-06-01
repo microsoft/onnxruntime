@@ -15,12 +15,16 @@ jobs:
   steps:
 
   - ${{ if eq(parameters['doskipp'], 'true') }}:
-    - task: BatchScript@1
-      displayName: 'Setup VS2017 env vars'
+    - task: CmdLine@2
+      displayName: 'Clean untagged docker images'
       inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-        arguments: '-vcvars_ver=14.11'
-        modifyEnvironment: true
+        script: |
+          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+          docker container prune -f
+          docker image prune -f
+        workingDirectory: $(Build.BinariesDirectory)
+      continueOnError: true
+      condition: always()
 
     - script: |
        ls
