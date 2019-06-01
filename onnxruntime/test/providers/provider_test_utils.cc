@@ -458,6 +458,8 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultBrainSliceExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
+        else if (provider_type == onnxruntime::kNnapiExecutionProvider)
+          execution_provider = DefaultNnapiExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

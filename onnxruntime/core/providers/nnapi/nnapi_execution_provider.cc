@@ -148,7 +148,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
       // Assign inputs and outputs to subgraph's meta_def
       auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-      meta_def->name = "TRTKernel_" + std::to_string(counter++);
+      meta_def->name = "NNAPI_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
       for (const auto& input : inputs) {
