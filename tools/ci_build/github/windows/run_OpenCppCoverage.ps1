@@ -54,7 +54,7 @@ $modelDir = Join-Path $BuildRoot "models"
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" -Resolve
 $otr = "$onnx_test_runner " + $modelDir 
 # TODO disabling due to long running time
-# RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
+RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
 # C-API/Shared-lib test
@@ -72,8 +72,7 @@ $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
 Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir
 
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov")
-#,"onnx_test_runner.cov"
+RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnx_test_runner.cov")
 #"onnxruntime_mlas_test.cov",
 #,"onnxruntime_session_without_environment_test.cov"
 
