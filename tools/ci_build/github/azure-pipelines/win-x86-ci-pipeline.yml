@@ -4,6 +4,7 @@ jobs:
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     PlatformTarget: x86
+    RuntimeIdentifier: win-x86
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
