@@ -1,7 +1,8 @@
-jobs: 
 
 parameters:
   doskip: 'true'
+
+jobs: 
 - job: Linux 
   pool:
     name: Linux-CPU
