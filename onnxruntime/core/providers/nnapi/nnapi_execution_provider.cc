@@ -187,7 +187,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
 common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
-  ORT_UNUSED_PARAMETER(node_compute_funcs);
   for (const auto* fused_node : fused_nodes) {
     std::vector<int> input_indexes;
     std::vector<int> input_dim_sizes;
@@ -251,19 +250,19 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         const auto output_shape = model->GetShape(output_name);
         std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
         if (int64_output_shape.size() == 4) {
-            // NHWC to NCHW
-            std::swap(int64_output_shape[1], int64_output_shape[3]);
-            std::swap(int64_output_shape[2], int64_output_shape[3]);
+          // NHWC to NCHW
+          std::swap(int64_output_shape[1], int64_output_shape[3]);
+          std::swap(int64_output_shape[2], int64_output_shape[3]);
         }
-        auto *output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
+        auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
         model->SetOutputBuffer(i, ort.GetTensorMutableData<float>(output_tensor));
       }
-      std::vector<float *> inputs;
+      std::vector<float*> inputs;
       for (size_t i = 0; i < num_inputs; i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-        float* input = const_cast<float *>(ort.GetTensorData<float>(input_tensor));
+        float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
         inputs.push_back(input);
       }
       model->Predict(inputs);
