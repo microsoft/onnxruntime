@@ -15,7 +15,7 @@ $buildDir = Join-Path $BuildRoot "Debug\Debug" -Resolve
 function RunTest([string]$test_cmd, [string[]]$test_cmd_args, [string[]]$export_types, [string[]]$inputs)
 {
     $cmd = "$OpenCppCoverageExe"
-    $cmdParams = @("--sources=$headerSources","--sources=$coreSources","--modules=$buildDir\*","--working_dir=$buildDir")
+    $cmdParams = @("--sources=$headerSources","--sources=$coreSources","--modules=$buildDir","--working_dir=$buildDir")
 
     foreach($input in $inputs)
     {
