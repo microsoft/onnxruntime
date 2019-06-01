@@ -320,7 +320,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
-                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp else "OFF"),
+                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
@@ -577,6 +577,19 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 
+def split_server_binary_and_symbol(build_dir, configs):
+    if is_windows():
+        # TODO: Windows support
+        pass
+    else:
+        for config in configs:
+            if config == 'RelWithDebInfo':
+                config_build_dir = get_config_build_dir(build_dir, config)
+                run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
+                run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
+            
+
 def run_server_tests(build_dir, configs):
     pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
     installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
@@ -826,11 +839,12 @@ def main():
               if args.use_mkldnn:
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
 
-    if args.build_server and args.enable_server_tests:
-        run_server_tests(build_dir, configs)
-
-    if args.build_server and args.enable_server_model_tests:
-        run_server_model_tests(build_dir, configs)
+    if args.build_server:
+        split_server_binary_and_symbol(build_dir, configs)
+        if args.enable_server_tests:
+            run_server_tests(build_dir, configs)
+        if args.enable_server_model_tests:
+            run_server_model_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:

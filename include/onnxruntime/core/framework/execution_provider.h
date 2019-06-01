@@ -104,7 +104,9 @@ class IExecutionProvider {
      For Direct3D operator kernels, this may return an IUnknown supporting
      QueryInterface to ID3D12GraphicsCommandList1.
   */
-  virtual const void* GetExecutionHandle() const noexcept = 0;
+  virtual const void* GetExecutionHandle() const noexcept {
+    return nullptr;
+  }
 
   /**
      @return type of the execution provider; should match that set in the node
