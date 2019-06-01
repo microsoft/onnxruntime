@@ -236,9 +236,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     };
 
     compute_info.release_state_func = [](FunctionState state) {
-      if (state) {
-        delete static_cast<dnn::Model*>(state);
-      }
+      // the `state` is a dnn::model managed by unique_ptr
+      ORT_UNUSED_PARAMETER(state);
     };
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
