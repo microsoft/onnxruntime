@@ -255,8 +255,14 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     if (node->OpType() == "MaxPool" || node->OpType() == "AveragePool") {
       auto attributes = node->GetAttributes();
       auto auto_pad = attributes["auto_pad"].s();
-      if (auto_pad == "" || auto_pad == "SAME_LOWER") {  // || auto_pad == "SAME_UPPER"){
+      if (auto_pad == "" || auto_pad == "SAME_LOWER"){
         return result;
+      }
+
+
+      auto strides_ints = attributes["strides"].ints();
+      if(auto_pad == "SAME_UPPER" && strides_ints.size() == 0){
+          return result;
       }
 
       auto dilations_ints = attributes["dilations"].ints();
