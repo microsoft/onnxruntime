@@ -1,11 +1,23 @@
 jobs: 
+
+parameters:
+  doskip: 'true'
 - job: Linux 
   pool:
     name: Linux-CPU
   timeoutInMinutes: 90
   steps:
+
   - script: |
      ls
      echo -----
      ls
-    displayName: 'Command Line Script'
+    displayName: 'step1'
+    condition: ne (variables['doskip'], 'true')
+
+  - script: |
+     ls
+     echo -----
+     ls
+    displayName: 'Step2'
+    condition: always()

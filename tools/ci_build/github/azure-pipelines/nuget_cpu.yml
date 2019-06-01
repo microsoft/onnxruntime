@@ -1,13 +1,7 @@
 jobs: 
-- template: win-ci-pipeline.yml
-- template: win-x86-ci-pipeline.yml 
-- template: linux-ci-pipeline.yml
-- template: linux-x86-ci-pipeline.yml
-- template: mac-ci-pipeline.yml
-- template: nuget-packaging.yml
-- template: nuget_test_win.yml
-- template: nuget_test_linux.yml
-- template: nuget_test_macos.yml
+- template: macos.yml
+- template: linux.yml 
+
 
 
 
