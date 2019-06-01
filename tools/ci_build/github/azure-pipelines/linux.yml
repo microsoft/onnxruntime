@@ -14,12 +14,12 @@ jobs:
 
   steps:
 
+  ${{ if eq(parameters.doskip, 'false') }}:
   - script: |
      ls
      echo -----
      ls
     displayName: 'step1'
-    condition: ${{ if eq(parameters.doskip, 'false') }}:
 
   - script: |
      ls
