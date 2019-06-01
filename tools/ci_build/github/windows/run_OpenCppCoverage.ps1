@@ -8,9 +8,6 @@ Param(
     [Parameter(Mandatory=$true, HelpMessage="Build root.")][string]$BuildRoot
 )
 
-$oldMemorySize = Get-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB
-Enable-WindowsErrorReporting
-
 $coreSources = Join-Path $SourceRoot "onnxruntime" 
 $headerSources = Join-Path $SourceRoot "include" 
 $buildDir = Join-Path $BuildRoot "Debug\Debug" -Resolve
@@ -44,11 +41,11 @@ $modelDir = Join-Path $BuildRoot "models"
 
 
 # Lotus unit tests
-Push-Location $buildDir
-$onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-Write-Host "Just try running the test_all.exe"
-& $onnxruntime_test_all
-Pop-Location
+# Push-Location $buildDir
+# $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
+# Write-Host "Just try running the test_all.exe"
+# & $onnxruntime_test_all
+# Pop-Location
 
 #RunTest $onnxruntime_test_all @() ("binary:" + (Join-Path $buildDir "onnxruntime_test_all.cov"))
 
@@ -70,11 +67,10 @@ $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
 # TODO: Disabling due to long time taken
 # RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
 
-# Session Without Environment test
-#$session_test = Join-Path $buildDir "onnxruntime_test_framework_session_without_environment_standalone.exe"
-#RunTest $session_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_session_without_environment_test.cov"))
-
 # Lotus unit tests
+# need to copy the tvm.dll, since it is not in the buildDir path
+Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir
+
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
 RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov")
 #,"onnx_test_runner.cov"
