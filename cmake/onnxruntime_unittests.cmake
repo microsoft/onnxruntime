@@ -113,6 +113,8 @@ set(onnxruntime_test_providers_src_patterns
   "${TEST_SRC_DIR}/providers/*.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
+  "${TEST_SRC_DIR}/framework/test_utils.cc"
+  "${TEST_SRC_DIR}/framework/test_utils.h"
   )
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_test_providers_src_patterns
