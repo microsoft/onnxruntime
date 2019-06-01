@@ -91,7 +91,7 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 * [Inferencing Tutorial](https://github.com/microsoft/onnxruntime/blob/master/docs/CSharp_API.md#getting-started)
 
 ### C
-* [Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [Inferencing (SqueezeNet)](https://github.com/microsoft/onnxruntime/blob/faxu-doc-updates/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 
 ## Getting ONNX Models
 * The [ONNX Model Zoo](https://github.com/onnx/models) has popular ready-to-use pre-trained models.
