@@ -66,15 +66,15 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
   // (which also contains initializers).
   std::map<std::string, int> inputdef_index_map;
   auto input_defs = fused_node_->InputDefs();
-  int i=0;
-  for(auto idef : input_defs) {
+  int i = 0;
+  for (auto idef : input_defs) {
     inputdef_index_map.insert({idef->Name(), i});
     i++;
   }
 
   auto inputs = fused_node_->GetFunctionBody()->Body().GetInputs();
-  for (auto input: inputs) {
-    if(inputdef_index_map.find(input->Name()) == inputdef_index_map.end()) {
+  for (auto input : inputs) {
+    if (inputdef_index_map.find(input->Name()) == inputdef_index_map.end()) {
       throw "Input not found in the input defs list";
     }
 
@@ -232,7 +232,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     }
   }
 
-
   network->setBatchSize(first_dim);
 
   // Prepare output blobs
@@ -302,14 +301,12 @@ void OpenVINOGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* in
   size_t i = 0;
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter, ++i) {
-
     // Get OpenVINO's input buffer
     auto graph_input_blob = infer_request->GetBlob(input_info_iter->first);
     auto graph_input_buffer =
         graph_input_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
     size_t input_data_size = graph_input_blob->byteSize();
-
 
     const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
 
@@ -335,7 +332,6 @@ void OpenVINOGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* outpu
   size_t i = 0;
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter, ++i) {
-
     // Get OpenVINO's output blob
     auto graph_output_blob = infer_request->GetBlob(output_info_iter->first);
     auto graph_output_buffer =
@@ -354,14 +350,12 @@ void OpenVINOGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* outpu
 void OpenVINOGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[]) {
   size_t input_count = cnn_network_->getInputsInfo().size();
 
-  for(size_t i=0; i< input_count; i++) {
+  for (size_t i = 0; i < input_count; i++) {
     input_tensors[i] = ort.KernelContext_GetInput(context, input_indexes_[i]);
   }
 }
 
-
 void OpenVINOGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size) {
-
   auto graph_output_info = cnn_network_->getOutputsInfo();
 
   // All infer_requests process identical tensor slices from the batch.
@@ -394,7 +388,6 @@ void OpenVINOGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* con
 }
 
 void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
-
   // Preliminary thread safety mechanism
   // TODO: reduce lock scope to just infer_request objects
   std::lock_guard<std::mutex> lock(compute_lock_);
@@ -409,10 +402,9 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
 
   GetInputTensors(ort, context, input_tensors);
 
-
   auto batch_size = DeduceBatchSize(ort, input_tensors[0],
                                     cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
-  if(batch_size != 1) {
+  if (batch_size != 1) {
     std::cout << "[OpenVINO-EP] Batch Size: " << batch_size << std::endl;
   }
 

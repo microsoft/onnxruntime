@@ -37,10 +37,9 @@ class OpenVINOGraph {
       const std::string& device, InferenceEngine::Precision precision);
 
   size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
-                                      InferenceEngine::SizeVector graph_dims);
+                         InferenceEngine::SizeVector graph_dims);
 
   void GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[]);
-
 
   void GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size);
 

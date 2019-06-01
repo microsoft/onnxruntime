@@ -67,8 +67,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-
-
   std::vector<std::unique_ptr<ComputeCapability>> result;
   bool precision_fp32 = true;
   std::string device_id = "CPU";
@@ -92,429 +90,382 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   device_id = "HDDL";
 #endif
 
-    auto domain_map = graph_viewer.DomainToVersionMap();
-    int opset_version = 0;
-    auto it = domain_map.find(kOnnxDomain);
-    if(it != domain_map.end())
-        opset_version = it->second;
+  auto domain_map = graph_viewer.DomainToVersionMap();
+  int opset_version = 0;
+  auto it = domain_map.find(kOnnxDomain);
+  if (it != domain_map.end())
+    opset_version = it->second;
 
-    std::vector<onnxruntime::NodeIndex> group;
-    int counter = 0;
-    auto initializers = graph_viewer.GetAllInitializedTensors();
+  std::vector<onnxruntime::NodeIndex> group;
+  int counter = 0;
+  auto initializers = graph_viewer.GetAllInitializedTensors();
 
-    auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
+  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
+  auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
-    auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+  auto graph_proto = model_proto.mutable_graph();
+  int input_dims = 0;
+  int output_dims = 0;
+  int num_inputs = graph_viewer.GetInputs().size();
+  int num_outputs = graph_viewer.GetOutputs().size();
 
-    auto graph_proto = model_proto.mutable_graph();
-    int input_dims = 0;
-    int output_dims = 0;
-    int num_inputs = graph_viewer.GetInputs().size();
-    int num_outputs = graph_viewer.GetOutputs().size();
+  std::vector<std::vector<int>> input_arrays;
 
-    std::vector<std::vector<int>> input_arrays;
+  if (num_inputs != 0)
+    input_dims = graph_proto->input(0).type().tensor_type().shape().dim_size();
 
+  if (num_outputs != 0)
+    output_dims = graph_proto->output(0).type().tensor_type().shape().dim_size();
 
-    if(num_inputs !=0 )
-        input_dims = graph_proto->input(0).type().tensor_type().shape().dim_size();
+  if (num_inputs != 0) {
+    for (int i = 0; i < num_inputs; i++) {
+      int input_dims_size = graph_proto->input(i).type().tensor_type().shape().dim_size();
+      std::vector<int> temp_arr;
 
-    if(num_outputs !=0)
-        output_dims = graph_proto->output(0).type().tensor_type().shape().dim_size();
+      for (int j = 0; j < input_dims_size; j++) {
+        temp_arr.push_back(graph_proto->input(i).type().tensor_type().shape().dim(j).dim_value());
+      }
+      input_arrays.push_back(temp_arr);
+    }
+  }
 
-    if(num_inputs != 0){
+  //GPU Plugin does not support single dimensional input
+  if (device_id == "GPU") {
+    if (input_dims == 1 || input_dims == 5 || output_dims == 5)
+      return result;
+  }
 
-        for(int i = 0; i < num_inputs; i++){
+  bool isGraphSupported = true;
+  bool OpSum = false, OpGemm = false;
+  for (auto index : node_indexes) {
+    auto node = graph_viewer.GetNode(index);
 
-            int input_dims_size = graph_proto->input(i).type().tensor_type().shape().dim_size();
-            std::vector<int> temp_arr;
+    //Use ForEachDef
 
-            for(int j = 0; j < input_dims_size; j++){
-                temp_arr.push_back(graph_proto->input(i).type().tensor_type().shape().dim(j).dim_value());
-            }
-            input_arrays.push_back(temp_arr);
+    auto layer = openvino_ep::OpenVINOLayer(node->OpType());
+
+    if (layer.getName() == "NotSupported" && layer.getOpsetVersion() < opset_version) {
+      isGraphSupported = false;
+      return result;
+    }
+
+    if (node->OpType() == "Sum") {
+      OpSum = true;
+    }
+
+    if (node->OpType() == "Gemm") {
+      OpGemm = true;
+    }
+
+    //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
+    if (node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape") {
+      int count = 0;
+      for (auto input : node->InputDefs()) {
+        auto name = input->Name();
+        auto it = initializers.find(name);
+        if (it == initializers.end()) {
+          count++;
         }
+      }
+      if (count > 1) {
+        return result;
+      }
     }
 
+    if (device_id == "MYRIAD" || device_id == "HDDL") {
+      if (node->OpType() == "Reshape" || node->OpType() == "Unsqueeze" || node->OpType() == "Flatten") {
+        if (input_arrays[0][0] != 1) {
+          return result;
+        }
+      }
+      if (node->OpType() == "Gemm") {
+        int count = 0;
+        for (auto input : node->InputDefs()) {
+          auto name = input->Name();
+          auto it = initializers.find(name);
+          if (it == initializers.end()) {
+            count++;
+          }
+        }
+        if (count > 1) {
+          return result;
+        }
+      }
+    }
 
-    //GPU Plugin does not support single dimensional input
-    if(device_id == "GPU"){
-        if(input_dims == 1 || input_dims == 5 || output_dims == 5)
+    if (node->OpType() == "MatMul") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+          return result;
+        }
+      }
+
+      auto iter = node->OutputNodesBegin();
+
+      if (iter == node->OutputNodesEnd()) {
+        return result;
+      }
+
+      for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+        auto out_node = graph_viewer.GetNode((*it).Index());
+
+        if (out_node->OpType() != "Add") {
+          return result;
+        }
+      }
+
+      bool isGraphInput = false;
+
+      auto graph_inputs = graph_viewer.GetInputs();
+      for (auto input : node->InputDefs()) {
+        auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+        if (it != graph_inputs.end()) {
+          isGraphInput = true;
+        }
+      }
+      if (isGraphInput) {
+        size_t input_dims_size = input_arrays[0].size();
+
+        for (int i = 0; i < num_inputs; i++) {
+          if (input_arrays[i].size() > 2)
             return result;
+
+          if (input_dims_size != input_arrays[i].size())
+            return result;
+        }
+      }
+
+      //Disable MNIST for MYRIAD and HDDL
+      if (device_id == "MYRIAD" || device_id == "HDDL")
+        return result;
+    }
+    //Dropout or Identity can't have graph inputs
+    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
+      auto graph_inputs = graph_viewer.GetInputs();
+      for (auto input : node->InputDefs()) {
+        auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+        if (it != graph_inputs.end()) {
+          return result;
+        }
+      }
     }
 
-    bool isGraphSupported = true;
-    bool OpSum = false, OpGemm = false;
+    if (node->OpType() == "MaxPool" || node->OpType() == "AveragePool") {
+      auto attributes = node->GetAttributes();
+      auto auto_pad = attributes["auto_pad"].s();
+      if (auto_pad == "" || auto_pad == "SAME_LOWER") {  // || auto_pad == "SAME_UPPER"){
+        return result;
+      }
+
+      auto dilations_ints = attributes["dilations"].ints();
+      if (dilations_ints.size() != 0) {
+        if (dilations_ints[0] > 1)
+          return result;
+      }
+
+      auto ceil_mode = attributes["ceil_mode"].i();
+      if (ceil_mode != 0)
+        return result;
+      if (node->OutputDefs().size() > 1) {
+        return result;
+      }
+    }
+
+    //We only support 4D and 5D blobs for pooling
+    if (node->OpType() == "GlobalMaxPool" || node->OpType() == "MaxPool" || node->OpType() == "AveragePool" || node->OpType() == "GlobalAveragePool") {
+      auto graph_inputs = graph_viewer.GetInputs();
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
+      if (it != graph_inputs.end()) {
+        if (device_id == "MYRIAD" || device_id == "HDDL") {
+          if (input_dims != 3 || input_dims != 4)
+            return result;
+        } else if (input_dims < 4 || input_dims > 5) {
+          return result;
+        }
+      }
+    }
+
+    //Transpose with no attr is not supported
+    if (node->OpType() == "Transpose") {
+      auto attributes = node->GetAttributes();
+      auto perm = attributes["perm"].ints();
+      if (perm.size() == 0 || perm.size() > 5) {
+        return result;
+      }
+
+      const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
+      if (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING) {
+        return result;
+      }
+
+      auto graph_inputs = graph_viewer.GetInputs();
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
+      if (it != graph_inputs.end()) {
+        if (input_dims == 3 || input_dims == 2 || input_dims > 5) {
+          return result;
+        }
+      }
+    }
+
+    if (node->OpType() == "Unsqueeze") {
+      auto graph_inputs = graph_viewer.GetInputs();
+      auto attributes = node->GetAttributes();
+      auto axes = attributes["axes"].ints();
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
+      if (it != graph_inputs.end()) {
+        if (input_dims + axes.size() > 5) {
+          return result;
+        }
+      }
+      const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
+      if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+        return result;
+    }
+
+    if (node->OpType() == "Reshape") {
+      if (output_dims == 0) {
+        return result;
+      }
+    }
+
+    if (node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Sum") {
+      auto graph_inputs = graph_viewer.GetInputs();
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
+
+      if (it != graph_inputs.end()) {
+        size_t dims = input_arrays[0].size();
+        if (dims == 0)
+          return result;
+
+        for (int i = 0; i < num_inputs; i++) {
+          if (dims != input_arrays[i].size())
+            return result;
+        }
+        for (int i = 0; i < num_inputs; i++) {
+          for (size_t j = 0; j < dims; j++) {
+            if (input_arrays[0][j] != input_arrays[i][j]) {
+              isGraphSupported = false;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (node->OpType() == "Softmax") {
+      auto graph_inputs = graph_viewer.GetInputs();
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
+      if (it != graph_inputs.end()) {
+        if (input_dims != 2) {
+          return result;
+        }
+      }
+      auto attributes = node->GetAttributes();
+      auto axis = attributes["axis"].i();
+      if (axis != 1)
+        return result;
+    }
+
+    if (node->OpType() == "Flatten") {
+      auto attributes = node->GetAttributes();
+      auto axis = attributes["axis"].i();
+      if (device_id == "MYRIAD" || device_id == "HDDL") {
+        if (axis != 1)
+          return result;
+      }
+    }
+  }
+  //Disable Resnet DUC for MYRIAD and HDDL
+  if (OpSum == true && OpGemm == false) {
+    if (device_id == "MYRIAD" || device_id == "HDDL") {
+      return result;
+    }
+  }
+  std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
+
+  if (isGraphSupported) {
+    std::string model_proto_strbuf;
+    model_proto.SerializeToString(&model_proto_strbuf);
+
+    PyObject *pModule, *pOutput, *pFunc;
+
+    Py_Initialize();
+    pModule = PyImport_ImportModule("openvino_mo");
+
+    if (pModule != NULL) {
+      if (precision_fp32) {
+        pFunc = PyObject_GetAttrString(pModule, "convert_fp32");
+      } else {
+        pFunc = PyObject_GetAttrString(pModule, "convert_fp16");
+      }
+
+      // Prepare ModelProto Input to Python
+      PyObject* pFileName = PyByteArray_FromStringAndSize(model_proto_strbuf.c_str(), model_proto_strbuf.size());
+      PyObject* pArgs = PyTuple_New(1);
+      PyTuple_SetItem(pArgs, 0, pFileName);
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+        // Call the Python function
+        pOutput = PyObject_CallObject(pFunc, pArgs);
+
+        if (!PyTuple_CheckExact(pOutput)) {
+          return result;
+        }
+
+        else {
+          Py_DECREF(pOutput);
+        }
+      }
+    } else {
+      return result;
+    }
+
     for (auto index : node_indexes) {
+      sub_graph->nodes.push_back(index);
+      auto* node = graph_viewer.GetNode(index);
 
-        auto node = graph_viewer.GetNode(index);
-
-        //Use ForEachDef
-
-        auto layer = openvino_ep::OpenVINOLayer(node->OpType());
-
-
-        if (layer.getName() == "NotSupported" && layer.getOpsetVersion() < opset_version) {
-
-            isGraphSupported = false;
-            return result;
+      // Track graph inputs and initializers
+      for (auto input_def : node->InputDefs()) {
+        if (fused_outputs.find(input_def) == fused_outputs.end()) {
+          fused_inputs.insert(input_def);
+        } else {
+          fused_outputs.erase(input_def);
         }
+      }
 
-        if(node->OpType() == "Sum"){
-
-            OpSum = true;
+      // Track graph outputs
+      for (auto output_def : node->OutputDefs()) {
+        if (fused_inputs.find(output_def) == fused_inputs.end()) {
+          fused_outputs.insert(output_def);
+        } else {
+          fused_inputs.erase(output_def);
         }
-
-        if(node->OpType() == "Gemm"){
-
-            OpGemm = true;
-
-        }
-
-
-        //Gemm, BatchNorm, Conv and Reshape cant take more than 1 input
-        if(node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape"){
-
-
-            int count = 0;
-            for(auto input : node->InputDefs()){
-                auto name = input->Name();
-                auto it = initializers.find(name);
-                if(it == initializers.end()){
-                    count++;
-                }
-            }
-            if(count > 1){
-                return result;
-            }
-        }
-
-        if(device_id == "MYRIAD" || device_id == "HDDL"){
-
-            if(node->OpType() == "Reshape" || node->OpType() == "Unsqueeze" || node->OpType() == "Flatten"){
-
-                if(input_arrays[0][0] != 1) {
-                    return result;
-                }
-            }
-            if(node->OpType() == "Gemm"){
-                int count = 0;
-                for(auto input : node->InputDefs()){
-                    auto name = input->Name();
-                    auto it = initializers.find(name);
-                    if(it == initializers.end()){
-                        count++;
-                    }
-                }
-                if(count > 1){
-                    return result;
-                }
-            }
-        }
-
-
-        if(node->OpType() == "MatMul"){
-
-
-            for(size_t i = 0; i < node->InputDefs().size(); i++){
-
-                if(node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT){
-                    return result;
-                }
-            }
-
-
-            auto iter = node->OutputNodesBegin();
-
-            if(iter == node->OutputNodesEnd()){
-                return result;
-            }
-
-            for(auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it){
-                auto out_node = graph_viewer.GetNode((*it).Index());
-
-                if(out_node->OpType() != "Add"){
-                    return result;
-                }
-            }
-
-            bool isGraphInput = false;
-
-            auto graph_inputs = graph_viewer.GetInputs();
-            for(auto input : node->InputDefs()) {
-                auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-                if(it != graph_inputs.end()){
-                    isGraphInput = true;
-                }
-            }
-            if(isGraphInput){
-
-                size_t input_dims_size = input_arrays[0].size();
-
-
-                for(int i = 0; i < num_inputs; i++){
-
-                    if(input_arrays[i].size() > 2)
-                        return result;
-
-                    if(input_dims_size != input_arrays[i].size())
-                        return result;
-                }
-            }
-
-            //Disable MNIST for MYRIAD and HDDL
-            if(device_id == "MYRIAD" || device_id == "HDDL")
-                return result;
-        }
-        //Dropout or Identity can't have graph inputs
-        if(node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
-
-            auto graph_inputs = graph_viewer.GetInputs();
-            for(auto input : node->InputDefs()){
-                auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-                if(it != graph_inputs.end()){
-                    return result;
-                }
-            }
-        }
-
-        if(node->OpType() == "MaxPool" || node->OpType() == "AveragePool"){
-            auto attributes = node->GetAttributes();
-            auto auto_pad = attributes["auto_pad"].s();
-            if(auto_pad == "" || auto_pad == "SAME_LOWER"){ // || auto_pad == "SAME_UPPER"){
-                return result;
-            }
-
-            auto dilations_ints = attributes["dilations"].ints();
-            if(dilations_ints.size() != 0){
-                if(dilations_ints[0] > 1)
-                    return result;
-            }
-
-            auto ceil_mode = attributes["ceil_mode"].i();
-            if(ceil_mode != 0)
-                return result;
-            if(node->OutputDefs().size() > 1){
-                return result;
-            }
-        }
-
-        //We only support 4D and 5D blobs for pooling
-        if(node->OpType() == "GlobalMaxPool" || node->OpType() == "MaxPool" || node->OpType() == "AveragePool" || node->OpType() == "GlobalAveragePool")
-        {
-                auto graph_inputs = graph_viewer.GetInputs();
-                auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-                if(it != graph_inputs.end()){
-                    if(device_id == "MYRIAD" || device_id == "HDDL"){
-                        if(input_dims != 3 || input_dims != 4)
-                            return result;
-                    }
-                    else if(input_dims < 4 || input_dims > 5){
-                        return result;
-                    }
-                }
-        }
-
-        //Transpose with no attr is not supported
-        if(node->OpType() == "Transpose"){
-            auto attributes = node->GetAttributes();
-            auto perm = attributes["perm"].ints();
-            if(perm.size() == 0 || perm.size() > 5){
-                return result;
-            }
-
-
-            const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
-            if(type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING){
-                return result;
-            }
-
-
-                auto graph_inputs = graph_viewer.GetInputs();
-                auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-                if(it != graph_inputs.end()){
-                    if(input_dims == 3 || input_dims == 2 || input_dims > 5){
-                        return result;
-                    }
-                }
-        }
-
-        if(node->OpType() == "Unsqueeze"){
-            auto graph_inputs = graph_viewer.GetInputs();
-            auto attributes = node->GetAttributes();
-            auto axes = attributes["axes"].ints();
-            auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-            if(it != graph_inputs.end()){
-                if(input_dims + axes.size() > 5){
-                    return result;
-                }
-            }
-            const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
-            if(type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
-                return result;
-        }
-
-        if(node->OpType() == "Reshape"){
-            if(output_dims == 0){
-                return result;
-            }
-        }
-
-        if(node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Sum"){
-
-
-            auto graph_inputs = graph_viewer.GetInputs();
-            auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-
-            if(it != graph_inputs.end()){
-
-                size_t dims = input_arrays[0].size();
-                if(dims == 0)
-                    return result;
-
-                for(int i = 0; i < num_inputs; i++){
-
-                    if(dims != input_arrays[i].size())
-                        return result;
-                }
-                for(int i = 0; i < num_inputs; i++){
-                    for(size_t j = 0; j < dims; j++){
-
-                        if(input_arrays[0][j] != input_arrays[i][j]){
-                            isGraphSupported = false;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        if(node->OpType() == "Softmax"){
-            auto graph_inputs = graph_viewer.GetInputs();
-            auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-            if(it != graph_inputs.end()){
-                if(input_dims != 2){
-                    return result;
-                }
-            }
-            auto attributes = node->GetAttributes();
-            auto axis = attributes["axis"].i();
-            if(axis != 1)
-                return result;
-        }
-
-
-        if(node->OpType() == "Flatten"){
-            auto attributes = node->GetAttributes();
-            auto axis = attributes["axis"].i();
-            if(device_id == "MYRIAD" || device_id == "HDDL")
-            {
-                if(axis != 1)
-                    return result;
-            }
-        }
-
+      }
     }
-    //Disable Resnet DUC for MYRIAD and HDDL
-    if(OpSum == true && OpGemm == false){
-        if(device_id == "MYRIAD" || device_id == "HDDL"){
-            return result;
-        }
+
+    ONNX_NAMESPACE::AttributeProto model_proto_str_attr;
+    model_proto_str_attr.set_name("model_proto_str");
+    model_proto_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+    model_proto_str_attr.set_s(model_proto_strbuf);
+
+    auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+    meta_def->attributes["model_proto_str"] = model_proto_str_attr;
+    meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
+    meta_def->domain = "OpenVINO";
+    meta_def->since_version = 1;
+
+    for (auto input : fused_inputs) {
+      meta_def->inputs.push_back(input->Name());
     }
-    std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
+    for (auto output : fused_outputs) {
+      meta_def->outputs.push_back(output->Name());
+    }
 
-
-    if(isGraphSupported){
-
-        std::string model_proto_strbuf;
-        model_proto.SerializeToString(&model_proto_strbuf);
-
-
-        PyObject *pModule, *pOutput,*pFunc;
-
-        Py_Initialize();
-        pModule = PyImport_ImportModule("openvino_mo");
-
-        if(pModule != NULL){
-
-            if(precision_fp32){
-                pFunc = PyObject_GetAttrString(pModule,"convert_fp32");
-            }
-            else{
-                pFunc = PyObject_GetAttrString(pModule,"convert_fp16");
-            }
-
-            // Prepare ModelProto Input to Python
-            PyObject* pFileName = PyByteArray_FromStringAndSize(model_proto_strbuf.c_str(), model_proto_strbuf.size());
-            PyObject* pArgs = PyTuple_New(1);
-            PyTuple_SetItem(pArgs, 0, pFileName);
-
-
-            if(pFunc && PyCallable_Check(pFunc)){
-
-                // Call the Python function
-                pOutput = PyObject_CallObject(pFunc, pArgs);
-
-
-                if(!PyTuple_CheckExact(pOutput)){
-                    return result;
-                }
-
-                else{
-                    Py_DECREF(pOutput);
-                }
-            }
-        }
-        else{
-            return result;
-        }
-
-        for(auto index : node_indexes){
-            sub_graph->nodes.push_back(index);
-            auto* node = graph_viewer.GetNode(index);
-
-            // Track graph inputs and initializers
-            for(auto input_def : node->InputDefs()) {
-              if(fused_outputs.find(input_def) == fused_outputs.end()) {
-                fused_inputs.insert(input_def);
-              } else {
-                fused_outputs.erase(input_def);
-              }
-            }
-
-            // Track graph outputs
-            for(auto output_def : node->OutputDefs()) {
-              if(fused_inputs.find(output_def) == fused_inputs.end()) {
-                fused_outputs.insert(output_def);
-              } else {
-                fused_inputs.erase(output_def);
-              }
-            }
-        }
-
-        ONNX_NAMESPACE::AttributeProto model_proto_str_attr;
-        model_proto_str_attr.set_name("model_proto_str");
-        model_proto_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-        model_proto_str_attr.set_s(model_proto_strbuf);
-
-        auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-        meta_def->attributes["model_proto_str"] = model_proto_str_attr;
-        meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
-        meta_def->domain = "OpenVINO";
-        meta_def->since_version = 1;
-
-        for (auto input : fused_inputs) {
-        meta_def->inputs.push_back(input->Name());
-        }
-
-        for (auto output : fused_outputs) {
-        meta_def->outputs.push_back(output->Name());
-        }
-
-        sub_graph->SetMetaDef(meta_def);
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    sub_graph->SetMetaDef(meta_def);
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
 
   return result;
