@@ -151,9 +151,11 @@ The OpenVINO Execution Provider can be built using the following commands:
 
    <code>source setupvars.sh</code>
 
-- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://software.intel.com/en-us/articles/get-started-with-neural-compute-stick)
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2018_R5/_docs_install_guides_installing_openvino_linux.html#GPU-steps)
 
-- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2018_R5/_docs_install_guides_installing_openvino_linux.html#Movidius-steps)
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2018_R5/_docs_install_guides_installing_openvino_linux.html#Vision-Accelerator-Design-steps)
 
 
 - Build ONNX Runtime using the below command.
