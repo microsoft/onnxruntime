@@ -1,6 +1,9 @@
 
 parameters:
-  doskip: 'true'
+  doskipp: 'true'
+
+variable:
+  doskipv: 'true'
 
 jobs: 
 - job: Linux 
@@ -14,7 +17,14 @@ jobs:
      echo -----
      ls
     displayName: 'step1'
-    condition: ne (variables['doskip'], 'true')
+    condition: ne (variables['doskipp'], 'true')
+
+  - script: |
+     ls
+     echo -----
+     ls
+    displayName: 'step1'
+    condition: ne (variables['doskipv'], 'true')
 
   - script: |
      ls
