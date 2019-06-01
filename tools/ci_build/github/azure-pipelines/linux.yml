@@ -15,6 +15,14 @@ jobs:
   steps:
 
   - ${{ if eq(parameters['doskipp'], 'true') }}:
+    - task: BatchScript@1
+      displayName: 'Setup VS2017 env vars'
+      inputs:
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+        arguments: '${{parameters.buildArch}} -vcvars_ver=14.11'
+        modifyEnvironment: true
+      condition: ${{parameters.setVcvars}}
+
     - script: |
        ls
        echo -----
