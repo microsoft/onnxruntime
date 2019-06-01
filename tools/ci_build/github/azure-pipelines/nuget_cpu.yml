@@ -1,9 +1,23 @@
 jobs: 
-- template: macos.yml
-- template: linux.yml
+- template: win-ci-pipeline.yml
   parameters:
-    doskipp : 'false'  
-
+    GenNuGetPackage : 'true'
+- template: win-x86-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: linux-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: linux-x86-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: mac-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: nuget-packaging.yml
+- template: nuget_test_win.yml
+- template: nuget_test_linux.yml
+- template: nuget_test_macos.yml
 
 
 
