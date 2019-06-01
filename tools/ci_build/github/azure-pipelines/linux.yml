@@ -25,12 +25,12 @@ jobs:
      ls
      echo -----
      ls
-    displayName: 'step1'
+    displayName: 'step2'
     condition: ne (variables['doskipv'], 'true')
 
   - script: |
      ls
      echo -----
      ls
-    displayName: 'Step2'
+    displayName: 'Step3'
     condition: always()
