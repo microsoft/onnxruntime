@@ -266,7 +266,7 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
                                                                      {});
 
   // Create infer request
-  std::cout << "[OpenVINO-EP]Creating Infer requests : " << num_inf_reqs_ << std::endl;
+  //std::cout << "[OpenVINO-EP]Creating Infer requests : " << num_inf_reqs_ << std::endl;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
   for (size_t i = 0; i < num_inf_reqs_; i++) {
     infer_requests.push_back(exeNetwork.CreateInferRequestPtr());
@@ -285,18 +285,6 @@ size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* inpu
   // All the inputs and outputs are batched the same way.
   // So it is sufficient to use any one of these tensors to deduce the batch size.
   const auto& input_shape = ort.GetTensorShape(ort.GetTensorTypeAndShape(input_tensor));
-
-  std::cout << "[OpenVINO-EP] Input dims: ";
-  for (size_t i = 0; i < input_shape.size(); i++) {
-    std::cout << input_shape[i] << ", ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "[OpenVINO-EP] Graph dims: ";
-  for (auto dim : graph_dims) {
-    std::cout << dim << ", ";
-  }
-  std::cout << std::endl;
 
   if ((input_shape.size() == graph_dims.size() && input_shape[0] > 1 && graph_dims[0] == 1) || (input_shape.size() == graph_dims.size() + 1)) {
     batch_size = input_shape[0];
@@ -424,7 +412,9 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
 
   auto batch_size = DeduceBatchSize(ort, input_tensors[0],
                                     cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
-  std::cout << "[OpenVINO-EP] Batch Size: " << batch_size << std::endl;
+  if(batch_size != 1) {
+    std::cout << "[OpenVINO-EP] Batch Size: " << batch_size << std::endl;
+  }
 
   size_t full_parallel_runs = batch_size / num_inf_reqs_;
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
@@ -433,8 +423,8 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
 
   // Run parallel inferences as sets of num_inf_reqs_
   for (size_t set = 0; set < full_parallel_runs; set++) {
-    std::cout << "[OpenVINO-EP] Running " << num_inf_reqs_
-              << " parallel inferences\n";
+    //std::cout << "[OpenVINO-EP] Running " << num_inf_reqs_
+    //          << " parallel inferences\n";
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
       StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx);
@@ -446,8 +436,8 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   }
 
   // Run parallel inferences for remaining batch slices
-  std::cout << "[OpenVINO-EP] Running " << remainder_parallel_runs
-            << " parallel inferences\n";
+  //std::cout << "[OpenVINO-EP] Running " << remainder_parallel_runs
+  //          << " parallel inferences\n";
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
     StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx);
@@ -456,6 +446,7 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
   }
+  std::cout << "[OpenVINO-EP] Inference Completed\n";
 }
 
 }  // namespace openvino_ep
