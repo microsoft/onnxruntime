@@ -162,6 +162,5 @@ TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   ASSERT_TRUE(Model::Load("testdata/subgraph_implicit_input_from_initializer.onnx", model).IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
-
 }  // namespace test
 }  // namespace onnxruntime
