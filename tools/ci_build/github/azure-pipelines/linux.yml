@@ -2,7 +2,7 @@
 parameters:
   doskipp: 'true'
 
-variable:
+variables:
   doskipv: 'true'
 
 jobs: 
