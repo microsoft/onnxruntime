@@ -108,15 +108,14 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     const auto& domain = opSet.domain();
     const auto version = opSet.version();
     // empty domain and 'ai.onnx' are equivalent
-    if ((domain.empty() || std::string("ai.onnx").compare(domain) == 0) &&
-        version < 7) {
+    if ((domain.empty() || domain == "ai.onnx") && version < 7) {
       // TODO: Check if we can upgrade all the current opset 6 models that are being tested
       // in CI to opset 7 or above
       LOGS_DEFAULT(WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
                                "with opset version 7 or above for opset domain 'ai.onnx'. "
                                "Please upgrade your model to opset 7 or higher. "
                                "For now, this opset "
-                            << std::to_string(version)
+                            <<  version
                             << " model may run depending upon legacy support "
                                "of some older opset version operators.";
     }
