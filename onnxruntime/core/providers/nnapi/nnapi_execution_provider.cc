@@ -25,6 +25,22 @@ NnapiExecutionProvider::NnapiExecutionProvider()
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
+Status NnapiExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
+  if (!(strcmp(src.Location().name, NNAPI) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
+      !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, NNAPI) == 0) &&
+      !(strcmp(src.Location().name, NNAPI) == 0 && strcmp(dst.Location().name, NNAPI) == 0)) {
+    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
+  }
+
+  // Todo: Copy for now. May optimize later to avoid copy.
+  size_t bytes = src.DataType()->Size() * src.Shape().Size();
+  const void* src_data = src.DataRaw();
+  void* dst_data = dst.MutableDataRaw();
+  memcpy(dst_data, src_data, bytes);
+
+  return Status::OK();
+}
+
 std::shared_ptr<KernelRegistry> NnapiExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   return kernel_registry;

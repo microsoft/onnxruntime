@@ -15,11 +15,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_UNUSED_PARAMETER(src);
-    ORT_UNUSED_PARAMETER(dst);
-    return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
-  }
+  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
