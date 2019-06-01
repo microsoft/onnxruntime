@@ -1,6 +1,4 @@
 
-variables:
-  doskipv: 'true'
 
 parameters:
   doskipp: 'true'
@@ -10,6 +8,10 @@ jobs:
   pool:
     name: Linux-CPU
   timeoutInMinutes: 90
+
+  variables:
+    doskipv: 'true'
+
   steps:
 
   - script: |
