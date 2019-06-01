@@ -2,7 +2,7 @@ jobs:
 - template: macos.yml
 - template: linux.yml
   parameters:
-    doskip : false  
+    doskipp : false  
 
 
 
