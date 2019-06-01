@@ -19,7 +19,7 @@ jobs:
      echo -----
      ls
     displayName: 'step1'
-    condition: ne (variables['doskipp'], 'true')
+    condition: ${{ if eq(parameters.doskip, 'false') }}:
 
   - script: |
      ls
