@@ -44,7 +44,6 @@ jobs:
       inputs:
         codeCoverageTool: 'Cobertura'
         summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
-        pathToSources: '$(Build.SourcesDirectory)'
         reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
     
     - task: VSBuild@1

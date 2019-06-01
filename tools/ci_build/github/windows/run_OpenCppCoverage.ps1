@@ -40,20 +40,9 @@ $outputDir = Join-Path $buildDir "OpenCppCoverageResults"
 $modelDir = Join-Path $BuildRoot "models" 
 
 
-# Lotus unit tests
-# Push-Location $buildDir
-# $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-# Write-Host "Just try running the test_all.exe"
-# & $onnxruntime_test_all
-# Pop-Location
-
-#RunTest $onnxruntime_test_all @() ("binary:" + (Join-Path $buildDir "onnxruntime_test_all.cov"))
-
-
 # ONNX test runner tests. 
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" -Resolve
 $otr = "$onnx_test_runner " + $modelDir 
-# TODO disabling due to long running time
 RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
@@ -64,15 +53,12 @@ RunTest $shared_lib_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_shar
 
 # MLAS test
 $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
-# TODO: Disabling due to long time taken
-# RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
+RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
 
 # Lotus unit tests
 # need to copy the tvm.dll, since it is not in the buildDir path
 Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir
 
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnx_test_runner.cov")
-#"onnxruntime_mlas_test.cov",
-#,"onnxruntime_session_without_environment_test.cov"
+RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnx_test_runner.cov","onnxruntime_mlas_test.cov")
 
