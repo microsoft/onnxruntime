@@ -393,23 +393,23 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_OPENVINO
-  broken_tests["add_bcast"] = "disabled temporarily";
-  broken_tests["averagepool_1d_default"] = "disabled temporarily";
-  broken_tests["averagepool_2d_ceil"] = "disabled temporarily";
-  broken_tests["averagepool_2d_same_lower"] = "disabled temporarily";
-  broken_tests["convtranspose_1d"] = "disabled temporarily";
-  broken_tests["convtranspose_3d"] = "disabled temporarily";
-  broken_tests["maxpool_1d_default"] = "disabled temporarily";
-  broken_tests["maxpool_2d_ceil"] = "disabled temporarily";
-  broken_tests["maxpool_2d_dilations"] = "disabled temporarily";
-  broken_tests["maxpool_2d_same_lower"] = "disabled temporarily";
-  broken_tests["mul_bcast"] = "disabled temporarily";
-  broken_tests["mul_bcast"] = "disabled temporarily";
-  broken_tests["transpose_all_permutations_0"] = "disabled temporarily";
-  broken_tests["fp16_shufflenet"] = "disabled temporarily";
-  broken_tests["fp16_inception_v1"] = "disabled temporarily";
-  broken_tests["maxpool_2d_same_upper"] = "disabled temporarily";
-  broken_tests["fp16_tiny_yolov2"] = "disabled temporarily";
+  broken_tests.insert({"add_bcast", "disabled temporarily"});
+  broken_tests.insert({"averagepool_1d_default", "disabled temporarily"});
+  broken_tests.insert({"averagepool_2d_ceil", "disabled temporarily"});
+  broken_tests.insert({"averagepool_2d_same_lower", "disabled temporarily"});
+  broken_tests.insert({"convtranspose_1d", "disabled temporarily"});
+  broken_tests.insert({"convtranspose_3d", "disabled temporarily"});
+  broken_tests.insert({"maxpool_1d_default", "disabled temporarily"});
+  broken_tests.insert({"maxpool_2d_ceil", "disabled temporarily"});
+  broken_tests.insert({"maxpool_2d_dilations", "disabled temporarily"});
+  broken_tests.insert({"maxpool_2d_same_lower", "disabled temporarily"});
+  broken_tests.insert({"mul_bcast", "disabled temporarily"});
+  broken_tests.insert({"mul_bcast", "disabled temporarily"});
+  broken_tests.insert({"transpose_all_permutations_0", "disabled temporarily"});
+  broken_tests.insert({"fp16_shufflenet", "disabled temporarily"});
+  broken_tests.insert({"fp16_inception_v1", "disabled temporarily"});
+  broken_tests.insert({"maxpool_2d_same_upper", "disabled temporarily"});
+  broken_tests.insert({"fp16_tiny_yolov2", "disabled temporarily"});
 #endif
 
 
