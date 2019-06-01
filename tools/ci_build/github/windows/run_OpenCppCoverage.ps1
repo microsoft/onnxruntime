@@ -9,7 +9,6 @@ Param(
 )
 
 $oldMemorySize = Get-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB
-Set-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB 4294967294
 Enable-WindowsErrorReporting
 
 $coreSources = Join-Path $SourceRoot "onnxruntime" 
@@ -82,4 +81,3 @@ RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("o
 #"onnxruntime_mlas_test.cov",
 #,"onnxruntime_session_without_environment_test.cov"
 
-Set-Item WSMan:\localhost\Shell\MaxMemoryPerShellMB $oldMemorySize
