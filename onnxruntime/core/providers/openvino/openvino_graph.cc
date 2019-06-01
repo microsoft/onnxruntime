@@ -58,7 +58,7 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
   std::cout << "[OpenVINO-EP] precision:" << precision_str << std::endl;
 
   // sets number of maximum parallel inferences
-  num_inf_reqs_ = 8;
+  num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
   fused_node_ = fused_node;
 
