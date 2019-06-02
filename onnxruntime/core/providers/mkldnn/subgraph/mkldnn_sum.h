@@ -32,7 +32,7 @@ class MklDnnSum : public MklDnnKernel {
 
     std::vector<float> coeff;
     TensorShape x_shape;
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -56,7 +56,7 @@ class MklDnnSum : public MklDnnKernel {
     for (int i = 0; i < num_inputs; i++) {
       TensorShape x_shape1;
 
-      if (mklnode_ptr_->parent_nodes.size() == 0) {
+      if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
         auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -135,7 +135,7 @@ class MklDnnSum : public MklDnnKernel {
     int num_inputs = mklnode_ptr_->num_inputs;
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       for (int i = 0; i < num_inputs; i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + i);
         const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));

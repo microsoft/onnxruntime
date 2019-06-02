@@ -22,19 +22,19 @@ struct MklDnnNode {
   std::string output_name;
   std::vector<size_t> parent_nodes; // index to parents in vector mklnodes
 
-  std::string ToString() const {  // For Debug purpose only
+  std::string ToString() const {
     std::string key;
     key.reserve(128);
     key.append(name);
-    key.append(", input_start_index: ");
+    key.append("-");
     key.append(std::to_string(input_start_index));
-    key.append(",num_inputs: ");
+    key.append("-");
     key.append(std::to_string(num_inputs));
-    key.append(",output_index: ");
+    key.append("-");
     key.append(std::to_string(output_index));
-    key.append(",output_name: ");
+    key.append("-");
     key.append(output_name);
-    key.append(", Parent nodes");
+    key.append("-");
     for (auto& out : parent_nodes)
       key.append(std::to_string(out) + ",");
     key.append(";");

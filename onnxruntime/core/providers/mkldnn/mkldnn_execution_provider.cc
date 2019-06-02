@@ -231,10 +231,10 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       continue;
     }
 
-	if (IsDimensionSupported(node) == false) {
+    if (IsDimensionSupported(node) == false) {
       node_index++;
       continue;
-	}
+    }
 
     auto op_it = mkldnn_ops_.find(node->OpType());
     if (op_it != mkldnn_ops_.end()) {
@@ -429,5 +429,4 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
   }
   return Status::OK();
 }
-
 }  // namespace onnxruntime
