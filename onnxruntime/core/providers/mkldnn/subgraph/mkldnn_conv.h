@@ -63,7 +63,7 @@ Status ComputePadAndOutputShape(
 template <typename T>
 class MklDnnConv : public MklDnnKernel {
  public:
-  MklDnnConv(MklDnnNode& node,
+  MklDnnConv(const MklDnnNode& node,
              MKLDNNExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
