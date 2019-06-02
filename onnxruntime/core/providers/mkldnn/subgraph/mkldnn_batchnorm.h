@@ -106,7 +106,7 @@ class MklDnnBatchNorm : public MklDnnKernel {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     TensorShape x_shape;
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -240,7 +240,7 @@ class MklDnnBatchNorm : public MklDnnKernel {
     primitive_src_format_ = static_cast<mkldnn::memory::format>(
         batchnorm_fwd_pd_.get()->dst_primitive_desc().desc().data.format);
 
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       src_mem_.reset(
           new mkldnn::memory(batchnorm_fwd_pd_.get()->src_primitive_desc(), nullptr));
     } else {
@@ -288,7 +288,7 @@ class MklDnnBatchNorm : public MklDnnKernel {
       return primitive_created_;
     }
 
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
       const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
       src_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));

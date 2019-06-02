@@ -201,22 +201,19 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
                                    OrtKernelContext* context,
                                    const SubgraphParams& params) {
     Ort::CustomOpApi ort{*api};
-
-    const OrtValue* input_tensor = ort.KernelContext_GetInput(context, 0);
-    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-    auto tensor_shape = ort.GetTensorShape(tensor_info);
-    // auto tensor_type = ort.GetTensorElementType(tensor_info);
-    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-
-    std::vector<std::vector<int64_t>> input_shapes;
-
-    auto xshape = tensor_shape.data();
-    auto xdim = tensor_shape.size();
-
-    TensorShape x_shape(xshape, xdim);
-    mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
     std::string dims_str;
-    AddDimsToKey(dims_str, src_dims);
+    for (auto i = 0; i < params.subgraph->mkldnn_nodes[0].num_inputs; i++) {
+      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+      auto shape = tensor_shape.data();
+      auto dim = tensor_shape.size();
+
+      TensorShape x_shape(shape, dim);
+      mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+      AddDimsToKey(dims_str, src_dims);
+    }
 
     SubgraphPrimitive<T>* primitive = dynamic_cast<SubgraphPrimitive<T>*>(
         SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));

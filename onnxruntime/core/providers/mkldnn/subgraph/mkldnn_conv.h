@@ -90,7 +90,7 @@ class MklDnnConv : public MklDnnKernel {
 
     TensorShape x_shape;
     // std::unique_ptr<TensorShape> x_shape;
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -289,7 +289,7 @@ class MklDnnConv : public MklDnnKernel {
       auto src_md = mkldnn::memory::desc(src_dims_mkl, MklDnnType<T>(), src_format_);
       auto pd = mkldnn::memory::primitive_desc(src_md, cpu_engine);
 
-      if (mklnode_ptr_->parent_nodes.size() == 0)
+      if (mklnode_ptr_->parent_nodes.empty())
         src_mem_from_.reset(new mkldnn::memory(pd, nullptr));
       else
         src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
@@ -297,7 +297,7 @@ class MklDnnConv : public MklDnnKernel {
       src_mem_.reset(new mkldnn::memory(conv_fwd_pd_->src_primitive_desc(), nullptr));
       net.push_back(mkldnn::reorder(*src_mem_from_, *src_mem_));
     } else {
-      if (mklnode_ptr_->parent_nodes.size() == 0) {
+      if (mklnode_ptr_->parent_nodes.empty()) {
         src_mem_.reset(new mkldnn::memory(conv_fwd_pd_->src_primitive_desc(), nullptr));
       } else {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
@@ -418,7 +418,7 @@ class MklDnnConv : public MklDnnKernel {
     }
 
     if (primitive_src_format_ != src_format_) {
-      if (mklnode_ptr_->parent_nodes.size() == 0) {
+      if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
         const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
         src_mem_from_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));
@@ -430,7 +430,7 @@ class MklDnnConv : public MklDnnKernel {
       src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
-      if (mklnode_ptr_->parent_nodes.size() == 0) {
+      if (mklnode_ptr_->parent_nodes.empty()) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
         const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
         src_mem_->set_data_handle(static_cast<void*>(const_cast<T*>(src_data)));

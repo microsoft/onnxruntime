@@ -32,7 +32,7 @@ class MklDnnRelu : public MklDnnKernel {
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
     TensorShape x_shape;
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -116,7 +116,7 @@ class MklDnnRelu : public MklDnnKernel {
 
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    if (mklnode_ptr_->parent_nodes.size() == 0) {
+    if (mklnode_ptr_->parent_nodes.empty()) {
       // Sub-graph's first node. Read input from input buffer
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index);
       const T* src_data = const_cast<T*>(ort.GetTensorData<T>(input_tensor));
