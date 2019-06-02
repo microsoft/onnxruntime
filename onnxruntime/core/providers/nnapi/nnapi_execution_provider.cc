@@ -54,8 +54,23 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   for (const auto& node : graph.Nodes()) {
-    graph_build.AddNode(node);
+    std::vector<onnxruntime::NodeArg *> inputs, outputs;
+    for (auto input : node.InputDefs()) {
+      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+      inputs.push_back(&n_input);
+    }
+    for (auto output : node.OutputDefs()) {
+      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+      outputs.push_back(&n_output);
+    }
+    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
   }
+  //Add initializer to graph
+  const auto& init_tensors = graph.GetAllInitializedTensors();
+  for (const auto& tensor : init_tensors) {
+    graph_build.AddInitializedTensor(*(tensor.second));
+  }
+
   ORT_ENFORCE(graph_build.Resolve().IsOK());
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
