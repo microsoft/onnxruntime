@@ -15,7 +15,7 @@ namespace mkl_dnn {
 template <typename T>
 class MklDnnRelu : public MklDnnKernel {
  public:
-  MklDnnRelu(MklDnnNode& node,
+  MklDnnRelu(const MklDnnNode& node,
              MKLDNNExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {

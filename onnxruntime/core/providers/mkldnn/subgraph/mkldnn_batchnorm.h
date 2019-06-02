@@ -82,7 +82,7 @@ class BatchNormHelper {
 template <typename T>
 class MklDnnBatchNorm : public MklDnnKernel {
  public:
-  explicit MklDnnBatchNorm(MklDnnNode& node,
+  explicit MklDnnBatchNorm(const MklDnnNode& node,
                            MKLDNNExecutionProvider* provider,
                            const NodeAttributes& attributes,
                            const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {

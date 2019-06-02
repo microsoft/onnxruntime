@@ -17,8 +17,8 @@ namespace mkl_dnn {
 
 class MklDnnKernel {
  public:
-  explicit MklDnnKernel(MklDnnNode& node,
-                        MKLDNNExecutionProvider* provider) {
+  MklDnnKernel(const MklDnnNode& node,
+               MKLDNNExecutionProvider* provider) {
     mklnode_ptr_ = std::make_shared<MklDnnNode>(node);
     provider_ = provider;
     alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);

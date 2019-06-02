@@ -14,7 +14,7 @@ namespace mkl_dnn {
 template <typename T>
 class MklDnnSum : public MklDnnKernel {
  public:
-  explicit MklDnnSum(MklDnnNode& node,
+  explicit MklDnnSum(const MklDnnNode& node,
                      MKLDNNExecutionProvider* provider,
                      const NodeAttributes& attributes,
                      const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
@@ -145,7 +145,7 @@ class MklDnnSum : public MklDnnKernel {
 
     if (mklnode_ptr_->output_index >= 0) {
       // Last node. Allocate output buffer memory and reorder if needed
-      auto& y_dims = primitive_dst_shape_.GetDims();
+      const auto& y_dims = primitive_dst_shape_.GetDims();
       // Allocate memory for output bufffer
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
