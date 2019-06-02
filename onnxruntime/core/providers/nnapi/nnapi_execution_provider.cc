@@ -53,11 +53,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  std::vector<NodeArg *> all_node_inputs;
   for (const auto& node : graph.Nodes()) {
     std::vector<onnxruntime::NodeArg *> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
+      all_node_inputs.push_back(&n_input);
     }
     for (auto output : node.OutputDefs()) {
       auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
@@ -65,6 +67,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
     graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
   }
+  const auto graph_outputs = graph.GetOutputs();
   //Add initializer to graph
   const auto& init_tensors = graph.GetAllInitializedTensors();
   for (const auto& tensor : init_tensors) {
@@ -174,7 +177,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 
       for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-        outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+        if (std::find(all_node_inputs.begin(), all_node_inputs.end(), it->first) != all_node_inputs.end() || std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
+          outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+        }
       }
 
       // Assign inputs and outputs to subgraph's meta_def
