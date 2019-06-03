@@ -17,7 +17,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update --x86'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update --x86'
         workingDirectory: "$(Build.BinariesDirectory)"
 
 
@@ -69,12 +69,12 @@ jobs:
     - script: |
        msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=$(buildConfig) /p:TargetArchitecture=x86 /t:CreatePackage
        cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(buildConfig)\
-       rename *.nupkg win-x86.zip
-       copy $(Build.SourcesDirectory)/csharp/src/Microsoft.ML.OnnxRuntime/bin/RelWithDebInfo/*.zip $(Build.ArtifactStagingDirectory)       
+       ren *.nupkg win-x86.zip
+       copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
       env:
-        RuntimeIdentifier: win-x86
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory) 
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact: drop win x86 zip'
