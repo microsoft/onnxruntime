@@ -24,6 +24,13 @@ jobs:
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests --config Debug Release
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
 
+    - task: CopyFiles@2
+      displayName: 'Copy NuGet Package to Artifact staging'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
