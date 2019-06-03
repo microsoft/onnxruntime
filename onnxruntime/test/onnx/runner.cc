@@ -166,6 +166,8 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
     //run models one by one
     for (size_t i = 0; i != env.tests.size(); ++i) {
       const char* test_case_name = env.tests[i]->GetTestCaseName().c_str();
+      std::cout << "Model Test Case Name is " << test_case_name << std::endl;
+
       ORT_EVENT ev;
       ORT_RETURN_IF_ERROR(CreateOnnxRuntimeEvent(&ev));
       try {
