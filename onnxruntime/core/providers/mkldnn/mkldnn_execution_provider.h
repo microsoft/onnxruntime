@@ -101,6 +101,8 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
       if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
         supported = false;
       }
+      if(node->OutputDefs().size() > 1)
+        supported = false;
     }
     return supported;
   }
