@@ -726,7 +726,7 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
     case TensorProto_DataType_BFLOAT16:
       return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<BFloat16>());
     default:
-      ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
+      ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }
 }
 

@@ -104,6 +104,11 @@ class OpKernelContext {
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
 
+  // Fetch a sparse-tensor output corresponding to the specified index.
+  // num_values must specify the number of non-zero values (commonly known as NNZ/nnz),
+  // and shape must specify the shape of the underlying dense-tensor.
+  // Memory allocation for the output may happen when this method is invoked,
+  // unless static optimization pre-allocates it.
   SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
 
   const logging::Logger& Logger() const {
@@ -163,6 +168,8 @@ class OpKernelContext {
   OrtValue* GetOutputMLValue(int index);
 
   // Creates the OrtValue* based on the shape, if it does not exist
+  // The parameter nnz is used only for sparse-tensors and indicates the
+  // number of non-zero values (the number of elements in the values buffer allocated).
   OrtValue* OutputMLValue(int index, const TensorShape& shape, size_t nnz = 0);
 
  private:
