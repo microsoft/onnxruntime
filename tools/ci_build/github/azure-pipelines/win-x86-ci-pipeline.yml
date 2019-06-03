@@ -69,8 +69,8 @@ jobs:
     - script: |
        msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=$(buildConfig) /p:TargetArchitecture=x86 /t:CreatePackage
        cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(buildConfig)\
-       rename *.nupkg win-x86.zip
-       copy $(Build.SourcesDirectory)/csharp/src/Microsoft.ML.OnnxRuntime/bin/RelWithDebInfo/*.zip $(Build.ArtifactStagingDirectory)       
+       ren *.nupkg win-x86.zip
+       copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
       env:

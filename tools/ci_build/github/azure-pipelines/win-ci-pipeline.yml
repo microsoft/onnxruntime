@@ -64,7 +64,7 @@ jobs:
 
     - script: |
        msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=$(buildConfig) /t:CreatePackage
-       copy $(Build.SourcesDirectory)/csharp/src/Microsoft.ML.OnnxRuntime/bin/RelWithDebInfo/*.nupkg $(Build.ArtifactStagingDirectory)
+       copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
       env:
