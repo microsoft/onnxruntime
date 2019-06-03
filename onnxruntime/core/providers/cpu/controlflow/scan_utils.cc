@@ -99,7 +99,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
 Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
                                  std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
                                  std::vector<std::string>& subgraph_output_names,
-                                 const MLValueNameIdxMap& ort_value_name_idx_map,
+                                 const OrtValueNameIdxMap& ort_value_name_idx_map,
                                  std::unique_ptr<FeedsFetchesManager>& ffm) {
   auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
   if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
@@ -133,7 +133,7 @@ Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_i
 
 Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
                        std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
+                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
                        int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
                        int num_variadic_outputs, std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
                        std::vector<std::unique_ptr<OutputIterator>>& output_iterators, FeedsFetchesManager* ffm,
@@ -405,7 +405,7 @@ Status OutputIterator::Initialize() {
 
 Status OutputIterator::AllocateFinalBuffer() {
   // make sure a single buffer for the full output is created upfront.
-  // we slice this into per-iteration pieces using MLValueTensorSlicer.
+  // we slice this into per-iteration pieces using OrtValueTensorSlicer.
   if (!temporary_) {
     // we can write directly to the Scan output
     auto* tensor = context_.Output(output_index_, final_shape_);
@@ -431,15 +431,16 @@ Status OutputIterator::AllocateFinalBuffer() {
     if (is_loop_state_var_) {
       // only one entry is required as we slice on a single dimension
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                      ? MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
-                                      : MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
+                                      ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
+                                      : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
     } else {
       auto batch_size = final_shape_[0];
       for (int i = 0; i < batch_size; ++i) {
         // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
-        slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                        ? MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).begin()
-                                        : MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).rbegin());
+        slicer_iterators_.push_back(
+            (direction_ == ScanDirection::kForward)
+                ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).begin()
+                : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).rbegin());
       }
     }
 
@@ -448,8 +449,8 @@ Status OutputIterator::AllocateFinalBuffer() {
     // nothing to slice for a loop state var. slice on dimension 0 (sequence) for the scan outputs.
     if (!is_loop_state_var_) {
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                      ? MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
-                                      : MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
+                                      ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
+                                      : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
       cur_slicer_iterator_ = slicer_iterators_.begin();
     }
   }

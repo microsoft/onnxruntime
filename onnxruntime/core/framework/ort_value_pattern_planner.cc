@@ -2,40 +2,40 @@
 // Licensed under the MIT License.
 
 #include <set>
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {
-MLValuePatternPlanner::MLValuePatternPlanner(const ExecutionPlanBase& execution_plan)
+OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan)
     : execution_planner_{execution_plan} {
   for (auto& location : execution_plan.GetAllLocations()) {
     planner_map_.emplace(location, std::make_unique<MemPatternPlanner>());
   }
 }
 
-common::Status MLValuePatternPlanner::TraceAllocation(int ml_value_idx, size_t size) {
-  auto location = execution_planner_.GetLocation(ml_value_idx);
+common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, size_t size) {
+  auto location = execution_planner_.GetLocation(ort_value_idx);
   auto it = planner_map_.find(location);
   if (it == planner_map_.end()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceAllocation(ml_value_idx, size);
+  it->second->TraceAllocation(ort_value_idx, size);
   return common::Status::OK();
 }
 
-common::Status MLValuePatternPlanner::TraceFree(int ml_value_index) {
-  auto location = execution_planner_.GetLocation(ml_value_index);
+common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
+  auto location = execution_planner_.GetLocation(ort_value_index);
   auto it = planner_map_.find(location);
   if (it == planner_map_.end()) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceFree(ml_value_index);
+  it->second->TraceFree(ort_value_index);
   return common::Status::OK();
 }
 
-common::Status MLValuePatternPlanner::GeneratePatterns(MemoryPatternGroup* out) {
+common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup* out) {
   if (!out) return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
 
   for (auto& it : planner_map_) {
