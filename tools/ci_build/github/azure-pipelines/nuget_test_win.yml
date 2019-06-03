@@ -4,6 +4,8 @@ jobs:
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
+  variables:
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
   steps:
   - script: |
      IF EXIST $(buildDirectory)\Debug rmdir /s /q $(buildDirectory)\Debug
@@ -24,18 +26,12 @@ jobs:
      $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(buildDirectory) --config $(buildConfig) --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe  --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --update --download_test_data  --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
 
     displayName: 'Download Test Data'
-    continueOnError: true
-    env:
-      IsReleaseBuild: $(IsReleaseBuild)
 
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core'
-    env:
-      IsReleaseBuild: $(IsReleaseBuild)
-      OnnxRuntimeBuildDirectory: $(buildDirectory)
 
   - script: |
      @echo "Running Runtest.bat"
@@ -43,18 +39,12 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x86'
     enabled: false
-    env:
-      IsReleaseBuild: $(IsReleaseBuild)
-      OnnxRuntimeBuildDirectory: $(buildDirectory)
 
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework'
-    env:
-      IsReleaseBuild: $(IsReleaseBuild)
-      OnnxRuntimeBuildDirectory: $(buildDirectory)
 
   - script: |
      @echo "Running Runtest.bat"
@@ -62,9 +52,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x86'
     enabled: false
-    env:
-      IsReleaseBuild: $(IsReleaseBuild)
-      OnnxRuntimeBuildDirectory: $(buildDirectory)
 
   - script: |
      @echo "Running runtest.bat"
@@ -76,9 +63,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C++) '
     timeoutInMinutes: 30
-    env:
-      IsReleaseBuild: $(IsReleaseBuild)
-      OnnxRuntimeBuildDirectory: $(buildDirectory)
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
