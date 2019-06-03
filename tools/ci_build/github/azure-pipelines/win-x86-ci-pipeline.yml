@@ -74,7 +74,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Create NuGet Package'
       env:
-        RuntimeIdentifier: win-x86
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory) 
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact: drop win x86 zip'
