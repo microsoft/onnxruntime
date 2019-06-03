@@ -95,31 +95,66 @@ IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
-  NodeDef zero_constant_node = ZeroConstantNode();
-  ArgDef ZERO = zero_constant_node.output_args[0];
+  ArgDef A = I(0), B = I(1);
+  std::vector<int64_t> A_shape = GetShape(A);
+  std::vector<int64_t> B_shape = GetShape(B);
 
-  result.push_back(zero_constant_node);
+  if (A_shape.size() == 2 && B_shape.size() == 2) {
+    NodeDef zero_constant_node = ZeroConstantNode();
+    ArgDef ZERO = zero_constant_node.output_args[0];
+    result.push_back(zero_constant_node);
 
-  // is GI(0) required
-  if (IsGradientRequiredForSrcNodeInput(0)) {
-    // dA = dY * B'
-    result.push_back(
-        NodeDef("Gemm",
-                {GO(0), I(1), ZERO},
-                {GI(0)},
-                {MakeAttribute("transB", int64_t(1))}));
+    // is GI(0) required
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      // dA = dY * B'
+      result.push_back(
+          NodeDef("Gemm",
+                  {GO(0), B, ZERO},
+                  {GI(0)},
+                  {MakeAttribute("transB", int64_t(1))}));
+    }
+
+    // is GI(1) required
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+      // dB = A' * dY
+      result.push_back(
+          NodeDef("Gemm",
+                  {A, GO(0), ZERO},
+                  {GI(1)},
+                  {MakeAttribute("transA", int64_t(1))}));
+    }
+  } else if (A_shape.size() > 2 && A_shape.size() == B_shape.size()) {
+    int64_t rank = A_shape.size();
+    std::vector<int64_t> perm(rank);
+    std::iota(perm.begin(), perm.end(), 0);
+    std::swap(perm[rank - 1], perm[rank - 2]);
+
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      result.push_back(
+          NodeDef("Transpose",
+                  {B},
+                  {IA("B_t")},
+                  {MakeAttribute("perm", perm)}));
+      result.push_back(
+          NodeDef("MatMul",
+                  {GO(0), IA("B_t")},
+                  {GI(0)}));
+    }
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+      result.push_back(
+          NodeDef("Transpose",
+                  {A},
+                  {IA("A_t")},
+                  {MakeAttribute("perm", perm)}));
+      result.push_back(
+          NodeDef("MatMul",
+                  {IA("A_t"), GO(0)},
+                  {GI(1)}));
+    }
+  } else {
+    ORT_THROW("GradientBuilder not implemented for MatMul with input ranks of ",
+              A_shape.size(), " and ", B_shape.size());
   }
-
-  // is GI(1) required
-  if (IsGradientRequiredForSrcNodeInput(1)) {
-    // dB = A' * dY
-    result.push_back(
-        NodeDef("Gemm",
-                {I(0), GO(0), ZERO},
-                {GI(1)},
-                {MakeAttribute("transA", int64_t(1))}));
-  }
-
   return result;
 };
 
@@ -566,6 +601,111 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   return output;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
+  bool is_div = (SrcNodeOpType() == "Div");
+
+  const ArgDef &a = I(0), b = I(1);
+
+  std::vector<int64_t> a_shape = GetShape(a);
+  std::vector<int64_t> b_shape = GetShape(b);
+  std::vector<int64_t> a_axes, b_axes;
+  ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
+
+  std::vector<NodeDef> output;
+
+  if (is_div) {
+    NodeDef one_constant_node = OneConstantNode();
+    ArgDef ONE = one_constant_node.output_args[0];
+    output.push_back(one_constant_node);
+    output.push_back(NodeDef("Div", {ONE, I(1)}, {IA("Inv_I1")}));
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    if (is_div) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), IA("Inv_I1")},
+                  {IA("PreReduceGrad0")}));
+    } else {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(1)},
+                  {IA("PreReduceGrad0")}));
+    }
+
+    if (a_axes.size() > 0) {
+      output.push_back(
+          NodeDef("ReduceSum",
+                  {IA("PreReduceGrad0")},
+                  {IA("ReduceSum_0")},
+                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
+                   {"axes", MakeAttribute("axes", a_axes)}}));
+      output.push_back(
+          NodeDef("Shape",
+                  {a},
+                  {IA("a_shape")}));
+      output.push_back(
+          NodeDef("Reshape",
+                  {IA("ReduceSum_0"), IA("a_shape")},
+                  {GI(0)}));
+    } else {
+      output.push_back(
+          NodeDef("Identity",
+                  {IA("PreReduceGrad0")},
+                  {GI(0)}));
+    }
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(1)) {
+    if (is_div) {
+      output.push_back(
+          NodeDef("Mul",
+                  {IA("Inv_I1"), IA("Inv_I1")},
+                  {IA("Squared_Inv_I1")}));
+      output.push_back(
+          NodeDef("Neg",
+                  {IA("Squared_Inv_I1")},
+                  {IA("Neg_Squared_Inv_I1")}));
+      output.push_back(
+          NodeDef("Mul",
+                  {I(0), IA("Neg_Squared_Inv_I1")},
+                  {IA("I0_Mul_Neg_Squared_Inv_I1")}));
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), IA("I0_Mul_Neg_Squared_Inv_I1")},
+                  {IA("PreReduceGrad1")}));
+    } else {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(0)},
+                  {IA("PreReduceGrad1")}));
+    }
+
+    if (b_axes.size() > 0) {
+      output.push_back(
+          NodeDef("ReduceSum",
+                  {IA("PreReduceGrad1")},
+                  {IA("ReduceSum_1")},
+                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
+                   {"axes", MakeAttribute("axes", b_axes)}}));
+      output.push_back(
+          NodeDef("Shape",
+                  {b},
+                  {IA("b_shape")}));
+      output.push_back(
+          NodeDef("Reshape",
+                  {IA("ReduceSum_1"), IA("b_shape")},
+                  {GI(1)}));
+    } else {
+      output.push_back(
+          NodeDef("Identity",
+                  {IA("PreReduceGrad1")},
+                  {GI(1)}));
+    }
+  }
+  return output;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   return std::vector<NodeDef>{
       NodeDef("ReduceMeanGrad",
@@ -575,10 +715,32 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("PowGrad",
-              {GO(0), I(0), I(1)},
-              {GI(0), GI(1)})};
+  if (IsGradientRequiredForSrcNodeInput(1)) {
+    ORT_THROW("GradientBuilder is not implemented for CUDA Pow's input exponent.");
+  }
+
+  std::vector<NodeDef> result;
+  NodeDef one_constant_node = OneConstantNode();
+  ArgDef ONE = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+
+  result.push_back(
+      NodeDef("Sub",
+              {I(1), ONE},
+              {IA("p_minus_one")}));
+  result.push_back(
+      NodeDef("Pow",
+              {I(0), IA("p_minus_one")},
+              {IA("X_Pow_p_minus_one")}));
+  result.push_back(
+      NodeDef("Mul",
+              {IA("X_Pow_p_minus_one"), I(1)},
+              {IA("a_X_Pow_p_minus_one")}));
+  result.push_back(
+      NodeDef("Mul",
+              {IA("a_X_Pow_p_minus_one"), GO(0)},
+              {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
