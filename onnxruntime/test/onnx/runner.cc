@@ -192,13 +192,13 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
   }
   for (size_t i = 0; i != env.tests.size(); ++i) {
     if (!results[i]) {
-      stat.AddFailedTest(env.tests[i]->GetTestCaseName());
+      stat.AddFailedTest(std::pair<std::string,std::string>(env.tests[i]->GetTestCaseName(), env.tests[i]->GetTestCaseVersion()));
       continue;
     }
     const TestCaseResult& r = *results[i];
     for (const EXECUTE_RESULT res : r.GetExcutionResult()) {
       if (res != EXECUTE_RESULT::SUCCESS && res != EXECUTE_RESULT::NOT_SUPPORT) {
-        stat.AddFailedTest(env.tests[i]->GetTestCaseName());
+        stat.AddFailedTest(std::pair<std::string,std::string>(env.tests[i]->GetTestCaseName(),env.tests[i]->GetTestCaseVersion()));
       }
       switch (res) {
         case EXECUTE_RESULT::SUCCESS:
