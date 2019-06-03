@@ -24,8 +24,14 @@ jobs:
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests --config Debug Release
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
 
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-osx'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+      condition: succeeded()
 
     - template: templates/clean-agent-build-directory-step.yml
