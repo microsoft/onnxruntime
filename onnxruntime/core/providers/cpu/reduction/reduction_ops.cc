@@ -35,6 +35,13 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 1);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    ReduceMin,
+    1,
+    int64_t,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
+    ReduceMin<int64_t>);
+
 // When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
 // copy could be skiped to improve performance, if required by check_no_transpose = true;
 // return value: true means transposedInputData is not created/copied, input tensor data could
