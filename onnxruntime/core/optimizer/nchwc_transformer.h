@@ -3,20 +3,17 @@
 
 #pragma once
 
-#include <deque>
+#include "core/common/common.h"
 #include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/graph_transformer_mgr.h"
 
 namespace onnxruntime {
 
 class NchwcTransformer : public onnxruntime::GraphTransformer {
  public:
-  NchwcTransformer() noexcept;
+  NchwcTransformer() noexcept : onnxruntime::GraphTransformer("NchwcTransformer") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
-
-  GraphTransformerManager graph_transformer_mgr_;
 };
 
 }  // namespace onnxruntime
