@@ -46,7 +46,7 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
       new_output_args.emplace_back(output_arg);
     }
   }
-  graph.SetOutputOrder(new_output_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the output as expected.
+  graph.SetOutputs(new_output_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the output as expected.
 
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();

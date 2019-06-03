@@ -8,7 +8,7 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 
-Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
+Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   auto& outputs = node.MutableOutputDefs();
   const NodeArg* Y = outputs[0];
 
@@ -20,13 +20,12 @@ Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, bool& modified, bool
 
   outputs.push_back(&node_arg);
 
-  modified = true;
-  deleted = false;
+  rule_effect = RewriteRuleEffect::kUpdatedCurrentNode;
   return Status::OK();
 }
 
-bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", 8) &&
+bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node) const {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {8}) &&
       node.OutputDefs().size() == 1) {
     return true;
   }

@@ -268,16 +268,6 @@ class OpTester {
 
   std::unique_ptr<onnxruntime::Model> BuildGraph();
 
-  template <class SessionType>
-  std::vector<MLValue> ExecuteModel(Model& model,
-                                    SessionType& session_object,
-                                    ExpectResult expect_result,
-                                    const std::string& expected_failure_string,
-                                    const RunOptions* run_options,
-                                    std::unordered_map<std::string, MLValue> feeds,
-                                    std::vector<std::string> output_names,
-                                    const std::string& provider_type);
-
   const char* op_;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
@@ -325,15 +315,11 @@ class OpTester {
     }
   }
 
-<<<<<<< HEAD
- private:
-=======
   void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
                     const std::string& expected_failure_string, const RunOptions* run_options,
                     std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
                     const std::string& provider_type);
 
->>>>>>> origin/master
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;

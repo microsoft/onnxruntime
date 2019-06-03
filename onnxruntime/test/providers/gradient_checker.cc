@@ -43,7 +43,7 @@ std::pair<int, int> inline CalculateJacobianTransposeIndex(const std::vector<Ten
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline std::vector<onnxruntime::MLValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionAtInput(
+inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionAtInput(
     const OpDef& op_def,
     const std::vector<TensorInfo>& x_infos,
     const std::vector<TensorInfo>& y_infos,
@@ -169,11 +169,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
 
       // Evaluate at positive delta.
       (*x_datas)[x_idx][r] = v + x_delta;
-      std::vector<onnxruntime::MLValue> y_plus = EvaluateFunctionAtInput(op_def, x_infos, y_infos, x_datas, y_datas, attributes);
+      std::vector<OrtValue> y_plus = EvaluateFunctionAtInput(op_def, x_infos, y_infos, x_datas, y_datas, attributes);
 
       // Evaluate at negative delta.
       (*x_datas)[x_idx][r] = v - x_delta;
-      std::vector<onnxruntime::MLValue> y_minus = EvaluateFunctionAtInput(op_def, x_infos, y_infos, x_datas, y_datas, attributes);
+      std::vector<OrtValue> y_minus = EvaluateFunctionAtInput(op_def, x_infos, y_infos, x_datas, y_datas, attributes);
 
       for (int y_idx = 0; y_idx < y_num; y_idx++) {
         if (!y_infos[y_idx].has_gradient) {

@@ -791,8 +791,10 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   // save all valid inputs
   auto& all_inputs = graph.GetInputsIncludingInitializers();
   input_def_map_.reserve(all_inputs.size());
+  model_input_names_.reserve(all_inputs.size());
   for (auto elem : all_inputs) {
     input_def_map_.insert({elem->Name(), elem});
+    model_input_names_.insert(elem->Name());
   }
 
   // save outputs

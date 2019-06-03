@@ -46,8 +46,6 @@ Status Environment::Initialize() {
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
-<<<<<<< HEAD
-      RegisterOnnxFunctionBuilder();
 
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.
@@ -56,8 +54,6 @@ Status Environment::Initialize() {
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
 #endif
-=======
->>>>>>> origin/master
     });
 
     // Register MemCpy schema;

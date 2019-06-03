@@ -69,12 +69,12 @@ class GradientChecker {
                        const std::vector<TensorInfo>& y_infos,
                        std::vector<std::vector<JAC_T>>* jacobians);
 
-  std::vector<onnxruntime::MLValue> EvaluateFunctionAtInput(const training::OpDef& op_def,
-                                                            const std::vector<TensorInfo>& x_infos,
-                                                            const std::vector<TensorInfo>& y_infos,
-                                                            std::vector<std::vector<X_T>>* x_datas,
-                                                            std::vector<std::vector<Y_T>>* y_datas,
-                                                            const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
+  std::vector<OrtValue> EvaluateFunctionAtInput(const training::OpDef& op_def,
+                                                const std::vector<TensorInfo>& x_infos,
+                                                const std::vector<TensorInfo>& y_infos,
+                                                std::vector<std::vector<X_T>>* x_datas,
+                                                std::vector<std::vector<Y_T>>* y_datas,
+                                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
   Status ComputeTheoreticalJacobianTranspose(const training::OpDef& op_def,
                                              const std::vector<TensorInfo>& x_infos,

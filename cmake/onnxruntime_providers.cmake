@@ -77,7 +77,6 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
-<<<<<<< HEAD
 
   if (NOT onnxruntime_USE_HOROVOD)
     list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
@@ -85,10 +84,8 @@ if (onnxruntime_USE_CUDA)
     )
   endif()
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-=======
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
->>>>>>> origin/master
+
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"

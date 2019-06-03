@@ -172,32 +172,21 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     }
     if (calculate_sqt_) {
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-<<<<<<< HEAD
           CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, input_data,
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
-    } else {
-      CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, reinterpret_cast<const CudaT*>(X),
-          &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
-=======
-          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, input_data,
-          &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
     } else {
       // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       if (input_count == output_count) {
-        if (Y->template MutableData<T>() != X->template Data<T>()) {
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
+        if (reinterpret_cast<const void*>(Y) != reinterpret_cast<const void*>(X)) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y, X, input_count * sizeof(T), cudaMemcpyDeviceToDevice));
         }
       } else {
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
             CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-            &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
-            &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+            &one, input_tensor, reinterpret_cast<const CudaT*>(X),
+            &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
       }
->>>>>>> origin/master
     }
   } else {  // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     if (temp_X) {
@@ -225,7 +214,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   return Status::OK();
-}
+}  // namespace cuda
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const {

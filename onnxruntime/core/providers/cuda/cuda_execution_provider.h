@@ -42,7 +42,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
-<<<<<<< HEAD
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
     return nullptr;
@@ -50,8 +49,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return device_id_; }
 
-=======
->>>>>>> origin/master
   cublasHandle_t PerThreadCublasHandle() {
     // Assure each thread has its TLS context.
     if (!per_thread_context_)

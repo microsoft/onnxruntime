@@ -16,6 +16,7 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/framework_common.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ml_value.h"
@@ -24,15 +25,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/fuse_nodes_funcs.h"
-<<<<<<< HEAD
-#include "core/framework/framework_common.h"
-
-#ifdef USE_EIGEN_THREADPOOL
-#include <unsupported/Eigen/CXX11/ThreadPool>
-#endif
-=======
 #include "core/platform/threadpool.h"
->>>>>>> origin/master
 
 namespace onnxruntime {
 

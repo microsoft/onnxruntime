@@ -858,15 +858,12 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
     ORT_THROW("Invalid destination node arg slot specified when removing edge.");
   }
 
-<<<<<<< HEAD
-=======
   if (src_arg != dst_arg) {
     // The edge ends specified by source and destination arg slot are not referring to same node arg.
     // It means there was no edge between these two slots before.
     ORT_THROW("Argument mismatch when removing edge.");
   }
 
->>>>>>> origin/master
   nodes_[dst_node_index]->MutableRelationships().input_edges.erase(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
   nodes_[src_node_index]->MutableRelationships().output_edges.erase(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
 }
@@ -1335,8 +1332,8 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-      subgraph_inputs = &required_subgraph_inputs;
-      num_subgraph_inputs = num_required_subgraph_inputs;
+    subgraph_inputs = &required_subgraph_inputs;
+    num_subgraph_inputs = num_required_subgraph_inputs;
   }
 
   // apply type/shape info to the subgraph's inputs
@@ -2257,26 +2254,10 @@ Status Graph::SetGraphInputsOutputs() {
   // and outputs will be inferred.
   const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
 
-<<<<<<< HEAD
-  // if something is coming from outer scope, consider it already added
-  std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
-
-  if (loaded_from_model_file && graph_input_order_.empty() && graph_output_order_.empty()) {
-    // When the graph is loaded from file and inputs/outputs are not programmatically modified.
-
-    // Collect all graph inputs/outputs specified in original graph proto
-    std::unordered_set<std::string> specified_graph_inputs;
-    std::unordered_set<std::string> specified_graph_outputs;
-    std::unordered_set<std::string> specified_graph_value_info;
-    std::unordered_set<std::string> specified_initializers;
-    std::unordered_map<std::string, const NodeArg*> input_name_to_node_arg;
-    std::unordered_map<std::string, const NodeArg*> output_name_to_node_arg;
-=======
-  if (loaded_from_model_file) {
+  if (loaded_from_model_file && !graph_inputs_manually_set_ && !graph_outputs_manually_set_) {
     // Reset graph inputs/outputs.
     graph_inputs_including_initializers_.clear();
     graph_outputs_.clear();
->>>>>>> origin/master
 
     // Name to NodeArg mapping of all graph initializers.
     std::unordered_map<std::string, const NodeArg*> graph_initializers;
@@ -2346,7 +2327,6 @@ Status Graph::SetGraphInputsOutputs() {
       const auto* node_arg = GetNodeArg(name);
       value_info_.push_back(node_arg);
     }
-
   } else {
     std::unordered_map<std::string, size_t> output_name_to_node_arg_index;
     std::vector<const NodeArg*> output_node_args_in_order;
@@ -2416,11 +2396,11 @@ Status Graph::SetGraphInputsOutputs() {
           if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
             value_info_.push_back(input_arg);
           }
-
+          /* TODO:!!!!!!!!!!!!!!!!!!!!!!!!!!!!
           // However, if the output's order is preserved, it should still be an output.
           if (find(graph_output_order_.begin(), graph_output_order_.end(), input_arg) != graph_output_order_.end()) {
             graph_output_args[input_arg->Name()] = input_arg;
-          }
+          }*/
         }
       }
     }
@@ -2432,26 +2412,10 @@ Status Graph::SetGraphInputsOutputs() {
       for (const auto& output_arg : graph_output_args) {
         graph_output_args_index.push_back(output_arg.second);
       }
-<<<<<<< HEAD
-    }
 
-    // Set graph outputs
-    auto end = graph_output_args.end();
-    for (auto& name : ordered_output_names) {
-      auto graph_output = graph_output_args.find(name);
-      if (graph_output != end) {
-        // if outputs' order are perserved, only set the preserved ones as graph outputs.
-        if (!graph_output_order_.empty()) {
-          if (find(graph_output_order_.begin(), graph_output_order_.end(), graph_output->second) == graph_output_order_.end()) {
-            continue;
-          }
-        }
-        graph_outputs_.push_back(graph_output->second);
-=======
       std::sort(graph_output_args_index.begin(), graph_output_args_index.end());
       for (auto& output_arg_index : graph_output_args_index) {
         graph_outputs_.push_back(output_node_args_in_order[output_arg_index]);
->>>>>>> origin/master
       }
     }
   }
@@ -2564,10 +2528,6 @@ void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
 }
 
 void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
-  if (GraphLoadedFromModelFile(graph_proto_)) {
-    // TODO: add this support.
-    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
-  }
   graph_outputs_ = outputs;
   graph_outputs_manually_set_ = true;
 }

@@ -318,6 +318,7 @@ class InferenceSession {
   std::shared_ptr<onnxruntime::Model> model_;
 
   // names of model outputs used for quick validation.
+  std::unordered_set<std::string> model_input_names_;
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx

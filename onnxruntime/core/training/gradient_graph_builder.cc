@@ -28,7 +28,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const vector<in_graph_optimizer::OptimizerInfo>& opt_info)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
-      pre_training_graph_transformer_{"pre_training_graph_transformer", ""},
+      pre_training_graph_transformer_{"pre_training_graph_transformer"},
       opt_info_(opt_info) {
   pre_training_graph_transformer_.Register(make_unique<InsertMaxPoolOutput>());
 

@@ -141,12 +141,9 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
-<<<<<<< HEAD
     parser.add_argument("--use_horovod", action='store_true', help="Enable Horovod.")
-=======
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
->>>>>>> origin/master
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -341,11 +338,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
-<<<<<<< HEAD
-                 "-Donnxruntime_USE_HOROVOD=" + ("ON" if args.use_horovod else "OFF")
-=======
+                 "-Donnxruntime_USE_HOROVOD=" + ("ON" if args.use_horovod else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
->>>>>>> origin/master
                  ]
     
     # temp turn on only for linux gpu build

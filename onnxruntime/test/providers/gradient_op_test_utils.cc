@@ -87,7 +87,7 @@ void GradientOpTester::Run(
         new_input_args.emplace_back(input_arg);
       }
     }
-    graph.SetInputOrder(new_input_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the input as expected.
+    // TODO !!!!!!!!!!!!!!!!!!!graph.SetInputOrder(new_input_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the input as expected.
     graph.SetGraphResolveNeeded();
     graph.SetGraphProtoSyncNeeded();
 
@@ -151,8 +151,8 @@ void GradientOpTester::Run(
 
       EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-      fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                                                                      feeds, output_names, provider_type);
+      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                   feeds, output_names, provider_type);
     }
     EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
 

@@ -74,12 +74,9 @@ option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
-<<<<<<< HEAD
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
-=======
 option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
->>>>>>> origin/master
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -659,16 +656,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   include(onnxruntime_unittests.cmake)
 endif()
 
-<<<<<<< HEAD
-
 if (onnxruntime_ENABLE_TRAINING)
   include(onnxruntime_training.cmake)
 endif()
-=======
+
 if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
-
->>>>>>> origin/master

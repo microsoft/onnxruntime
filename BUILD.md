@@ -327,11 +327,11 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 ### Using other compilers
 (TODO)
 
-<<<<<<< HEAD
+
 ### Learning capabilities in onnxruntime
 
 You can enable a prototype for running training in onnxruntime by setting the flag --enable_training
-=======
+
 ## Android Builds
 
 ### Cross compiling on Linux
@@ -345,4 +345,3 @@ You can enable a prototype for running training in onnxruntime by setting the fl
 3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it. 
 
 Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.
->>>>>>> origin/master

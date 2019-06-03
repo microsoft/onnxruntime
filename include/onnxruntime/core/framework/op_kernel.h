@@ -167,19 +167,11 @@ class OpKernelContext {
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
-
-<<<<<<< HEAD
-  MLValue* GetMutableInputMLValue(int index);
-  const MLValue* GetInputMLValue(int index) const;
-  const MLValue* GetImplicitInputMLValue(int index) const;
-  MLValue* GetOutputMLValue(int index);
-  MLValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the MLValue* based on the shape, if it does not exist
-=======
+  OrtValue* GetMutableInputMLValue(int index);
   const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
   OrtValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the OrtValue* based on the shape, if it does not exist
->>>>>>> origin/master
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
@@ -240,13 +232,6 @@ KernelCreateInfo BuildKernelCreateInfo();
 namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace contrib
-
-namespace contrib {
-namespace cuda {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace cuda
 }  // namespace contrib
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
