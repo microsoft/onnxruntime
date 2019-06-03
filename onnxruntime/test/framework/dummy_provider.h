@@ -35,10 +35,6 @@ class DummyExecutionProvider : public IExecutionProvider {
     return Status::OK();
   }
 
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 };
 

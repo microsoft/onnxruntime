@@ -7,6 +7,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
+// Those tests will fallback to other EP.
+
 TEST(TensorOpTest, Pad_Spec_Example) {
   OpTester test("Pad");
 

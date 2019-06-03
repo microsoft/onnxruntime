@@ -3,7 +3,7 @@
 //
 
 
-// Copyright (c) Facebook Inc. and Microsoft Corporation.
+// Copyright (c) ONNX Project Contributors.
 // Licensed under the MIT license.
 
 syntax = "proto2";
@@ -20,11 +20,11 @@ package onnx;
 //
 // This document describes the syntax of models and their computation graphs,
 // as well as the standard data types. Together, they are referred to as the ONNX
-// Intermediate Representation, or 'IR' for short.
+// Intermediate Representation, or 'IR' for short. 
 //
 // The normative semantic specification of the ONNX IR is found in docs/IR.md.
 // Definitions of the built-in neural network operators may be found in docs/Operators.md.
-// Definitions of the built-in classical machine learning operators may be found in
+// Definitions of the built-in classical machine learning operators may be found in 
 // docs/Operators-ml.md.
 
 // Notes
@@ -37,8 +37,8 @@ package onnx;
 // by sharing our working version of ONNX.
 //
 // Protobuf compatibility
-//
-// To simplify framework compatibility, ONNX is defined using the subset of protobuf
+// 
+// To simplify framework compatibility, ONNX is defined using the subset of protobuf 
 // that is compatible with both protobuf v2 and v3. This means that we do not use any
 // protobuf features that are only available in one of the two versions.
 //
@@ -62,8 +62,8 @@ enum Version {
   _START_VERSION = 0;
   // The version field is always serialized and we will use it to store the
   // version that the  graph is generated from. This helps us set up version
-  // control.
-  // For the IR, we are using simple numbers starting with with 0x00000001,
+  // control. 
+  // For the IR, we are using simple numbers starting with with 0x00000001, 
   // which was the version we published on Oct 10, 2017.
   IR_VERSION_2017_10_10 = 0x0000000000000001;
 
@@ -81,7 +81,12 @@ enum Version {
   // IR VERSION 4 published on Jan 22, 2019
   // - Relax constraint that initializers should be a subset of graph inputs
   // - Add type BFLOAT16
-  IR_VERSION = 0x0000000000000004;
+  IR_VERSION_2019_1_22 = 0x0000000000000004;
+
+  // IR VERSION 5 published on March 18, 2019
+  // - Add message TensorAnnotation.
+  // - Add quantization annotation in GraphProto to map tensor with its scale and zero point quantization parameters.
+  IR_VERSION = 0x0000000000000005;
 }
 
 // Attributes
@@ -111,7 +116,7 @@ message AttributeProto {
 
   // The name field MUST be present for this version of the IR.
   optional string name = 1;           // namespace Attribute
-
+ 
   // if ref_attr_name is not empty, ref_attr_name is the attribute name in parent function.
   // In this case, this AttributeProto does not contain data, and it's a reference of attribute
   // in parent scope.
@@ -161,7 +166,7 @@ message ValueInfoProto {
 // Computation graphs are made up of a DAG of nodes, which represent what is
 // commonly called a "layer" or "pipeline stage" in machine learning frameworks.
 //
-// For example, it can be a node of type "Conv" that takes in an image, a filter
+// For example, it can be a node of type "Conv" that takes in an image, a filter 
 // tensor and a bias tensor, and produces the convolved output.
 message NodeProto {
   repeated string input = 1;    // namespace Value
@@ -230,6 +235,7 @@ message ModelProto {
 
   // The parameterized graph that is evaluated to execute the model.
   optional GraphProto graph = 7;
+
   // kezhan: This field is not in ONNX, and will be pushed into ONNX with good use cases in microsoft.
   repeated FunctionProto functions = 100;
 
@@ -244,17 +250,18 @@ message StringStringEntryProto {
   optional string value= 2;
 };
 
-message QuantInfo {
+message TensorAnnotation {
   optional string tensor_name = 1;
-  // The keys used in the mapping below will be pre-defined in ONNX spec.
-  // For example, for linear case, “SCALE”, “ZERO_POINT” will be pre-defined as
+  // <key, value> pairs to annotate tensor specified by <tensor_name> above.
+  // The keys used in the mapping below must be pre-defined in ONNX spec.
+  // For example, for 8-bit linear quantization case, 'SCALE_TENSOR', 'ZERO_POINT_TENSOR' will be pre-defined as
   // quantization parameter keys.
   repeated StringStringEntryProto quant_parameter_tensor_names = 2;
-};
+}
 
 // Graphs
 //
-// A graph defines the computational logic of a model and is comprised of a parameterized
+// A graph defines the computational logic of a model and is comprised of a parameterized 
 // list of nodes that form a directed acyclic graph based on their inputs and outputs.
 // This is the equivalent of the "network" or "graph" in many deep learning
 // frameworks.
@@ -283,9 +290,9 @@ message GraphProto {
 
   // This field carries information to indicate the mapping among a tensor and its
   // quantization parameter tensors. For example:
-  // A tensor “a” and its quantization parameter tensor are “scale_a” and
-  // “zero_point_a” (in linear case).
-  repeated QuantInfo quantization_annotation = 100;
+  // For tensor 'a', it may have {'SCALE_TENSOR', 'a_scale'} and {'ZERO_POINT_TENSOR', 'a_zero_point'} annotated,
+  // which means, tensor 'a_scale' and tensor 'a_zero_point' are scale and zero point of tensor 'a' in the model.
+  repeated TensorAnnotation quantization_annotation = 14;
 
   // DO NOT USE the following fields, they were deprecated from earlier versions.
   // repeated string input = 3;
@@ -499,10 +506,10 @@ message TypeProto {
     // repeated TypeProto parameters = 3;
   }
 
-  message SparseTensor {
-    // This field MUST NOT have the value of UNDEFINED
+  message SparseTensor { 
+    // This field MUST NOT have the value of UNDEFINED 
     // This field MUST have a valid TensorProto.DataType value
-    // This field MUST be present for this version of the IR.
+    // This field MUST be present for this version of the IR. 
     optional int32 elem_type = 1;
     optional TensorShapeProto shape = 2;
   }
@@ -530,8 +537,8 @@ message TypeProto {
 
   }
 
-  // An optional denotation can be used to denote the whole
-  // type with a standard semantic description as to what is
+  // An optional denotation can be used to denote the whole 
+  // type with a standard semantic description as to what is 
   // stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
   // for pre-defined type denotations.
   optional string denotation = 6;
@@ -561,11 +568,11 @@ enum OperatorStatus {
 message FunctionProto {
   // The name of the function, similar usage of op_type in OperatorProto.
   optional string name = 1;
-
+  
   // The first version of a function set which contains this function.
   // When there's any breaking change for this function, the function set
   // contains the function needs to bump its version, and since_version of
-  // the updated function will be changed to the updated function set version.
+  // the updated function will be changed to the updated function set version.  
   optional int64 since_version = 2;
 
   // This field indicates whether the syntax, semantics, or presence
@@ -584,7 +591,7 @@ message FunctionProto {
 
   // The attributes of the function.
   repeated string attribute= 6;
-
+  
   // The nodes in the function.
   repeated NodeProto node = 7;
   // A human-readable documentation for this function. Markdown is allowed.

@@ -17,6 +17,7 @@ OrtCreateEnv
 OrtCreateEnvWithCustomLogger
 OrtCreateRunOptions
 OrtCreateSession
+OrtCreateSessionFromArray
 OrtCreateSessionOptions
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
@@ -33,16 +34,16 @@ OrtEnableProfiling
 OrtEnableSequentialExecution
 OrtFillStringTensor
 OrtGetDimensions
+OrtGetDimensionsCount
 OrtGetErrorCode
 OrtGetErrorMessage
-OrtGetNumOfDimensions
 OrtGetStringTensorContent
 OrtGetStringTensorDataLength
 OrtGetTensorElementType
 OrtGetTensorMemSizeInBytesFromTensorProto
 OrtGetTensorMutableData
-OrtGetTensorShapeAndType
 OrtGetTensorShapeElementCount
+OrtGetTensorTypeAndShape
 OrtGetTypeInfo
 OrtGetValue
 OrtGetValueCount
@@ -74,7 +75,7 @@ OrtSessionGetOutputCount
 OrtSessionGetOutputName
 OrtSessionGetOutputTypeInfo
 OrtSessionOptionsAppendExecutionProvider_CPU
-OrtSetDims
+OrtSetDimensions
 OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
 OrtSetSessionGraphOptimizationLevel

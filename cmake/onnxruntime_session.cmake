@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB onnxruntime_session_srcs
+file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"

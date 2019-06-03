@@ -42,6 +42,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
+<<<<<<< HEAD
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
     return nullptr;
@@ -49,6 +50,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return device_id_; }
 
+=======
+>>>>>>> origin/master
   cublasHandle_t PerThreadCublasHandle() {
     // Assure each thread has its TLS context.
     if (!per_thread_context_)
@@ -172,9 +175,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   mutable OrtMutex context_pool_mutex_;
 
   void ReleasePerThreadStuffs() const;
-
-  bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
-  bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) const;
 };
 
 }  // namespace onnxruntime

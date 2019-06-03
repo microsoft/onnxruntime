@@ -9,16 +9,12 @@
 #include <vector>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-
-#ifndef USE_EIGEN_THREADPOOL
-#include "core/common/task_thread_pool.h"
-#endif
-
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -29,14 +25,14 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   for (auto& node : graph_viewer->Nodes()) {
     node_refs_[node.Index()] = node.GetInputEdgesCount();
   }
+
+  executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 32);
 }
 
-Status ParallelExecutor::Execute(const SessionState& session_state,
-                                 const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<MLValue>& feeds,
-                                 const std::vector<int>& fetch_mlvalue_idxs,
-                                 std::vector<MLValue>& fetches,
-                                 const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                 std::vector<OrtValue>& fetches,
+                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {
   TimePoint tp;
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
@@ -191,7 +187,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
 
       sync_time_begin = session_state.Profiler().StartTime();
     }
@@ -259,17 +255,12 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     out_standings_++;
   }
 
-#ifdef USE_EIGEN_THREADPOOL
-  session_state.GetThreadPool()->Schedule([this, p_node_index, &session_state, &logger]() {
+  executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
     try {
       ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
     } catch (...) {
       // catch node processing failure exceptions here to prevent app crash.
     }
   });
-#else
-  std::packaged_task<void()> task{std::bind(&ParallelExecutor::RunNodeAsync, this, p_node_index, std::cref(session_state), std::cref(logger))};
-  session_state.GetThreadPool()->RunTask(std::move(task));
-#endif
 }
 }  // namespace onnxruntime

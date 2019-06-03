@@ -28,7 +28,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<int(FunctionState, ONNXRunTimeTensor*, size_t, ONNXRunTimeTensor*, size_t)>;
+using ComputeFunc = std::function<int(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {
@@ -52,8 +52,8 @@ class IExecutionProvider {
   }
 
   /**
-     Get allocator with specified MemType
-  */
+   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
+   */
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
   /**
@@ -109,7 +109,9 @@ class IExecutionProvider {
      For Direct3D operator kernels, this may return an IUnknown supporting
      QueryInterface to ID3D12GraphicsCommandList1.
   */
-  virtual const void* GetExecutionHandle() const noexcept = 0;
+  virtual const void* GetExecutionHandle() const noexcept {
+    return nullptr;
+  }
 
   /**
      @return type of the execution provider; should match that set in the node

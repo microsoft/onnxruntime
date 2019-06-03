@@ -8,10 +8,16 @@
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
+
+/**
+@Class InsertCastTransformer
+
+Transformer to insert cast node that casts float16 to float for cpu nodes
+*/
 class InsertCastTransformer : public onnxruntime::GraphTransformer {
  public:
   InsertCastTransformer(const std::string& name)
-      : onnxruntime::GraphTransformer(name, "Transformer to insert cast node that casts float16 to float for cpu nodes"),
+      : onnxruntime::GraphTransformer(name),
         force_cpu_fp32_(true) {
   }
 

@@ -96,8 +96,8 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
  */
 static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   struct OrtTensorTypeAndShapeInfo* shape_info;
-  ORT_ABORT_ON_ERROR(OrtGetTensorShapeAndType(tensor, &shape_info));
-  size_t dim_count = OrtGetNumOfDimensions(shape_info);
+  ORT_ABORT_ON_ERROR(OrtGetTensorTypeAndShape(tensor, &shape_info));
+  size_t dim_count = OrtGetDimensionsCount(shape_info);
   if (dim_count != 4) {
     printf("output tensor must have 4 dimensions");
     return -1;
@@ -147,7 +147,7 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
   }
   OrtAllocatorInfo* allocator_info;
   ORT_ABORT_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
-  const size_t input_shape[] = {1, 3, 720, 720};
+  const int64_t input_shape[] = {1, 3, 720, 720};
   const size_t input_shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
   const size_t model_input_len = model_input_ele_count * sizeof(float);
 

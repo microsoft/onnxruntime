@@ -100,7 +100,7 @@ Status RandomUniform::Compute(OpKernelContext* ctx) const {
 }
 
 Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
-  const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
+  const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   Tensor* Y = nullptr;
@@ -122,7 +122,7 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
 }
 
 Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
-  const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
+  const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   Tensor* Y = nullptr;
@@ -192,7 +192,7 @@ static Status MultinomialCompute(OpKernelContext* ctx,
           maxx = std::max(maxx, logits_row[j]);
         }
       }
-      const double max_logit = static_cast<double>(maxx);
+      const auto max_logit = static_cast<double>(maxx);
 
       // Precompute cumulative probability distribution across classes.
       // Note: This isn't normalized.
@@ -219,7 +219,7 @@ static Status MultinomialCompute(OpKernelContext* ctx,
 }
 
 Status Multinomial::Compute(OpKernelContext* ctx) const {
-  const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
+  const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   auto& X_dims = X.Shape().GetDims();

@@ -183,18 +183,18 @@ namespace Microsoft.ML.OnnxRuntime
             Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
 
             // copy to an ulong[] shape to match size_t[]
-            ulong[] longShape = new ulong[rank];
+            long[] longShape = new long[rank];
             for (int i = 0; i < rank; i++)
             {
-                longShape[i] = (ulong)shape[i];
+                longShape[i] = shape[i];
             }
 
             IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
                     NativeMemoryAllocatorInfo.DefaultInstance.Handle,
                     dataBufferPointer,
-                    (ulong)(dataBufferLength),
+                    (UIntPtr)(dataBufferLength),
                     longShape,
-                    (ulong)rank,
+                    (UIntPtr)rank,
                     nativeElementType,
                     out onnxValue
                 );

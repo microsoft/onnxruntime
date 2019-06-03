@@ -30,6 +30,8 @@ opset version implemented in that release.
 
 | ONNX Runtime release version | ONNX opset version <br> implemented in this release | ONNX ML opset version <br> implemented in this release | Supported ONNX IR version |
 |------------------------------|--------------------|----------------------|------------------|
+| 0.4.0 | 10 | 1 | 5 |
+| 0.3.1 | 9 | 1 | 3 |
 | 0.3.0 | 9 | 1 | 3 |
 | 0.2.1 | 8 | 1 | 3 |
 | 0.2.0 | 8 | 1 | 3 |

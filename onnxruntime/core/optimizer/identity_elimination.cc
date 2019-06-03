@@ -10,16 +10,17 @@
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph, Node& node, bool& modified, bool& deleted) {
-  if (graph_utils::RemoveSingleInSingleOutNode(graph, node)) {
-    modified = deleted = true;
+Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+  if (graph_utils::RemoveNode(graph, node)) {
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
   return Status::OK();
 }
 
-bool EliminateIdentity::SatisfyCondition(const Graph& /*graph*/, const Node& node) {
-  return node.OpType() == included_op_type_ && graph_utils::IsSingleInSingleOutNode(node);
+bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node) const {
+  return graph_utils::IsSingleInSingleOutNode(node) &&
+         !graph.IsNodeOutputsInGraphOutputs(node);
 }
 
 }  // namespace onnxruntime

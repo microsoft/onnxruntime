@@ -12,6 +12,7 @@ A clear and concise description of what the bug is.
 - ONNX Runtime installed from (source or binary):
 - ONNX Runtime version:
 - Python version:
+- Visual Studio version (if applicable):
 - GCC/Compiler version (if compiling from source):
 - CUDA/cuDNN version:
 - GPU model and memory:

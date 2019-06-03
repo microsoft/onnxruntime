@@ -32,7 +32,7 @@ std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::Te
  *                        relative path or an absolute path.
  */
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, MLValue& value,
+                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value,
                                     OrtCallback& deleter);
 // This function doesn't support string tensors
 ONNX_NAMESPACE::TensorProto::DataType GetTensorProtoType(const Tensor& tensor);

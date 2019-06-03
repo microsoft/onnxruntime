@@ -179,7 +179,7 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   auto& onnx_domain_version_map =
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
 
-  for (auto domain : onnx_domain_version_map) {
+  for (const auto& domain : onnx_domain_version_map) {
     if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
       continue;
     auto it = domain_version_map.find(domain.first);

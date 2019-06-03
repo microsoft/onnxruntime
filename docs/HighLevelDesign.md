@@ -17,11 +17,11 @@ on its device. This means that ONNXRuntime must be able to execute a single
 model in a heterogeneous environment involving multiple execution providers.
 * Provide support for high-level optimizations that can be expressed as
 model-to-model transformations via a [graph-transformation
-API](../include/onnxruntime/core/graph/graph_transformer.h). Such
+API](../include/onnxruntime/core/optimizer/graph_transformer.h). Such
 transformations fall into two categories: global transformations, those that
 require analysis and transformation of the entire graph, and local
 transformations, which can be captured as simple (algebraic) [rewriting
-rules](../include/onnxruntime/core/graph/rewrite_rule.h).
+rules](../include/onnxruntime/core/optimizer/rewrite_rule.h).
 
 ## High-level system architecture
 The flow is quite simple. Starting from an ONNX model, ONNXRuntime first
