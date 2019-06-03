@@ -372,13 +372,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
 #endif
 
-#ifdef USE_MKLDNN
-  broken_tests["maxpool_2d_dilations"] = "MKL-DNN doesn't support Opset10 yet";
-  broken_tests["maxpool_2d_ceil"] = "MKL-DNN doesn't support Opset10 yet";
-  broken_tests["averagepool_2d_ceil"] = "MKL-DNN doesn't support Opset10 yet";
-  broken_tests["maxpool_2d_ceil"] = "MKL-DNN doesn't support Opset10 yet";
-#endif
-
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
