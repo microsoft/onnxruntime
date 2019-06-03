@@ -171,6 +171,7 @@ class ThreadPool::Impl : public TaskThreadPool {
 //
 ThreadPool::ThreadPool(const std::string& name, int num_threads)
     : impl_(std::make_unique<Impl>(name, num_threads)) {
+  ORT_ENFORCE(num_threads > 0, "The number of threads must be > 0!");
 }
 
 void ThreadPool::Schedule(std::function<void()> fn) { impl_->Schedule(fn); }
