@@ -34,7 +34,7 @@ fi
 if [ "$INSTALLED_PYTHON_VERSION" = "3.4" ];then
   echo "Python 3.5 and above is needed for running onnx tests!" 1>&2
 else
-  source /builds/iot-edge/onnxrt/onnxruntime_internal_ci/onnxruntime/tools/ci_build/github/linux/docker/scripts/install_onnx.sh
+  source /tmp/scripts/install_onnx.sh
 fi
 
 #The last onnx version will be kept
