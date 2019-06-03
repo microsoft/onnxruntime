@@ -28,7 +28,7 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
-MLValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
+OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
@@ -36,7 +36,7 @@ MLValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   //"error: 'ret' may be used uninitialized in this function"
   //This warning only exists in Release build.
   //I believe it's a false alarm.
-  MLValue* p_ml_value = nullptr;
+  OrtValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(GetOutputArgIndex(index), &shape, p_ml_value);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value;
@@ -59,13 +59,13 @@ Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
 
 MLDataType OpKernelContext::InputType(int index) const {
   int input_arg_index = GetInputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
+  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
   return p_ml_value ? p_ml_value->Type() : nullptr;
 }
 
 MLDataType OpKernelContext::OutputType(int index) const {
   auto output_arg_index = GetOutputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
+  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
   return p_ml_value ? p_ml_value->Type() : nullptr;
 }
 
@@ -74,7 +74,7 @@ Fence_t OpKernelContext::InputFence(int index) const {
     return nullptr;
 
   int input_index = GetInputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
+  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
   return p_ml_value ? p_ml_value->Fence() : nullptr;
 }
 
@@ -83,7 +83,7 @@ Fence_t OpKernelContext::ImplicitInputFence(int index) const {
     return nullptr;
 
   int input_index = GetImplicitInputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
+  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
   return p_ml_value ? p_ml_value->Fence() : nullptr;
 }
 
@@ -92,11 +92,11 @@ Fence_t OpKernelContext::OutputFence(int index) const {
     return nullptr;
 
   auto output_arg_index = GetOutputArgIndex(index);
-  const MLValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
+  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
   return p_ml_value ? p_ml_value->Fence() : nullptr;
 }
 
-Status OpKernelContext::GetOrCreateOutputMLValue(int index, MLValue*& p_value) {
+Status OpKernelContext::GetOrCreateOutputMLValue(int index, OrtValue*& p_value) {
   auto output_arg_index = GetOutputArgIndex(index);
   ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, p_value).IsOK());
   return Status::OK();
@@ -118,7 +118,7 @@ onnxruntime::NodeIndex OpKernelContext::GetNodeIndex() const {
   return kernel_->Node().Index();
 }
 
-const MLValue* OpKernelContext::GetInputMLValue(int index) const {
+const OrtValue* OpKernelContext::GetInputMLValue(int index) const {
   if (index < 0 || index >= InputCount())
     return nullptr;
 
@@ -126,7 +126,7 @@ const MLValue* OpKernelContext::GetInputMLValue(int index) const {
   return execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
 }
 
-const MLValue* OpKernelContext::GetImplicitInputMLValue(int index) const {
+const OrtValue* OpKernelContext::GetImplicitInputMLValue(int index) const {
   if (index < 0 || index >= ImplicitInputCount())
     return nullptr;
 
@@ -134,7 +134,7 @@ const MLValue* OpKernelContext::GetImplicitInputMLValue(int index) const {
   return execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
 }
 
-MLValue* OpKernelContext::GetOutputMLValue(int index) {
+OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 

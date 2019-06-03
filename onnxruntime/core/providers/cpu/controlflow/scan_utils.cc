@@ -96,11 +96,10 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   return Status::OK();
 }
 
-Status CreateFeedsFetchesManager(const GraphViewer& subgraph,
-                                 int num_variadic_inputs,
-                                 std::unordered_map<std::string, const MLValue*>& implicit_inputs,
+Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
+                                 std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
                                  std::vector<std::string>& subgraph_output_names,
-                                 const MLValueNameIdxMap& mlvalue_name_idx_map,
+                                 const MLValueNameIdxMap& ort_value_name_idx_map,
                                  std::unique_ptr<FeedsFetchesManager>& ffm) {
   auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
   if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
@@ -127,30 +126,25 @@ Status CreateFeedsFetchesManager(const GraphViewer& subgraph,
   }
 
   FeedsFetchesInfo ffi(feed_names, subgraph_output_names);
-  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, mlvalue_name_idx_map, ffm);
+  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, ort_value_name_idx_map, ffm);
 
   return status;
 }
 
-Status IterateSequence(OpKernelContextInternal& context,
-                       const SessionState& session_state,
+Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
                        std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<MLValueTensorSlicer<const MLValue>::Iterator>& scan_input_stream_iterators,
-                       int64_t seq_length,
-                       int num_loop_state_variables,
-                       int num_variadic_inputs,
-                       int num_variadic_outputs,
-                       std::unordered_map<std::string, const MLValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
-                       FeedsFetchesManager* ffm,
+                       std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
+                       int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
+                       int num_variadic_outputs, std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
+                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators, FeedsFetchesManager* ffm,
                        const FeedsFetchesManager* cached_ffm) {
   Status status = Status::OK();
 
   auto num_implicit_inputs = implicit_inputs.size();
   auto num_inputs = num_variadic_inputs + num_implicit_inputs;
 
-  std::vector<MLValue> feeds;
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
   std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
   feeds.resize(num_inputs);
@@ -160,7 +154,7 @@ Status IterateSequence(OpKernelContextInternal& context,
   // first in each iteration though so offset by num_variadic_inputs
   int i = 0;
   for (auto& entry : implicit_inputs) {
-    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ", entry.first, " did not.");
+    ORT_ENFORCE(entry.second, "All implicit inputs should have OrtValue instances by now. ", entry.first, " did not.");
     feeds[num_variadic_inputs + i] = *entry.second;
     ++i;
   }
@@ -190,19 +184,18 @@ Status IterateSequence(OpKernelContextInternal& context,
         auto& iterator = *output_iterators[output];
 
         if (iterator.FinalOutputAllocated()) {
-          // add MLValue from sliced output
-          auto& mlvalue = *iterator;
-          fetches.push_back(mlvalue);
+          // add OrtValue from sliced output
+          auto& ort_value = *iterator;
+          fetches.push_back(ort_value);
         } else {
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
-          fetch_allocators[output] =
-              [&iterator](const TensorShape& shape, MLValue& mlvalue) {
-                return iterator.AllocateSubgraphOutput(shape, mlvalue);
-              };
+          fetch_allocators[output] = [&iterator](const TensorShape& shape, OrtValue& ort_value) {
+            return iterator.AllocateSubgraphOutput(shape, ort_value);
+          };
 
           // also need a dummy empty entry in fetches so the order matches the output names
-          fetches.push_back({});
+          fetches.emplace_back();
         }
       }
     }
@@ -239,18 +232,17 @@ Status IterateSequence(OpKernelContextInternal& context,
   return status;
 }
 
-MLValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
+OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
   auto new_tensor = std::make_unique<Tensor>(data_type,
                                              shape,
                                              allocator);
 
-  return MLValue{new_tensor.release(),
-                 DataTypeImpl::GetType<Tensor>(),
-                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  return OrtValue{new_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                      std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -269,7 +261,7 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
 }
 
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       std::vector<int64_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                       std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -290,19 +282,15 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
   }
 }
 
-LoopStateVariable::LoopStateVariable(const MLValue& original_value,
-                                     MLValue& final_value,
-                                     const int64_t sequence_len,
+LoopStateVariable::LoopStateVariable(const OrtValue& original_value, OrtValue& final_value, const int64_t sequence_len,
                                      AllocatorPtr& allocator)
-    : sequence_len_{sequence_len},
-      original_value_{original_value},
-      final_value_{final_value} {
+    : sequence_len_{sequence_len}, original_value_{original_value}, final_value_{final_value} {
   auto& tensor = original_value.Get<Tensor>();
   auto& shape = tensor.Shape();
 
-  // allocate a new Tensor in an MLValue with the same shape and type as the tensor in original_value.
-  // the Tensor will own the buffer, and the MLValue will own the Tensor.
-  // the MLValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
+  // allocate a new Tensor in an OrtValue with the same shape and type as the tensor in original_value.
+  // the Tensor will own the buffer, and the OrtValue will own the Tensor.
+  // the OrtValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
   // with the Tensor being used via a shared_ptr (so remains valid during execution and is cleaned up
   // automatically at the end).
   // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
@@ -319,14 +307,14 @@ LoopStateVariable::LoopStateVariable(const MLValue& original_value,
   }
 }
 
-const MLValue& LoopStateVariable::Input() const {
+const OrtValue& LoopStateVariable::Input() const {
   if (iteration_num_ == 0)
     return original_value_;
 
   return iteration_num_ % 2 == 1 ? a_ : b_;
 }
 
-MLValue& LoopStateVariable::Output() {
+OrtValue& LoopStateVariable::Output() {
   if (iteration_num_ + 1 == sequence_len_) {
     return final_value_;
   }
@@ -443,15 +431,15 @@ Status OutputIterator::AllocateFinalBuffer() {
     if (is_loop_state_var_) {
       // only one entry is required as we slice on a single dimension
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                      ? MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).begin()
-                                      : MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).rbegin());
+                                      ? MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
+                                      : MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
     } else {
       auto batch_size = final_shape_[0];
       for (int i = 0; i < batch_size; ++i) {
         // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
         slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                        ? MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_, 1, i).begin()
-                                        : MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_, 1, i).rbegin());
+                                        ? MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).begin()
+                                        : MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).rbegin());
       }
     }
 
@@ -460,8 +448,8 @@ Status OutputIterator::AllocateFinalBuffer() {
     // nothing to slice for a loop state var. slice on dimension 0 (sequence) for the scan outputs.
     if (!is_loop_state_var_) {
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                      ? MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).begin()
-                                      : MLValueTensorSlicer<MLValue>::Create(*final_output_mlvalue_).rbegin());
+                                      ? MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
+                                      : MLValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
       cur_slicer_iterator_ = slicer_iterators_.begin();
     }
   }
@@ -469,7 +457,7 @@ Status OutputIterator::AllocateFinalBuffer() {
   return Status::OK();
 }
 
-Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, MLValue& mlvalue) {
+Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, OrtValue& ort_value) {
   ORT_ENFORCE(!is_concrete_shape_, "If shape was concrete we shouldn't be using a custom allocator");
 
   // update the final shape now that we can fill in the symbolic dimension with an actual value
@@ -480,22 +468,22 @@ Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, MLValue&
   status = AllocateFinalBuffer();
   ORT_RETURN_IF_ERROR(status);
 
-  // get MLValue from operator*()
-  mlvalue = **this;
+  // get OrtValue from operator*()
+  ort_value = **this;
 
   return Status::OK();
 }
 
-MLValue& OutputIterator::operator*() {
+OrtValue& OutputIterator::operator*() {
   ORT_ENFORCE(cur_iteration_ < num_iterations_);
   ORT_ENFORCE(is_concrete_shape_,
-              "Expected AllocateSubgraphOutput to have been called to before we read the MLValue from the iterator.");
+              "Expected AllocateSubgraphOutput to have been called to before we read the OrtValue from the iterator.");
 
   // for v8 both outputs and loop state vars use slicers. for v9 only outputs do
   if (is_v8_ || !is_loop_state_var_)
     return **cur_slicer_iterator_;
-  else
-    return *final_output_mlvalue_;
+
+  return *final_output_mlvalue_;
 }
 
 OutputIterator& OutputIterator::operator++() {

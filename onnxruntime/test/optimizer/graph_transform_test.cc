@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/conv_bn_fusion.h"
@@ -15,6 +17,7 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/relu_clip_fusion.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ml_value.h"
 #include "core/util/math.h"
@@ -60,6 +63,30 @@ TEST(GraphTransformationTests, IdentityElimination) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 0);
+}
+
+TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
+  string model_uri = MODEL_FOLDER + "dropout.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 5);
+  ASSERT_TRUE(op_to_count["Dropout"] == 6);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<EliminateDropout>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  // Of the 6 Dropout nodes in the graph, all but the ones named `d1` and `d6` should have been removed.
+  // A Dropout node can be removed if its second, optional output `mask` is either missing or unused downstream.
+  // `d1` cannot be removed because an Identity node has its `mask` output as an input;
+  // `d6` cannot be removed because its `mask` output is marked as a graph output.
+  ASSERT_TRUE(op_to_count["Identity"] == 5);
+  ASSERT_TRUE(op_to_count["Dropout"] == 2);
 }
 
 TEST(GraphTransformationTests, SliceElimination) {
@@ -116,7 +143,7 @@ TEST(GraphTransformationTests, SubgraphWithConstantInputs) {
   RunOptions run_options;
 
   std::vector<std::string> output_names = {"output"};
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 }
@@ -266,6 +293,26 @@ TEST(GraphTransformationTests, FuseConvAddMul3D) {
   ASSERT_TRUE(op_to_count["Mul"] == 0);
 }
 
+TEST(GraphTransformationTests, FuseConvAddMul3D_2) {
+  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d-2.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
+  rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
+  rule_transformer_L2->Register(std::make_unique<ConvMulFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+}
+
 TEST(GraphTransformationTests, MatMulAddFusion_two_input) {
   string model_uri = MODEL_FOLDER + "matmul_add_fusion/2Input/model.onnx";
 
@@ -339,7 +386,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   NameMLValMap feeds;
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
-  MLValue ml_value_x;
+  OrtValue ml_value_x;
 
   auto x_f = MLFloat16(math::floatToHalf(1.0));
   std::vector<int64_t> dims_x = {1, 1, 3, 3};
@@ -353,7 +400,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   std::vector<std::string> output_names;
   output_names.push_back("PROD");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   ASSERT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 
@@ -371,6 +418,73 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
                                      rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
+}
+
+TEST(GraphTransformationTests, ReluClipFusion) {
+  Model model("ReluClipFusion");
+  auto& graph = model.MainGraph();
+
+  std::vector<NodeArg*> inputs;
+  std::vector<NodeArg*> outputs;
+
+  TypeProto input_tensor_type;
+  input_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  input_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // 3 paths in the model, each with Relu followed by Clip
+  // One has a Clip with min of 0  (remove Relu)
+  // One have a Clip with a min > 1 (remove Relu)
+  // One has a Clip with min < 0 (remove Relu and update Clip 'min' to 0)
+  auto& input0 = graph.GetOrCreateNodeArg("input_0", &input_tensor_type);
+  auto& input1 = graph.GetOrCreateNodeArg("input_1", &input_tensor_type);
+  auto& input2 = graph.GetOrCreateNodeArg("input_2", &input_tensor_type);
+
+  auto& relu0_output = graph.GetOrCreateNodeArg("relu0_output", &input_tensor_type);
+  auto& relu1_output = graph.GetOrCreateNodeArg("relu1_output", &input_tensor_type);
+  auto& relu2_output = graph.GetOrCreateNodeArg("relu2_output", &input_tensor_type);
+
+  auto& clip0_output = graph.GetOrCreateNodeArg("clip0_output", &input_tensor_type);
+  auto& clip1_output = graph.GetOrCreateNodeArg("clip1_output", &input_tensor_type);
+  auto& clip2_output = graph.GetOrCreateNodeArg("clip2_output", &input_tensor_type);
+
+  graph.AddNode("relu0", "Relu", "Relu to eliminate", {&input0}, {&relu0_output});
+  graph.AddNode("relu1", "Relu", "Relu to not eliminate", {&input1}, {&relu1_output});
+  graph.AddNode("relu2", "Relu", "Relu to eliminate and update 'min' of following Clip", {&input2}, {&relu2_output});
+
+  auto& clip0 = graph.AddNode("clip0", "Clip", "Clip with min 0", {&relu0_output}, {&clip0_output});
+  clip0.AddAttribute("min", 0.f);
+  clip0.AddAttribute("max", 1.f);
+
+  auto& clip1 = graph.AddNode("clip1", "Clip", "Clip with min 1", {&relu1_output}, {&clip1_output});
+  clip1.AddAttribute("min", 1.f);
+  clip1.AddAttribute("max", 1.f);
+
+  auto& clip2 = graph.AddNode("clip2", "Clip", "Clip with min -1", {&relu2_output}, {&clip2_output});
+  clip2.AddAttribute("min", -1.f);
+  clip2.AddAttribute("max", 1.f);
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 3);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<FuseReluClip>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 0);
+
+  // make sure the Clip nodes were updated to have a 'min' >= 0
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Clip") {
+      auto* min = graph_utils::GetNodeAttribute(node, "min");
+      ASSERT_TRUE(min->f() >= 0.f);
+    }
+  }
 }
 
 }  // namespace test

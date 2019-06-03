@@ -12,6 +12,7 @@ namespace cuda {
 Status SliceImpl(const size_t element_size,
                  const int32_t dimension_count,
                  const int64_t* starts,
+                 const int64_t* steps,
                  const int64_t* input_strides,
                  const fast_divmod* output_div_strides,
                  const void* input_data,

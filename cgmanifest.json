@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef",
+               "commitHash":"5d0975f43c1224edce17177783b859fca4b8e2b1",
                "repositoryUrl":"https://github.com/onnx/onnx.git"
             }
          }
@@ -232,7 +232,7 @@
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
             }
-         }    
+         }
       },
       {
          "component":{
@@ -298,7 +298,17 @@
                "repositoryUrl":"https://github.com/NervanaSystems/ngraph.git"
             }
          }
-      }
+      },
+      {
+         "component":{
+            "Type":"other",
+            "Other":{
+               "Name":"Boost",
+               "Version":"1.69.0",
+               "DownloadUrl":"http://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.bz2"
+            }
+         }
+      },
    ],
    "Version":1
 }

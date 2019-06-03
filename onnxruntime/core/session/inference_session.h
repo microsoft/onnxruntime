@@ -57,6 +57,7 @@ struct SessionOptions {
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
   // with a big chunk for all the internal memory allocation.
+  // See class 'MLValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
   // enable the memory arena on CPU
@@ -95,25 +96,25 @@ struct ModelMetadata {
 };
 
 /**
-  * @brief This is the main class used to Run a model.
-  * Sample simple usage:
-  *  CPUExecutionProviderInfo epi;
-  *  ProviderOption po{"CPUExecutionProvider", epi};
-  *  SessionOptions so(vector<ProviderOption>{po});
-  *  InferenceSession session_object{so};
-  *  common::Status status = session_object.Load(MODEL_URI);
-  *  common::Status status = session_object.Initialize();
-  *
-  *  NameMLValMap feeds;
-  *  feeds.insert({});
-  *  ...
-  *  std::vector<std::string> output_names;
-  *  output_names.insert(...);
-  *  ...
-  *  std::vector<MLValue> fetches;
-  *  common::Status status = session_object.Run(run_options, feeds, output_names, &fetches);
-  *  process the output here...
-  */
+ * @brief This is the main class used to Run a model.
+ * Sample simple usage:
+ *  CPUExecutionProviderInfo epi;
+ *  ProviderOption po{"CPUExecutionProvider", epi};
+ *  SessionOptions so(vector<ProviderOption>{po});
+ *  InferenceSession session_object{so};
+ *  common::Status status = session_object.Load(MODEL_URI);
+ *  common::Status status = session_object.Initialize();
+ *
+ *  NameMLValMap feeds;
+ *  feeds.insert({});
+ *  ...
+ *  std::vector<std::string> output_names;
+ *  output_names.insert(...);
+ *  ...
+ *  std::vector<OrtValue> fetches;
+ *  common::Status status = session_object.Run(run_options, feeds, output_names, &fetches);
+ *  process the output here...
+ */
 
 class InferenceSession {
  public:
@@ -139,7 +140,7 @@ class InferenceSession {
 
   /**
     * Register an execution provider. If you've one to register, call this before invoking Initialize().
-    * The order of invocation indicates the preference order as well. In other words call this method 
+    * The order of invocation indicates the preference order as well. In other words call this method
     * on your most preferred execution provider first followed by the less preferred ones.
     * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
     * @return OK if success.
@@ -149,7 +150,7 @@ class InferenceSession {
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
-    * @param[in] - providers Optional. If providers is non-empty this transformer will only to 
+    * @param[in] - providers Optional. If providers is non-empty this transformer will only to
       applied to nodes which are assigned to given providers.
     * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
     * @return OK if success.
@@ -165,14 +166,18 @@ class InferenceSession {
     */
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
 
+  /**
+    * Add custom ops. This API is not thread safe.
+    */
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 
   /**
-    * Register a custom registry for operator schema and kernels.  If you've one to register, 
+    * Register a custom registry for operator schema and kernels.  If you've one to register,
     * call this before invoking Initialize().
-    * The order of invocation indicates the reversed preference order: Register your most 
+    * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
+	* This API is not thread safe.
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
@@ -221,15 +226,14 @@ class InferenceSession {
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
+	* This API is thread-safe.
     * @return OK if success
     */
   common::Status Initialize();
 
-  common::Status Run(const RunOptions& run_options,
-                     const std::vector<std::string>& feed_names,
-                     const std::vector<MLValue>& feeds,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>* p_fetches);
+  common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
+                     const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches);
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -241,23 +245,20 @@ class InferenceSession {
     *        This should not be changed during execution of this function.
     * @return OK if success.
     */
-  common::Status Run(const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>* p_fetches);
+  common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches);
 
   /**
-    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<MLValue>* p_fetches)
-    * for details.
-    * @param run_options use this to tune the Run call to your needs.
-    */
-  common::Status Run(const RunOptions& run_options,
-                     const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names,
-                     std::vector<MLValue>* p_fetches);
+   * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
+   * for details.
+   * @param run_options use this to tune the Run call to your needs.
+   */
+  common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
+                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches);
 
   /**
   * Creates a new binding object for binding inputs and outputs.
-  * @param provider_type specifies the location where the inputs need to be potentially copied. 
+  * @param provider_type specifies the location where the inputs need to be potentially copied.
   * See IOBinding class for more info.
   */
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding);
@@ -292,9 +293,9 @@ class InferenceSession {
   int GetCurrentNumRuns() const;
 
   /**
-    * Start profiling on this inference session. This simply turns on profiling events to be 
+    * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
-    *@param file_prefix is the prefix of the profile file. It can include a directory path. 
+    *@param file_prefix is the prefix of the profile file. It can include a directory path.
     */
   void StartProfiling(const std::string& file_prefix);
 #ifdef _WIN32
@@ -340,12 +341,7 @@ class InferenceSession {
   // if they need.
   std::shared_ptr<onnxruntime::Model> model_;
 
-  // Immutable state for each op in the model. Shared by all executors.
-  SessionState session_state_;
-
-  // names of model inputs and outputs used for quick validation.
-  std::unordered_set<std::string> required_model_input_names_;
-  std::unordered_set<std::string> model_input_names_;
+  // names of model outputs used for quick validation.
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
@@ -389,11 +385,9 @@ class InferenceSession {
 
   static common::Status CheckTypes(MLDataType actual, MLDataType expected);
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<MLValue>& feeds);
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
-                                 const std::vector<MLValue>* p_fetches);
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
@@ -423,6 +417,12 @@ class InferenceSession {
 
   ExecutionProviders execution_providers_;
 
+ protected:
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  SessionState session_state_;
+
+ private:
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 

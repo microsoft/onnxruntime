@@ -31,7 +31,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     EyeLike);
 
 Status EyeLike::Compute(OpKernelContext* context) const {
-  const Tensor* T1 = context->Input<Tensor>(0);
+  const auto* T1 = context->Input<Tensor>(0);
   ORT_ENFORCE(T1 != nullptr);
 
   auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);

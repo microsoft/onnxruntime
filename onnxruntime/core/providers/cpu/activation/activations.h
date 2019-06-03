@@ -20,7 +20,7 @@ class Elu final : public OpKernel {
   Elu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y = (xm >= 0).select(xm, (T)alpha_ * (xm.exp() - 1));
@@ -38,7 +38,7 @@ class HardSigmoid final : public OpKernel {
       : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 0.2f)), beta_(info.GetAttrOrDefault("beta", 0.5f)) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y_VAR(ym);
@@ -57,7 +57,7 @@ class LeakyRelu final : public OpKernel {
   LeakyRelu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 0.01f)) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y = (xm >= 0).select(xm, (T)alpha_ * xm);
@@ -75,7 +75,7 @@ class ParametricSoftplus final : public OpKernel {
       : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)), beta_(info.GetAttrOrDefault("beta", 1.0f)) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y = (T)alpha_ *
@@ -95,7 +95,7 @@ class Relu : public OpKernel {
   Relu(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_Y = EIGEN_X.cwiseMax(0);
     return Status::OK();
@@ -112,7 +112,7 @@ class Selu final : public OpKernel {
         gamma_(info.GetAttrOrDefault("gamma", 1.05070102214813232421875f)) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y = (T)gamma_ * (xm.cwiseMax(0.0f) + ((T)alpha_ * (xm.array().exp() - 1.0f)).cwiseMin(0.0f));
@@ -130,7 +130,7 @@ class Sigmoid final : public OpKernel {
   Sigmoid(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y_VAR(ym);
@@ -148,7 +148,7 @@ class Softsign final : public OpKernel {
   Softsign(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y = (1 + xm.abs()).inverse() * xm;
@@ -162,7 +162,7 @@ class Tanh final : public OpKernel {
   Tanh(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_Y = EIGEN_X.tanh();
     return Status::OK();
@@ -178,7 +178,7 @@ class ThresholdedRelu final : public OpKernel {
   ThresholdedRelu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     Tensor* Y = context->Output(0, X->Shape());
     EIGEN_X_VAR(xm);
     EIGEN_Y = (xm > (T)alpha_).select(xm, 0);

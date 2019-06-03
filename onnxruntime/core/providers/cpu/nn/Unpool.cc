@@ -25,10 +25,10 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 Status MaxUnpool::Compute(OpKernelContext* context) const {
   // Get pooled values tensor
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const TensorShape& X_shape = X->Shape();
-  const float* X_data = X->template Data<float>();
+  const auto* X_data = X->template Data<float>();
 
   ORT_RETURN_IF_NOT(X_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
@@ -39,9 +39,9 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   }
 
   // Get pooled index tensor
-  const Tensor* I = context->Input<Tensor>(1);
+  const auto* I = context->Input<Tensor>(1);
   const TensorShape& I_shape = I->Shape();
-  const int64_t* I_data = I->template Data<int64_t>();
+  const auto* I_data = I->template Data<int64_t>();
 
   ORT_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
 
@@ -68,7 +68,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
     // Turn the shape tensor data into an actual shape
-    const int64_t* p_shape = tensor_shape->template Data<int64_t>();
+    const auto* p_shape = tensor_shape->template Data<int64_t>();
     std::vector<int64_t> shape{p_shape, p_shape + tensor_shape->Shape().Size()};
     givenOutputShape = shape;
 
@@ -129,7 +129,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
                                                                 shape,
                                                                 alloc);
 
-    float* p = p_tensor->template MutableData<float>();
+    auto* p = p_tensor->template MutableData<float>();
 
     auto out = gsl::make_span(p, p_tensor->Shape().Size());
     std::fill_n(out.data(), out.size(), 0.f);

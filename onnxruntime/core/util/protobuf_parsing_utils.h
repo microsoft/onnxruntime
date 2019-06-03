@@ -83,24 +83,24 @@ class LIBPROTOBUF_EXPORT FileInputStream : public ZeroCopyInputStream {
   int GetErrno() { return copying_input_.GetErrno(); }
 
   // implements ZeroCopyInputStream ----------------------------------
-  bool Next(const void** data, int* size);
-  void BackUp(int count);
-  bool Skip(int count);
-  int64 ByteCount() const;
+  bool Next(const void** data, int* size) override;
+  void BackUp(int count) override;
+  bool Skip(int count) override;
+  int64 ByteCount() const override;
 
  private:
   class LIBPROTOBUF_EXPORT CopyingFileInputStream : public CopyingInputStream {
    public:
     CopyingFileInputStream(int file_descriptor);
-    ~CopyingFileInputStream();
+    ~CopyingFileInputStream() override;
 
     bool Close();
     void SetCloseOnDelete(bool value) { close_on_delete_ = value; }
     int GetErrno() { return errno_; }
 
     // implements CopyingInputStream ---------------------------------
-    int Read(void* buffer, int size);
-    int Skip(int count);
+    int Read(void* buffer, int size) override;
+    int Skip(int count) override;
 
    private:
     // The file descriptor.
@@ -140,7 +140,7 @@ class LIBPROTOBUF_EXPORT FileOutputStream : public ZeroCopyOutputStream {
   // that should be returned by Next().  Otherwise, a reasonable default
   // is used.
   explicit FileOutputStream(int file_descriptor, int block_size = -1);
-  ~FileOutputStream();
+  ~FileOutputStream() override;
 
   // Flushes any buffers and closes the underlying file.  Returns false if
   // an error occurs during the process; use GetErrno() to examine the error.
@@ -166,22 +166,22 @@ class LIBPROTOBUF_EXPORT FileOutputStream : public ZeroCopyOutputStream {
   int GetErrno() { return copying_output_.GetErrno(); }
 
   // implements ZeroCopyOutputStream ---------------------------------
-  bool Next(void** data, int* size);
-  void BackUp(int count);
-  int64 ByteCount() const;
+  bool Next(void** data, int* size) override;
+  void BackUp(int count) override;
+  int64 ByteCount() const override;
 
  private:
   class LIBPROTOBUF_EXPORT CopyingFileOutputStream : public CopyingOutputStream {
    public:
     CopyingFileOutputStream(int file_descriptor);
-    ~CopyingFileOutputStream();
+    ~CopyingFileOutputStream() override;
 
     bool Close();
     void SetCloseOnDelete(bool value) { close_on_delete_ = value; }
     int GetErrno() { return errno_; }
 
     // implements CopyingOutputStream --------------------------------
-    bool Write(const void* buffer, int size);
+    bool Write(const void* buffer, int size) override;
 
    private:
     // The file descriptor.
@@ -216,19 +216,19 @@ class LIBPROTOBUF_EXPORT IstreamInputStream : public ZeroCopyInputStream {
   explicit IstreamInputStream(std::istream* stream, int block_size = -1);
 
   // implements ZeroCopyInputStream ----------------------------------
-  bool Next(const void** data, int* size);
-  void BackUp(int count);
-  bool Skip(int count);
-  int64 ByteCount() const;
+  bool Next(const void** data, int* size) override;
+  void BackUp(int count) override;
+  bool Skip(int count) override;
+  int64 ByteCount() const override;
 
  private:
   class LIBPROTOBUF_EXPORT CopyingIstreamInputStream : public CopyingInputStream {
    public:
     CopyingIstreamInputStream(std::istream* input);
-    ~CopyingIstreamInputStream();
+    ~CopyingIstreamInputStream() override;
 
     // implements CopyingInputStream ---------------------------------
-    int Read(void* buffer, int size);
+    int Read(void* buffer, int size) override;
     // (We use the default implementation of Skip().)
 
    private:
@@ -257,21 +257,21 @@ class LIBPROTOBUF_EXPORT OstreamOutputStream : public ZeroCopyOutputStream {
   // that should be returned by Next().  Otherwise, a reasonable default
   // is used.
   explicit OstreamOutputStream(std::ostream* stream, int block_size = -1);
-  ~OstreamOutputStream();
+  ~OstreamOutputStream() override;
 
   // implements ZeroCopyOutputStream ---------------------------------
-  bool Next(void** data, int* size);
-  void BackUp(int count);
-  int64 ByteCount() const;
+  bool Next(void** data, int* size) override;
+  void BackUp(int count) override;
+  int64 ByteCount() const override;
 
  private:
   class LIBPROTOBUF_EXPORT CopyingOstreamOutputStream : public CopyingOutputStream {
    public:
     CopyingOstreamOutputStream(std::ostream* output);
-    ~CopyingOstreamOutputStream();
+    ~CopyingOstreamOutputStream() override;
 
     // implements CopyingOutputStream --------------------------------
-    bool Write(const void* buffer, int size);
+    bool Write(const void* buffer, int size) override;
 
    private:
     // The stream.
@@ -302,10 +302,10 @@ class LIBPROTOBUF_EXPORT ConcatenatingInputStream : public ZeroCopyInputStream {
   ConcatenatingInputStream(ZeroCopyInputStream* const streams[], int count);
 
   // implements ZeroCopyInputStream ----------------------------------
-  bool Next(const void** data, int* size);
-  void BackUp(int count);
-  bool Skip(int count);
-  int64 ByteCount() const;
+  bool Next(const void** data, int* size) override;
+  void BackUp(int count) override;
+  bool Skip(int count) override;
+  int64 ByteCount() const override;
 
  private:
   // As streams are retired, streams_ is incremented and count_ is
@@ -324,13 +324,13 @@ class LIBPROTOBUF_EXPORT ConcatenatingInputStream : public ZeroCopyInputStream {
 class LIBPROTOBUF_EXPORT LimitingInputStream : public ZeroCopyInputStream {
  public:
   LimitingInputStream(ZeroCopyInputStream* input, int64 limit);
-  ~LimitingInputStream();
+  ~LimitingInputStream() override;
 
   // implements ZeroCopyInputStream ----------------------------------
-  bool Next(const void** data, int* size);
-  void BackUp(int count);
-  bool Skip(int count);
-  int64 ByteCount() const;
+  bool Next(const void** data, int* size) override;
+  void BackUp(int count) override;
+  bool Skip(int count) override;
+  int64 ByteCount() const override;
 
  private:
   ZeroCopyInputStream* input_;

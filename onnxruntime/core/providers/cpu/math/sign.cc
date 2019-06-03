@@ -46,7 +46,8 @@ template <class T>
 inline T FloatingImpl(T val) {
   if (std::isnan(val) || val == T(0)) {
     return T(0);
-  } else if (val > T(0)) {
+  }
+  if (val > T(0)) {
     return T(1);
   } else {
     return T(-1);

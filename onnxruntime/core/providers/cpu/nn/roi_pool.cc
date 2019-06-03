@@ -13,8 +13,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <>
 Status RoiPool<float>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* R = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* R = context->Input<Tensor>(1);
   if (X == nullptr || R == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
   int batch_size = static_cast<int>(X->Shape()[0]);
@@ -30,17 +30,17 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-  const float* Xdata = X->template Data<float>();
-  const float* rois = R->template Data<float>();
+  const auto* Xdata = X->template Data<float>();
+  const auto* rois = R->template Data<float>();
 
-  float* Ydata = Y->template MutableData<float>();
+  auto* Ydata = Y->template MutableData<float>();
 
   for (int n = 0; n < num_rois; n++) {
     int roi_batch_id = static_cast<int>(rois[0]);
-    int roi_start_w = static_cast<int>(round(rois[1] * spatial_scale_));
-    int roi_start_h = static_cast<int>(round(rois[2] * spatial_scale_));
-    int roi_end_w = static_cast<int>(round(rois[3] * spatial_scale_));
-    int roi_end_h = static_cast<int>(round(rois[4] * spatial_scale_));
+    int roi_start_w = static_cast<int>(std::round(rois[1] * spatial_scale_));
+    int roi_start_h = static_cast<int>(std::round(rois[2] * spatial_scale_));
+    int roi_end_w = static_cast<int>(std::round(rois[3] * spatial_scale_));
+    int roi_end_h = static_cast<int>(std::round(rois[4] * spatial_scale_));
     ORT_ENFORCE(roi_batch_id >= 0);
     ORT_ENFORCE(roi_batch_id < batch_size);
 
@@ -61,14 +61,10 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
           // Compute pooling region for this output unit:
           //  start (included) = floor(ph * roi_height / pooled_height_)
           //  end (excluded) = ceil((ph + 1) * roi_height / pooled_height_)
-          int hstart =
-              static_cast<int>(floor(static_cast<float>(ph) * bin_size_h));
-          int wstart =
-              static_cast<int>(floor(static_cast<float>(pw) * bin_size_w));
-          int hend =
-              static_cast<int>(ceil(static_cast<float>(ph + 1) * bin_size_h));
-          int wend =
-              static_cast<int>(ceil(static_cast<float>(pw + 1) * bin_size_w));
+          int hstart = static_cast<int>(std::floor(static_cast<float>(ph) * bin_size_h));
+          int wstart = static_cast<int>(std::floor(static_cast<float>(pw) * bin_size_w));
+          int hend = static_cast<int>(std::ceil(static_cast<float>(ph + 1) * bin_size_h));
+          int wend = static_cast<int>(std::ceil(static_cast<float>(pw + 1) * bin_size_w));
 
           // Add roi offsets and clip to input boundaries
           hstart = std::min(std::max(hstart + roi_start_h, 0), height);

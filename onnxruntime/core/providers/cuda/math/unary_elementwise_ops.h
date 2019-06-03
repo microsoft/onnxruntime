@@ -77,5 +77,12 @@ class Exp final : public UnaryElementwise {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class Erf final : public UnaryElementwise {
+ public:
+  Erf(const OpKernelInfo& info) : UnaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

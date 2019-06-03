@@ -175,7 +175,7 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
   }
 }
 
-static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   auto rank = input_shape.NumDimensions();
@@ -184,7 +184,7 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
   const bool is_string_type = input.DataType() == DataTypeImpl::GetType<std::string>();
 
   std::vector<size_t> stride(rank);
-  for (int i = 0; i < rank; i++) {
+  for (size_t i = 0; i < rank; i++) {
     size_t inpdim = permutations[i];
     if (inpdim + 1 < rank)
       stride[i] = input_shape.SizeFromDimension(inpdim + 1);
@@ -211,8 +211,8 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
   }
 
   if (is_string_type) {
-    const std::string* input_data = input.template Data<std::string>();
-    std::string* output_data = output.template MutableData<std::string>();
+    const auto* input_data = input.template Data<std::string>();
+    auto* output_data = output.template MutableData<std::string>();
     if (1 == prefix_blocksize) {
       DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
     } else if (1 == suffix_blocksize) {
@@ -223,8 +223,8 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
                       input_data, output_data);
     }
   } else {
-    const uint8_t* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
-    uint8_t* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
+    const auto* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
+    auto* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
     if (1 == prefix_blocksize) {
       DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, element_size);
     } else if (1 == suffix_blocksize) {
@@ -239,7 +239,7 @@ static Status DoUntypedTranspose(const std::vector<int64_t>& permutations, const
   return Status::OK();
 }
 
-Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, const Tensor& input, Tensor& output) {
+Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
   Status status = Status::OK();
 
   auto input_type = input.DataType();
@@ -257,7 +257,7 @@ Status TransposeBase::DoTranspose(const std::vector<int64_t>& permutations, cons
 
 Status Transpose::Compute(OpKernelContext* ctx) const {
   // Get input and output:
-  const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
+  const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& X = *input_tensor_ptr;
   const TensorShape& input_shape = X.Shape();
@@ -265,8 +265,8 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   size_t rank = input_dims.size();
 
   std::vector<int64_t> output_dims(rank);
-  const std::vector<int64_t>* p_perm;
-  std::vector<int64_t> default_perm(rank);
+  const std::vector<size_t>* p_perm;
+  std::vector<size_t> default_perm(rank);
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;
