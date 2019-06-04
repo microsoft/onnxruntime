@@ -184,8 +184,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       // So, we copy indices/shape from input to output.
       // TODO: Extend allocation-planner to enable such sharing.
       const auto& input_indices = input->Indices();
-      auto num_indices = input_indices.Shape().Size();
-      memcpy(output->Indices().MutableData<int64_t>(), input_indices.Data<int64_t>(), num_indices * sizeof(int64_t));
+      memcpy(output->Indices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.Size());
 
       output->Shape() = shape;
 
@@ -268,6 +267,18 @@ struct SparseToValues {
 using Action = std::function<void(CustomRegistry*)>;
 
 class SparseTensorTests : public testing::Test {
+ protected:
+  InferenceSession session_object;
+  std::shared_ptr<CustomRegistry> registry;
+  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_;
+  std::unordered_map<std::string, int> domain_to_version;
+  Model model;
+  Graph& graph;
+
+  std::vector<OpSchema> schemas;
+  std::vector<Action> register_actions;
+  std::vector<TypeProto> types;
+
  public:
   SparseTensorTests() : session_object(SessionOptions(), &DefaultLoggingManager()),
                         registry(std::make_shared<CustomRegistry>()),
@@ -393,19 +404,6 @@ class SparseTensorTests : public testing::Test {
       ExpectEq(fetches[i], expected_output[i]);
     }
   }
-
- protected:
-  std::vector<OpSchema> schemas;
-  std::vector<Action> register_actions;
-  std::shared_ptr<CustomRegistry> registry;
-  InferenceSession session_object;
-
-  IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_;
-  std::unordered_map<std::string, int> domain_to_version;
-  Model model;
-  Graph& graph;
-
-  std::vector<TypeProto> types;
 };
 
 // Test ops SparseFromCOO, SparseAbs, and SparseToValues.
