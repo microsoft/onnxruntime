@@ -10,8 +10,9 @@ Param(
 
 $coreSources = Join-Path $SourceRoot "onnxruntime\core"
 $headerSources = Join-Path $SourceRoot "include"
-$buildDir = Join-Path $BuildRoot "Debug\Debug" -Resolve
-$buildDir = Get-Item $buildDir | Select-Object -ExpandProperty Target  # get the target of the symlink/junction
+$buildDir = Join-Path $BuildRoot "Debug\Debug" 
+#-Resolve
+#$buildDir = Get-Item $buildDir | Select-Object -ExpandProperty Target  # get the target of the symlink/junction
 
 function RunTest([string]$test_cmd, [string[]]$test_cmd_args, [string[]]$export_types, [string[]]$inputs)
 {
