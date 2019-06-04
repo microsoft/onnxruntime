@@ -13,6 +13,7 @@
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/relu_clip_fusion.h"
+#include "core/optimizer/shape_to_initializer.h"
 
 namespace onnxruntime {
 
@@ -32,6 +33,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(std::make_unique<UnsqueezeElimination>());
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<FuseReluClip>());
+      rules.push_back(std::make_unique<ShapeToInitializer>());
       break;
 
     case TransformerLevel::Level2:
