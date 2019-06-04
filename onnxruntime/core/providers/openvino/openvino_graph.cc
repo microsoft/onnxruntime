@@ -100,50 +100,43 @@ std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
   return paths;
 }
 
-std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithMO() {
-  const auto& attributes = fused_node_->GetAttributes();
-  std::string modelProtoStr = attributes.at("model_proto_str").s();
+void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(std::string& onnx_model,
+    std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32) {
 
   Py_Initialize();
   if (!Py_IsInitialized()) {
-    std::cout << "Python Interpreter initialization failed \n";
-    throw "Python Interpreter initialization failed";
+    throw "Python environment initialization failure";
   }
 
-  // Load the MO python module
-  PyObject* pModule = PyImport_ImportModule("openvino_mo");
+  PyObject* pModule = NULL;
+  pModule = PyImport_ImportModule("openvino_mo");
   if (pModule == NULL) {
-    std::cout << "Python module not found " << std::endl;
-    Py_Finalize();
-    throw "Python module not found";
+    throw "Python module import failure";
   }
 
-  // Load the relevant function
   PyObject* pFunc = NULL;
-  if (precision_ == InferenceEngine::Precision::FP32) {
+  if (precision_fp32) {
     pFunc = PyObject_GetAttrString(pModule, "convert_fp32");
-  } else if (precision_ == InferenceEngine::Precision::FP16) {
+  } else {
     pFunc = PyObject_GetAttrString(pModule, "convert_fp16");
   }
-
-  if ((pFunc == NULL) || (PyCallable_Check(pFunc) == 0)) {
-    std::cout << "Python Function not found" << std::endl;
-    Py_DECREF(pModule);
-    Py_Finalize();
-    throw "Python Function not found";
+  if (pFunc == NULL || !PyCallable_Check(pFunc)) {
+    throw "Python module function check failure";
   }
 
   // Prepare ModelProto Input to Python
-  PyObject* pFileName = PyByteArray_FromStringAndSize(modelProtoStr.c_str(), modelProtoStr.size());
+  PyObject* pFileName = PyByteArray_FromStringAndSize(
+      onnx_model.c_str(), onnx_model.size());
   PyObject* pArgs = PyTuple_New(1);
   PyTuple_SetItem(pArgs, 0, pFileName);
 
-  // Call the Python function
-  PyObject* pOutputTuple = PyObject_CallObject(pFunc, pArgs);
+  PyObject* pOutputTuple = NULL;
 
-  if (pOutputTuple == NULL) {
-    std::cout << "Model Optimizer call Failed\n";
-    throw "Model Optimizer Failed";
+  // Call the Python function
+  pOutputTuple = PyObject_CallObject(pFunc, pArgs);
+
+  if (pOutputTuple == NULL || !PyTuple_CheckExact(pOutputTuple)) {
+    throw "Python function call failure";
   }
 
   // Retrieve the weights byte array
@@ -151,24 +144,14 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
   PyObject* pWeights = PyByteArray_FromObject(pArg1);
   const char* weights_bytes = PyByteArray_AsString(pWeights);
   unsigned long weights_size = PyByteArray_Size(pWeights);
+  std::string weights_string(weights_bytes, weights_size);
+  openvino_bin = weights_string;
 
   // Retrieve the xml string
   PyObject* pArg2 = PyTuple_GetItem(pOutputTuple, 1);
   PyObject* pXML = PyObject_Repr(pArg2);
-  std::string xml_string = PyUnicode_AsUTF8(pXML);
+  openvino_xml = PyUnicode_AsUTF8(pXML);
 
-  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
-      new InferenceEngine::TBlob<uint8_t>(InferenceEngine::Precision::U8,
-                                          InferenceEngine::Layout::C, {weights_size}));
-  weightsPtr->allocate();
-
-  std::memcpy(weightsPtr->buffer(), (void*)weights_bytes, weights_size);
-
-  InferenceEngine::CNNNetReader networkReader;
-  networkReader.ReadNetwork((const char*)xml_string.c_str(), xml_string.size());
-  networkReader.SetWeights(weightsPtr);
-
-  // TODO: Cleanup Python interpreter resources
   //    Py_DECREF(pXML);
   //    Py_DECREF(pArg2);
   //    Py_DECREF(pWeights);
@@ -177,7 +160,24 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithM
   //    Py_DECREF(pArgs);
   //    Py_DECREF(pFunc);
   //    Py_DECREF(pModule);
-  //Py_FinalizeEx();
+  //    Py_Finalize();
+}
+
+std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithMO() {
+
+  const auto& attributes = fused_node_->GetAttributes();
+  std::string xml_string = attributes.at("xml_str").s();
+  std::string weights_string = attributes.at("weights_str").s();
+  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
+      new InferenceEngine::TBlob<uint8_t>(InferenceEngine::Precision::U8,
+                                          InferenceEngine::Layout::C, {weights_string.size()}));
+  weightsPtr->allocate();
+
+  std::memcpy(weightsPtr->buffer(), (void*)weights_string.c_str(), weights_string.size());
+
+  InferenceEngine::CNNNetReader networkReader;
+  networkReader.ReadNetwork((const char*)xml_string.c_str(), xml_string.size());
+  networkReader.SetWeights(weightsPtr);
 
   return std::make_shared<InferenceEngine::CNNNetwork>(networkReader.getNetwork());
 }

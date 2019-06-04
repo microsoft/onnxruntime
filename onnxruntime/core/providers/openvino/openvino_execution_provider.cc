@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <Python.h>
 
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
@@ -395,36 +394,13 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     std::string model_proto_strbuf;
     model_proto.SerializeToString(&model_proto_strbuf);
 
-    PyObject *pModule, *pOutput, *pFunc;
+    std::string xml_string, weights_string;
 
-    Py_Initialize();
-    pModule = PyImport_ImportModule("openvino_mo");
-
-    if (pModule != NULL) {
-      if (precision_fp32) {
-        pFunc = PyObject_GetAttrString(pModule, "convert_fp32");
-      } else {
-        pFunc = PyObject_GetAttrString(pModule, "convert_fp16");
-      }
-
-      // Prepare ModelProto Input to Python
-      PyObject* pFileName = PyByteArray_FromStringAndSize(model_proto_strbuf.c_str(), model_proto_strbuf.size());
-      PyObject* pArgs = PyTuple_New(1);
-      PyTuple_SetItem(pArgs, 0, pFileName);
-
-      if (pFunc && PyCallable_Check(pFunc)) {
-        // Call the Python function
-        pOutput = PyObject_CallObject(pFunc, pArgs);
-
-        if (!PyTuple_CheckExact(pOutput)) {
-          return result;
-        }
-
-        else {
-          Py_DECREF(pOutput);
-        }
-      }
-    } else {
+    // Try converting with OpenVINO's Model Optimizer
+    try {
+      openvino_ep::OpenVINOGraph::ConvertONNXModelToOpenVINOIR(model_proto_strbuf, xml_string, weights_string, precision_fp32);
+    } catch  (const char* msg) {
+      // Model Optimizer cannot convert this model.
       return result;
     }
 
@@ -451,13 +427,20 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
       }
     }
 
-    ONNX_NAMESPACE::AttributeProto model_proto_str_attr;
-    model_proto_str_attr.set_name("model_proto_str");
-    model_proto_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-    model_proto_str_attr.set_s(model_proto_strbuf);
+    ONNX_NAMESPACE::AttributeProto xml_str_attr;
+    xml_str_attr.set_name("xml_str");
+    xml_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+    xml_str_attr.set_s(xml_string);
+
+    ONNX_NAMESPACE::AttributeProto weights_str_attr;
+    weights_str_attr.set_name("weights_str");
+    weights_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+    weights_str_attr.set_s(weights_string);
 
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->attributes["model_proto_str"] = model_proto_str_attr;
+    //meta_def->attributes["model_proto_str"] = model_proto_str_attr;
+    meta_def->attributes["xml_str"] = xml_str_attr;
+    meta_def->attributes["weights_str"] = weights_str_attr;
     meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
     meta_def->domain = "OpenVINO";
     meta_def->since_version = 1;

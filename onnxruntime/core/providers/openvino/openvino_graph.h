@@ -29,6 +29,8 @@ class OpenVINOGraph {
 
   void Infer(Ort::CustomOpApi ort, OrtKernelContext* context);
 
+  static void ConvertONNXModelToOpenVINOIR(std::string& onnx_model, std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32);
+
  private:
   std::shared_ptr<InferenceEngine::CNNNetwork> BuildCNNNetworkWithMO();
 
