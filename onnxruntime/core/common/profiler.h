@@ -13,6 +13,10 @@ namespace onnxruntime {
 
 namespace profiling {
 
+// uncomment the macro below, or use -DENABLE_STATIC_PROFILER_INSTANCE for debugging
+// note that static profiler instance only works with single session
+//#define ENABLE_STATIC_PROFILER_INSTANCE
+
 /**
  * Main class for profiling. It continues to accumulate events and produce
  * a corresponding "complete event (X)" in "chrome tracing" format.
@@ -22,6 +26,8 @@ class Profiler {
   /// turned off by default.
   /// Even this function is marked as noexcept, the code inside it may throw exceptions
   Profiler() noexcept {};  //NOLINT
+
+  ~Profiler();
 
   /*
   Initializes Profiler with the session logger to log framework specific messages
@@ -64,6 +70,15 @@ class Profiler {
   */
   std::string EndProfiling();
 
+  static Profiler& Instance() {
+#ifdef ENABLE_STATIC_PROFILER_INSTANCE
+    ORT_ENFORCE(instance_ != nullptr);
+    return *instance_;
+#else
+    ORT_THROW("Static profiler instance is not enabled, please compile with -DENABLE_STATIC_PROFILER_INSTANCE");
+#endif
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
@@ -79,6 +94,10 @@ class Profiler {
   bool max_events_reached{false};
   static constexpr size_t max_num_events_ = 1000000;
   bool profile_with_logger_{false};
+
+#ifdef ENABLE_STATIC_PROFILER_INSTANCE
+  static Profiler* instance_;
+#endif
 };
 
 }  // namespace profiling

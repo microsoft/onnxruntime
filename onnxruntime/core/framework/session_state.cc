@@ -200,7 +200,11 @@ const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex
 }
 
 void SessionState::CalculateNodeIndexInfo() {
-  ORT_ENFORCE(graph_viewer_);
+  // A temporary workaround to avoid a corner case in which graph_viewer_ is not set.
+  // It happened when a FuseNode contains a native node with some subgraphs.
+  if (nullptr == graph_viewer_)
+    return;
+
   node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
 
   for (auto& node_to_map_pair : subgraph_session_states_) {

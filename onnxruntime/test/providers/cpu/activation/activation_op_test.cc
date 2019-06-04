@@ -37,6 +37,7 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
 std::vector<float> input_vals = {
     -1.0f, 0, 1.0f,                                              // normal input values for activation
+    0.1f,                                                        // input value equal to alpha
     100.0f, -100.0f, 1000.0f, -1000.0f,                          // input values that leads to exp() overflow
     FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                        // min, denorm, -denorm
     FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()};  // max, -max, inf
@@ -45,6 +46,10 @@ std::vector<float> no_inf_input_vals = {
     -1.0f, 0, 1.0f,                        // normal input values for activation
     FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,  // min, denorm, -denorm
     FLT_MAX, -FLT_MAX};                    // max, -max
+
+std::vector<float> no_flt_max_inf_input_vals = {
+    -1.0f, 0, 1.0f,                         // normal input values for activation
+    FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10};  // min, denorm, -denorm
 
 TEST(ActivationOpTest, Sigmoid) {
   TestUnaryElementwiseOp("Sigmoid",
@@ -97,10 +102,11 @@ TEST(ActivationOpTest, LeakyRelu) {
 
 TEST(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestUnaryElementwiseOp("ThresholdedRelu",
-                         input_vals,
-                         [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, true, 10);
+  TestUnaryElementwiseOp(
+      "ThresholdedRelu",
+      input_vals,
+      [alpha](float x) { return (x > alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -184,10 +190,11 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
 #ifndef DISABLE_CONTRIB_OPS
 TEST(ActivationOpTest, ThresholdedRelu_version_1_to_9) {
   float alpha = 0.1f;
-  TestUnaryElementwiseOp("ThresholdedRelu",
-                         input_vals,
-                         [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, true, 1);
+  TestUnaryElementwiseOp(
+      "ThresholdedRelu",
+      input_vals,
+      [alpha](float x) { return (x > alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 1);
 }
 
 TEST(ActivationOpTest, ScaledTanh) {
@@ -205,7 +212,7 @@ TEST(ActivationOpTest, ParametricSoftplus) {
   static constexpr float beta = 1.5f;
 
   TestUnaryElementwiseOp("ParametricSoftplus",
-                         input_vals,
+                         no_flt_max_inf_input_vals,
                          [](float x) {
                            float bx = beta * x;
                            if (bx > 0)
@@ -218,19 +225,21 @@ TEST(ActivationOpTest, ParametricSoftplus) {
 #endif
 
 TEST(ActivationOpTest, Softplus) {
-  TestUnaryElementwiseOp("Softplus",
-                         input_vals,
-                         [](float x) {
-                           if (x > 0)
-                             return x + logf(expf(-x) + 1);
-                           else
-                             return logf(expf(x) + 1);
-                         }, {}, false);
+  TestUnaryElementwiseOp(
+      "Softplus",
+      no_inf_input_vals,
+      [](float x) {
+        if (x > 0)
+          return x + logf(expf(-x) + 1);
+        else
+          return logf(expf(x) + 1);
+      },
+      {}, false);
 }
 
 TEST(ActivationOpTest, Softsign) {
   TestUnaryElementwiseOp("Softsign",
-                         no_inf_input_vals,
+                         no_flt_max_inf_input_vals,
                          [](float x) { return x / (1 + std::abs(x)); });
 }
 

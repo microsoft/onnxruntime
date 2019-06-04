@@ -207,6 +207,45 @@ if (onnxruntime_USE_NGRAPH)
   endif()
 endif()
 
+if (onnxruntime_USE_NUPHAR)
+  add_definitions(-DUSE_NUPHAR=1)
+
+  if (NOT onnxruntime_USE_TVM)
+    message(FATAL_ERROR "onnxruntime_USE_TVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  if (NOT onnxruntime_USE_LLVM)
+    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
+  endif()
+
+  include(onnxruntime_nblas.cmake)
+
+  file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.cc"
+  )
+
+  # following files required different build flag for AVX2 in separate cmake file
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/nblas/nblas_igemv_avx2.cc")
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/nblas/nblas_igemv_avx2.h")
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/nblas/nblas_igemv_mkl.cc")
+  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/nblas/nblas_igemv_mkl.h")
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
+  add_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
+  target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
+  add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+
+  # use this if you want this provider to be included in the onnxruntime shared library
+  list(APPEND onnxruntime_libs onnxruntime_providers_nuphar)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
+endif()
+
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_providers_internal.cmake)
 endif()

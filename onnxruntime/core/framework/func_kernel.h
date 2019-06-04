@@ -17,12 +17,17 @@ class FunctionKernel : public OpKernel {
  public:
   //The original design is we load the dll, find the entry point and wrapper it.
   //Here for quick prototype, we keep the entry pointer in the node.
-  explicit FunctionKernel(const OpKernelInfo& info) : OpKernel(info) {
+  explicit FunctionKernel(const OpKernelInfo& info)
+      : OpKernel(info),
+        get_fused_funcs_status_(Status::OK()) {
     num_inputs_ = info.node().InputDefs().size();
     num_outputs_ = info.node().OutputDefs().size();
     CreateFunctionStateFunc create_func;
-    auto status = info.GetFusedFuncs(&func_, &create_func, &release_func_);
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    get_fused_funcs_status_ = info.GetFusedFuncs(&func_, &create_func, &release_func_);
+    // disable the check as current there's a bug that subgraph's session has empty func_mgr
+    // the failure is not fatal if FunctionKernel::Compute of such kernels are not invoked
+    // the check is deferred into Compute
+    //ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     if (create_func) {
       //TODO: we are only provide host allocate method in compute context.
       //Do we need to hold the ref-counting here?
@@ -39,6 +44,7 @@ class FunctionKernel : public OpKernel {
   }
 
   virtual Status Compute(OpKernelContext* context) const override {
+    ORT_RETURN_IF_ERROR(get_fused_funcs_status_);
     auto* context_internal = static_cast<OpKernelContextInternal*>(context);
     int ret = func_(func_state_, &GetCustomOpApi(), reinterpret_cast<OrtKernelContext*>(context_internal));
     if (ret != 0)
@@ -53,5 +59,6 @@ class FunctionKernel : public OpKernel {
   size_t num_inputs_;
   size_t num_outputs_;
   AllocatorPtr host_allocator_;
+  Status get_fused_funcs_status_;
 };
 }  // namespace onnxruntime

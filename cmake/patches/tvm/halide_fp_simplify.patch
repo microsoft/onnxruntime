@@ -1,0 +1,21 @@
+diff --git a/src/arithmetic/Simplify.cpp b/src/arithmetic/Simplify.cpp
+index e053831..8a3c841 100644
+--- a/src/arithmetic/Simplify.cpp
++++ b/src/arithmetic/Simplify.cpp
+@@ -555,6 +555,16 @@ private:
+ 
+         Expr a = mutate(op->a);
+         Expr b = mutate(op->b);
++
++        if (op->type.is_float()) {
++            if (a.same_as(op->a) && b.same_as(op->b)) {
++                expr = self;
++            } else {
++                expr = Add::make(a, b);
++            }
++            return;
++        }
++
+         if (propagate_indeterminate_expression(a, b, op->type, &expr)) {
+             return;
+         }

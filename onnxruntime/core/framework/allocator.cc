@@ -14,7 +14,7 @@ void* CPUAllocator::Alloc(size_t size) {
     return nullptr;
   //default align to 64;
   void* p;
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(_WIN64)
   size_t alignment = 32;
 #else  
   size_t alignment = 64;

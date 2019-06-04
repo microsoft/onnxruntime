@@ -1,0 +1,34 @@
+diff --git a/src/codegen/llvm/codegen_llvm.cc b/src/codegen/llvm/codegen_llvm.cc
+index f80bd9e8..2dcde670 100644
+--- a/src/codegen/llvm/codegen_llvm.cc
++++ b/src/codegen/llvm/codegen_llvm.cc
+@@ -677,9 +677,11 @@ llvm::Value* CodeGenLLVM::CreateIntrinsic(const Call* op) {
+     value->addIncoming(then_value, then_value_block);
+     value->addIncoming(else_value, else_value_block);
+     return value;
+-  } else if (op->is_intrinsic(Call::reinterpret)) {
++  }
++  // Tensorize exports
++  else if (op->is_intrinsic(Call::reinterpret)) {
+     llvm::Type * target = LLVMType(op->type);
+-    return builder_->CreateBitCast(MakeValue(op->args[0]), target);
++    return builder_->CreateBitOrPointerCast(MakeValue(op->args[0]), target);
+   } else if (op->is_intrinsic("vectorlow")) {
+     llvm::Value *v = MakeValue(op->args[0]);
+     int l = v->getType()->getVectorNumElements();
+@@ -688,6 +690,15 @@ llvm::Value* CodeGenLLVM::CreateIntrinsic(const Call* op) {
+     llvm::Value *v = MakeValue(op->args[0]);
+     int l = v->getType()->getVectorNumElements();
+     return CreateVecSlice(v, l/2, l/2);
++  } else if (op->is_intrinsic("extract_element")) {
++    llvm::Value* v = MakeValue(op->args[0]);
++    uint64_t id = op->args[1].as<UIntImm>()->value;
++    return builder_->CreateExtractElement(v, id);
++  } else if (op->is_intrinsic("insert_element")) {
++    llvm::Value* v0 = MakeValue(op->args[0]);
++    llvm::Value* v1 = MakeValue(op->args[1]);
++    uint64_t id = op->args[2].as<UIntImm>()->value;
++    return builder_->CreateInsertElement(v0, v1, id);
+   } else if (op->is_intrinsic("vectorcombine")) {
+     llvm::Value *v0 = MakeValue(op->args[0]);
+     llvm::Value *v1 = MakeValue(op->args[1]);

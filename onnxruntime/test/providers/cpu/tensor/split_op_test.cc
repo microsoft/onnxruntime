@@ -17,7 +17,9 @@ using ExpectResult = OpTester::ExpectResult;
 
 template <typename T>
 void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
-             const std::vector<ShapeAndData<T>>& outputs, bool is_tensorrt_supported = true,
+             const std::vector<ShapeAndData<T>>& outputs,
+             bool is_tensorrt_supported = true,
+             bool is_nuphar_supported = true,
              bool expect_failure = false, const std::string& err_msg = {}) {
   OpTester test("Split");
 
@@ -39,6 +41,10 @@ void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAn
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+
+  if (!is_nuphar_supported) {
+    excluded_providers.insert(kNupharExecutionProvider);
   }
   test.Run(expect_failure ? ExpectResult::kExpectFailure : ExpectResult::kExpectSuccess, err_msg, excluded_providers);
 }
@@ -397,7 +403,7 @@ TEST(SplitOperatorTest, InvalidAxis) {
 
   outputs.push_back({{1}, {0.f}});
 
-  RunTest<float>(axis, {}, input, outputs, true, true, "Invalid value of attribute 'axis'");
+  RunTest<float>(axis, {}, input, outputs, true, true, true, "Invalid value of attribute 'axis'");
 }
 
 // sum of values in splits is too small
@@ -417,7 +423,9 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{2, 2}, {3.f, 4.f, 5.f, 6.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, "Cannot split using values in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, false, true, "Cannot split using values in 'split' attribute");
+  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  //Nuphar returns FuncKernel call failed with error code: -1
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
@@ -435,7 +443,9 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
-  RunTest<float>(axis, splits, input, outputs, false, true, "Invalid value in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<float>(axis, splits, input, outputs, false, false, true, "Invalid value in 'split' attribute");
+  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  //Nuphar returns FuncKernel call failed with error code: -1
 }
 
 /*

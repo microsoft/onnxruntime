@@ -753,6 +753,15 @@ ORT_REGISTER_NON_ONNX_TYPE(uint64_t);
 ORT_REGISTER_NON_ONNX_TYPE(MLFloat16);
 ORT_REGISTER_NON_ONNX_TYPE(BFloat16);
 
+const std::vector<MLDataType>& DataTypeImpl::AllIEEEFloatTensorTypes() {
+  static std::vector<MLDataType> all_IEEE_float_tensor_types =
+      {DataTypeImpl::GetTensorType<float>(),
+       DataTypeImpl::GetTensorType<double>(),
+       DataTypeImpl::GetTensorType<MLFloat16>()};
+
+  return all_IEEE_float_tensor_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
   static std::vector<MLDataType> all_fixed_size_tensor_types =
       {DataTypeImpl::GetTensorType<float>(),
