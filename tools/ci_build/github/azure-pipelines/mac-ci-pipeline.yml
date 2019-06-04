@@ -26,6 +26,7 @@ jobs:
 
     - script: |
        set -e -x 
+       find $(Build.BinariesDirectory)
        mkdir $(Build.BinariesDirectory)/osx-x64
        cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
        ls -al $(Build.BinariesDirectory)/osx-x64
