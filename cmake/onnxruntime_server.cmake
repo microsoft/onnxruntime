@@ -3,6 +3,42 @@
 
 set(SERVER_APP_NAME "onnxruntime_server")
 
+set(gRPC_BUILD_TESTS OFF)
+set(gRPC_GFLAGS_PROVIDER "")
+set(gRPC_BENCHMARK_PROVIDER "")
+set(gRPC_ZLIB_PROVIDER "package")
+set(gRPC_PROTOBUF_PROVIDER "")
+
+if(HAS_UNUSED_PARAMETER)
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
+  string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
+endif()
+# protobuf targets have already been included as submodules - adapted from https://github.com/grpc/grpc/blob/master/cmake/protobuf.cmake
+set(_gRPC_PROTOBUF_LIBRARY_NAME "libprotobuf")
+set(_gRPC_PROTOBUF_LIBRARIES protobuf::${_gRPC_PROTOBUF_LIBRARY_NAME})
+
+set(_gRPC_PROTOBUF_PROTOC_LIBRARIES protobuf::libprotoc)
+# extract the include dir from target's properties
+
+set(_gRPC_PROTOBUF_WELLKNOWN_INCLUDE_DIR ${REPO_ROOT}/cmake/external/protobuf/src)
+set(_gRPC_PROTOBUF_PROTOC protobuf::protoc)
+set(_gRPC_PROTOBUF_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
+
+set(_gRPC_PROTOBUF_INCLUDE_DIR ${PROTOBUF_INCLUDE_DIRS})
+
+MESSAGE(STATUS ${_gRPC_PROTOBUF_WELLKNOWN_INCLUDE_DIR})
+
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/grpc EXCLUDE_FROM_ALL)
+
+if(HAS_UNUSED_PARAMETER)
+  string(APPEND CMAKE_CXX_FLAGS " -Wunused-parameter")
+  string(APPEND CMAKE_C_FLAGS " -Wunused-parameter")
+endif()
+
+set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
+set(_GRPC_PY_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_python_plugin>)
+
+
 # Generate .h and .cc files from protobuf file
 add_library(server_proto ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto)
 if(WIN32)
@@ -24,15 +60,6 @@ endif()
 include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
-if(EXISTS "${ONNX_CUSTOM_PROTOC_EXECUTABLE}")
-    set(_PROTOBUF_PROTOC ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
-  else()
-    set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
-endif()
-
-# In path
-set(_GRPC_PY_PLUGIN_EXECUTABLE "/usr/local/bin/grpc_python_plugin") ##TODO: PARAMETERIZE THIS.
-
 # Genrate GPRC stuff
 get_filename_component(grpc_proto "${ONNXRUNTIME_ROOT}/server/protobuf/prediction_service.proto" ABSOLUTE)
 get_filename_component(grpc_proto_path "${grpc_proto}" PATH)
@@ -43,14 +70,14 @@ set(grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.cc")
 set(grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.h")
 add_custom_command(
       OUTPUT "${grpc_srcs}" "${grpc_hdrs}"
-      COMMAND ${_PROTOBUF_PROTOC}
+      COMMAND $<TARGET_FILE:protobuf::protoc>
       ARGS 
         --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
         --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
         -I ${grpc_proto_path}
         "${grpc_proto}"
-      DEPENDS "${grpc_proto}" ${_GRPC_CPP_PLUGIN_EXECUTABLE} ${_PROTOBUF_PROTOC}
+      DEPENDS "${grpc_proto}" ${_GRPC_CPP_PLUGIN_EXECUTABLE}
       COMMENT "Running ${_GRPC_CPP_PLUGIN_EXECUTABLE} on ${grpc_proto}"
     )
 
@@ -173,6 +200,6 @@ target_include_directories(${SERVER_APP_NAME} PRIVATE
 target_link_libraries(${SERVER_APP_NAME} PRIVATE
     onnxruntime_server_http_core_lib
     onnxruntime_server_lib
-    ${grpc_reflection} #Note that this will break the tests if we try to link it to the normal lib.
+    ${grpc_reflection} #Note that this will break the tests if we try to link it to the normal lib so just link to server.
 )
 

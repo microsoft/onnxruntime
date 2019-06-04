@@ -10,7 +10,6 @@ set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
-set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
@@ -76,7 +75,6 @@ option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
-option(onnxruntime_USE_GRPC "Use GRPC as a dependency when building" OFF)
 
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -249,19 +247,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 
 # use protobuf as a submodule
-set(PROTOBUF_ROOT_DIR ${PROJECT_SOURCE_DIR}/external/protobuf)
-if(onnxruntime_USE_GRPC)
-  set(gRPC_BUILD_TESTS OFF)
-  set(gRPC_GFLAGS_PROVIDER "")
-  set(gRPC_BENCHMARK_PROVIDER "")
-  set(gRPC_ZLIB_PROVIDER "package")
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/grpc EXCLUDE_FROM_ALL)
-  set(_PROTOBUF_LIBPROTOBUF libprotobuf)
-  set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
-  set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
-else()
-add_subdirectory(${PROTOBUF_ROOT_DIR}/cmake EXCLUDE_FROM_ALL)
-endif()
+add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
