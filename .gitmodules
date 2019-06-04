@@ -28,6 +28,7 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+        branch = v5.0
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://github.com/eigenteam/eigen-git-mirror.git

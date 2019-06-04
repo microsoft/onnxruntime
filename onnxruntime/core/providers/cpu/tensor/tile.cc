@@ -41,8 +41,8 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
   const auto& input_shape = input_tensor.Shape().GetDims();
   const size_t dimension_count = input_shape.size();
 
-  const uint8_t* input = reinterpret_cast<const uint8_t*>(input_tensor.DataRaw());
-  uint8_t* output = reinterpret_cast<uint8_t*>(output_tensor.MutableDataRaw());
+  const auto* input = reinterpret_cast<const uint8_t*>(input_tensor.DataRaw());
+  auto* output = reinterpret_cast<uint8_t*>(output_tensor.MutableDataRaw());
 
   // some helper variables that will be used along the way
   size_t block_size = 0;
@@ -81,7 +81,7 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 }
 
 Status Tile::Compute(OpKernelContext* ctx) const {
-  const Tensor* tensor_pointer = ctx->Input<Tensor>(0);
+  const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
   const Tensor& input_tensor = *tensor_pointer;
   const auto& input_shape = input_tensor.Shape();
@@ -99,7 +99,7 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   // Calculate the shape of the output tensor
   auto* repeats = repeats_tensor.template Data<int64_t>();
   std::vector<int64_t> output_dims = input_shape.GetDims();
-  for (auto axis = 0; axis < input_rank; axis++) {
+  for (size_t axis = 0; axis < input_rank; axis++) {
     output_dims[axis] *= repeats[axis];
   }
 
@@ -125,17 +125,15 @@ Status Tile::Compute(OpKernelContext* ctx) const {
       dtype == DataTypeImpl::GetType<uint32_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(float));
 
-  else if (dtype == DataTypeImpl::GetType<double>() ||
-           dtype == DataTypeImpl::GetType<int64_t>() ||
-           dtype == DataTypeImpl::GetType<uint64_t>())
+  if (dtype == DataTypeImpl::GetType<double>() || dtype == DataTypeImpl::GetType<int64_t>() ||
+      dtype == DataTypeImpl::GetType<uint64_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
   else if (dtype == DataTypeImpl::GetType<int8_t>() ||
            dtype == DataTypeImpl::GetType<uint8_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int8_t));
 
-  else if (dtype == DataTypeImpl::GetType<int16_t>() ||
-           dtype == DataTypeImpl::GetType<uint16_t>())
+  if (dtype == DataTypeImpl::GetType<int16_t>() || dtype == DataTypeImpl::GetType<uint16_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int16_t));
 
   else if (dtype == DataTypeImpl::GetType<bool>())

@@ -7,8 +7,7 @@
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
 
-OrtSessionOptions::~OrtSessionOptions() {
-}
+OrtSessionOptions::~OrtSessionOptions() = default;
 
 OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   throw std::runtime_error("not implemented");

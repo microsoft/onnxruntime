@@ -33,8 +33,6 @@ class NGRAPHExecutionProvider : public IExecutionProvider {
   Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  const void* GetExecutionHandle() const noexcept override { return nullptr; }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:

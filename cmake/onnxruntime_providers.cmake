@@ -8,9 +8,11 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
 
 file(GLOB_RECURSE onnxruntime_contrib_ops_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.cc"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -46,7 +48,7 @@ else()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
-set(gemmlowp_src ${ONNXRUNTIME_ROOT}/../cmake/external/gemmlowp)
+set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
 add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -58,16 +60,20 @@ if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
   file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
@@ -121,7 +127,7 @@ if (onnxruntime_USE_TENSORRT)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if (WIN32)
     set(OLD_CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /wd2220")
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4701 /wd4805")
     endif()

@@ -187,32 +187,17 @@ struct ActivationInfo {
 template <typename T>
 class UniDirectionalLstm {
  public:
-  UniDirectionalLstm(AllocatorPtr allocator,
-                     const logging::Logger& logger,
-                     const int seq_length,
-                     const int batch_size,
-                     const int input_size,
-                     const int hidden_size,
-                     Direction direction,
-                     const bool input_forget,
-                     const gsl::span<const T>& bias,
-                     const gsl::span<const T>& peephole_weights,
-                     const gsl::span<const T>& initial_hidden_state,
-                     const gsl::span<const T>& initial_cell_state,
-                     const ActivationFuncs::Entry& activation_func_f,
-                     const ActivationFuncs::Entry& activation_func_g,
-                     const ActivationFuncs::Entry& activation_func_h,
-                     const float clip,
+  UniDirectionalLstm(AllocatorPtr allocator, const logging::Logger& logger, int seq_length, int batch_size,
+                     int input_size, int hidden_size, Direction direction, bool input_forget,
+                     const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights,
+                     const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
+                     const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
+                     const ActivationFuncs::Entry& activation_func_h, float clip,
                      onnxruntime::concurrency::ThreadPool& ttp);
 
-  void Compute(const gsl::span<const T>& inputs,
-               const gsl::span<const int>& sequence_lengths,
-               const int num_directions,
-               const gsl::span<const T>& input_weights,
-               const gsl::span<const T>& recurrent_weights,
-               gsl::span<T>& outputs,
-               gsl::span<T>& final_hidden_state,
-               gsl::span<T>& final_cell_state);
+  void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
+               const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state);
 
   ~UniDirectionalLstm() = default;
 
@@ -222,16 +207,11 @@ class UniDirectionalLstm {
 
   void SetNumThreads();
 
-  void GateComputations(span_T_iter& out, span_T_iter& out_end,
-                        span_T_iter& C_prev, span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
-                        span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end,
-                        span_T_iter& batched_output, span_T_iter& batched_output_end,
-                        const gsl::span<const int>& seq_lengths,
-                        const int min_sequence_length,
-                        const int step,
-                        const int row,
-                        const int local_fused_hidden_rows,
-                        bool output_sequence);
+  void GateComputations(span_T_iter& out, span_T_iter& out_end, span_T_iter& C_prev,
+                        span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
+                        span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end, span_T_iter& batched_output,
+                        span_T_iter& batched_output_end, const gsl::span<const int>& seq_lengths,
+                        int min_sequence_length, int step, int row, int local_fused_hidden_rows, bool output_sequence);
 
   void AllocateBuffers();
 
@@ -851,7 +831,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str,
                    &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
 
-        span_T_iter batched_output, batched_output_end;
+        span_T_iter batched_output;
+        span_T_iter batched_output_end;
         if (output_sequence) {
           batched_output = outputs.begin() + step * output_step_length;
           batched_output_end = outputs.end();
@@ -925,7 +906,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4);
 
-      span_T_iter batched_output, batched_output_end;
+      span_T_iter batched_output;
+      span_T_iter batched_output_end;
       if (output_sequence) {
         batched_output = outputs.begin() + step * output_step_length;
         batched_output_end = outputs.end();
@@ -975,7 +957,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
       std::fill_n(final_hidden_state_dst, hidden_size_, T{});
       continue;
-    } else if (output_sequence) {  // copy last output to final_hidden_state
+    }
+    if (output_sequence) {  // copy last output to final_hidden_state
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);

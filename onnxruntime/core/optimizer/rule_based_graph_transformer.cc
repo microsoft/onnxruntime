@@ -13,19 +13,23 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
   auto op_types = rule->TargetOpTypes();
   // If the target op types are empty, this rule will be evaluated for all op types.
   if (op_types.empty()) {
-    any_op_type_rules_.push_back(std::move(rule));
+    any_op_type_rules_.push_back(*rule);
   } else {
     std::for_each(op_types.cbegin(), op_types.cend(),
-                  [&](const auto& op_type) { op_type_to_rules_[op_type].push_back(std::move(rule)); });
+                  [&](const auto& op_type) { op_type_to_rules_[op_type].push_back(*rule); });
   }
+
+  // Save unique pointer at the rules_ list.
+  rules_.push_back(std::move(rule));
+
   return Status::OK();
 }
 
 Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
-                                                   const std::vector<std::unique_ptr<RewriteRule>>& rules,
+                                                   const std::vector<std::reference_wrapper<const RewriteRule>>& rules,
                                                    RuleEffect& rule_effect) const {
-  for (const auto& rule : rules) {
-    ORT_RETURN_IF_ERROR(rule->CheckConditionAndApply(graph, node, rule_effect));
+  for (const RewriteRule& rule : rules) {
+    ORT_RETURN_IF_ERROR(rule.CheckConditionAndApply(graph, node, rule_effect));
     // If the current node was removed as a result of a rule, stop rule application for that node.
     if (rule_effect == RuleEffect::kRemovedCurrentNode) {
       break;
@@ -56,7 +60,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     // First apply rewrite rules that are registered for the op type of the current node; then apply rules that are
     // registered to be applied regardless of the op type; then recursively apply rules to subgraphs (if any).
     // Stop further rule application for the current node, if the node gets removed by a rule.
-    const std::vector<std::unique_ptr<RewriteRule>>* rules = nullptr;
+    const std::vector<std::reference_wrapper<const RewriteRule>>* rules = nullptr;
 
     rules = GetRewriteRulesForOpType(node->OpType());
     if (rules) {
@@ -84,9 +88,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 }
 
 size_t RuleBasedGraphTransformer::RulesCount() const {
-  return any_op_type_rules_.size() +
-         std::accumulate(op_type_to_rules_.cbegin(), op_type_to_rules_.cend(), size_t(0),
-                         [](size_t sum, const auto& rules) { return sum + rules.second.size(); });
+  return rules_.size();
 }
 
 }  // namespace onnxruntime

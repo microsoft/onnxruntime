@@ -21,14 +21,16 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
   }
   if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
     return AutoPadType::NOTSET;
-  } else if (str == "VALID") {
-    return AutoPadType::VALID;
-  } else if (str == "SAME_UPPER") {
-    return AutoPadType::SAME_UPPER;
-  } else if (str == "SAME_LOWER") {
-    return AutoPadType::SAME_LOWER;
-  } else {
-    ORT_ENFORCE(false, "Unknown AutoPadType String");
   }
+  if (str == "VALID") {
+    return AutoPadType::VALID;
+  }
+  if (str == "SAME_UPPER") {
+    return AutoPadType::SAME_UPPER;
+  }
+  if (str == "SAME_LOWER") {
+    return AutoPadType::SAME_LOWER;
+  }
+  ORT_ENFORCE(false, "Unknown AutoPadType String");
 }
 }  // namespace onnxruntime

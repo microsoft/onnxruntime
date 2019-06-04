@@ -17,7 +17,6 @@ class Graph;
 class KernelDef;
 class KernelRegistryManager;
 class IExecutionProvider;
-class MLValue;
 class Node;
 class Tensor;
 
@@ -27,43 +26,31 @@ class Logger;
 
 namespace utils {
 
-AllocatorPtr GetAllocator(const ExecutionProviders& exec_providers, const OrtAllocatorInfo& allocator_info);
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider,
-                              int device_id,
-                              const Tensor& fetched_tensor,
-                              MLValue& output_mlvalue);
+common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
+                              OrtValue& output_mlvalue);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
-common::Status CopyOneInputAcrossDevices(const SessionState& session_state,
-                                         const std::string& input_name,
-                                         const MLValue& orig_mlvalue,
-                                         MLValue& new_mlvalue);
+common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
+                                         const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
 
 // ExecuteGraph, writing cache info to FeedsFetchesManager to optimize feed and fetch usage across invocations when the
 // order and location of the feeds and fetches is unchanged.
-common::Status ExecuteGraph(const SessionState& session_state,
-                            FeedsFetchesManager& feeds_fetches_manager,
-                            const std::vector<MLValue>& feeds,
-                            std::vector<MLValue>& fetches,
+common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                            bool sequential_execution,
-                            const bool& terminate_flag,
-                            const logging::Logger& logger,
+                            bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger,
                             bool cache_copy_info = true);
 
 // ExecuteGraph used the cached information in feeds_fetches_manager.
-common::Status ExecuteGraphWithCachedInfo(const SessionState& session_state,
-                                          const FeedsFetchesManager& feeds_fetches_manager,
-                                          const std::vector<MLValue>& feeds,
-                                          std::vector<MLValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                          bool sequential_execution,
-                                          const bool& terminate_flag,
-                                          const logging::Logger& logger);
+common::Status ExecuteGraphWithCachedInfo(
+    const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
+    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, bool sequential_execution,
+    const bool& terminate_flag, const logging::Logger& logger);
 
 #define DispatchOnTensorType(tensor_type, function, ...)        \
   if (tensor_type == DataTypeImpl::GetType<float>())            \

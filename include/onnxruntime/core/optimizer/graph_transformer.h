@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <string>
+#include <unordered_set>
 
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
@@ -59,7 +61,7 @@ class GraphTransformer {
   // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases
   // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
   // completes (if 'modified' is true) should suffice.
-  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level = 0) const = 0;
+  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const = 0;
 
   const std::string name_;
   const std::unordered_set<std::string> compatible_provider_types_;

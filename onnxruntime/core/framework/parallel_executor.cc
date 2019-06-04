@@ -29,12 +29,10 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   executor_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>("EXECUTOR", 32);
 }
 
-Status ParallelExecutor::Execute(const SessionState& session_state,
-                                 const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<MLValue>& feeds,
-                                 const std::vector<int>& fetch_mlvalue_idxs,
-                                 std::vector<MLValue>& fetches,
-                                 const std::unordered_map<size_t, CustomAllocator> fetch_allocators,
+Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
+                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                                 std::vector<OrtValue>& fetches,
+                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {
   TimePoint tp;
   bool f_profiler_enabled = session_state.Profiler().FEnabled();
@@ -189,7 +187,7 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}});
+                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
 
       sync_time_begin = session_state.Profiler().StartTime();
     }

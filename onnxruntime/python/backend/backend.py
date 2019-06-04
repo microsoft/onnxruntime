@@ -7,7 +7,7 @@ Implements ONNX's backend API.
 """
 from onnx.checker import check_model
 from onnx.backend.base import Backend
-from onnxruntime import InferenceSession, RunOptions, SessionOptions, get_device
+from onnxruntime import InferenceSession, SessionOptions, get_device
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 
@@ -91,11 +91,7 @@ class OnnxRuntimeBackend(Backend):
         :return: predictions
         """
         rep = cls.prepare(model, device, **kwargs)
-        options = RunOptions()
-        for k, v in kwargs.items():
-            if hasattr(options, k):
-                setattr(options, k, v)
-        return rep.run(inputs, options)
+        return rep.run(inputs, **kwargs)
 
     @classmethod
     def run_node(cls, node, inputs, device=None, outputs_info=None, **kwargs):

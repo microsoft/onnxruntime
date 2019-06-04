@@ -62,6 +62,10 @@ macro(DOWNLOAD_BOOST)
     set(BOOTSTRAP_FILE_TYPE "sh")
   endif()
 
+  foreach(component ${BOOST_COMPONENTS})
+    list(APPEND BOOST_BUILD_BYPRODUCTS <INSTALL_DIR>/lib/${LIBRARY_PREFIX}boost_${component}${WINDOWS_LIB_NAME_SCHEME}${LIBRARY_SUFFIX})
+  endforeach()
+
   message(STATUS "Adding Boost components")
   include(ExternalProject)
   ExternalProject_Add(
@@ -74,6 +78,7 @@ macro(DOWNLOAD_BOOST)
       CONFIGURE_COMMAND ./bootstrap.${BOOTSTRAP_FILE_TYPE} --prefix=${BOOST_ROOT_DIR}
       BUILD_COMMAND ./b2 install ${BOOST_MAYBE_STATIC} --prefix=${BOOST_ROOT_DIR} variant=${VARIANT} ${WINDOWS_B2_OPTIONS} ${BOOST_COMPONENTS_FOR_BUILD}
       BUILD_IN_SOURCE true
+      BUILD_BYPRODUCTS ${BOOST_BUILD_BYPRODUCTS}
       INSTALL_COMMAND ""
       INSTALL_DIR ${BOOST_ROOT_DIR}
   )
