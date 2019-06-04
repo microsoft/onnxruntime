@@ -505,12 +505,12 @@ def setup_tensorrt_vars(args):
         # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests
         os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
 
-        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)  
-        os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"  
+        # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)
+        os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
         os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
-        
+
     return tensorrt_home
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
@@ -571,6 +571,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           cmd += ["-e", provider]
           if provider == 'mkldnn':
              cmd += ['-c', '1']
+          if provider == 'openvino':
+             cmd += ['-v']
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
@@ -598,7 +600,7 @@ def split_server_binary_and_symbol(build_dir, configs):
                 run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
                 run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
                 run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
-            
+
 
 def run_server_tests(build_dir, configs):
     pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
@@ -610,7 +612,7 @@ def run_server_tests(build_dir, configs):
         else:
             # Outside virtualenv
             run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
-    
+
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -629,7 +631,7 @@ def run_server_model_tests(build_dir, configs):
         config_build_dir = get_config_build_dir(build_dir, config)
         server_test_folder = os.path.join(config_build_dir, 'server_test')
         server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
- 
+
         if is_windows():
             server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
             test_raw_data_folder = os.path.join(config_build_dir, 'models')
@@ -638,7 +640,7 @@ def run_server_model_tests(build_dir, configs):
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             test_raw_data_folder = os.path.join(build_dir, 'models')
             python_package_path = config_build_dir
-        
+
         run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
