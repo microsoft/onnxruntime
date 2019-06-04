@@ -369,7 +369,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
     }
   } else {
     auto fw_perm = RetrieveValues<int64_t>(attributes.at("perm"));
-    auto size = bw_perm.size();
+    auto size = fw_perm.size();
     bw_perm.resize(size);
     for (int i = 0; i < static_cast<int>(size); ++i) {
       bw_perm[fw_perm[i]] = i;
