@@ -248,7 +248,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (size_t i = 0; i < input_data_.size(); ++i) {
+  for (auto i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 
@@ -269,22 +269,28 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   return p_model;
 }
 
-void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
-                            const std::string& expected_failure_string, const RunOptions* run_options,
-                            std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
-                            const std::string& provider_type) {
+template <class SessionType>
+std::vector<MLValue> OpTester::ExecuteModel(Model& model,
+                                            SessionType& session_object,
+                                            ExpectResult expect_result,
+                                            const std::string& expected_failure_string,
+                                            const RunOptions* run_options,
+                                            std::unordered_map<std::string, OrtValue> feeds,
+                                            std::vector<std::string> output_names,
+                                            const std::string& provider_type) {
+  std::vector<OrtValue> fetches;
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
     LOGS_DEFAULT(ERROR) << "Failed to serialize proto to string";
-    return;
+    return fetches;
   }
   std::stringstream sstr(s1);
   auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
+    return fetches;
   }
 
   status = session_object.Initialize();
@@ -299,19 +305,18 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
   }
 
   if (!status.IsOK()) {
-    return;
+    return fetches;
   }
 
   RunOptions default_run_options{};
   default_run_options.run_tag = op_;
   default_run_options.run_log_verbosity_level = 1;
 
-  std::vector<OrtValue> fetches;
   status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
   if (status.IsOK()) {
     EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess);
     if (expect_result == ExpectResult::kExpectFailure) {
-      return;
+      return fetches;
     }
   } else {
     if (expect_result == ExpectResult::kExpectFailure) {
@@ -323,7 +328,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
       LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
-    return;
+    return fetches;
   }
 
   // Verify the outputs
@@ -361,6 +366,8 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
       }
     }
   }
+
+  return fetches;
 }
 
 void OpTester::Run(
@@ -436,8 +443,8 @@ void OpTester::Run(
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
       }
 
-      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                   feeds, output_names, provider_types);
+      fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                                                feeds, output_names, provider_types);
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -493,8 +500,8 @@ void OpTester::Run(
 
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options,
-                     feeds, output_names, provider_type);
+        fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                                                  feeds, output_names, provider_type);
       }
 
       EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
@@ -505,6 +512,15 @@ void OpTester::Run(
     throw;
   }
 }
+
+template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(Model& model,
+                                                                                training::TrainingSession& session_object,
+                                                                                ExpectResult expect_result,
+                                                                                const std::string& expected_failure_string,
+                                                                                const RunOptions* run_options,
+                                                                                std::unordered_map<std::string, MLValue> feeds,
+                                                                                std::vector<std::string> output_names,
+                                                                                const std::string& provider_type);
 
 }  // namespace test
 }  // namespace onnxruntime

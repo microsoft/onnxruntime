@@ -268,10 +268,20 @@ class OpTester {
 
   std::unique_ptr<onnxruntime::Model> BuildGraph();
 
+  template <class SessionType>
+  std::vector<MLValue> ExecuteModel(Model& model,
+                                    SessionType& session_object,
+                                    ExpectResult expect_result,
+                                    const std::string& expected_failure_string,
+                                    const RunOptions* run_options,
+                                    std::unordered_map<std::string, OrtValue> feeds,
+                                    std::vector<std::string> output_names,
+                                    const std::string& provider_type);
+
   const char* op_;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
-  std::vector<MLValue> fetches_;
+  std::vector<OrtValue> fetches_;
 
 #ifndef NDEBUG
   bool run_called_{};
