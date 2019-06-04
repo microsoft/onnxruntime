@@ -214,7 +214,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   return Status::OK();
-}  // namespace cuda
+}
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const {

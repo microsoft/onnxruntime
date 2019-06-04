@@ -360,6 +360,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
     }
   }
 }
+
 void OpTester::Run(
     ExpectResult expect_result,
     const std::string& expected_failure_string,

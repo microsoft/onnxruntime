@@ -87,7 +87,7 @@ void GradientOpTester::Run(
         new_input_args.emplace_back(input_arg);
       }
     }
-    // TODO !!!!!!!!!!!!!!!!!!!graph.SetInputOrder(new_input_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the input as expected.
+    graph.SetInputs(new_input_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the input as expected.
     graph.SetGraphResolveNeeded();
     graph.SetGraphProtoSyncNeeded();
 

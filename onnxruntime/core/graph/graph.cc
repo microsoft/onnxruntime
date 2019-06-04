@@ -2396,11 +2396,6 @@ Status Graph::SetGraphInputsOutputs() {
           if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
             value_info_.push_back(input_arg);
           }
-          /* TODO:!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          // However, if the output's order is preserved, it should still be an output.
-          if (find(graph_output_order_.begin(), graph_output_order_.end(), input_arg) != graph_output_order_.end()) {
-            graph_output_args[input_arg->Name()] = input_arg;
-          }*/
         }
       }
     }
@@ -2518,11 +2513,6 @@ Status Graph::InlineFunction(Node& node) {
 }
 
 void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
-  if (GraphLoadedFromModelFile(graph_proto_)) {
-    // TODO: add this support.
-    ORT_THROW("This API is not supported when model is loaded from proto file right now.");
-  }
-
   graph_inputs_including_initializers_ = inputs;
   graph_inputs_manually_set_ = true;
 }
