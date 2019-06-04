@@ -123,7 +123,7 @@ namespace perftest {
       case 'o':
         test_config.run_config.optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         // Valid values are: 0, 1, 2.
-        if (test_config.run_config.optimization_level > 2) {
+        if (test_config.run_config.optimization_level > 3) {
           return false;
         }
         break;
