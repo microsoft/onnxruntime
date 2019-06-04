@@ -12,8 +12,10 @@
 namespace onnxruntime {
 
 Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+  // Create an execution frame to get access to the memory allocator.
   OptimizerExecutionFrame::Info info({&node}, InitializedTensorSet());
 
+  // Store the statically inferred shape of the input to the Shape operator.
   const ONNX_NAMESPACE::TensorShapeProto* input_shape_proto = node.InputDefs()[0]->Shape();
   std::vector<int64_t> input_dims;
   int num_dimensions = input_shape_proto->dim_size();
@@ -22,6 +24,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
     input_dims.push_back(gsl::narrow_cast<int64_t>(input_shape_proto->dim(i).dim_value()));
   }
 
+  // Create a tensor that corresponds to the output of the Shape operator.
   const auto shape_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int64_t>(),
                                                      TensorShape({gsl::narrow_cast<int64_t>(num_dimensions)}),
                                                      input_dims.data(), info.GetAllocator()->Info());
