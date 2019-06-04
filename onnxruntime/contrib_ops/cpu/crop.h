@@ -19,16 +19,16 @@ class CropBase {
   }
 
   Status ValidateInput(const Tensor* X) const {
-    if (border_.size() < 4) {
+    if (border_.size() != 4) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Attribute border needs to be specified with four border elements, got ", border_.size());
     }
 
     const auto dims = X->Shape().GetDims();
 
-    if (dims.size() < 4) {
+    if (dims.size() != 4) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
+                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size(), " input dimensions instead");
     }
 
     const int64_t H = dims[2];
@@ -40,11 +40,11 @@ class CropBase {
             rightBorder = border_[2],
             bottomBorder = border_[3];
 
-    if (H < topBorder + bottomBorder) {
+    if (H <= topBorder + bottomBorder) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
     }
 
-    if (W < leftBorder + rightBorder) {
+    if (W <= leftBorder + rightBorder) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
     }
 
@@ -132,5 +132,5 @@ class Crop final : public CropBase, public OpKernel {
   }
 };
 
-}
+}  // namespace contrib
 }  //namespace onnxruntime
