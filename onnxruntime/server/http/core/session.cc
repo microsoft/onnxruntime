@@ -18,7 +18,7 @@ void HttpSession::DoRead() {
   req_.emplace();
 
   // TODO: make the max request size configable.
-  req_->body_limit(10 * 1024 * 1024);  // Max request size: 10 MiB
+  req_->body_limit(25 * 1024 * 1024);  // Max request size: 25 MiB
 
   http::async_read(socket_, buffer_, *req_,
                    net::bind_executor(

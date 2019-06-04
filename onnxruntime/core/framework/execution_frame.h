@@ -18,8 +18,8 @@
 namespace onnxruntime {
 
 class SessionState;
-class MLValueNameIdxMap;
-class MLValuePatternPlanner;
+class OrtValueNameIdxMap;
+class OrtValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
 
@@ -27,7 +27,7 @@ class IExecutionFrame {
  protected:
   IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                   const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-                  const std::vector<OrtValue>& fetches, const MLValueNameIdxMap& ort_value_idx_map,
+                  const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info);
 
  public:
@@ -74,7 +74,7 @@ class IExecutionFrame {
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
-            const std::vector<OrtValue>& fetches, const MLValueNameIdxMap& ort_value_idx_map);
+            const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map);
 
   const OrtValue& GetMLValue(int ort_value_index) const {
     ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < all_values_.size());
@@ -154,7 +154,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // If no cached memory pattern, and we enable the memory pattern optimization
   // use this planner_ to trace the memory allocation in current executor.
-  std::unique_ptr<MLValuePatternPlanner> planner_;
+  std::unique_ptr<OrtValuePatternPlanner> planner_;
 
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtAllocatorInfo, BufferUniquePtr> buffers_;

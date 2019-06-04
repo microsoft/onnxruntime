@@ -530,6 +530,61 @@ Sample echo operator.)DOC");
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Attr(
+          "kernel_shape",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr("output_padding",
+            "",
+            AttributeProto::INTS,
+            OPTIONAL)
+      .Attr(
+          "dilations",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "auto_pad",
+          "",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "group",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Input(
+          0,
+          "X",
+          "",
+          "T")
+      .Input(
+          1,
+          "W",
+          "",
+          "T")
+      .Input(2, "Pads", "", "tensor(int64)", OpSchema::Optional)
+      .Input(3, "B", "", "T", OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "",
+          "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderInput)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1046,7 +1101,7 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasNInputShapes(ctx, 2)) {
-          fail_shape_inference("GatherND requires two tensor inputs.");
+          return;
         }
         auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
@@ -1291,11 +1346,11 @@ Example 4:
         return;
       })
       .SetDoc(R"DOC(
-              Finds all the unique values (deduped list) present in the given input tensor. 
-              This operator returns 3 outputs. 
-              The first output tensor 'uniques' contains all of the unique elements of the input, 
+              Finds all the unique values (deduped list) present in the given input tensor.
+              This operator returns 3 outputs.
+              The first output tensor 'uniques' contains all of the unique elements of the input,
               sorted in the same order that they occur in the input.
-              The second output tensor 'idx' is the same size as the input and it contains the index 
+              The second output tensor 'idx' is the same size as the input and it contains the index
               of each value of the input in 'uniques'.
               The third output tensor 'counts' contains the count of each element of 'uniques' in the input.
               Example:
@@ -1309,6 +1364,6 @@ Example 4:
   // register internal ops
   RegisterInternalSchemas();
 #endif
-}
+}  // namespace contrib
 }  // namespace contrib
 }  // namespace onnxruntime

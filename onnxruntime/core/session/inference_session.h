@@ -57,7 +57,7 @@ struct SessionOptions {
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
   // with a big chunk for all the internal memory allocation.
-  // See class 'MLValuePatternPlanner'.
+  // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
   // enable the memory arena on CPU
@@ -158,6 +158,9 @@ class InferenceSession {
     */
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
 
+  /**
+    * Add custom ops. This API is not thread safe.
+    */
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 
   /**
@@ -166,6 +169,7 @@ class InferenceSession {
     * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
+	* This API is not thread safe.
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
@@ -198,6 +202,7 @@ class InferenceSession {
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
+	* This API is thread-safe.
     * @return OK if success
     */
   common::Status Initialize();

@@ -14,6 +14,15 @@ namespace cuda {
       Gemm,                                                       \
       kOnnxDomain,                                                \
       7,                                                          \
+      8,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Gemm<T>);                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Gemm,                                                       \
+      kOnnxDomain,                                                \
       9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \

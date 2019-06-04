@@ -12,7 +12,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
 #include "core/common/callback.h"
 #include "core/framework/data_types.h"
