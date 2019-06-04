@@ -21,7 +21,7 @@ std::vector<VectorInt64> InferOutputShapes(OpKernelInfo info) {
   auto output_defs = node.OutputDefs();
   auto outputCount = output_defs.size();
 
-  for (int outputIndex = 0; outputIndex < outputCount; outputIndex++) {
+  for (size_t outputIndex = 0; outputIndex < outputCount; outputIndex++) {
     output_tensor_shapes.push_back({});
     if (!output_defs[outputIndex]->Exists())
       continue;
@@ -313,7 +313,7 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
 
   gsl::copy(gsl::make_span(dYdata, nd), gsl::make_span(dXdata, nd));
 
-  for (int i = 0; i < N; ++i) {
+  for (size_t i = 0; i < N; ++i) {
     math::Dot<float, CPUMathUtil>(d, Ydata + i * d, dYdata + i * d,
                                   scaledata + i, nullptr);
   }

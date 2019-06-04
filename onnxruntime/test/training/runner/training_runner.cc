@@ -64,7 +64,7 @@ Status TrainingRunner::Initialize() {
   vector<in_graph_optimizer::OptimizerInfo> opt_info;
   opt_info.reserve(weights_to_train.size());
   if (use_in_graph_optimizer) {
-    for (int i = 0; i < weights_to_train.size(); ++i) {
+    for (size_t i = 0; i < weights_to_train.size(); ++i) {
       opt_info.push_back({params_.in_graph_optimizer_name_, {SGD_LEARNING_RATE_STRING}});
     }
   }
@@ -141,7 +141,7 @@ Status TrainingRunner::TrainingLoop() {
                                        &gradient_fetches));
 
       NameMLValMap grad;
-      for (int i = 0; i < training_output_names.size(); i++) {
+      for (size_t i = 0; i < training_output_names.size(); i++) {
         if (training_output_names[i] == params_.loss_func_info_.loss_name_ ||
             training_output_names[i] == params_.model_prediction_name_) {
           continue;

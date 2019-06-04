@@ -57,7 +57,7 @@ GradOpSchema& GradOpSchema::Input(
     const std::string& type_str,
     const ParameterOption& param_option,
     bool is_homogeneous) {
-  ORT_ENFORCE(n >= op_schema_->inputs().size(),
+  ORT_ENFORCE(n >= static_cast<int>(op_schema_->inputs().size()),
               "Invalid redefinition of input ", n, " for OpSchema ", op_schema_->Name());
   op_schema_->Input(n, name, description, type_str, param_option, is_homogeneous);
 
@@ -71,7 +71,7 @@ GradOpSchema& GradOpSchema::Output(
     const std::string& type_str,
     const ParameterOption& param_option,
     bool is_homogeneous) {
-  ORT_ENFORCE(n >= op_schema_->outputs().size(),
+  ORT_ENFORCE(n >= static_cast<int>(op_schema_->outputs().size()),
               "Invalid redefinition of output ", n, " for OpSchema ", op_schema_->Name());
   op_schema_->Output(n, name, description, type_str, param_option, is_homogeneous);
   return *this;

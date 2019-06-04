@@ -15,10 +15,10 @@ typedef vector<uint8_t> Image;
 
 pair<vector<vector<float>>, vector<vector<float>>> NormalizeData(const vector<Image>& images, const vector<Label>& labels) {
   vector<vector<float>> normalized_images;
-  for (int i = 0; i < images.size(); i++) {
+  for (size_t i = 0; i < images.size(); i++) {
     // Binarize the image.
     vector<float> normalized_image(images[i].begin(), images[i].end());
-    for (int j = 0; j < images[i].size(); j++) {
+    for (size_t j = 0; j < images[i].size(); j++) {
       if (images[i][j] > 0) {
         normalized_image[j] = 1.0f;
       }
@@ -27,7 +27,7 @@ pair<vector<vector<float>>, vector<vector<float>>> NormalizeData(const vector<Im
   }
 
   vector<vector<float>> one_hot_labels;
-  for (int i = 0; i < labels.size(); i++) {
+  for (size_t i = 0; i < labels.size(); i++) {
     vector<float> one_hot_label(10, 0.0f);
     one_hot_label[labels[i]] = 1.0f;  //one hot
     one_hot_labels.emplace_back(move(one_hot_label));
@@ -42,7 +42,7 @@ void ConvertData(const vector<vector<float>>& images,
                  DataSet& data_set,
                  size_t shard_index = 0,
                  size_t total_shard = 1) {
-  for (int i = 0; i < images.size(); ++i) {
+  for (size_t i = 0; i < images.size(); ++i) {
     if (i % total_shard == shard_index) {
       MLValue imageMLValue;
       TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(), image_dims, images[i], &imageMLValue);

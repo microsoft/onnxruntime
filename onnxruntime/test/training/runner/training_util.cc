@@ -38,7 +38,7 @@ std::vector<MLValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const 
   auto location = alloc->Info();
 
   std::vector<MLValue> result;
-  for (int input_index = 0; input_index < NumInputs(); ++input_index) {
+  for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
@@ -90,7 +90,7 @@ void TrainingUtil::PrintNameMLValMap(const NameMLValMap& mlvalue_map) {
     printf("Name: %s \n", name.c_str());
     const float* data = tensor.template Data<float>();
     int64_t size = tensor.Shape().Size();
-    for (int i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       printf("%0.04f\t ", *data);
       data++;
     }

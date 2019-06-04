@@ -26,14 +26,14 @@ std::pair<int, int> inline CalculateJacobianTransposeIndex(const std::vector<Ten
                                                            int y_output_index,
                                                            int y_flattened_index) {
   int64_t elems_in_prev_output_tensors = 0;
-  for (int i = 0; i < y_output_index; i++) {
+  for (size_t i = 0; i < y_output_index; i++) {
     elems_in_prev_output_tensors += y_infos[i].shape.Size();
   }
 
   int64_t col = elems_in_prev_output_tensors + y_flattened_index;
 
   int64_t elems_in_prev_input_tensors = 0;
-  for (int i = 0; i < x_input_index; i++) {
+  for (size_t i = 0; i < x_input_index; i++) {
     elems_in_prev_input_tensors += x_infos[i].shape.Size();
   }
 
@@ -51,12 +51,12 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes) {
   OpTester op_session(op_def.type.c_str(), 9, op_def.domain.c_str(), false);
-  for (int data_index = 0; data_index < x_datas->size(); data_index++) {
+  for (size_t data_index = 0; data_index < x_datas->size(); data_index++) {
     std::string name = "input" + std::to_string(data_index);
     op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), (*x_datas)[data_index]);
   }
 
-  for (int data_index = 0; data_index < y_infos.size(); data_index++) {
+  for (size_t data_index = 0; data_index < y_infos.size(); data_index++) {
     std::string name = "output" + std::to_string(data_index);
     op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
   }
@@ -80,24 +80,24 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
   size_t x_num = x_infos.size();
 
   // currently only supported scalar valued fns - and complex types are not supported
-  for (int y_idx = 0; y_idx < y_num; y_idx++) {  // for each dy input
+  for (int y_idx = 0; y_idx < static_cast<int>(y_num); y_idx++) {  // for each dy input
     if (!y_infos[y_idx].has_gradient) {
       continue;
     }
 
-    const int64_t dy_size = y_infos[y_idx].shape.Size();
+    const size_t dy_size = y_infos[y_idx].shape.Size();
 
     // Compute the theoretical Jacobians one row at a time by back propagating
     // '1.0'for each element of 'dy', while holding all other elements of 'dy' at zero.
     for (int c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
       GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, 9, op_def.domain.c_str(), false);
 
-      for (int data_index = 0; data_index < x_num; data_index++) {
+      for (size_t data_index = 0; data_index < x_num; data_index++) {
         std::string name = "input" + std::to_string(data_index);
         op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), (*x_datas)[data_index]);
       }
 
-      for (int data_index = 0; data_index < y_num; data_index++) {
+      for (size_t data_index = 0; data_index < y_num; data_index++) {
         std::string name = "output" + std::to_string(data_index);
         op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
       }
@@ -116,14 +116,14 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       op_session.Run(y_idx, c);
       auto gradients = op_session.GetFetches();
 
-      for (int x_idx = 0; x_idx < x_num; x_idx++) {
+      for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
         if (!x_infos[x_idx].has_gradient) {
           continue;
         }
         const int64_t x_size = x_infos[x_idx].shape.Size();
         auto dx_flat = gradients[x_idx].Get<Tensor>().Data<X_T>();
 
-        for (int r = 0; r < x_size; ++r) {
+        for (int r = 0; r < static_cast<int>(x_size); ++r) {
           auto calc_index = CalculateJacobianTransposeIndex(
               x_infos,
               x_idx,
@@ -153,7 +153,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
   size_t x_num = x_infos.size();
   X_T x_delta = static_cast<X_T>(delta);
 
-  for (int x_idx = 0; x_idx < x_num; x_idx++) {
+  for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
     if (!x_infos[x_idx].has_gradient) {
       continue;
     }
@@ -175,7 +175,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
       (*x_datas)[x_idx][r] = v - x_delta;
       std::vector<OrtValue> y_minus = EvaluateFunctionAtInput(op_def, x_infos, y_infos, x_datas, y_datas, attributes);
 
-      for (int y_idx = 0; y_idx < y_num; y_idx++) {
+      for (int y_idx = 0; y_idx < static_cast<int>(y_num); y_idx++) {
         if (!y_infos[y_idx].has_gradient) {
           continue;
         }
@@ -222,18 +222,18 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitJacobians(
     std::vector<std::vector<JAC_T>>* jacobians) {
   // the number of rows is equal to total number of scalar input values in all of input vectors
   int64_t rows = 0;
-  for (int i = 0; i < x_infos.size(); i++) {
+  for (size_t i = 0; i < x_infos.size(); i++) {
     rows += x_infos[i].shape.Size();  // 'S'ize gives the total number of elements in all dims while 's'ize just gives num_dims
   }
   jacobians->resize(gsl::narrow_cast<int>(rows));
 
   // the number of cols is equal to total number of scalar output values in all of output vectors
   int64_t cols = 0;
-  for (int i = 0; i < y_infos.size(); i++) {
+  for (size_t i = 0; i < y_infos.size(); i++) {
     cols += y_infos[i].shape.Size();
   }
 
-  for (int i = 0; i < jacobians->size(); i++) {
+  for (size_t i = 0; i < jacobians->size(); i++) {
     (*jacobians)[i] = std::vector<JAC_T>(gsl::narrow_cast<int>(cols), 0);
   }
 
@@ -267,10 +267,10 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
-  for (int i = 0; i < jacobian_ts.size(); i++) {
+  for (size_t i = 0; i < jacobian_ts.size(); i++) {
     auto jac_t = jacobian_ts[i];
     auto jac_n = jacobian_ns[i];
-    for (int r = 0; r < jacobian_ts[i].size(); ++r) {
+    for (size_t r = 0; r < jacobian_ts[i].size(); ++r) {
       auto cur_error = std::fabs(jac_t[r] - jac_n[r]);
       // Treat any NaN as max_error and immediately return.
       // (Note that std::max may ignore NaN arguments.)
@@ -294,7 +294,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   // Initialize 'x_datas' to random values.
   std::vector<std::vector<X_T>> x_datas(x_infos.size());
 
-  for (int i = 0; i < x_infos.size(); i++) {
+  for (size_t i = 0; i < x_infos.size(); i++) {
     // TODO: Consider varying mean and variance
     float scale = 5.f;
     float mean = 0.f;
@@ -311,7 +311,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
 
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
-  for (int i = 0; i < y_infos.size(); i++) {
+  for (size_t i = 0; i < y_infos.size(); i++) {
     y_datas[i].resize(y_infos[i].shape.Size(), 0);
   }
 
@@ -329,7 +329,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes) {
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
-  for (int i = 0; i < y_infos.size(); i++) {
+  for (size_t i = 0; i < y_infos.size(); i++) {
     y_datas[i].resize(y_infos[i].shape.Size(), 0);
   }
 

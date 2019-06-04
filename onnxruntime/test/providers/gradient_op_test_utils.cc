@@ -52,14 +52,14 @@ void GradientOpTester::Run(
     // TODO: We will need finer control over both inputs and ouptuts
     // Not all inputs/outputs reqiures/have a gradient, e.g.index in gather
     VectorString weights_to_train;
-    for (int i = 0; i < input_data_.size(); i++) {
+    for (size_t i = 0; i < input_data_.size(); i++) {
       if (input_infos_[i].has_gradient) {
         weights_to_train.push_back(input_data_[i].def_.Name());
       }
     }
 
     VectorString dy_values;
-    for (int i = 0; i < output_data_.size(); i++) {
+    for (size_t i = 0; i < output_data_.size(); i++) {
       if (output_infos_[i].has_gradient) {
         dy_values.push_back(output_data_[i].def_.Name());
       }
@@ -171,7 +171,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
   output_names.clear();  //ignore output names
 
   // add gradients as output instead
-  for (int i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     if (!input_infos_[i].has_gradient) {
       continue;
     }
@@ -180,7 +180,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
 
   // Append gradient names and values to feeds
   std::vector<Data> gradient_data;
-  for (int i = 0; i < output_data_.size(); i++) {
+  for (size_t i = 0; i < output_data_.size(); i++) {
     if (!output_infos_[i].has_gradient) {
       continue;
     }

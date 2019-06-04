@@ -120,7 +120,7 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
 
   // Get gradients
   NameMLValMap grad;
-  for (int i = 0; i < training_output_names.size(); i++) {
+  for (size_t i = 0; i < training_output_names.size(); i++) {
     if (training_output_names[i] == "loss") continue;
     if (training_output_names[i] == "predictions") continue;
 
