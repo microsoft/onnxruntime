@@ -63,7 +63,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
       ONNX_NAMESPACE::TensorProto out_tensorproto;
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
-      BuildTensorProtoForInitializer(ort_value, *constant_arg_out, out_tensorproto);
+      ORT_ENFORCE(ort_value.IsTensor());
+      const Tensor& out_tensor = ort_value.Get<Tensor>();
+      graph_utils::BuildTensorProtoForInitializer(out_tensor, *constant_arg_out, out_tensorproto);
 
       graph.AddInitializedTensor(out_tensorproto);
     }
@@ -80,24 +82,5 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
   return Status::OK();
 }  // namespace onnxruntime
-
-void ConstantFolding::BuildTensorProtoForInitializer(const OrtValue& ort_value, const NodeArg& constant_node_arg,
-                                                     ONNX_NAMESPACE::TensorProto& tensorproto) const {
-  ORT_ENFORCE(ort_value.IsTensor());
-  const Tensor& out_tensor = ort_value.Get<Tensor>();
-
-  // Set name, dimensions, type, and data of the TensorProto.
-  tensorproto.set_name(constant_node_arg.Name());
-
-  for (auto& dim : out_tensor.Shape().GetDims()) {
-    tensorproto.add_dims(dim);
-  }
-  auto tensorproto_type = constant_node_arg.TypeAsProto()->tensor_type().elem_type();
-
-  tensorproto.set_data_type(tensorproto_type);
-  auto tensor_shape_size = out_tensor.Shape().Size();
-  auto data_size = out_tensor.DataType()->Size() * tensor_shape_size;
-  tensorproto.set_raw_data(out_tensor.DataRaw(out_tensor.DataType()), data_size);
-}
 
 }  // namespace onnxruntime
