@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
-class MLValueNameIdxMap;
+class OrtValueNameIdxMap;
 
 // ISequentialPlannerContext abstracts how the planner accesses information (such as inferred shape)
 // to do the planning.
@@ -49,7 +49,7 @@ class SequentialPlanner {
   static Status CreatePlan(const Node* parent_node, const onnxruntime::GraphViewer& graph,
                            const std::vector<const NodeArg*>& outer_scope_node_args,
                            const ExecutionProviders& providers, const KernelRegistryManager& kernel_registry,
-                           const MLValueNameIdxMap& ort_value_name_idx_map, const ISequentialPlannerContext& context,
+                           const OrtValueNameIdxMap& ort_value_name_idx_map, const ISequentialPlannerContext& context,
                            std::unique_ptr<SequentialExecutionPlan>& plan);
 };
 

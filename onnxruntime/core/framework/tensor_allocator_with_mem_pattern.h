@@ -5,7 +5,7 @@
 
 #include "tensor_allocator.h"
 #include "mem_pattern.h"
-#include "ml_value_patterns_planner.h"
+#include "ort_value_pattern_planner.h"
 #include "utils.h"
 #include "tensorprotoutils.h"
 
@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 class TensorAllocatorWithMemPattern : public ITensorAllocator {
  private:
-  MLValuePatternPlanner planner_;
+  OrtValuePatternPlanner planner_;
   MemoryPatternGroup mem_patterns_;
   std::vector<BufferUniquePtr>& weights_buffers_;
   std::map<OrtAllocatorInfo, void*> buffers_;

@@ -11,7 +11,7 @@ namespace onnxruntime {
 OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node, const KernelDef& kernel_def,
                            const IExecutionProvider& execution_provider,
                            const std::unordered_map<int, OrtValue>& initialized_tensors,
-                           const MLValueNameIdxMap& ort_value_name_idx_map, const FuncManager& funcs_mgr)
+                           const OrtValueNameIdxMap& ort_value_name_idx_map, const FuncManager& funcs_mgr)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
