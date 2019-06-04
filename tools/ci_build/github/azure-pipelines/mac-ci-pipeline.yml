@@ -24,12 +24,20 @@ jobs:
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests --config Debug Release
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
 
-    - task: CopyFiles@2
-      displayName: 'Copy NuGet Package to Artifact staging'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)/nuget-artifact'
-        Contents: '*.nupkg'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+    - script: |
+       set -e -x 
+       mkdir $(Build.BinariesDirectory)/osx-x64
+       cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
+       ls -al $(Build.BinariesDirectory)/osx-x64
+       dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
+       strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
+       ls -al $(Build.BinariesDirectory)/osx-x64
+       oldDir=`pwd`
+       cd $(Build.BinariesDirectory)
+       zip -r osx-x64.zip osx-x64
+       cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)       
+       cd $oldDir
+      displayName: 'Copy MacOS libs to Artifact Staging'
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
