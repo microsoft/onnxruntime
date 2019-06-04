@@ -328,35 +328,37 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
 
   // Verify the outputs
   // Todo: support check output with map/sequence/....
-  size_t idx = 0;
-  for (auto& expected_data : output_data_) {
-    OrtValue& ort_value = fetches[idx];
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+  if (verify_output_) {
+    size_t idx = 0;
+    for (auto& expected_data : output_data_) {
+      OrtValue& ort_value = fetches[idx];
+      if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
 
-    if (expected_data.def_.Exists()) {  // optional outputs won't exist
-      if (expected_data.data_.IsTensor()) {
-        // verify output shape inference when input defs have shape
-        if (add_shape_to_tensor_data_) {
-          auto out_shape_proto = expected_data.def_.Shape();
-          EXPECT_TRUE(out_shape_proto != nullptr);
-          auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
-          const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
-          EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
-          for (size_t d = 0; d < inferred_dims.size(); ++d) {
-            // check equal unless the input involved a symbolic dimension
-            if (inferred_dims[d] != -1)
-              EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
+      if (expected_data.def_.Exists()) {  // optional outputs won't exist
+        if (expected_data.data_.IsTensor()) {
+          // verify output shape inference when input defs have shape
+          if (add_shape_to_tensor_data_) {
+            auto out_shape_proto = expected_data.def_.Shape();
+            EXPECT_TRUE(out_shape_proto != nullptr);
+            auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+            const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
+            EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
+            for (size_t d = 0; d < inferred_dims.size(); ++d) {
+              // check equal unless the input involved a symbolic dimension
+              if (inferred_dims[d] != -1)
+                EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
+            }
           }
+          Check(expected_data, ort_value.Get<Tensor>(), provider_type);
+        } else {
+          Check(expected_data, ort_value, provider_type);
         }
-        Check(expected_data, ort_value.Get<Tensor>(), provider_type);
-      } else {
-        Check(expected_data, ort_value, provider_type);
-      }
-      ++idx;
+        ++idx;
 
-      // skip missing trailing optional outputs
-      if (idx == fetches.size())
-        break;
+        // skip missing trailing optional outputs
+        if (idx == fetches.size())
+          break;
+      }
     }
   }
 }
