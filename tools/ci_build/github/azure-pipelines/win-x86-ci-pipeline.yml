@@ -5,6 +5,10 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
     PlatformTarget: x86
     RuntimeIdentifier: win-x86
+  parameters:
+    runDebugBuild: 'false'
+    runComplianceTasks: 'false'
+    runESRP: 'false'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
@@ -20,6 +24,46 @@ jobs:
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --update --x86'
         workingDirectory: "$(Build.BinariesDirectory)"
 
+    - ${{ if eq(parameters['runDebugBuild'], 'true') }}:
+      - task: VSBuild@1
+        displayName: 'Build Debug'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
+          platform: Win32
+          msbuildArguments: '/m /p:PlatformTarget=x86'
+          configuration: 'Debug'
+          msbuildArchitecture: 'x86'
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Debug'
+
+      - task: BatchScript@1
+        displayName: 'Test Debug'
+        inputs:
+          filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+          arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --test --x86'
+          workingFolder: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build C# Debug'
+        inputs:
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          platform: 'any cpu'
+          configuration: 'Debug'
+          restoreNugetPackages: false
+          msbuildArchitecture: 'x86'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
+          msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+
+      - task: VSTest@2
+        displayName: 'VsTest - C# Debug'
+        inputs:
+          testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
+          searchFolder: '$(Build.SourcesDirectory)\csharp\test'
+          runInParallel: true
+          configuration: Debug
+
+    - ${{ if eq(parameters['runDebugBuild'], 'true') }}:
+      - template: compliance.yml
 
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
