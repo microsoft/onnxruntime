@@ -53,7 +53,7 @@ cudnnDataType_t CudnnTensor::GetDataType() {
     return CUDNN_DATA_FLOAT;
   else if (typeid(ElemType) == typeid(double))
     return CUDNN_DATA_DOUBLE;
-  else if (typeid(ElemType) == typid(int32_t))
+  else if (typeid(ElemType) == typeid(int32_t))
     return CUDNN_DATA_INT32;
   else if (typeid(ElemType) == typeid(half))
     return CUDNN_DATA_HALF;
