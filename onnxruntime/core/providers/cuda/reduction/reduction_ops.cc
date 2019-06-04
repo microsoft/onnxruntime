@@ -244,7 +244,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
   REGISTER_KERNEL_TYPED(name, float)     \
-  REGISTER_KERNEL_TYPED(name, double)
+  REGISTER_KERNEL_TYPED(name, double)    \
+  REGISTER_KERNEL_TYPED(name, int32_t)
 
 REGISTER_KERNEL_HFD(ArgMax)
 REGISTER_KERNEL_HFD(ArgMin)
