@@ -109,13 +109,12 @@ TEST(GraphTransformationTests, SliceElimination) {
 }
 
 TEST(GraphTransformationTests, ConstantFolding1) {
-  //string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-  string model_uri = MODEL_FOLDER + "model_fixed_length_0.onnx";
+  string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  //ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(), TransformerLevel::Level1);
