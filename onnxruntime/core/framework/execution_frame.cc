@@ -8,7 +8,7 @@
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -21,7 +21,7 @@ namespace onnxruntime {
 IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                                  const std::unordered_map<int, OrtValue>& initializers,
                                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
-                                 const MLValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
+                                 const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
   ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs.size());
@@ -103,7 +103,7 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
                            const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
-                           const MLValueNameIdxMap& ort_value_idx_map) {
+                           const OrtValueNameIdxMap& ort_value_idx_map) {
   // 1. resize the all_value_ vector
   all_values_.resize(ort_value_idx_map.MaxIdx() + 1);
 
@@ -167,7 +167,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state)
     : IExecutionFrame(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetch_mlvalue_idxs, fetches,
-                      session_state.GetMLValueNameIdxMap(), session_state.GetNodeIndexInfo()),
+                      session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo()),
       session_state_{session_state},
       mem_patterns_{nullptr},
       planner_{nullptr} {
@@ -205,7 +205,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
-        planner_ = std::make_unique<MLValuePatternPlanner>(*session_state.GetExecutionPlan());
+        planner_ = std::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
       } else {
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.

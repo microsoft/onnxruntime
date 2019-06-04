@@ -108,8 +108,8 @@ class Scan8Impl {
   Status AllocateOutputTensors();
   Status CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& loop_state_variables);
 
-  using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>;
-  using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<OrtValue>::Iterator>;
+  using ConstTensorSlicerIterators = std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>;
+  using MutableTensorSlicerIterators = std::vector<OrtValueTensorSlicer<OrtValue>::Iterator>;
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
@@ -341,7 +341,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
   // 2. For each batch item, create the LoopStateVariable instances that can be used to pass state between
   //    each iteration of the subgraph. This minimizes copying of data during each iteration.
 
-  std::vector<MLValueTensorSlicer<const OrtValue>::Iterator> loop_state_input_iterators;
+  std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> loop_state_input_iterators;
   loop_state_input_iterators.reserve(num_loop_state_variables_);
 
   // create the input and output slice iterator for each loop state variable.
@@ -351,7 +351,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
 
     ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_input_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
+    loop_state_input_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
   }
 
   batch_loop_state_variables.clear();
@@ -382,8 +382,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
 
 Status Scan8Impl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
   return scan::detail::CreateFeedsFetchesManager(subgraph_, num_variadic_inputs_, implicit_inputs_,
-                                                 subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
-                                                 ffm);
+                                                 subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
 }
 
 Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
@@ -398,7 +397,7 @@ Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* c
     auto sequence_len = sequence_lens_[b];
 
     // Setup input OrtValue streams
-    std::vector<MLValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
+    std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
     scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
 
     for (int i = num_loop_state_variables_, end = num_variadic_inputs_; i < end; ++i) {
@@ -406,10 +405,10 @@ Status Scan8Impl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* c
 
       // forward
       if (directions_[i - num_loop_state_variables_] == static_cast<int64_t>(ScanDirection::kForward)) {
-        // the iterator is self contained, so we don't need to keep the MLValueTensorSlicer instance around
-        scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).begin());
+        // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
+        scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).begin());
       } else {  // reverse
-        scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).rbegin());
+        scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).rbegin());
         // need to skip past the empty entries at the end of the input if sequence length is short
         auto offset = max_sequence_len_ - sequence_len;
         if (offset > 0) {
