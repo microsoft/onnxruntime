@@ -456,7 +456,7 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    TensorContainedTypeSetter<elemT>::SetSparseTensorElementType(this->mutable_type_proto());
+    TensorContainedTypeSetter<elemT>::SetSparseTensorElementType(mutable_type_proto());
   }
 };
 
