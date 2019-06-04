@@ -118,7 +118,7 @@ template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
 template <typename T>
-__device__ __inline__ T _Exp(T a);
+__device__ __inline__ T _Exp(T a) { return T(expf(float(a))); }
 
 template <>
 __device__ __inline__ float _Exp(float a) { return expf(a); }
@@ -126,20 +126,14 @@ __device__ __inline__ float _Exp(float a) { return expf(a); }
 template <>
 __device__ __inline__ double _Exp(double a) { return exp(a); }
 
-template <>
-__device__ __inline__ half _Exp(half a) { return half(expf((float)a)); }
-
 template <typename T>
-__device__ __inline__ T _Log(T a);
+__device__ __inline__ T _Log(T a) { return T(logf(float(a))); }
 
 template <>
 __device__ __inline__ float _Log(float a) { return logf(a); }
 
 template <>
 __device__ __inline__ double _Log(double a) { return log(a); }
-
-template <>
-__device__ __inline__ half _Log(half a) { return half(logf((float)a)); }
 
 template <typename T>
 __device__ __inline T _Tanh(T a);
