@@ -20,14 +20,19 @@ namespace onnxruntime {
 namespace test {
 
 struct TensorInfo {
-  TensorInfo(const std::initializer_list<int64_t>& shape, bool has_gradient = true)
-      : shape(shape), has_gradient(has_gradient) {}
+  TensorInfo(const std::initializer_list<int64_t>& shape,
+             bool has_gradient = true,
+             std::function<float(float)>* transformer = nullptr)
+      : shape(shape), has_gradient(has_gradient), transformer(transformer) {}
 
-  TensorInfo(const TensorShape& shape, bool has_gradient = true)
-      : shape(shape), has_gradient(has_gradient) {}
+  TensorInfo(const TensorShape& shape,
+             bool has_gradient = true,
+             std::function<float(float)>* transformer = nullptr)
+      : shape(shape), has_gradient(has_gradient), transformer(transformer) {}
 
   TensorShape shape;
   bool has_gradient;
+  std::function<float(float)>* transformer;
 };
 
 // TODO: This class currently assumes the inputs share types and the outputs share a type.

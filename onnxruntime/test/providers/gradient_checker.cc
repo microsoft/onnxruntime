@@ -291,22 +291,25 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const std::vector<TensorInfo>& y_infos,
     JAC_T* max_error,
     const std::vector<AttributeProto>& attributes) {
+  // TODO: Consider varying mean and variance
+  float scale = 5.f;
+  float mean = 0.f;
+  auto seed = std::chrono::system_clock::now().time_since_epoch().count();
+  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<X_T> distribution{mean, scale};
+
   // Initialize 'x_datas' to random values.
   std::vector<std::vector<X_T>> x_datas(x_infos.size());
-
   for (size_t i = 0; i < x_infos.size(); i++) {
-    // TODO: Consider varying mean and variance
-    float scale = 5.f;
-    float mean = 0.f;
-    auto seed = std::chrono::system_clock::now().time_since_epoch().count();
+    x_datas[i].resize(x_infos[i].shape.Size());
 
-    std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
-    std::normal_distribution<X_T> distribution{mean, scale};
-
-    auto x_data_length = x_infos[i].shape.Size();
-    x_datas[i].resize(x_data_length);
-
-    std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
+    if (x_infos[i].transformer) {
+      auto transformer = *x_infos[i].transformer;
+      std::generate(x_datas[i].begin(), x_datas[i].end(),
+                    [&] { return transformer(static_cast<float>(distribution(generator))); });
+    } else {
+      std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
+    }
   }
 
   // Generate dummy placeholders with zero for y_datas
