@@ -278,19 +278,18 @@ std::vector<MLValue> OpTester::ExecuteModel(Model& model,
                                             std::unordered_map<std::string, OrtValue> feeds,
                                             std::vector<std::string> output_names,
                                             const std::string& provider_type) {
-  std::vector<OrtValue> fetches;
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
     LOGS_DEFAULT(ERROR) << "Failed to serialize proto to string";
-    return fetches;
+    return {};
   }
   std::stringstream sstr(s1);
   auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return fetches;
+    return {};
   }
 
   status = session_object.Initialize();
@@ -305,13 +304,14 @@ std::vector<MLValue> OpTester::ExecuteModel(Model& model,
   }
 
   if (!status.IsOK()) {
-    return fetches;
+    return {};
   }
 
   RunOptions default_run_options{};
   default_run_options.run_tag = op_;
   default_run_options.run_log_verbosity_level = 1;
 
+  std::vector<OrtValue> fetches;
   status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
   if (status.IsOK()) {
     EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess);
@@ -328,7 +328,7 @@ std::vector<MLValue> OpTester::ExecuteModel(Model& model,
       LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
-    return fetches;
+    return {};
   }
 
   // Verify the outputs

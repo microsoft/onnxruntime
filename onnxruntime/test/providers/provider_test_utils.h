@@ -325,11 +325,7 @@ class OpTester {
     }
   }
 
-  void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
-                    const std::string& expected_failure_string, const RunOptions* run_options,
-                    std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
-                    const std::string& provider_type);
-
+ private:
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
