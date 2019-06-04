@@ -21,23 +21,22 @@ jobs:
     - script: |
         sudo python3 -m pip install numpy==1.15.0
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests --config Debug Release
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --parallel --build_shared_lib --enable_onnx_tests --config Debug RelWithDebInfo
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
 
     - script: |
        set -e -x 
-       find $(Build.BinariesDirectory)
        mkdir $(Build.BinariesDirectory)/osx-x64
+       find $(Build.BinariesDirectory)
        cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
-       ls -al $(Build.BinariesDirectory)/osx-x64
        dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
        strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
-       ls -al $(Build.BinariesDirectory)/osx-x64
-       oldDir=`pwd`
+       find $(Build.BinariesDirectory)/osx-x64
+       cwd=`pwd`
        cd $(Build.BinariesDirectory)
        zip -r osx-x64.zip osx-x64
        cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)       
-       cd $oldDir
+       cd $cwd
       displayName: 'Copy MacOS libs to Artifact Staging'
 
     - task: PublishPipelineArtifact@0
