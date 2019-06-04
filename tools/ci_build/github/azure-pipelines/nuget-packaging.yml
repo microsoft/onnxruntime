@@ -80,7 +80,7 @@ jobs:
          move %%~ni.zip %%~ni.nupkg
      ) 
      popd
-     copy $(Build.BinariesDirectory)/nuget-artifact/*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
     displayName: 'Bundle NuGet and other binaries'
 
   - task: PublishPipelineArtifact@0

@@ -32,6 +32,7 @@ jobs:
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core'
+    continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
@@ -39,12 +40,14 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x86'
     enabled: false
+    continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework'
+    continueOnError: true
 
   - script: |
      @echo "Running Runtest.bat"
@@ -52,6 +55,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x86'
     enabled: false
+    continueOnError: true
 
   - script: |
      @echo "Running runtest.bat"
@@ -63,6 +67,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C++) '
     timeoutInMinutes: 30
+    continueOnError: true
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
