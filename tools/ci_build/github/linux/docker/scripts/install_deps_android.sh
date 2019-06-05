@@ -12,9 +12,9 @@ mkdir -p /tmp/src
 mkdir -p /opt/cmake
 aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz
 tar -xf /tmp/src/cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake
-aria2c -q -d /tmp/src https://github.com/protocolbuffers/protobuf/archive/v3.6.1.tar.gz
-tar -xf /tmp/src/protobuf-3.6.1.tar.gz -C /tmp/src
-cd /tmp/src/protobuf-3.6.1
+aria2c -q -d /tmp/src https://github.com/protocolbuffers/protobuf/archive/v3.8.0.tar.gz
+tar -xf /tmp/src/protobuf-3.8.0.tar.gz -C /tmp/src
+cd /tmp/src/protobuf-3.8.0
 if [ -f /etc/redhat-release ] ; then
   PB_LIBDIR=lib64
 else
@@ -36,6 +36,7 @@ export ONNX_ML=1
 rm -rf /tmp/src
 rm -rf /usr/include/google
 rm -rf /usr/lib/libproto*
+rm -rf /usr/lib64/libproto*
 
 
 

@@ -7,6 +7,12 @@ target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprot
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_proto)
 if (WIN32)
   target_compile_options(onnx_proto PRIVATE /wd4146) # unary minus operator applied to unsigned type
+  if(HAS_UNUSED_PARAMETER)
+    target_compile_options(onnx_proto PRIVATE "-Wno-unused-parameter")
+  endif()
+  if(HAS_UNUSED_VARIABLE)
+    target_compile_options(onnx_proto PRIVATE "-Wno-unused-variable")
+  endif()
 endif()
 # Cpp Tests were added and they require googletest
 # since we have our own copy, try using that

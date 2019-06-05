@@ -6,9 +6,9 @@ cd /tmp/src/cmake-3.13.2
 ./configure
 make
 make install
-aria2c -q -d /tmp/src https://github.com/protocolbuffers/protobuf/archive/v3.6.1.tar.gz
-tar -xf /tmp/src/protobuf-3.6.1.tar.gz -C /tmp/src
-cd /tmp/src/protobuf-3.6.1
+aria2c -q -d /tmp/src https://github.com/protocolbuffers/protobuf/archive/v3.8.0.tar.gz
+tar -xf /tmp/src/protobuf-3.8.0.tar.gz -C /tmp/src
+cd /tmp/src/protobuf-3.8.0
 if [ -f /etc/redhat-release ] ; then
   PB_LIBDIR=lib64
 else
@@ -34,5 +34,11 @@ fi
 #The last onnx version will be kept
 
 rm -rf /tmp/src
-
-
+rm -rf /usr/include/google
+rm -rf /usr/bin/protoc
+rm -rf /usr/lib/libproto*
+rm -rf /usr/lib64/libproto*
+rm -rf /usr/lib/pkgconfig/protobuf*.pc
+rm -rf /usr/lib64/pkgconfig/protobuf*.pc
+rm -rf /usr/lib/cmake/protobuf
+rm -rf /usr/lib64/cmake/protobuf
