@@ -61,6 +61,7 @@ jobs:
           searchFolder: '$(Build.SourcesDirectory)\csharp\test'
           runInParallel: true
           configuration: Debug
+          platform: x86
 
 
     - task: VSBuild@1
@@ -99,6 +100,7 @@ jobs:
         searchFolder: '$(Build.SourcesDirectory)\csharp\test'
         runInParallel: true
         configuration: RelWithDebInfo
+        platform: x86
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
