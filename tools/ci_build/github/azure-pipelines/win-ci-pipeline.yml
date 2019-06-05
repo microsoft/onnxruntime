@@ -1,7 +1,6 @@
 parameters:
   runDebugBuild: 'true'
   runComplianceTasks: 'true'
-  runESRP: 'false'
   agentPool : 'Win-CPU'
 
 jobs:
@@ -61,9 +60,6 @@ jobs:
           runInParallel: true
           configuration: Debug
 
-    - ${{ if eq(parameters['runComplianceTasks'], 'true') }}:
-      - template: compliance.yml
-
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
@@ -121,6 +117,9 @@ jobs:
       inputs:
         artifactName: 'drop-nuget'
         targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    - ${{ if eq(parameters['runComplianceTasks'], 'true') }}:
+      - template: compliance.yml
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'

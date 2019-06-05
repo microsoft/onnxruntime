@@ -1,6 +1,9 @@
+parameters:
+  agentPool : 'Linux-CPU'
+
 jobs:
 - job: Linux_CI_Dev_x86
-  pool: Linux-CPU
+  pool: ${{ parameters.agentPool }}
   steps:
     - template: templates/set-test-data-variables-step.yml
 

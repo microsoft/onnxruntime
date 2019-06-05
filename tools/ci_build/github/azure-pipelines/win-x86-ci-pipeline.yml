@@ -1,11 +1,10 @@
 parameters:
   runDebugBuild: 'false'
-  runComplianceTasks: 'false'
-  runESRP: 'false'
+  agentPool : 'Win-CPU'
 
 jobs:
 - job: Windows_CI_Dev_x86
-  pool: Win-CPU
+  pool: ${{ parameters.agentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     PlatformTarget: x86
