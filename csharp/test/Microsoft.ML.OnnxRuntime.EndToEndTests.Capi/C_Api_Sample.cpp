@@ -39,6 +39,10 @@ int main(int argc, char* argv[]) {
   // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
   OrtSetSessionGraphOptimizationLevel(session_options, 1);
 
+  // Optionally add more execution providers via session_options
+  // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:
+  // OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
+
   //*************************************************************************
   // create session and load model into memory
   // using squeezenet version 1.3
