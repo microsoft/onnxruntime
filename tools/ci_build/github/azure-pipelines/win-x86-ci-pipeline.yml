@@ -1,3 +1,8 @@
+parameters:
+  runDebugBuild: 'false'
+  runComplianceTasks: 'false'
+  runESRP: 'false'
+
 jobs:
 - job: Windows_CI_Dev_x86
   pool: Win-CPU
@@ -5,10 +10,6 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
     PlatformTarget: x86
     RuntimeIdentifier: win-x86
-  parameters:
-    runDebugBuild: 'false'
-    runComplianceTasks: 'false'
-    runESRP: 'false'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
