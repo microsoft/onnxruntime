@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/gather_nd.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib     {
@@ -45,12 +46,16 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   auto output_tensor = context->Output(0,TensorShape(shape));
   std::vector<int64_t> element_counts(last_indice_dimension, 0LL); // Number of elements for each input dimension
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t i = 0; i < last_indice_dimension; ++i) {
-    element_counts[i] = input_shape.SizeFromDimension(i + 1);
-}
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  auto thread_pool = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
+  int64_t shard_size = thread_pool->CalculateShardSize(last_indice_dimension);
+  std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+    for (int64_t i = first; i < last; ++i) {
+      element_counts[i] = input_shape.SizeFromDimension(i + 1);
+    }
+  };
+  thread_pool->ParallelFor(last_indice_dimension, shard_size, work_object);
 
   int64_t err_indice = 0;
   p.element_bytes    = input_tensor->DataType()->Size();
@@ -68,18 +73,19 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
     p.output_base     = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   }
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t i = 0; i < offset_count; ++i) {
-    for (int64_t j = 0; j < last_indice_dimension; ++j) {
-      auto indice = *(indice_offset + i * last_indice_dimension + j);
-      if (indice < 0 || indice >= input_shape[j]) {
-        err_indice = indice;
+  shard_size = thread_pool->CalculateShardSize(offset_count);
+  work_object = [&](int64_t first, int64_t last) {
+    for (int64_t i = first; i < last; ++i) {
+      for (int64_t j = 0; j < last_indice_dimension; ++j) {
+        auto indice = *(indice_offset + i * last_indice_dimension + j);
+        if (indice < 0 || indice >= input_shape[j]) {
+          err_indice = indice;
+        }
+        p.element_offsets[i] += indice * element_counts[j];
       }
-      p.element_offsets[i] += indice * element_counts[j];
     }
-  }
+  };
+  thread_pool->ParallelFor(offset_count, shard_size, work_object);
 
   return err_indice == 0 ? Status::OK() :
     ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid indice found, indice = ", err_indice);
@@ -93,31 +99,37 @@ Status GatherND::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>() ? 
                               PrepareForCompute<int32_t>(context, p) : PrepareForCompute<int64_t>(context, p));
 
-  return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  auto thread_pool = ctx_internal->GetOperatorThreadPool();
+
+  return nullptr == p.input_str_base ? GatherNumber(p, const_cast<concurrency::ThreadPool*>(thread_pool)) 
+                                     : GatherString(p, const_cast<concurrency::ThreadPool*>(thread_pool));
 }
 
-Status GatherND::GatherNumber(const Prepare& p) const {
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
-    memcpy(p.output_base + i * p.bytes_to_copy,
-           p.input_base + p.element_offsets[i] * p.element_bytes,
-           p.bytes_to_copy);
-  }
+Status GatherND::GatherNumber(const Prepare& p, onnxruntime::concurrency::ThreadPool *ttp) const {
+  int64_t shard_size = ttp->CalculateShardSize(p.element_offsets.size());
+  std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+    for (int64_t i = first; i < last; ++i) {
+      memcpy(p.output_base + i * p.bytes_to_copy,
+             p.input_base + p.element_offsets[i] * p.element_bytes,
+             p.bytes_to_copy);
+    }
+  };
+  ttp->ParallelFor(static_cast<int64_t>(p.element_offsets.size()), shard_size, work_object);
 
   return Status::OK();
 }
 
-Status GatherND::GatherString(const Prepare& p) const {
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t i = 0; i < static_cast<int64_t>(p.element_offsets.size()); ++i) {
-    for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
-      p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
+Status GatherND::GatherString(const Prepare& p, onnxruntime::concurrency::ThreadPool* ttp) const {
+  int64_t shard_size = ttp->CalculateShardSize(p.element_offsets.size());
+  std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+    for (int64_t i = first; i < last; ++i) {
+      for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
+        p.output_str_base[i * p.element_to_copy + j] = p.input_str_base[p.element_offsets[i] + j];
+      }
     }
-  }
+  };
+  ttp->ParallelFor(static_cast<int64_t>(p.element_offsets.size()), shard_size, work_object);
 
   return Status::OK();
 }

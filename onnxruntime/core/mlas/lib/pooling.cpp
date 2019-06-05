@@ -1328,8 +1328,8 @@ Return Value:
 
     // TODO: revisit the strategy of multi-threading logic
     if (0 && !(ThreadPool == nullptr)) {
-        std::function<void(int32_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
-        ThreadPool->ParallelFor((int32_t)TotalChannelCount, WorkObject);
+        std::function<void(int64_t)> WorkObject = [&](int64_t c) { PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize); };
+        ThreadPool->ParallelFor((int64_t)TotalChannelCount, WorkObject);
         return;
     }
 #endif

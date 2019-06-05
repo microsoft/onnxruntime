@@ -29,12 +29,18 @@ class ThreadPool {
   /*
   Schedule work in the interval [0, total).
   */
-  void ParallelFor(int32_t total, std::function<void(int32_t)> fn);
+  void ParallelFor(int64_t total, std::function<void(int64_t)> fn);
 
   /*
-  Schedule work in the interval [first, last].
+  Schedule work in the interval [0, total) into shards of a unit_size.
   */
-  void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn);
+  void ParallelFor(int64_t total, int64_t unit_size, std::function<void(int64_t, int64_t)> fn);
+
+  /*
+  Estimate the number of shards to divide work into given the number of threads of the current
+  threadpool, number of iterations to compute and approximate work complexity.
+  */
+  int64_t CalculateShardSize(int64_t total, float complexity = 0.0f);
 
   // This is not supported until the latest Eigen
   // void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);

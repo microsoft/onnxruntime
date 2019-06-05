@@ -14,6 +14,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -418,6 +419,9 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
 
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  auto ttp = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
   std::unique_ptr<detail::UniDirectionalLstm<T>> fw;
   std::unique_ptr<detail::UniDirectionalLstm<T>> bw;
 
@@ -456,7 +460,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[0],
                                                          activation_funcs_.Entries()[1],
                                                          activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+                                                         clip_, *ttp);
 
     bw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
                                                          seq_length, batch_size, input_size,
@@ -465,7 +469,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[3],
                                                          activation_funcs_.Entries()[4],
                                                          activation_funcs_.Entries()[5],
-                                                         clip_, ttp_);
+                                                         clip_, *ttp);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
@@ -477,7 +481,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[0],
                                                          activation_funcs_.Entries()[1],
                                                          activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+                                                         clip_, *ttp);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }
@@ -749,7 +753,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const bool output_sequence = !outputs.empty();
 
   if (direction_ == kReverse) {
-    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1);
+    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, ttp_);
     inputs = inputs_reverse_;
 
     if (output_sequence)
@@ -967,7 +971,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   if (output_sequence && direction_ == Direction::kReverse)
     ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_,
-                       batch_size_, hidden_size_, num_directions);
+                       batch_size_, hidden_size_, num_directions, ttp_);
 }
 
 // #define PREVIOUS_BROKEN_VERSION

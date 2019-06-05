@@ -27,46 +27,6 @@ namespace onnxruntime {
 
 namespace concurrency {
 
-// TODO: This is temporarily taken from Eigen until we upgrade its version.
-// Barrier is an object that allows one or more threads to wait until
-// Notify has been called a specified number of times.
-class Barrier {
- public:
-  Barrier(unsigned int count) : state_(count << 1), notified_(false) {
-    assert(((count << 1) >> 1) == count);
-  }
-  ~Barrier() {
-    assert((state_ >> 1) == 0);
-  }
-
-  void Notify() {
-    unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
-    if (v != 1) {
-      assert(((v + 2) & ~1) != 0);
-      return;  // either count has not dropped to 0, or waiter is not waiting
-    }
-    std::unique_lock<std::mutex> l(mu_);
-    assert(!notified_);
-    notified_ = true;
-    cv_.notify_all();
-  }
-
-  void Wait() {
-    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
-    if ((v >> 1) == 0) return;
-    std::unique_lock<std::mutex> l(mu_);
-    while (!notified_) {
-      cv_.wait(l);
-    }
-  }
-
- private:
-  std::mutex mu_;
-  std::condition_variable cv_;
-  std::atomic<unsigned int> state_;  // low bit is waiter flag
-  bool notified_;
-};
-
 #ifdef USE_EIGEN_THREADPOOL
 class ThreadPool::Impl : public Eigen::ThreadPool {
  public:
@@ -75,16 +35,16 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
     ORT_UNUSED_PARAMETER(name);
   }
 
-  void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
+  void ParallelFor(int64_t total, std::function<void(int64_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
-    Barrier barrier(static_cast<unsigned int>(total - 1));
-    std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
+    Eigen::Barrier barrier(static_cast<unsigned int>(total - 1));
+    std::function<void(int64_t)> handle_iteration = [&barrier, &fn](int64_t iteration) {
       fn(iteration);
       barrier.Notify();
     };
 
-    for (int32_t id = 1; id < total; ++id) {
+    for (int64_t id = 1; id < total; ++id) {
       Schedule([=, &handle_iteration]() { handle_iteration(id); });
     }
 
@@ -92,20 +52,23 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
     barrier.Wait();
   }
 
-  void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
+  void ParallelFor(int64_t total, int64_t unit_size, std::function<void(int64_t, int64_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
-    Barrier barrier(static_cast<unsigned int>(last - first));
-    std::function<void(int64_t, int64_t)> handle_range = [&barrier, &fn](int64_t first, int64_t last) {
+    unsigned int spawnedThreads = (unsigned int)ceil((double)total / (double)unit_size) - 1;
+    Eigen::Barrier barrier(spawnedThreads);
+    std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
 
-    for (int64_t id = first + 1; id <= last; ++id) {
-      Schedule([=, &handle_range]() { handle_range(id, id + 1); });
+    for (int64_t first = unit_size; first < total; first += unit_size) {
+      int64_t last = (first + unit_size < total) ? first + unit_size : total;
+      Schedule([=, &handle_iteration]() { handle_iteration(first, last); });
     }
 
-    fn(first, first + 1);
+    // TODO: Make this iteration the last thread to simplify the last calculation.
+    fn(0, unit_size);
     barrier.Wait();
   }
 };
@@ -122,19 +85,19 @@ class ThreadPool::Impl : public TaskThreadPool {
     RunTask(std::move(task));
   }
 
-  void ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
+  void ParallelFor(int64_t total, std::function<void(int64_t)> fn) {
 #ifdef USE_OPENMP
 #pragma omp parallel for
-    for (int32_t id = 0; id < total; ++id) {
+    for (int64_t id = 0; id < total; ++id) {
       fn(id);
     }
 #else
-    Barrier barrier(static_cast<unsigned int>(total - 1));
-    std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
+    Eigen::Barrier barrier(static_cast<unsigned int>(total - 1));
+    std::function<void(int64_t)> handle_iteration = [&barrier, &fn](int64_t iteration) {
       fn(iteration);
       barrier.Notify();
     };
-    for (int32_t id = 1; id < total; ++id) {
+    for (int64_t id = 1; id < total; ++id) {
       std::packaged_task<void()> task(std::bind(handle_iteration, id));
       RunTask(std::move(task));
     }
@@ -143,23 +106,26 @@ class ThreadPool::Impl : public TaskThreadPool {
 #endif
   }
 
-  void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
+  void ParallelFor(int64_t total, int64_t unit_size, std::function<void(int64_t, int64_t)> fn) {
 #ifdef USE_OPENMP
 #pragma omp parallel for
-    for (int64_t id = first; id < last; ++id) {
-      fn(id, id + 1);
+    for (int64_t first = 0; first < total; first += unit_size) {
+      int64_t last = (first + unit_size < total) ? first + unit_size : total;
+      fn(first, last);
     }
 #else
-    Barrier barrier(static_cast<unsigned int>(last - first));
+    unsigned int spawnedThreads = (unsigned int)ceil(total / unit_size) - 1;
+    Eigen::Barrier barrier(spawnedThreads);
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
-    for (int64_t id = first + 1; id < last; ++id) {
-      std::packaged_task<void()> task(std::bind(handle_iteration, id, id + 1));
+    for (int64_t first = unit_size; first < total; first += unit_size) {
+      int64_t last = (first + unit_size < total) ? first + unit_size : total;
+      std::packaged_task<void()> task(std::bind(handle_iteration, first, last));
       RunTask(std::move(task));
     }
-    fn(first, first + 1);
+    fn(0, unit_size);
     barrier.Wait();
 #endif
   }
@@ -175,10 +141,10 @@ ThreadPool::ThreadPool(const std::string& name, int num_threads)
 
 void ThreadPool::Schedule(std::function<void()> fn) { impl_->Schedule(fn); }
 
-void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
+void ThreadPool::ParallelFor(int64_t total, std::function<void(int64_t)> fn) {
   if (total <= 0) return;
 
-  if (total == 1) {
+  if (total == 1 || NumThreads() == 1) {
     fn(0);
     return;
   }
@@ -186,14 +152,29 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
   impl_->ParallelFor(total, fn);
 }
 
-void ThreadPool::ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn) {
-  if (last <= first) return;
-  if (last - first == 1) {
-    fn(first, last);
+void ThreadPool::ParallelFor(int64_t total, int64_t unit_size, std::function<void(int64_t, int64_t)> fn) {
+  if (total <= 0 || unit_size <= 0) return;
+
+  if (total <= unit_size || NumThreads() == 1) {
+    fn(0, total);
     return;
   }
 
-  impl_->ParallelForRange(first, last, fn);
+  impl_->ParallelFor(total, unit_size, fn);
+}
+
+int64_t ThreadPool::CalculateShardSize(int64_t total, float complexity) {
+  // TODO: Simple implementation with four quadrants
+  // Complexity Low / Total Low => 1 (total for now)
+  // Complexity Low / Total High => total/threads
+  // Complexity High / Total Low => total
+  // Complexity High / Total High => total/threads
+  if (total <= NumThreads()) {
+    return 1;
+  }
+  
+  // Block larger iteration counts across threads
+  return (int64_t)ceil((double)total / (double)NumThreads());
 }
 
 // void ThreadPool::SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions) {

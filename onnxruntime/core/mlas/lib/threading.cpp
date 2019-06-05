@@ -94,7 +94,7 @@ MlasExecuteThreaded(
     //
 
     if (ThreadPool != nullptr) {
-        ThreadPool->ParallelFor(Iterations, [&](int32_t tid) { ThreadedRoutine(Context, tid); });
+        ThreadPool->ParallelFor(Iterations, [&](int64_t tid) { ThreadedRoutine(Context, (int32_t)tid); });
         return;
     }
 #endif

@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -200,6 +201,9 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
     }
   }
 
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  auto ttp = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
     gsl::span<const T> input_weights_2 = input_weights.subspan(input_weights_size_per_direction,
@@ -248,7 +252,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, ttp_);
+        clip_, *ttp);
 
     auto bam = std::make_unique<BahdanauAttention<T>>(
         alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
@@ -270,7 +274,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[3],
         activation_funcs_.Entries()[4],
         activation_funcs_.Entries()[5],
-        clip_, ttp_);
+        clip_, *ttp);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
@@ -296,7 +300,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, ttp_);
+        clip_, *ttp);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }

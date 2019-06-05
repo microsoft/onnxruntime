@@ -18,6 +18,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/platform/ort_mutex.h"
 
@@ -171,7 +172,7 @@ class UniDirectionalGru {
 
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
                const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
-               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state);
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state, onnxruntime::concurrency::ThreadPool* ttp);
 
   ~UniDirectionalGru() = default;
 
@@ -344,6 +345,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   gsl::span<T> hidden_output_1 = hidden_output.subspan(0, hidden_output_size_per_direction);
 
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  auto thread_pool = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
     gsl::span<const T> input_weights_2 = input_weights.subspan(input_weights_size_per_direction,
@@ -375,7 +379,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         clip_);
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, thread_pool);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
@@ -389,7 +393,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[2],
         activation_funcs_.Entries()[3],
         clip_);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2, thread_pool);
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
@@ -404,7 +408,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[1],
         clip_);
 
-    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, thread_pool);
   }
 
   if (!output.empty())
@@ -505,7 +509,8 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                                    const gsl::span<const T>& input_weights,
                                    const gsl::span<const T>& recurrent_weights,
                                    gsl::span<T>& outputs,
-                                   gsl::span<T>& final_hidden_state) {
+                                   gsl::span<T>& final_hidden_state,
+                                   onnxruntime::concurrency::ThreadPool* ttp) {
   using span_T_const_iter = typename gsl::span<T>::const_iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
@@ -530,7 +535,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   const bool output_sequence = !outputs.empty();
 
   if (direction_ == kReverse) {
-    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1);
+    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, *ttp);
     // DumpMatrix("Reversed inputs", inputs_reverse_.data(), seq_length_ * batch_size_, input_size_);
 
     inputs = inputs_reverse_;
@@ -806,7 +811,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   if (output_sequence && direction_ == kReverse) {
     ReverseSequence<T>(outputs, original_outputs,
                        sequence_lengths, seq_length_,
-                       batch_size_, hidden_size_, num_directions);
+                       batch_size_, hidden_size_, num_directions, *ttp);
   }
 }
 

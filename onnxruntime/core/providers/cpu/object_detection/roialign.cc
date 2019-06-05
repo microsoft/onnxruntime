@@ -175,7 +175,7 @@ void RoiAlignForward(
     const ThreadPool* ttp) {
   int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
 
-  std::function<void(int32_t)> work_object = [&](int32_t n) {
+  std::function<void(int64_t)> work_object = [&](int64_t n) {
     int64_t index_n = n * channels * pooled_width * pooled_height;
 
     const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
@@ -270,7 +270,7 @@ void RoiAlignForward(
       }    // for ph
     }      // for c
   };       // for n
-  const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  const_cast<ThreadPool*>(ttp)->ParallelFor(n_rois, work_object);
 }
 }  // namespace
 

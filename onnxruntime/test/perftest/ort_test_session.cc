@@ -78,7 +78,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.EnableSequentialExecution();
   else
     session_options.DisableSequentialExecution();
-  fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.session_thread_pool_size);
+  if (performance_test_config.run_config.f_verbose)
+    fprintf(stdout, "Setting thread pool size to %d\n", performance_test_config.run_config.session_thread_pool_size);
+
   // Don't set the thread pool size unless it has been changed from our zero default value (as zero will fail)
   if (performance_test_config.run_config.session_thread_pool_size != 0)
     session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);

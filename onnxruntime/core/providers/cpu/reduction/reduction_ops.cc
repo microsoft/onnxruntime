@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
+
 using namespace std;
 namespace onnxruntime {
 
@@ -291,6 +293,11 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
+ConstEigenVectorMap<T> GenMap(const T* input, int64_t index, int64_t blocks) {
+  return ConstEigenVectorMap<T>(input + (index * blocks), blocks);
+}
+
+template <typename T>
 Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   std::vector<T> transposedInputData;
   int64_t block_size;
@@ -303,12 +310,16 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).mean();
-    }
+    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+    auto thread_pool = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
+    int64_t shard_size = thread_pool->CalculateShardSize(block_size);
+    std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+      for (int64_t i = first; i < last; ++i) {
+        output_data[i] = GenMap<T>(input_data, i, blocks).mean();
+      }
+    };
+    thread_pool->ParallelFor(block_size, shard_size, work_object);
   } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().mean();
@@ -362,12 +373,16 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   if (no_transpose) {
     const T* input_data = ctx->Input<Tensor>(0)->template Data<T>();
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for (int64_t i = 0; i < block_size; ++i) {
-      output_data[i] = ConstEigenVectorMap<T>(input_data + (i * blocks), blocks).sum();
-    }
+    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+    auto thread_pool = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
+    int64_t shard_size = thread_pool->CalculateShardSize(block_size);
+    std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+      for (int64_t i = first; i < last; ++i) {
+        output_data[i] = GenMap<T>(input_data, i, blocks).sum();
+      }
+    };
+    thread_pool->ParallelFor(block_size, shard_size, work_object);
   } else {
     EigenVectorMap<T> out_vec(output_data, block_size);
     out_vec = ConstEigenMatrixMap<T>(&transposedInputData[0], block_size, blocks).rowwise().sum();

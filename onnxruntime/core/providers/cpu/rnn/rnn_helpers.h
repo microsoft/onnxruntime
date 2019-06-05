@@ -113,33 +113,34 @@ void ReverseSequence(gsl::span<const T> inputs,
                      const int max_sequence_length,
                      const int batch_size,
                      const int input_size,
-                     const int num_directions) {
+                     const int num_directions,
+                     onnxruntime::concurrency::ThreadPool& ttp) {
   for (int i = 0; i < batch_size; i++) {
     int seq_len = sequence_lengths[i];
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
-    for (int j = 0; j < seq_len; j++) {
-      gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
+    int64_t shard_size = ttp.CalculateShardSize(seq_len);
+    std::function<void(int64_t, int64_t)> work_object_one = [&](int64_t first, int64_t last) {
+      for (int64_t j = first; j < last; j++) {
+        gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
+        gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
 
-      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest);
-    }
+        // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
+        gsl::copy(src, dest);
+      }
+    };
+    ttp.ParallelFor(seq_len, shard_size, work_object_one);
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
-    for (int j = seq_len; j < max_sequence_length; j++) {
-      gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(num_directions * j * batch_size * input_size + i * input_size, input_size);
+    shard_size = ttp.CalculateShardSize(max_sequence_length - seq_len);
+    std::function<void(int64_t, int64_t)> work_object_two = [&](int64_t first, int64_t last) {
+      for (int64_t j = first + seq_len; j < last + seq_len; j++) {
+        gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
+        gsl::span<T> dest = inputs_reverse.subspan(num_directions * j * batch_size * input_size + i * input_size, input_size);
 
-      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest);
-    }
+        // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
+        gsl::copy(src, dest);
+      }
+    };
+    ttp.ParallelFor((max_sequence_length - seq_len), shard_size, work_object_two);
   }
 }
 

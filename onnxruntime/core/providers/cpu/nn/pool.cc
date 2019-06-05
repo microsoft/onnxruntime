@@ -39,35 +39,39 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   int64_t pooled_width = kernel_shape.size() > 1 ? output_dims[3] : 1;
   int64_t pooled_depth = kernel_shape.size() > 2 ? output_dims[4] : 1;
 
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  auto thread_pool = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
   switch (kernel_shape.size()) {
     case 1: {
       int64_t x_step = height;
       int64_t y_step = pooled_height;
       const int64_t total_channels = x_shape[0] * channels;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
+      int64_t shard_size = thread_pool->CalculateShardSize(total_channels);
+      std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+        for (int64_t c = first; c < last; ++c) {
+          const float* x_d = X_data + c * x_step;
+          float* y_d = Y_data + c * y_step;
 
-        for (int64_t ph = 0; ph < pooled_height; ++ph) {
-          int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0], height);
-          hstart = std::max(hstart, static_cast<int64_t>(0));
-          T Yh = PoolType::Initialize();
-          for (int64_t h = hstart; h < hend; ++h) {
-            PoolType::Process(x_d[h], Yh, pool_context_);
+          for (int64_t ph = 0; ph < pooled_height; ++ph) {
+            int64_t hstart = ph * stride_h() - pads[0];
+            int64_t hend = std::min(hstart + kernel_shape[0], height);
+            hstart = std::max(hstart, static_cast<int64_t>(0));
+            T Yh = PoolType::Initialize();
+            for (int64_t h = hstart; h < hend; ++h) {
+              PoolType::Process(x_d[h], Yh, pool_context_);
+            }
+            if (count_include_pad_) {
+              PoolType::Finalize(kernel_shape[0], Yh, pool_context_);
+            } else {
+              PoolType::Finalize(hend - hstart, Yh, pool_context_);
+            }
+            y_d[ph] = Yh;
           }
-          if (count_include_pad_) {
-            PoolType::Finalize(kernel_shape[0], Yh, pool_context_);
-          } else {
-            PoolType::Finalize(hend - hstart, Yh, pool_context_);
-          }
-          y_d[ph] = Yh;
         }
-      }
+      };
+      thread_pool->ParallelFor(total_channels, shard_size, work_object);
 
       break;
     }
@@ -77,38 +81,39 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width;
       const int64_t total_channels = x_shape[0] * channels;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
+      int64_t shard_size = thread_pool->CalculateShardSize(total_channels);
+      std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+        for (int64_t c = first; c < last; ++c) {
+          const float* x_d = X_data + c * x_step;
+          float* y_d = Y_data + c * y_step;
 
-        for (int64_t ph = 0; ph < pooled_height; ++ph) {
-          int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0], height);
-          hstart = std::max(hstart, static_cast<int64_t>(0));
-          for (int64_t pw = 0; pw < pooled_width; ++pw) {
-            int64_t wstart = pw * stride_w() - pads[1];
-            int64_t wend = std::min(wstart + kernel_shape[1], width);
-            wstart = std::max(wstart, static_cast<int64_t>(0));
-            const int64_t pool_index = ph * pooled_width + pw;
-            T Yh = PoolType::Initialize();
-            for (int64_t h = hstart; h < hend; ++h) {
-              for (int64_t w = wstart; w < wend; ++w) {
-                const int64_t input_index = h * width + w;
-                PoolType::Process(x_d[input_index], Yh, pool_context_);
+          for (int64_t ph = 0; ph < pooled_height; ++ph) {
+            int64_t hstart = ph * stride_h() - pads[0];
+            int64_t hend = std::min(hstart + kernel_shape[0], height);
+            hstart = std::max(hstart, static_cast<int64_t>(0));
+            for (int64_t pw = 0; pw < pooled_width; ++pw) {
+              int64_t wstart = pw * stride_w() - pads[1];
+              int64_t wend = std::min(wstart + kernel_shape[1], width);
+              wstart = std::max(wstart, static_cast<int64_t>(0));
+              const int64_t pool_index = ph * pooled_width + pw;
+              T Yh = PoolType::Initialize();
+              for (int64_t h = hstart; h < hend; ++h) {
+                for (int64_t w = wstart; w < wend; ++w) {
+                  const int64_t input_index = h * width + w;
+                  PoolType::Process(x_d[input_index], Yh, pool_context_);
+                }
               }
+              if (count_include_pad_) {
+                PoolType::Finalize(kernel_shape[0] * kernel_shape[1], Yh, pool_context_);
+              } else {
+                PoolType::Finalize((hend - hstart) * (wend - wstart), Yh, pool_context_);
+              }
+              y_d[pool_index] = Yh;
             }
-            if (count_include_pad_) {
-              PoolType::Finalize(kernel_shape[0] * kernel_shape[1], Yh, pool_context_);
-            } else {
-              PoolType::Finalize((hend - hstart) * (wend - wstart), Yh, pool_context_);
-            }
-            y_d[pool_index] = Yh;
           }
         }
-      }
+      };
+      thread_pool->ParallelFor(total_channels, shard_size, work_object);
 
       break;
     }
@@ -117,47 +122,48 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       int64_t y_step = pooled_height * pooled_width * pooled_depth;
       const int64_t total_channels = x_shape[0] * channels;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
+      int64_t shard_size = thread_pool->CalculateShardSize(total_channels);
+      std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+        for (int64_t c = first; c < last; ++c) {
+          const float* x_d = X_data + c * x_step;
+          float* y_d = Y_data + c * y_step;
 
-        for (int64_t ph = 0; ph < pooled_height; ++ph) {
-          int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0], height);
-          hstart = std::max(hstart, static_cast<int64_t>(0));
-          for (int64_t pw = 0; pw < pooled_width; ++pw) {
-            int64_t wstart = pw * stride_w() - pads[1];
-            int64_t wend = std::min(wstart + kernel_shape[1], width);
-            wstart = std::max(wstart, static_cast<int64_t>(0));
-            for (int64_t pd = 0; pd < pooled_depth; ++pd) {
-              int64_t dstart = pd * stride_d() - pads[2];
-              int64_t dend = std::min(dstart + kernel_shape[2], depth);
-              dstart = std::max(dstart, static_cast<int64_t>(0));
-              const int64_t pool_index =
-                  ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
-              T Yh = PoolType::Initialize();
-              for (int64_t h = hstart; h < hend; ++h) {
-                for (int64_t w = wstart; w < wend; ++w) {
-                  for (int64_t d = dstart; d < dend; ++d) {
-                    const int64_t input_index = h * width * depth + w * depth + d;
-                    PoolType::Process(x_d[input_index], Yh, pool_context_);
+          for (int64_t ph = 0; ph < pooled_height; ++ph) {
+            int64_t hstart = ph * stride_h() - pads[0];
+            int64_t hend = std::min(hstart + kernel_shape[0], height);
+            hstart = std::max(hstart, static_cast<int64_t>(0));
+            for (int64_t pw = 0; pw < pooled_width; ++pw) {
+              int64_t wstart = pw * stride_w() - pads[1];
+              int64_t wend = std::min(wstart + kernel_shape[1], width);
+              wstart = std::max(wstart, static_cast<int64_t>(0));
+              for (int64_t pd = 0; pd < pooled_depth; ++pd) {
+                int64_t dstart = pd * stride_d() - pads[2];
+                int64_t dend = std::min(dstart + kernel_shape[2], depth);
+                dstart = std::max(dstart, static_cast<int64_t>(0));
+                const int64_t pool_index =
+                    ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
+                T Yh = PoolType::Initialize();
+                for (int64_t h = hstart; h < hend; ++h) {
+                  for (int64_t w = wstart; w < wend; ++w) {
+                    for (int64_t d = dstart; d < dend; ++d) {
+                      const int64_t input_index = h * width * depth + w * depth + d;
+                      PoolType::Process(x_d[input_index], Yh, pool_context_);
+                    }
                   }
                 }
+                if (count_include_pad_) {
+                  PoolType::Finalize(kernel_shape[0] * kernel_shape[1] * kernel_shape[2], Yh, pool_context_);
+                } else {
+                  PoolType::Finalize(
+                      (hend - hstart) * (wend - wstart) * (dend - dstart), Yh, pool_context_);
+                }
+                y_d[pool_index] = Yh;
               }
-              if (count_include_pad_) {
-                PoolType::Finalize(kernel_shape[0] * kernel_shape[1] * kernel_shape[2], Yh, pool_context_);
-              } else {
-                PoolType::Finalize(
-                    (hend - hstart) * (wend - wstart) * (dend - dstart), Yh, pool_context_);
-              }
-              y_d[pool_index] = Yh;
             }
           }
         }
-      }
+      };
+      thread_pool->ParallelFor(total_channels, shard_size, work_object);
 
       break;
     }
@@ -245,6 +251,9 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
   auto* Y_data = Y->template MutableData<float>();
   int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
 
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  auto thread_pool = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+
   // The main loop
   int64_t channels = x_shape[1];
   int64_t height = x_shape[2];
@@ -261,29 +270,30 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       const int64_t total_channels = x_shape[0] * channels;
       const int64_t dilation_h = dilations_[0];
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
-        int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
-        for (int64_t ph = 0; ph < pooled_height; ++ph) {
-          int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
-          hstart = std::max(hstart, static_cast<int64_t>(0));
-          float Yh = std::numeric_limits<float>::lowest();
-          int64_t h_index = -1;
-          for (int64_t h = hstart; h < hend; h += dilation_h) {
-            if (x_d[h] > Yh) {
-              Yh = x_d[h];
-              h_index = h;
+      int64_t shard_size = thread_pool->CalculateShardSize(total_channels);
+      std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+        for (int64_t c = first; c < last; ++c) {
+          const float* x_d = X_data + c * x_step;
+          float* y_d = Y_data + c * y_step;
+          int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
+          for (int64_t ph = 0; ph < pooled_height; ++ph) {
+            int64_t hstart = ph * stride_h() - pads[0];
+            int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
+            hstart = std::max(hstart, static_cast<int64_t>(0));
+            float Yh = std::numeric_limits<float>::lowest();
+            int64_t h_index = -1;
+            for (int64_t h = hstart; h < hend; h += dilation_h) {
+              if (x_d[h] > Yh) {
+                Yh = x_d[h];
+                h_index = h;
+              }
             }
+            y_d[ph] = Yh;
+            if (i_d != nullptr) i_d[ph] = c * x_step + h_index;
           }
-          y_d[ph] = Yh;
-          if (i_d != nullptr) i_d[ph] = c * x_step + h_index;
         }
-      }
+      };
+      thread_pool->ParallelFor(total_channels, shard_size, work_object);
 
       break;
     }
@@ -295,43 +305,44 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       const int64_t dilation_h = dilations_[0];
       const int64_t dilation_w = dilations_[1];
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
-        int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
+      int64_t shard_size = thread_pool->CalculateShardSize(total_channels);
+      std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+        for (int64_t c = first; c < last; ++c) {
+          const float* x_d = X_data + c * x_step;
+          float* y_d = Y_data + c * y_step;
+          int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
 
-        for (int64_t ph = 0; ph < pooled_height; ++ph) {
-          int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
-          hstart = std::max(hstart, static_cast<int64_t>(0));
-          for (int64_t pw = 0; pw < pooled_width; ++pw) {
-            int64_t wstart = pw * stride_w() - pads[1];
-            int64_t wend = std::min(wstart + kernel_shape[1] * dilation_w - dilation_w + 1, width);
-            wstart = std::max(wstart, static_cast<int64_t>(0));
-            const int64_t pool_index = ph * pooled_width + pw;
-            float Yh = std::numeric_limits<float>::lowest();
-            int64_t h_index = -1;
-            int64_t w_index = -1;
-            for (int64_t h = hstart; h < hend; h += dilation_h) {
-              for (int64_t w = wstart; w < wend; w += dilation_w) {
-                const int64_t input_index = h * width + w;
-                if (x_d[input_index] > Yh) {
-                  Yh = x_d[input_index];
-                  h_index = h;
-                  w_index = w;
+          for (int64_t ph = 0; ph < pooled_height; ++ph) {
+            int64_t hstart = ph * stride_h() - pads[0];
+            int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
+            hstart = std::max(hstart, static_cast<int64_t>(0));
+            for (int64_t pw = 0; pw < pooled_width; ++pw) {
+              int64_t wstart = pw * stride_w() - pads[1];
+              int64_t wend = std::min(wstart + kernel_shape[1] * dilation_w - dilation_w + 1, width);
+              wstart = std::max(wstart, static_cast<int64_t>(0));
+              const int64_t pool_index = ph * pooled_width + pw;
+              float Yh = std::numeric_limits<float>::lowest();
+              int64_t h_index = -1;
+              int64_t w_index = -1;
+              for (int64_t h = hstart; h < hend; h += dilation_h) {
+                for (int64_t w = wstart; w < wend; w += dilation_w) {
+                  const int64_t input_index = h * width + w;
+                  if (x_d[input_index] > Yh) {
+                    Yh = x_d[input_index];
+                    h_index = h;
+                    w_index = w;
+                  }
                 }
               }
+              y_d[pool_index] = Yh;
+              if (i_d != nullptr)
+                i_d[pool_index] = storage_order_ == 0 ? c * x_step + h_index * width + w_index
+                                                      : c * x_step + h_index + w_index * height;
             }
-            y_d[pool_index] = Yh;
-            if (i_d != nullptr)
-              i_d[pool_index] = storage_order_ == 0 ? c * x_step + h_index * width + w_index
-                                                    : c * x_step + h_index + w_index * height;
           }
         }
-      }
+      };
+      thread_pool->ParallelFor(total_channels, shard_size, work_object);
 
       break;
     }
@@ -343,53 +354,54 @@ Status Pool<float, MaxPool<8 /*VERSION*/>>::Compute(OpKernelContext* context) co
       const int64_t dilation_w = dilations_[1];
       const int64_t dilation_d = dilations_[2];
 
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-      for (int64_t c = 0; c < total_channels; ++c) {
-        const float* x_d = X_data + c * x_step;
-        float* y_d = Y_data + c * y_step;
-        int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
+      int64_t shard_size = thread_pool->CalculateShardSize(total_channels);
+      std::function<void(int64_t, int64_t)> work_object = [&](int64_t first, int64_t last) {
+        for (int64_t c = first; c < last; ++c) {
+          const float* x_d = X_data + c * x_step;
+          float* y_d = Y_data + c * y_step;
+          int64_t* i_d = I_data ? I_data + c * y_step : nullptr;
 
-        for (int64_t ph = 0; ph < pooled_height; ++ph) {
-          int64_t hstart = ph * stride_h() - pads[0];
-          int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
-          hstart = std::max(hstart, static_cast<int64_t>(0));
-          for (int64_t pw = 0; pw < pooled_width; ++pw) {
-            int64_t wstart = pw * stride_w() - pads[1];
-            int64_t wend = std::min(wstart + kernel_shape[1] * dilation_w - dilation_w + 1, width);
-            wstart = std::max(wstart, static_cast<int64_t>(0));
-            for (int64_t pd = 0; pd < pooled_depth; ++pd) {
-              int64_t dstart = pd * stride_d() - pads[2];
-              int64_t dend = std::min(dstart + kernel_shape[2] * dilation_d - dilation_d + 1, depth);
-              dstart = std::max(dstart, static_cast<int64_t>(0));
-              const int64_t pool_index =
-                  ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
-              float Yh = std::numeric_limits<float>::lowest();
-              int64_t h_index = -1;
-              int64_t w_index = -1;
-              int64_t d_index = -1;
-              for (int64_t h = hstart; h < hend; h += dilation_h) {
-                for (int64_t w = wstart; w < wend; w += dilation_w) {
-                  for (int64_t d = dstart; d < dend; d += dilation_d) {
-                    const int64_t input_index = h * width * depth + w * depth + d;
-                    if (x_d[input_index] > Yh) {
-                      Yh = x_d[input_index];
-                      h_index = h;
-                      w_index = w;
-                      d_index = d;
+          for (int64_t ph = 0; ph < pooled_height; ++ph) {
+            int64_t hstart = ph * stride_h() - pads[0];
+            int64_t hend = std::min(hstart + kernel_shape[0] * dilation_h - dilation_h + 1, height);
+            hstart = std::max(hstart, static_cast<int64_t>(0));
+            for (int64_t pw = 0; pw < pooled_width; ++pw) {
+              int64_t wstart = pw * stride_w() - pads[1];
+              int64_t wend = std::min(wstart + kernel_shape[1] * dilation_w - dilation_w + 1, width);
+              wstart = std::max(wstart, static_cast<int64_t>(0));
+              for (int64_t pd = 0; pd < pooled_depth; ++pd) {
+                int64_t dstart = pd * stride_d() - pads[2];
+                int64_t dend = std::min(dstart + kernel_shape[2] * dilation_d - dilation_d + 1, depth);
+                dstart = std::max(dstart, static_cast<int64_t>(0));
+                const int64_t pool_index =
+                    ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
+                float Yh = std::numeric_limits<float>::lowest();
+                int64_t h_index = -1;
+                int64_t w_index = -1;
+                int64_t d_index = -1;
+                for (int64_t h = hstart; h < hend; h += dilation_h) {
+                  for (int64_t w = wstart; w < wend; w += dilation_w) {
+                    for (int64_t d = dstart; d < dend; d += dilation_d) {
+                      const int64_t input_index = h * width * depth + w * depth + d;
+                      if (x_d[input_index] > Yh) {
+                        Yh = x_d[input_index];
+                        h_index = h;
+                        w_index = w;
+                        d_index = d;
+                      }
                     }
                   }
                 }
+                y_d[pool_index] = Yh;
+                if (i_d != nullptr)
+                  i_d[pool_index] = storage_order_ == 0 ? c * x_step + h_index * width * depth + w_index * depth + d_index
+                                                        : c * x_step + h_index + w_index * height + d_index * height * width;
               }
-              y_d[pool_index] = Yh;
-              if (i_d != nullptr)
-                i_d[pool_index] = storage_order_ == 0 ? c * x_step + h_index * width * depth + w_index * depth + d_index
-                                                      : c * x_step + h_index + w_index * height + d_index * height * width;
             }
           }
         }
-      }
+      };
+      thread_pool->ParallelFor(total_channels, shard_size, work_object);
 
       break;
     }

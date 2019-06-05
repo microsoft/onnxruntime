@@ -21,6 +21,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 
@@ -33,7 +34,8 @@ ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
 
 template <typename T>
 static void ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,
-                                int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major);
+                                int64_t max_seq_len, int64_t batch_size, int64_t input_size, bool time_major,
+                                onnxruntime::concurrency::ThreadPool* ttp);
 
 Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   Status status = Status::OK();
@@ -56,8 +58,11 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
 
   auto& Y = *context->Output(0, dims);
 
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  auto thread_pool = ctx_internal->GetOperatorThreadPool();
+
   DispatchOnTensorType(data_type, ReverseSequenceImpl, X, Y, seq_lengths.DataAsSpan<int64_t>(),
-                       max_seq_len, batch_size, input_size, time_major_);
+                       max_seq_len, batch_size, input_size, time_major_, const_cast<concurrency::ThreadPool*>(thread_pool));
 
   return status;
 }
@@ -107,7 +112,8 @@ static void ReverseSequenceImpl(const Tensor& X,
                                 const int64_t max_seq_len,
                                 const int64_t batch_size,
                                 const int64_t input_size,
-                                bool time_major) {
+                                bool time_major,
+                                onnxruntime::concurrency::ThreadPool* ttp) {
   gsl::span<const T> inputs = X.DataAsSpan<T>();
   gsl::span<T> inputs_reverse = Y.MutableDataAsSpan<T>();
 
@@ -121,31 +127,31 @@ static void ReverseSequenceImpl(const Tensor& X,
     if (seq_len == 0)
       continue;
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
-    for (int64_t j = 0; j < seq_len; j++) {
-      gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(
-          reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
+    int64_t shard_size = ttp->CalculateShardSize(seq_len);
+    std::function<void(int64_t,int64_t)> work_object_one = [&](int64_t first, int64_t last) {
+      for (int64_t j = first; j < last; j++) {
+        gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
+        gsl::span<T> dest = inputs_reverse.subspan(
+            reversed_output_offset(max_seq_len, batch_size, input_size, i, j, seq_len), input_size);
 
-      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest);
-    }
+        // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
+        gsl::copy(src, dest);
+      }
+    };
+    ttp->ParallelFor(seq_len, shard_size, work_object_one);
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
-    for (int64_t j = seq_len; j < max_seq_len; j++) {
-      const auto offset = input_offset(max_seq_len, batch_size, input_size, i, j);
-      gsl::span<const T> src = inputs.subspan(offset, input_size);
-      gsl::span<T> dest = inputs_reverse.subspan(offset, input_size);
+    shard_size = ttp->CalculateShardSize(max_seq_len - seq_len);
+    std::function<void(int64_t,int64_t)> work_object_two = [&](int64_t first, int64_t last) {
+      for (int64_t j = first; j < last; j++) {
+        const auto offset = input_offset(max_seq_len, batch_size, input_size, i, j + seq_len);
+        gsl::span<const T> src = inputs.subspan(offset, input_size);
+        gsl::span<T> dest = inputs_reverse.subspan(offset, input_size);
 
-      // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
-      gsl::copy(src, dest);
-    }
+        // Use gsl::copy instead of std::copy() to allow compiler to optimize the code
+        gsl::copy(src, dest);
+      }
+    };
+    ttp->ParallelFor((max_seq_len - seq_len), shard_size, work_object_two);
   }
 }
 

@@ -8,6 +8,7 @@
 #endif
 
 #include "uni_dir_attn_lstm.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -231,7 +232,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const bool output_sequence = !outputs.empty();
 
   if (direction_ == Direction::kReverse) {
-    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1);
+    ReverseSequence(inputs, inputs_reverse_, sequence_lengths, seq_length_, batch_size_, input_size_, 1, ttp_);
     inputs = inputs_reverse_;
 
     if (output_sequence)
@@ -360,7 +361,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     if (direction_ == Direction::kReverse)
       ReverseSequence<T>(outputs, original_outputs, sequence_lengths, max_sequence_length,
-                         batch_size_, hidden_size_, num_directions);
+                         batch_size_, hidden_size_, num_directions, ttp_);
   }
 }
 
