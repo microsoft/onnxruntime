@@ -60,27 +60,6 @@ jobs:
           runInParallel: true
           configuration: Debug
 
-    - ${{ if eq(parameters['runComplianceTasks'], 'true') }}:
-      - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
-        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        continueOnError: true
-
-      - task: securedevelopmentteam.vss-secure-development-tools.build-task-credscan.CredScan@2
-        displayName: 'Run CredScan'
-        inputs:
-          debugMode: false
-        continueOnError: true
-
-      - task: securedevelopmentteam.vss-secure-development-tools.build-task-binskim.BinSkim@3
-        displayName: 'Run BinSkim'
-        inputs:
-          arguments: 'analyze $(Build.BinariesDirectory)\RelWithDebInfo\*.dll  --recurse --verbose'
-        continueOnError: true
-
-      - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@3
-        displayName: 'Publish Security Analysis Logs'
-        continueOnError: true
-
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
