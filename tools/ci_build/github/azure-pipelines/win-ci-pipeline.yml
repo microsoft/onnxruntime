@@ -22,7 +22,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(buildCommand) --update --config Debug RelWithDebInfo'
+        arguments: '$(buildCommand) --update --config RelWithDebInfo'
         workingDirectory: "$(Build.BinariesDirectory)"
 
     - ${{ if eq(parameters['runDebugBuild'], 'true') }}:
