@@ -58,23 +58,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build ONNX Runtime Server on Linux
 
-1. Install Protobuf and GRPC from source code. 
-    1. Go to cmake/external/protobuf
-    2. ```
-       ./autogen.sh
-       ./configure --disable-shared
-       make check
-       sudo make install
-       sudo ldconfig
-       ```
-    3. Go to cmake/external/grpc
-    4. ```
-       make build
-       make install
-       ```
-    5. protoc and the grpc_cpp plugin will now both be in `/usr/local/bin`, headers will be in `/usr/local/include`. 
-    The build will only be using the pregenerated GPRC plugin. 
-2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 
 ## Build/Test Flavors for CI
 
