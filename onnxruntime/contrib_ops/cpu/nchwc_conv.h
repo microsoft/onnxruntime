@@ -23,9 +23,14 @@ template <typename T>
 class ReorderOutput : public OpKernel {
  public:
   ReorderOutput(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("channels", &channels_).IsOK());
+    ORT_ENFORCE(channels_ > 0, "invalid channel count");
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  int64_t channels_;
 };
 
 template <typename T>

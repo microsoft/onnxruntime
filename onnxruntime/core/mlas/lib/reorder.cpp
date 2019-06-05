@@ -296,54 +296,72 @@ Return Value:
 {
     const size_t BlockSize = MlasNchwcGetBlockSize();
 
-    const size_t OutputChannels = size_t(OutputShape[0] * OutputShape[1]);
+    const size_t BatchCount = size_t(OutputShape[0]);
+    const size_t OutputChannels = size_t(OutputShape[1]);
     const size_t OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
 
     //
     // Transpose NCHWc blocks from the source buffer to the destination buffer.
     //
 
-    for (size_t o = OutputChannels; o > 0;) {
+    for (size_t batch = 0; batch < BatchCount; batch++) {
 
-        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
-        o -= OutputChannelsThisIteration;
+        for (size_t o = OutputChannels; o > 0;) {
 
-        const float* s = S;
-        float* d = D;
-        size_t OutputSizeRemaining = OutputSize;
+            const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+            const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
+            o -= OutputChannelsThisIteration;
 
-        for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
+            const float* s = S;
+            float* d = D;
+            size_t OutputSizeRemaining = OutputSize;
 
-            const float* ss = s;
-            float* dd = d;
+            for (; OutputSizeRemaining >= 4; OutputSizeRemaining -= 4) {
 
-            for (size_t bc = 0; bc < OutputChannelsThisIteration; bc += 4) {
-                MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
-                ss += 4;
-                dd += 4 * OutputSize;
+                const float* ss = s;
+                float* dd = d;
+                size_t bc = 0;
+
+                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                    MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
+                    ss += 4;
+                    dd += 4 * OutputSize;
+                }
+
+                for (; bc < OutputChannelsThisIteration; bc += 1) {
+                    MlasReorderGatherFloat32x4(ss, dd, BlockSize);
+                    ss += 1;
+                    dd += OutputSize;
+                }
+
+                s += 4 * BlockSize;
+                d += 4;
             }
 
-            s += 4 * BlockSize;
-            d += 4;
-        }
+            for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
 
-        for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
+                const float* ss = s;
+                float* dd = d;
+                size_t bc = 0;
 
-            const float* ss = s;
-            float* dd = d;
+                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                    MlasReorderScatterFloat32x4(ss, dd, OutputSize);
+                    ss += 4;
+                    dd += 4 * OutputSize;
+                }
 
-            for (size_t bc = 0; bc < OutputChannelsThisIteration; bc += 4) {
-                MlasReorderScatterFloat32x4(ss, dd, OutputSize);
-                ss += 4;
-                dd += 4 * OutputSize;
+                for (; bc < OutputChannelsThisIteration; bc += 1) {
+                    *dd = *ss++;
+                    dd += OutputSize;
+                }
+
+                s += BlockSize;
+                d += 1;
             }
 
-            s += BlockSize;
-            d += 1;
+            S += BlockSize * OutputSize;
+            D += OutputChannelsThisIteration * OutputSize;
         }
-
-        S += BlockSize * OutputSize;
-        D += BlockSize * OutputSize;
     }
 }
 
@@ -431,6 +449,7 @@ Return Value:
     for (size_t o = OutputChannels; o > 0;) {
 
         const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
         o -= OutputChannelsThisIteration;
 
         //
@@ -464,23 +483,27 @@ Return Value:
                 for (size_t bi = 0; bi < InputChannelsThisIteration; bi++) {
 
                     //
-                    // Transpose a float[4] from the source filter buffer to the
-                    // destination buffer. Zero pad the filter block if the output
-                    // channels is not block aligned.
+                    // Transpose from the source filter buffer to the destination
+                    // buffer. Zero pad the filter block if the output channels
+                    // is not block aligned.
                     //
 
                     const float* s = S_BlockSize;
                     size_t bo = 0;
 
-                    for (; bo < OutputChannelsThisIteration; bo += 4) {
+                    for (; bo < AlignedOutputChannelsThisIteration; bo += 4) {
                         MlasReorderGatherFloat32x4(s, D, InputStride);
                         s += 4 * InputStride;
                         D += 4;
                     }
 
-                    for (; bo < BlockSize; bo += 4) {
-                        MlasStoreFloat32x4(D, ZeroFloat32x4);
-                        D += 4;
+                    for (; bo < OutputChannelsThisIteration; bo += 1) {
+                        *D++ = *s;
+                        s += InputStride;
+                    }
+
+                    for (; bo < BlockSize; bo += 1) {
+                        *D++ = 0.0f;
                     }
 
                     S_BlockSize += KernelSize;
@@ -538,8 +561,6 @@ Return Value:
     const size_t KernelSize = KernelHeight * KernelWidth;
     const size_t InputStride = InputChannels * KernelSize;
 
-    const MLAS_FLOAT32X4 ZeroFloat32x4 = MlasZeroFloat32x4();
-
     //
     // Transform the filter tensor from format OIHW to OIHWBo:
     //
@@ -576,6 +597,7 @@ Return Value:
     for (size_t o = OutputChannels; o > 0;) {
 
         const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
         o -= OutputChannelsThisIteration;
 
         //
@@ -603,15 +625,19 @@ Return Value:
                 const float* s = S_KernelSize;
                 size_t bo = 0;
 
-                for (; bo < OutputChannelsThisIteration; bo += 4) {
+                for (; bo < AlignedOutputChannelsThisIteration; bo += 4) {
                     MlasReorderGatherFloat32x4(s, D, InputStride);
                     s += 4 * InputStride;
                     D += 4;
                 }
 
-                for (; bo < BlockSize; bo += 4) {
-                    MlasStoreFloat32x4(D, ZeroFloat32x4);
-                    D += 4;
+                for (; bo < OutputChannelsThisIteration; bo += 1) {
+                    *D++ = *s;
+                    s += InputStride;
+                }
+
+                for (; bo < BlockSize; bo += 1) {
+                    *D++ = 0.0f;
                 }
 
                 S_KernelSize += 1;

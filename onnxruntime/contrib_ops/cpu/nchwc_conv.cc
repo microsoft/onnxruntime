@@ -45,9 +45,11 @@ Status ReorderInput<T>::Compute(OpKernelContext* context) const {
 template <typename T>
 Status ReorderOutput<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  const TensorShape& X_shape = X->Shape();
-  Tensor* Y = context->Output(0, X_shape);
-  MlasReorderOutput(X_shape.GetDims().data(), X->template Data<T>(), Y->template MutableData<T>());
+  std::vector<int64_t> Y_shape(X->Shape().GetDims());
+  ORT_ENFORCE(channels_ <= Y_shape[1]);
+  Y_shape[1] = channels_;
+  Tensor* Y = context->Output(0, Y_shape);
+  MlasReorderOutput(Y_shape.data(), X->template Data<T>(), Y->template MutableData<T>());
   return Status::OK();
 }
 
@@ -59,6 +61,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   const Tensor* Sum = context->Input<Tensor>(3);
   const int64_t N = X->Shape()[0];
   const int64_t M = W->Shape()[0];
+
   ORT_RETURN_IF_ERROR(ConvBase::ValidateInputShape(X, W));
 
   std::vector<int64_t> kernel_shape;

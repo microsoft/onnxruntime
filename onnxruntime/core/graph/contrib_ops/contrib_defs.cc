@@ -598,10 +598,34 @@ Sample echo operator.)DOC");
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
+      .Attr(
+          "channels",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        // Update the output shape with the actual number of channels.
+        auto channels = getAttribute(ctx, "channels", 0);
+        if (channels <= 0) {
+          fail_shape_inference("invalid channel count");
+        }
+        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        if (output_shape->dim_size() < 2) {
+          fail_shape_inference("tensor rank too small");
+        }
+        auto* channels_dim = output_shape->mutable_dim(1);
+        channels_dim->clear_dim_param();
+        channels_dim->set_dim_value(channels);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NchwcConv)
       .SetDomain(kMSDomain)

@@ -23,7 +23,7 @@ class NchwcTransformerImpl {
  private:
   // Associate the following state with each created NCHWc output keyed off the
   // original NodeArg.
-  struct OutputState {
+  struct NchwcArgument {
     struct Shape {
       const NodeArg* dims_[kNchwcDims];
     };
@@ -31,52 +31,54 @@ class NchwcTransformerImpl {
     // Stores the node that generated the NCHWc output.
     Node& output_node_;
 
-    // Stores the NodeArg that represents the NCHWc output. The shape of this
-    // tensor is padded to the NCHWc block size.
-    NodeArg* output_nchwc_arg_;
+    // Stores the NodeArg that represents the NCHWc output.
+    NodeArg* nchwc_arg_;
 
-    // Stores the proto
-    OutputState::Shape output_shape_;
+    // Stores the logical number of channels for this NCHWc output. The NCHWc
+    // NodeArg is zero padded to the NCHWc block size. If the output needs to
+    // be reordered back to a standard tensor format, this channel count is
+    // used to generate the expected number of channels.
+    const int64_t channels_;
+
+    // Stores the proto shape for the NCHWc output.
+    NchwcArgument::Shape shape_;
 
     // Stores the original number of uses for the original NodeArg. Edges are
     // removed from the graph as nodes are converted to NCHWc form.
-    const size_t starting_original_use_count_;
+    const size_t starting_original_uses_;
 
     // Stores the remaining number of uses for the original NodeArg. The count
-    // is decremented as uses are converted to NCHWc node. Nodes are inserted
+    // is decremented as uses are converted to NCHWc format. Nodes are inserted
     // to reorder the output if this count is non-zero.
-    size_t remaining_original_use_count_;
+    size_t remaining_original_uses_;
 
-    OutputState(Node& output_node, NodeArg* output_nchwc_arg, size_t original_use_count, const OutputState::Shape& output_shape)
+    NchwcArgument(Node& output_node, NodeArg* output_nchwc_arg, size_t original_uses, size_t channels, const NchwcArgument::Shape& shape)
         : output_node_(output_node),
-          output_nchwc_arg_(output_nchwc_arg),
-          remaining_original_use_count_(original_use_count),
-          starting_original_use_count_(original_use_count),
-          output_shape_(output_shape) {
+          nchwc_arg_(output_nchwc_arg),
+          remaining_original_uses_(original_uses),
+          starting_original_uses_(original_uses),
+          channels_(channels),
+          shape_(shape) {
     }
   };
 
   const ONNX_NAMESPACE::AttributeProto* GetAttribute(const Node& node, const char* attribute_name);
   const ONNX_NAMESPACE::AttributeProto* GetIntsAttribute(const Node& node, const char* attribute_name, int expected_size);
   size_t RemoveOutputEdges(Node& node);
-  void ConvertOutputDefToNchwc(Node& original_node,
-                               Node& nchwc_node,
-                               const OutputState::Shape& output_shape);
-  void FuseOutputDefToNchwc(Node& original_node,
-                            Node& nchwc_node,
-                            const OutputState::Shape& output_shape);
+  void CreateNchwcArgument(Node& node, Node& nchwc_node, int64_t channels, const NchwcArgument::Shape& shape);
+  void FuseNchwcArgument(Node& node, const NchwcArgument& nchwc_arg);
   void InsertReorderInput(Node& node);
+
+  void ConvPoolShapeInference(const Node& node,
+                              const NchwcArgument::Shape& input_shape,
+                              NchwcArgument::Shape& output_shape,
+                              const ONNX_NAMESPACE::TensorProto* filter_shape);
 
   void TransformConv(Node& node);
   void TransformPool(Node& node);
   void TransformAdd(Node& node);
   void TransformActivation(Node& node);
   void TransformElementwise(Node& node);
-
-  void ConvPoolShapeInference(const Node& node,
-                              const OutputState::Shape& input_shape,
-                              OutputState::Shape& output_shape,
-                              const ONNX_NAMESPACE::TensorProto* filter_shape);
 
   Graph& graph_;
 
@@ -85,7 +87,7 @@ class NchwcTransformerImpl {
 
   // Stores a mapping from the original NodeArg outputs to the NCHWc variants
   // created inside this graph transform.
-  std::unordered_map<NodeArg*, std::unique_ptr<OutputState>> nchwc_outputs_;
+  std::unordered_map<NodeArg*, std::unique_ptr<NchwcArgument>> nchwc_args_;
 
   // Stores a mapping of NodeArg inputs that have already been reordered, so
   // multiple nodes can share the NCHWc input.
@@ -126,36 +128,38 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
       graph_.RemoveEdge(node.Index(), edge.GetNode().Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
     }
   } else {
+    // Bias the edge count to handle the case of a node that produces a graph
+    // output.
     output_edges_count = 1;
   }
   return output_edges_count;
 }
 
-void NchwcTransformerImpl::ConvertOutputDefToNchwc(Node& original_node,
-                                                   Node& nchwc_node,
-                                                   const OutputState::Shape& output_shape) {
-  size_t original_use_count = RemoveOutputEdges(original_node);
+void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
+                                               Node& nchwc_node,
+                                               int64_t channels,
+                                               const NchwcArgument::Shape& shape) {
+  size_t original_uses = RemoveOutputEdges(node);
 
   // Create a new NodeArg to track the output from the NCHWc node.
   auto& output_defs = nchwc_node.MutableOutputDefs();
   auto* output_original_arg = output_defs[0];
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nchwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
-  nchwc_outputs_[output_original_arg] =
-      std::make_unique<OutputState>(nchwc_node, output_nchwc_arg, original_use_count, output_shape);
+  nchwc_args_[output_original_arg] =
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
   output_defs[0] = output_nchwc_arg;
 }
 
-void NchwcTransformerImpl::FuseOutputDefToNchwc(Node& original_node,
-                                                Node& nchwc_node,
-                                                const OutputState::Shape& output_shape) {
-  size_t original_use_count = RemoveOutputEdges(original_node);
+void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nchwc_arg) {
+  size_t original_uses = RemoveOutputEdges(node);
 
   // Associate the existing NCHWc NodeArg with the output from this node.
-  auto* output_original_arg = original_node.MutableOutputDefs()[0];
+  auto* output_original_arg = node.MutableOutputDefs()[0];
+  auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
-  nchwc_outputs_[output_original_arg] =
-      std::make_unique<OutputState>(nchwc_node, output_nchwc_arg, original_use_count, output_shape);
+  nchwc_args_[output_original_arg] =
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {
@@ -182,8 +186,8 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
 }
 
 void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
-                                                  const OutputState::Shape& input_shape,
-                                                  OutputState::Shape& output_shape,
+                                                  const NchwcArgument::Shape& input_shape,
+                                                  NchwcArgument::Shape& output_shape,
                                                   const ONNX_NAMESPACE::TensorProto* filter_shape) {
   auto output_original_arg = node.OutputDefs()[0];
 
@@ -272,10 +276,15 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
 
+  const int64_t nchwc_output_channels = (output_channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+
   bool do_reorder_input = true;
   bool reorder_filter_OIHWBo = false;
 
   if (group_count > 1) {
+    if ((output_channels % nchwc_block_size) != 0) {
+      return;
+    }
     if (input_channels == 1 && output_channels == group_count) {
       // Depthwise convolution.
       reorder_filter_OIHWBo = true;
@@ -294,20 +303,23 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     }
   }
 
-  if ((output_channels % nchwc_block_size) != 0) {
-    return;
-  }
-
-  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
-
   auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
-  std::vector<float> reordered_filter(conv_W->size());
+
+  std::vector<float> reordered_filter;
+  reordered_filter.resize(conv_W->size() / output_channels * nchwc_output_channels);
 
   // Reorder the weights tensor statically.
   if (reorder_filter_OIHWBo) {
     MlasReorderFilterOIHWBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
   } else {
     MlasReorderFilterOIHWBiBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+  }
+
+  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
+
+  if (output_channels != nchwc_output_channels) {
+    new_conv_W_tensor_proto.set_dims(0, nchwc_output_channels);
+    new_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
   }
 
   new_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
@@ -326,21 +338,25 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     kMSDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  OutputState::Shape output_shape;
+  if (output_channels != nchwc_output_channels) {
+    nchwc_node.MutableInputDefs()[1] = &graph_.GetOrCreateNodeArg(new_conv_W_tensor_proto.name(), nullptr);
+  }
+
+  NchwcArgument::Shape output_shape;
   std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
 
   if (do_reorder_input) {
-    auto nchwc_output = nchwc_outputs_.find(input_defs[0]);
-    if (nchwc_output == nchwc_outputs_.end()) {
+    auto nchwc_input = nchwc_args_.find(input_defs[0]);
+    if (nchwc_input == nchwc_args_.end()) {
       InsertReorderInput(nchwc_node);
     } else {
-      ConvPoolShapeInference(node, nchwc_output->second->output_shape_, output_shape, &new_conv_W_tensor_proto);
-      nchwc_node.MutableInputDefs()[0] = nchwc_output->second->output_nchwc_arg_;
-      nchwc_output->second->remaining_original_use_count_--;
+      ConvPoolShapeInference(node, nchwc_input->second->shape_, output_shape, &new_conv_W_tensor_proto);
+      nchwc_node.MutableInputDefs()[0] = nchwc_input->second->nchwc_arg_;
+      nchwc_input->second->remaining_original_uses_--;
     }
   }
 
-  ConvertOutputDefToNchwc(node, nchwc_node, output_shape);
+  CreateNchwcArgument(node, nchwc_node, output_channels, output_shape);
   removed_nodes_.push_front(node.Index());
 }
 
@@ -360,13 +376,13 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
     return;
   }
   auto& channels_dim = input_shape->dim(1);
-  if (!channels_dim.has_dim_value() ||
-      ((channels_dim.dim_value() % nchwc_block_size) != 0)) {
+  if (!channels_dim.has_dim_value()) {
     return;
   }
-
-  OutputState::Shape output_shape;
-  std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
+  const int64_t channels = channels_dim.dim_value();
+  if ((channels % nchwc_block_size) != 0) {
+    return;
+  }
 
   // Create the replacement node.
   std::string nchwc_node_name = graph_.GenerateNodeName("NchwcMaxPool");
@@ -379,15 +395,19 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                                     kMSDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  auto nchwc_output = nchwc_outputs_.find(input_defs[0]);
-  if (nchwc_output == nchwc_outputs_.end()) {
+  NchwcArgument::Shape output_shape;
+  std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
+
+  auto nchwc_input = nchwc_args_.find(input_defs[0]);
+  if (nchwc_input == nchwc_args_.end()) {
     InsertReorderInput(nchwc_node);
   } else {
-    nchwc_node.MutableInputDefs()[0] = nchwc_output->second->output_nchwc_arg_;
-    nchwc_output->second->remaining_original_use_count_--;
+    ConvPoolShapeInference(node, nchwc_input->second->shape_, output_shape, nullptr);
+    nchwc_node.MutableInputDefs()[0] = nchwc_input->second->nchwc_arg_;
+    nchwc_input->second->remaining_original_uses_--;
   }
 
-  ConvertOutputDefToNchwc(node, nchwc_node, output_shape);
+  CreateNchwcArgument(node, nchwc_node, channels, output_shape);
   removed_nodes_.push_front(node.Index());
 }
 
@@ -398,11 +418,11 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
   // Verify that all of the inputs to this operator are from NCHWc outputs.
-  std::vector<OutputState*> nchwc_inputs;
+  std::vector<NchwcArgument*> nchwc_inputs;
   nchwc_inputs.reserve(input_defs.size());
   for (size_t i = 0; i < input_defs.size(); i++) {
-    auto it = nchwc_outputs_.find(input_defs[i]);
-    if (it == nchwc_outputs_.end()) {
+    auto it = nchwc_args_.find(input_defs[i]);
+    if (it == nchwc_args_.end()) {
       return;
     }
     nchwc_inputs.push_back(it->second.get());
@@ -415,7 +435,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
     auto* nchwc_input_n = nchwc_inputs[n];
     for (int i = 0; i < kNchwcDims; i++) {
       // Test if this dimension is derived from the same NodeArg.
-      if (nchwc_input_0->output_shape_.dims_[i] != nchwc_input_n->output_shape_.dims_[i]) {
+      if (nchwc_input_0->shape_.dims_[i] != nchwc_input_n->shape_.dims_[i]) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
         // Avoid dimension values (<= 1) that could indicate broadcasting.
         auto* nchwc_input_n_shape = input_defs[n]->Shape();
@@ -437,8 +457,8 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
   // Update the inputs to the Add/Sum node to directly use the NCHWc inputs
   // and decrement the original use counts of all NCHWc inputs.
   for (size_t n = 0; n < input_defs.size(); n++) {
-    input_defs[n] = nchwc_inputs[n]->output_nchwc_arg_;
-    nchwc_inputs[n]->remaining_original_use_count_--;
+    input_defs[n] = nchwc_inputs[n]->nchwc_arg_;
+    nchwc_inputs[n]->remaining_original_uses_--;
   }
 
   // If one of the inputs to the Add/Sum node is a NCHWc convolution, then
@@ -455,7 +475,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
       // fused if the convolution doesn't have an activation also fused.
       if ((nchwc_node.OpType() == "NchwcConv") &&
           (nchwc_input_defs.size() < 4) && (nchwc_input_args_count.size() < 4) &&
-          (nchwc_input_n->starting_original_use_count_ == 1) &&
+          (nchwc_input_n->starting_original_uses_ == 1) &&
           (GetAttribute(nchwc_node, "activation") == nullptr)) {
         // Feed the output of the other NCHWc node into the selected convolution
         // node.
@@ -464,34 +484,34 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
         nchwc_input_args_count.resize(4);
         nchwc_input_args_count[3] = 1;
 
-        FuseOutputDefToNchwc(node, nchwc_node, nchwc_input_n->output_shape_);
+        FuseNchwcArgument(node, *nchwc_input_n);
         removed_nodes_.push_front(node.Index());
         return;
       }
     }
   }
 
-  ConvertOutputDefToNchwc(node, node, nchwc_input_0->output_shape_);
+  CreateNchwcArgument(node, node, nchwc_input_0->channels_, nchwc_input_0->shape_);
 }
 
 void NchwcTransformerImpl::TransformActivation(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
-  auto it = nchwc_outputs_.find(input_defs[0]);
-  if (it != nchwc_outputs_.end()) {
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it != nchwc_args_.end()) {
     auto& nchwc_input = it->second;
-    input_defs[0] = nchwc_input->output_nchwc_arg_;
-    nchwc_input->remaining_original_use_count_--;
+    input_defs[0] = nchwc_input->nchwc_arg_;
+    nchwc_input->remaining_original_uses_--;
 
     auto& nchwc_node = nchwc_input->output_node_;
     if (nchwc_node.OpType() == "NchwcConv" &&
-        (nchwc_input->starting_original_use_count_ == 1) &&
+        (nchwc_input->starting_original_uses_ == 1) &&
         (GetAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
-      FuseOutputDefToNchwc(node, nchwc_node, nchwc_input->output_shape_);
+      FuseNchwcArgument(node, *nchwc_input);
       removed_nodes_.push_front(node.Index());
     } else {
-      ConvertOutputDefToNchwc(node, node, nchwc_input->output_shape_);
+      CreateNchwcArgument(node, node, nchwc_input->channels_, nchwc_input->shape_);
     }
   }
 }
@@ -499,12 +519,12 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 void NchwcTransformerImpl::TransformElementwise(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
-  auto it = nchwc_outputs_.find(input_defs[0]);
-  if (it != nchwc_outputs_.end()) {
-    auto& nchwc_output = it->second;
-    input_defs[0] = nchwc_output->output_nchwc_arg_;
-    nchwc_output->remaining_original_use_count_--;
-    ConvertOutputDefToNchwc(node, node, nchwc_output->output_shape_);
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it != nchwc_args_.end()) {
+    auto& nchwc_input = it->second;
+    input_defs[0] = nchwc_input->nchwc_arg_;
+    nchwc_input->remaining_original_uses_--;
+    CreateNchwcArgument(node, node, nchwc_input->channels_, nchwc_input->shape_);
   }
 }
 
@@ -533,10 +553,10 @@ void NchwcTransformerImpl::Transform(Node& node) {
 void NchwcTransformerImpl::Finalize(bool& modified) {
   // Create ReorderOutput nodes for any NCHWc outputs that still have uses with
   // the original tensor format.
-  for (auto& nchwc_output : nchwc_outputs_) {
-    if (nchwc_output.second->remaining_original_use_count_ > 0) {
+  for (auto& nchwc_output : nchwc_args_) {
+    if (nchwc_output.second->remaining_original_uses_ > 0) {
       auto* output_original_arg = nchwc_output.first;
-      auto* output_nchwc_arg = nchwc_output.second->output_nchwc_arg_;
+      auto* output_nchwc_arg = nchwc_output.second->nchwc_arg_;
       Node& reorder_output_node = graph_.AddNode(graph_.GenerateNodeName("ReorderOutput"),
                                                  "ReorderOutput",
                                                  "ReorderOutput",
@@ -544,6 +564,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
                                                  {output_original_arg},
                                                  nullptr,
                                                  kMSDomain);
+      reorder_output_node.AddAttribute("channels", nchwc_output.second->channels_);
       reorder_output_node.SetExecutionProviderType(kCpuExecutionProvider);
     }
   }
