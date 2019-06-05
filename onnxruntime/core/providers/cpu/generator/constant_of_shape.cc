@@ -37,7 +37,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     field = t;                                                                                            \
   }
 
-void onnxruntime::ConstantOfShape::SetValue(const ONNX_NAMESPACE::TensorProto& t_proto) {
+void onnxruntime::ConstantOfShapeBase::SetValue(const ONNX_NAMESPACE::TensorProto& t_proto) {
   using namespace utils;
   ORT_ENFORCE(t_proto.has_data_type());
   ORT_ENFORCE(TensorProto::DataType_IsValid(t_proto.data_type()));
@@ -90,12 +90,12 @@ void onnxruntime::ConstantOfShape::SetValue(const ONNX_NAMESPACE::TensorProto& t
 #undef FETCH_VALUE_DATA
 
 template <class T>
-inline T onnxruntime::ConstantOfShape::Value::GetFromSigned() const {
+inline T onnxruntime::ConstantOfShapeBase::Value::GetFromSigned() const {
   return static_cast<T>(i64_);
 }
 
 template <class T>
-inline T onnxruntime::ConstantOfShape::Value::GetFromUnsigned() const {
+inline T onnxruntime::ConstantOfShapeBase::Value::GetFromUnsigned() const {
   return static_cast<T>(ui64_);
 }
 
@@ -103,6 +103,18 @@ template <class T>
 inline void FilloutOutput(T value, Tensor* output_tensor) {
   auto out = gsl::make_span(output_tensor->template MutableData<T>(), output_tensor->Shape().Size());
   std::fill(out.begin(), out.end(), value);
+}
+
+ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info){
+  TensorProto t_proto;
+  if (info.GetAttr<TensorProto>("value", &t_proto).IsOK()) {
+    ORT_ENFORCE(t_proto.dims_size() == 1, "Must have a single dimension");
+    ORT_ENFORCE(t_proto.dims()[0] == 1, "Must have a single dimension of 1");
+    SetValue(t_proto);
+  } else {
+    tensor_type_ = TensorProto::FLOAT;
+    value_.fl_ = 0.f;
+  }
 }
 
 void onnxruntime::ConstantOfShape::DispatchTypeAndFillOutput(Tensor* output_tensor) const {
@@ -149,16 +161,7 @@ void onnxruntime::ConstantOfShape::DispatchTypeAndFillOutput(Tensor* output_tens
   }
 }
 
-ConstantOfShape::ConstantOfShape(const OpKernelInfo& info) : OpKernel(info) {
-  TensorProto t_proto;
-  if (info.GetAttr<TensorProto>("value", &t_proto).IsOK()) {
-    ORT_ENFORCE(t_proto.dims_size() == 1, "Must have a single dimension");
-    ORT_ENFORCE(t_proto.dims()[0] == 1, "Must have a single dimension of 1");
-    SetValue(t_proto);
-  } else {
-    tensor_type_ = TensorProto::FLOAT;
-    value_.fl_ = 0.f;
-  }
+ConstantOfShape::ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {
 }
 
 Status ConstantOfShape::Compute(OpKernelContext* ctx) const {

@@ -56,9 +56,27 @@ std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
   return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
+template <typename T>
+std::unique_ptr<IConstantBuffer<T>> CreateConstantValue(T value) {
+  return std::make_unique<ConstantBufferImpl<T>>(value);
+}
+
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
 template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
 template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
+
+template std::unique_ptr<IConstantBuffer<float>> CreateConstantValue<float>(float value);
+template std::unique_ptr<IConstantBuffer<double>> CreateConstantValue<double>(double value);
+template std::unique_ptr<IConstantBuffer<half>> CreateConstantValue<half>(half value);
+template std::unique_ptr<IConstantBuffer<bool>> CreateConstantValue<bool>(bool value);
+template std::unique_ptr<IConstantBuffer<int8_t>> CreateConstantValue<int8_t>(int8_t value);
+template std::unique_ptr<IConstantBuffer<int16_t>> CreateConstantValue<int16_t>(int16_t value);
+template std::unique_ptr<IConstantBuffer<int32_t>> CreateConstantValue<int32_t>(int32_t value);
+template std::unique_ptr<IConstantBuffer<int64_t>> CreateConstantValue<int64_t>(int64_t value);
+template std::unique_ptr<IConstantBuffer<uint8_t>> CreateConstantValue<uint8_t>(uint8_t value);
+template std::unique_ptr<IConstantBuffer<uint16_t>> CreateConstantValue<uint16_t>(uint16_t value);
+template std::unique_ptr<IConstantBuffer<uint32_t>> CreateConstantValue<uint32_t>(uint32_t value);
+template std::unique_ptr<IConstantBuffer<uint64_t>> CreateConstantValue<uint64_t>(uint64_t value);
 
 }  // namespace cuda
 }  // namespace onnxruntime

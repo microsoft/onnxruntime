@@ -9,13 +9,10 @@
 
 namespace onnxruntime {
 
-class ConstantOfShape final : public OpKernel {
- public:
-  explicit ConstantOfShape(const OpKernelInfo& info);
+class ConstantOfShapeBase {
+ protected:
+  ConstantOfShapeBase(const OpKernelInfo& info);
 
-  Status Compute(OpKernelContext* ctx) const override;
-
- private:
   ONNX_NAMESPACE::TensorProto_DataType tensor_type_;
   union Value {
     float fl_;
@@ -46,7 +43,15 @@ class ConstantOfShape final : public OpKernel {
   } value_;
 
   void SetValue(const ONNX_NAMESPACE::TensorProto&);
+};
 
+class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
+ public:
+  explicit ConstantOfShape(const OpKernelInfo& info);
+
+  Status Compute(OpKernelContext* ctx) const override;
+
+ private:
   void DispatchTypeAndFillOutput(Tensor* output_tensor) const;
 };
 
