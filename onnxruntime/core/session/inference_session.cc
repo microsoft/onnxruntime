@@ -49,7 +49,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
-#include "core/external_ops/pyop.h"
+#include "core/language_interop_ops/pyop.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -225,7 +225,7 @@ template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   model_location_ = ToWideString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
-#ifdef ENABLE_PYOP
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadPyOp(model_location_);
 #endif
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
@@ -252,7 +252,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
-#ifdef ENABLE_PYOP
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadPyOp(model_proto);
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
@@ -263,7 +263,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
-#ifdef ENABLE_PYOP
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadPyOp(*p_model_proto);
 #endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
@@ -283,7 +283,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
-#ifdef ENABLE_PYOP
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadPyOp(model_proto);
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
@@ -301,7 +301,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
-#ifdef ENABLE_PYOP
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadPyOp(model_proto);
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);

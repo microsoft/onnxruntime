@@ -29,7 +29,7 @@ endif(NOT NUMPY_INCLUDE_DIR)
 include_directories(${PYTHON_INCLUDE_DIR})
 include_directories(${NUMPY_INCLUDE_DIR})
 
-file(GLOB onnxruntime_pyop_srcs "${ONNXRUNTIME_ROOT}/core/external_ops/pyop.cc")
+file(GLOB onnxruntime_pyop_srcs "${ONNXRUNTIME_ROOT}/core/language_interop_ops/pyop.cc")
 add_library(onnxruntime_pyop SHARED ${onnxruntime_pyop_srcs})
 if (WIN32)
   set_target_properties(onnxruntime_pyop PROPERTIES LINK_FLAGS "/ignore:4199")
