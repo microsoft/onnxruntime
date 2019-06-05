@@ -110,9 +110,9 @@ struct PyCustomKernel {
 
         for (size_t i = 0; i < inputs_count; ++i) {
             auto ort_value = ort_.KernelContext_GetInput(context, i);
-            inputs.push_back(((MLValue*)ort_value)->Get<Tensor>().DataRaw());
+            inputs.push_back(const_cast<MLValue*>(ort_value)->Get<Tensor>().DataRaw());
             inputs_type.push_back(GetType(ort_value));
-            inputs_dim.push_back(((MLValue*)ort_value)->Get<Tensor>().Shape().GetDims());
+            inputs_dim.push_back(const_cast<MLValue*>(ort_value)->Get<Tensor>().Shape().GetDims());
         }
 
         std::string err;
@@ -132,8 +132,8 @@ struct PyCustomKernel {
     int32_t GetType(const OrtValue* input) const {
         int32_t numpy_type;
         ORT_ENFORCE (nullptr != input);
-        ORT_ENFORCE(((MLValue*)input)->IsTensor(), "input must be a tensor");
-        auto data_type = ((MLValue*)input)->Get<Tensor>().DataType();
+        ORT_ENFORCE(const_cast<MLValue*>(input)->IsTensor(), "input must be a tensor");
+        auto data_type = const_cast<MLValue*>(input)->Get<Tensor>().DataType();
         if (data_type == DataTypeImpl::GetType<bool>()) {
             numpy_type = 0;
         } else if (data_type == DataTypeImpl::GetType<int8_t>()) {
