@@ -124,8 +124,8 @@ This operator constructs a sparse tensor from three tensors that provide a COO
       SparseTensor* output = ctx->Output(0, static_cast<size_t>(nnz), shape);
       ORT_ENFORCE(output != nullptr);
 
-      memcpy(output->Values().MutableData<int64_t>(), values.Data<int64_t>(), nnz * sizeof(int64_t));
-      memcpy(output->Indices().MutableData<int64_t>(), indices.Data<int64_t>(), nnz * numdims * sizeof(int64_t));
+      memcpy(output->MutableValues().MutableData<int64_t>(), values.Data<int64_t>(), nnz * sizeof(int64_t));
+      memcpy(output->MutableIndices().MutableData<int64_t>(), indices.Data<int64_t>(), nnz * numdims * sizeof(int64_t));
 
       return Status::OK();
     }
@@ -188,7 +188,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       SparseTensor* output = ctx->Output(0, nnz, shape);
 
       // compute output values:
-      auto* output_values = output->Values().MutableData<int64_t>();
+      auto* output_values = output->MutableValues().MutableData<int64_t>();
       for (size_t i = 0; i < nnz; ++i)
         output_values[i] = std::abs(input_values[i]);
 
@@ -196,10 +196,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       // So, we copy indices/shape from input to output.
       // TODO: Extend allocation-planner to enable such sharing.
       const auto& input_indices = input->Indices();
-      memcpy(output->Indices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.Size());
-
-      output->Shape() = shape;
-
+      memcpy(output->MutableIndices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.Size());
       return Status::OK();
     }
   };

@@ -53,17 +53,17 @@ class SparseTensor final {
     return shape_;
   }
 
-  Tensor& Values() {
+  Tensor& MutableValues() {
     return values_;
   }
 
-  Tensor& Indices() {
+  Tensor& MutableIndices() {
     return indices_;
   }
 
-  TensorShape& Shape() {
-    return shape_;
-  }
+  //TensorShape& MutableShape() {
+  //  return shape_;
+  //}
 
  private:
   Tensor values_;
