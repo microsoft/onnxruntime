@@ -33,7 +33,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return allocator_ptr_;
     }
 
-    const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
+    const OrtValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
     const std::unordered_map<int, const NodeArg*>& GetMLValueIdxNodeArgMap() const noexcept {
       return ort_value_idx_nodearg_map_;
     }
@@ -57,7 +57,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     AllocatorPtr allocator_ptr_;
 
     // MLValues for optimizer
-    MLValueNameIdxMap ort_value_name_idx_map_;
+    OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
     std::unordered_map<int, OrtValue> initializers_;
     std::unordered_map<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
