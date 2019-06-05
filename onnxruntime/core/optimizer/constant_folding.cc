@@ -61,11 +61,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       OrtValue& ort_value = fetches[fetch_idx];
 
       // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-      ONNX_NAMESPACE::TensorProto out_tensorproto;
       const auto* constant_arg_out = node->OutputDefs()[fetch_idx];
       ORT_ENFORCE(ort_value.IsTensor());
       const Tensor& out_tensor = ort_value.Get<Tensor>();
-      graph_utils::BuildTensorProtoForInitializer(out_tensor, *constant_arg_out, out_tensorproto);
+      ONNX_NAMESPACE::TensorProto out_tensorproto =
+          graph_utils::BuildTensorProtoForInitializer(out_tensor, *constant_arg_out);
 
       graph.AddInitializedTensor(out_tensorproto);
     }

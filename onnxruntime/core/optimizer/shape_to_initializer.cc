@@ -30,9 +30,9 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
                                                      input_dims.data(), info.GetAllocator()->Info());
 
   // Create the TensorProto that will be used as initializer in place of the Shape operator.
-  ONNX_NAMESPACE::TensorProto shape_initializer_proto;
   const auto* shape_out_def = node.OutputDefs()[0];
-  graph_utils::BuildTensorProtoForInitializer(*shape_tensor, *shape_out_def, shape_initializer_proto);
+  ONNX_NAMESPACE::TensorProto shape_initializer_proto =
+      graph_utils::BuildTensorProtoForInitializer(*shape_tensor, *shape_out_def);
 
   // Remove the output edges of the Shape node, then remove the node itself, and replace it with the initializer.
   graph_utils::RemoveNodeOutputEdges(graph, node);
