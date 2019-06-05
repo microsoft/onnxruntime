@@ -1,5 +1,3 @@
-# cleans $(Agent.BuildDirectory) unconditionally on multiple platforms
-
 steps:
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
