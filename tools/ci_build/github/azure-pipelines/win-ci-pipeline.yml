@@ -6,7 +6,7 @@ parameters:
 
 jobs:
 - job: Windows_CI_Dev
-  pool: parameters['agentPool']
+  pool: {{ parameters['agentPool'] }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:
