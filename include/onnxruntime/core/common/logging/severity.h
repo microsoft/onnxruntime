@@ -17,6 +17,7 @@ enum class Severity {
 };
 
 constexpr const char* SEVERITY_PREFIX = "VIWEF";
+constexpr const char* SYSLOG_LEVEL = "76432";
 
 }  // namespace logging
 }  // namespace onnxruntime
