@@ -60,6 +60,9 @@ jobs:
           runInParallel: true
           configuration: Debug
 
+    - ${{ if eq(parameters['runComplianceTasks'], 'true') }}:
+      - template: compliance.yml
+
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
