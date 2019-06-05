@@ -57,6 +57,18 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
   std::cout << "[OpenVINO-EP] device:" << device_id_ << std::endl;
   std::cout << "[OpenVINO-EP] precision:" << precision_str << std::endl;
 
+
+  // Infer Request class represents OpenVINO's logical hardware instance. These logical
+  // instances are bound to physical hardware instances at runtime depending
+  // on the physical hardware availability. If multiple Infer Requests are mapped to
+  // the same physical hardware instance, then the inference operations requests from
+  // the Infer Requests are serialized before they are scheduled on the physical hardware.
+  // If the different Infer Requests are scheduled on different hardware instances, inference
+  // operations associated with the Infer Requests may be scheduled in parallel.
+  // Infer Requests hold resources representing the entire network on their target hardware. So,
+  // having more Infer Requests than needed would waster system resources.
+  // In VAD-R (HDDL) accelerator, there are 8 parallel execution units. So, creating 8 instances
+  // of Infer Requests only if the VAD-R accelerator is being used.
   // sets number of maximum parallel inferences
   num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
@@ -82,8 +94,10 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
     input_indexes_.push_back(index);
   }
 
+  // Create hardware agnostic OpenVINO network representation
   cnn_network_ = BuildCNNNetworkWithMO();
 
+  // Create hardware specific OpenVINO network representation
   infer_requests_ = GetExecutableHandle(cnn_network_, device_id_, precision_);
 }
 
