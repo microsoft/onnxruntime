@@ -1,6 +1,6 @@
 parameters:
   runDebugBuild: 'false'
-  runComplianceTasks: 'true'
+  runComplianceTasks: 'false'
   agentPool : 'Win-CPU'
 
 jobs:
