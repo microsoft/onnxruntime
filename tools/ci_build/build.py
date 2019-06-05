@@ -573,6 +573,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
              cmd += ['-c', '1']
           if provider == 'openvino':
              cmd += ['-v']
+             cmd += ['-c', '1']
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
