@@ -36,7 +36,7 @@ jobs:
     displayName: 'Download cmake'
     inputs:
       dropServiceURI: 'https://aiinfra.artifacts.visualstudio.com/DefaultCollection'
-      buildNumber: cmake/x64/3.12.4/2
+      buildNumber: cmake/x64/3.13.4
       destinationPath: '$(Build.BinariesDirectory)\packages\cmake'
     timeoutInMinutes: 10
 

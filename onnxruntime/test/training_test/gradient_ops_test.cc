@@ -245,25 +245,26 @@ TEST(GradientCheckerTest, PowGrad) {
 
 TEST(GradientCheckerTest, MatMulGrad) {
   float max_error;
+  const float error_tolerance = 1e-1f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"MatMul"};
 
   // 2D
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}}, {{2, 3}}, &max_error);
-    ASSERT_IS_TINY(max_error);
+    ASSERT_IS_TINY(max_error, error_tolerance);
   }
 
   // 3D
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 4}, {2, 4, 3}}, {{2, 3, 3}}, &max_error);
-    ASSERT_IS_TINY(max_error);
+    ASSERT_IS_TINY(max_error, error_tolerance);
   }
 
   // 4D
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {2, 3, 5, 4}}, {{2, 3, 4, 4}}, &max_error);
-    ASSERT_IS_TINY(max_error);
+    ASSERT_IS_TINY(max_error, error_tolerance);
   }
 }
 
@@ -340,8 +341,49 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"ReduceMean"};
 
-  gradient_checker.ComputeGradientError(op_def, {{3, 5}}, {{1, 1}}, &max_error);
-  ASSERT_IS_TINY(max_error);
+  // default
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 1, 1}}, &max_error);
+    ASSERT_IS_TINY(max_error);
+  }
+
+  // default axes, keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{}}, &max_error,
+                                          {MakeAttribute("keepdims", int64_t(0))});
+    ASSERT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 2], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{1, 3, 1}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 2})});
+    ASSERT_IS_TINY(max_error);
+  }
+
+  // axes = [0, 1], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    ASSERT_IS_TINY(max_error);
+  }
+
+  // axes = [1], keepdims = 1
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 1, 2}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{1}),
+                                           MakeAttribute("keepdims", int64_t(1))});
+    ASSERT_IS_TINY(max_error);
+  }
+
+  // axes = [2], keepdims = 0
+  {
+    gradient_checker.ComputeGradientError(op_def, {{4, 3, 2}}, {{4, 3}}, &max_error,
+                                          {MakeAttribute("axes", std::vector<int64_t>{2}),
+                                           MakeAttribute("keepdims", int64_t(0))});
+    ASSERT_IS_TINY(max_error);
+  }
 }
 
 TEST(GradientCheckerTest, SplitGrad) {
@@ -350,7 +392,8 @@ TEST(GradientCheckerTest, SplitGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Split"};
 
-  gradient_checker.ComputeGradientError(op_def, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error, {MakeAttribute("axis", int64_t(0))});
+  gradient_checker.ComputeGradientError(op_def, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
+                                        {MakeAttribute("axis", int64_t(0))});
   ASSERT_IS_TINY(max_error);
 }
 

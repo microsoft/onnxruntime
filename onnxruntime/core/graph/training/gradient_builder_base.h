@@ -93,6 +93,20 @@ class GradientBuilderBase {
     return node_->OpType();
   }
 
+  static NodeDef ConstantValueNode(const std::vector<int64_t>& values, const std::string& arg_name) {
+    ONNX_NAMESPACE::TensorProto t_proto;
+    t_proto.add_dims(values.size());
+    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    for (auto value : values) {
+      t_proto.add_int64_data(value);
+    }
+
+    return NodeDef("Constant",
+                   {},
+                   {ArgDef(arg_name, nullptr)},
+                   {MakeAttribute("value", t_proto)});
+  }
+
   static NodeDef ConstantValueNode(float value, const std::string& arg_name) {
     ONNX_NAMESPACE::TensorProto t_proto;
     t_proto.add_dims(1);

@@ -708,11 +708,58 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("ReduceMeanGrad",
-              {GO(0)},
-              {GI(0)},
-              SrcNodeAttributes())};
+  std::vector<int64_t> data_shape = GetShape(I(0));
+
+  auto attributes = SrcNodeAttributes();
+  std::vector<int64_t> axes_values(data_shape.size());
+  if (attributes.find("axes") != attributes.end()) {
+    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+  } else {
+    std::iota(std::begin(axes_values), std::end(axes_values), 0);
+  }
+
+  bool keepdims = true;
+  if (attributes.find("keepdims") != attributes.end() &&
+      attributes.at("keepdims").has_i()) {
+    keepdims = static_cast<bool>(attributes.at("keepdims").i());
+  }
+
+  std::vector<NodeDef> result;
+
+  ArgDef unsqueezed_Grad = GO(0);
+  if (!keepdims) {
+    unsqueezed_Grad = IA("Unqueezed_Grad");
+    result.push_back(
+        NodeDef("Unsqueeze",
+                {GO(0)},
+                {unsqueezed_Grad},
+                {MakeAttribute("axes", axes_values)}));
+  }
+
+  std::vector<int64_t> repeats(data_shape.size(), 1);
+  int64_t scale = 1;
+  for (int64_t axis : axes_values) {
+    repeats[axis] = data_shape[axis];
+    scale *= data_shape[axis];
+  }
+
+  NodeDef repeats_node = ConstantValueNode(repeats, Name("repeats"));
+  ArgDef REPEATS = repeats_node.output_args[0];
+  result.push_back(repeats_node);
+  result.push_back(
+      NodeDef("Tile",
+              {unsqueezed_Grad, REPEATS},
+              {IA("Tiled_Grad")}));
+
+  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
+  ArgDef SCALE = scale_node.output_args[0];
+  result.push_back(scale_node);
+  result.push_back(
+      NodeDef("Mul",
+              {IA("Tiled_Grad"), SCALE},
+              {GI(0)}));
+
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
