@@ -82,13 +82,6 @@ class Capture {
     }
   }
 
-  char SysLogLevel() const noexcept {
-    // Carefully setup so severity_ is a valid index
-    GSL_SUPPRESS(bounds .2) {
-      return logging::SYSLOG_LEVEL[static_cast<int>(severity_)] - '0';
-    }
-  }
-
   const char* Category() const noexcept {
     return category_;
   }
