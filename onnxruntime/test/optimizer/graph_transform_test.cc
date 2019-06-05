@@ -66,7 +66,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
-TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
+TEST(GraphTransformationTests, DropoutElimination) {
   string model_uri = MODEL_FOLDER + "dropout.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -119,6 +119,21 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(), TransformerLevel::Level1);
 
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+TEST(GraphTransformationTests, ShapeToInitializer1) {
+  string model_uri = MODEL_FOLDER + "shape-abs-id.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
   rule_transformer_L1->Register(std::make_unique<ShapeToInitializer>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -126,7 +141,7 @@ TEST(GraphTransformationTests, ConstantFolding1) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Shape"] == 0);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
