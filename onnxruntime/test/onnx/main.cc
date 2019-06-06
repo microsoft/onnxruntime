@@ -400,7 +400,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() ||
-       (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+       (p.second != "unknown version" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }

@@ -500,6 +500,7 @@ void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions
 
   // for test in immutable list, do not even run it
   if (immutable_broken_tests.find(info->GetTestCaseName()) != immutable_broken_tests.end()) {
+    on_finished(std::make_shared<TestCaseResult>(0, EXECUTE_RESULT::NOT_SUPPORT, info->GetNodeName()), pci);
     return;
   }
 
