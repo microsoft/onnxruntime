@@ -9,7 +9,8 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
     PlatformTarget: x86
     RuntimeIdentifier: win-x86
-    buildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --x86'
+    DotNetExe: 'c:\program files (x86)\dotnet\dotnet.exe'
+    buildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
@@ -22,7 +23,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(buildCommand) --update --config Debug RelWithDebInfo'
+        arguments: '$(buildCommand) --update --config RelWithDebInfo'
         workingDirectory: "$(Build.BinariesDirectory)"
 
     - ${{ if eq(parameters['runDebugBuild'], 'true') }}:
