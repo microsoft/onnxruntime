@@ -49,9 +49,6 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
-#ifdef ENABLE_LANGUAGE_INTEROP_OPS
-#include "core/language_interop_ops/language_interop_ops.h"
-#endif
 
 using namespace ONNX_NAMESPACE;
 

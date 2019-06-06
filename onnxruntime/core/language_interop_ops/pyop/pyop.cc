@@ -136,23 +136,23 @@ PyCustomOp* LoadPyOp(const ONNX_NAMESPACE::NodeProto& node_proto, PyOpLogFunc lo
     OnnxTypes input_types, output_types;
     std::string module, class_name, compute = "compute";
     for (int j = 0; j < node_proto.attribute_size(); ++j) {
-      const auto& attr = node_proto.attribute(j);
-      if (attr.has_s()) {
-        if      (attr.name() == "module")     module                  = attr.s();
-        else if (attr.name() == "class_name") class_name              = attr.s();
-        else if (attr.name() == "compute")    compute                 = attr.s();
-        else                                  onnx_attrs[attr.name()] = attr.s();
-      } else if (attr.ints_size() > 0) {
-        if (attr.name() == "input_types") {
-          for (int k = 0; k < attr.ints_size(); ++k) {
-            input_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
-          }
-        } else if (attr.name() == "output_types") {
-          for (int k = 0; k < attr.ints_size(); ++k) {
-            output_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
-          }
-        }
-      } 
+        const auto& attr = node_proto.attribute(j);
+        if (attr.has_s()) {
+            if      (attr.name() == "module")     module                  = attr.s();
+            else if (attr.name() == "class_name") class_name              = attr.s();
+            else if (attr.name() == "compute")    compute                 = attr.s();
+            else                                  onnx_attrs[attr.name()] = attr.s();
+        } else if (attr.ints_size() > 0) {
+            if (attr.name() == "input_types") {
+                for (int k = 0; k < attr.ints_size(); ++k) {
+                    input_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
+                }
+            } else if (attr.name() == "output_types") {
+                for (int k = 0; k < attr.ints_size(); ++k) {
+                    output_types.push_back(static_cast<ONNXTensorElementDataType>(attr.ints(k)));
+                }
+            }
+        } 
     }//for
     ORT_ENFORCE (module     != "",      "PyOp module not specified");
     ORT_ENFORCE (class_name != "",      "PyOp class name not specified");
@@ -160,6 +160,5 @@ PyCustomOp* LoadPyOp(const ONNX_NAMESPACE::NodeProto& node_proto, PyOpLogFunc lo
     ORT_ENFORCE (!output_types.empty(), "PyOp node outputs not specified");
     return new PyCustomOp(onnx_attrs, input_types, output_types, module, class_name, compute, log_func);
 }
-
 } 
 
