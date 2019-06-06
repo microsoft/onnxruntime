@@ -77,6 +77,7 @@ class NchwcTransformerImpl {
   void TransformConv(Node& node);
   void TransformPool(Node& node);
   void TransformAdd(Node& node);
+  void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformElementwise(Node& node);
 
@@ -267,8 +268,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   int64_t group_count;
   auto* group_attr = GetAttribute(node, "group");
-  if (group_attr != nullptr &&
-      group_attr->has_i()) {
+  if (group_attr != nullptr && group_attr->has_i()) {
     group_count = group_attr->i();
   } else {
     group_count = 1;
@@ -419,8 +419,9 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
 
   // Verify that all of the inputs to this operator are from NCHWc outputs.
   std::vector<NchwcArgument*> nchwc_inputs;
-  nchwc_inputs.reserve(input_defs.size());
-  for (size_t i = 0; i < input_defs.size(); i++) {
+  size_t input_defs_count = input_defs.size();
+  nchwc_inputs.reserve(input_defs_count);
+  for (size_t i = 0; i < input_defs_count; i++) {
     auto it = nchwc_args_.find(input_defs[i]);
     if (it == nchwc_args_.end()) {
       return;
@@ -431,7 +432,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
   // Test if all of the NCHWc inputs have a compatible shape.
   auto* nchwc_input_0 = nchwc_inputs[0];
   auto* nchwc_input_0_shape = input_defs[0]->Shape();
-  for (size_t n = 1; n < input_defs.size(); n++) {
+  for (size_t n = 1; n < input_defs_count; n++) {
     auto* nchwc_input_n = nchwc_inputs[n];
     for (int i = 0; i < kNchwcDims; i++) {
       // Test if this dimension is derived from the same NodeArg.
@@ -454,16 +455,16 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
     }
   }
 
-  // Update the inputs to the Add/Sum node to directly use the NCHWc inputs
-  // and decrement the original use counts of all NCHWc inputs.
-  for (size_t n = 0; n < input_defs.size(); n++) {
+  // Update the node to directly use the NCHWc inputs directly and decrement
+  // the original use counts of the NCHWc inputs.
+  for (size_t n = 0; n < input_defs_count; n++) {
     input_defs[n] = nchwc_inputs[n]->nchwc_arg_;
     nchwc_inputs[n]->remaining_original_uses_--;
   }
 
   // If one of the inputs to the Add/Sum node is a NCHWc convolution, then
   // attempt to fuse the addition into the convolution itself.
-  if (input_defs.size() == 2) {
+  if (input_defs_count == 2) {
     for (size_t n = 0; n < 2; n++) {
       auto* nchwc_input_n = nchwc_inputs[n];
       auto& nchwc_node = nchwc_input_n->output_node_;
@@ -492,6 +493,52 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
   }
 
   CreateNchwcArgument(node, node, nchwc_input_0->channels_, nchwc_input_0->shape_);
+}
+
+void NchwcTransformerImpl::TransformConcat(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // Verify that this is a concatenation along the channel axis.
+  auto* axis_attr = GetAttribute(node, "axis");
+  if (axis_attr == nullptr || !axis_attr->has_i() || axis_attr->i() != 1) {
+    return;
+  }
+
+  const size_t nchwc_block_size = MlasNchwcGetBlockSize();
+
+  // Verify that all of the inputs to this operator are from NCHWc outputs.
+  std::vector<NchwcArgument*> nchwc_inputs;
+  size_t input_defs_count = input_defs.size();
+  nchwc_inputs.reserve(input_defs_count);
+  int64_t total_channels = 0;
+  for (size_t i = 0; i < input_defs_count; i++) {
+    auto it = nchwc_args_.find(input_defs[i]);
+    if (it == nchwc_args_.end()) {
+      return;
+    }
+    // Verify that the logical number of channels is block aligned.
+    int64_t input_channels = it->second->channels_;
+    if ((input_channels % nchwc_block_size) != 0) {
+      return;
+    }
+    total_channels += input_channels;
+    nchwc_inputs.push_back(it->second.get());
+  }
+
+  // Update the node to directly use the NCHWc inputs directly and decrement
+  // the original use counts of the NCHWc inputs.
+  for (size_t n = 0; n < input_defs_count; n++) {
+    input_defs[n] = nchwc_inputs[n]->nchwc_arg_;
+    nchwc_inputs[n]->remaining_original_uses_--;
+  }
+
+  // Copy the shape from any of the NCHWc inputs, but use the current node for
+  // the channel dimension.
+  NchwcArgument::Shape output_shape = nchwc_inputs[0]->shape_;
+  output_shape.dims_[1] = output_defs[0];
+
+  CreateNchwcArgument(node, node, total_channels, output_shape);
 }
 
 void NchwcTransformerImpl::TransformActivation(Node& node) {
@@ -534,7 +581,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     TransformConv(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10})) {
     TransformPool(node);
-  } else if (node.GetInputEdgesCount() == 0) {
+  } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
     // been decremented to zero by earlier transforms. This is a quick check
     // that all inputs are NCHWc candidates. Also, these transforms do not need
@@ -542,6 +589,8 @@ void NchwcTransformerImpl::Transform(Node& node) {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {6}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8})) {
       TransformAdd(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
+      TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {6})) {
