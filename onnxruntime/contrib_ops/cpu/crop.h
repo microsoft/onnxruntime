@@ -40,12 +40,12 @@ class CropBase {
             rightBorder = border_[2],
             bottomBorder = border_[3];
 
-    if (H <= topBorder + bottomBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
+    if (H < topBorder + bottomBorder) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
     }
 
-    if (W <= leftBorder + rightBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
+    if (W < leftBorder + rightBorder) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
     }
 
     int64_t bottomLimit = H - bottomBorder;
@@ -58,11 +58,11 @@ class CropBase {
 
       if (H < bottomLimit) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
+                               "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
       }
 
       if (W < rightLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
       }
     }
 

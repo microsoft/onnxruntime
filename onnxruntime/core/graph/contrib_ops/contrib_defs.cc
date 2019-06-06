@@ -496,11 +496,13 @@ and op)DOC";
                   right_border = border[2],
                   bottom_border = border[3];
 
-          if (H <= top_border + bottom_border)
-            fail_shape_inference("Input's height (", H, ") needs to be greater than the top_border (", top_border, ") + bottom_border (", bottom_border, ")");
+          if (H < top_border + bottom_border)
+            fail_shape_inference("Input's height (", H, ") needs to be greater than or equal to "
+                                 "the top_border (", top_border, ") + bottom_border (", bottom_border, ")");
 
-          if (W <= left_border + right_border)
-            fail_shape_inference("Input's width (", W, ") needs to be greater than the left_border (", left_border, ") + right_border (", right_border, ")");
+          if (W < left_border + right_border)
+            fail_shape_inference("Input's width (", W, ") needs to be greater than or equal to "
+                                 "the left_border (", left_border, ") + right_border (", right_border, ")");
 
           int64_t bottom_limit = H - bottom_border;
           int64_t right_limit = W - right_border;
@@ -511,10 +513,10 @@ and op)DOC";
             right_limit = left_border + scale[1];
 
             if (H < bottom_limit)
-              fail_shape_inference("Input's height (", H, ") needs to be greater than the top_border (", top_border, ") + scale[0] (", scale[0], ")");
+              fail_shape_inference("Input's height (", H, ") needs to be greater than or equal to the top_border (", top_border, ") + scale[0] (", scale[0], ")");
 
             if (W < right_limit)
-              fail_shape_inference("Input's width (", W, ") needs to be greater than the left_border (", left_border, ") + scale[1] (", scale[1], ")");
+              fail_shape_inference("Input's width (", W, ") needs to be greater than or equal to the left_border (", left_border, ") + scale[1] (", scale[1], ")");
           }
 
           auto* h_output_dim = output_shape->add_dim();
