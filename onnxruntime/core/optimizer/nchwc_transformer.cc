@@ -512,7 +512,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // been decremented to zero by earlier transforms. This is a quick check
     // that all inputs are NCHWc candidates. Also, these transforms do not need
     // to remove any input edges themselves.
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {6}) ||
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8})) {
       TransformAdd(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
