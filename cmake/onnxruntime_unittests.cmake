@@ -533,7 +533,7 @@ else()
 endif()
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
   target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
