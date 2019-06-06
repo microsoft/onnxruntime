@@ -30,6 +30,13 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
     )
+
+    if (onnxruntime_USE_SYSLOG)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.cc"
+        )
+    endif()
 endif()
 
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS

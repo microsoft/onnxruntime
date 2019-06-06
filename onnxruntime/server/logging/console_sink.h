@@ -10,11 +10,10 @@
 namespace onnxruntime {
 namespace server {
 
-class LogSink : public onnxruntime::logging::OStreamSink {
+class ConsoleSink : public onnxruntime::logging::OStreamSink {
  public:
-  LogSink() : OStreamSink(std::cout, /*flush*/ true) {
+  ConsoleSink() : OStreamSink(std::cout, /*flush*/ true) {
   }
 };
 }  // namespace server
 }  // namespace onnxruntime
-

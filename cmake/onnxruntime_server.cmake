@@ -74,6 +74,7 @@ target_include_directories(onnxruntime_server_lib PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/onnx
   ${ONNXRUNTIME_ROOT}/server
   ${ONNXRUNTIME_ROOT}/server/http
+  ${ONNXRUNTIME_ROOT}/server/logging
   PUBLIC
   ${Boost_INCLUDE_DIR}
   ${re2_src}
@@ -94,6 +95,10 @@ target_link_libraries(onnxruntime_server_lib PRIVATE
   onnxruntime_mlas
   ${onnxruntime_EXTERNAL_LIBRARIES}
 )
+
+if (onnxruntime_USE_SYSLOG)
+  target_compile_definitions(onnxruntime_server_lib PUBLIC USE_SYSLOG="1")
+endif()
 
 # For IDE only
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_server_srcs} ${onnxruntime_server_lib_srcs} ${onnxruntime_server_lib})
