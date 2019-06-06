@@ -18,5 +18,15 @@ void GatherImpl(
     T* output_data,
     const size_t N);
 
+template <typename T, typename Tin>
+void GatherGradImpl(
+    const int64_t input_block_size,
+    const int64_t indices_max,
+    const Tin* indices_data,
+    const fast_divmod* output_strides,
+    const T* grad_data,
+    T* output_data,
+    const size_t N);
+
 }  // namespace cuda
 }  // namespace onnxruntime

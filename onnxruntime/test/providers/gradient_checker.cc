@@ -53,7 +53,19 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
   OpTester op_session(op_def.type.c_str(), 9, op_def.domain.c_str(), false);
   for (size_t data_index = 0; data_index < x_datas->size(); data_index++) {
     std::string name = "input" + std::to_string(data_index);
-    op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), (*x_datas)[data_index]);
+    const std::vector<X_T>& data = (*x_datas)[data_index];
+
+    if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
+      std::vector<int64_t> int64_data(data.size());
+      std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
+      op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int64_data);
+    } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
+      std::vector<int32_t> int32_data(data.size());
+      std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
+      op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+    } else {
+      op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
+    }
   }
 
   for (size_t data_index = 0; data_index < y_infos.size(); data_index++) {
@@ -94,7 +106,19 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
 
       for (size_t data_index = 0; data_index < x_num; data_index++) {
         std::string name = "input" + std::to_string(data_index);
-        op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), (*x_datas)[data_index]);
+        const std::vector<X_T>& data = (*x_datas)[data_index];
+
+        if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int64_t>()) {
+          std::vector<int64_t> int64_data(data.size());
+          std::transform(data.begin(), data.end(), int64_data.begin(), [](X_T x) { return static_cast<int64_t>(x); });
+          op_session.AddInput<int64_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int64_data);
+        } else if (x_infos[data_index].data_type == DataTypeImpl::GetTensorType<int32_t>()) {
+          std::vector<int32_t> int32_data(data.size());
+          std::transform(data.begin(), data.end(), int32_data.begin(), [](X_T x) { return static_cast<int32_t>(x); });
+          op_session.AddInput<int32_t>(name.c_str(), x_infos[data_index].shape.GetDims(), int32_data);
+        } else {
+          op_session.AddInput<X_T>(name.c_str(), x_infos[data_index].shape.GetDims(), data);
+        }
       }
 
       for (size_t data_index = 0; data_index < y_num; data_index++) {

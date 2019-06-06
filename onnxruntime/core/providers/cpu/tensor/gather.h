@@ -34,4 +34,19 @@ class Gather final : public OpKernel, public GatherBase {
 
   Status Compute(OpKernelContext* context) const override;
 };
+
+namespace contrib {
+class GatherGrad final : public OpKernel {
+ public:
+  GatherGrad(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(), "Missing/Invalid 'axis' attribute value");
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  int64_t axis_;
+};
+}  // namespace contrib
+
 }  // namespace onnxruntime

@@ -10,7 +10,11 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_KERNEL(
     Gather,
     1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -102,5 +106,22 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
 }
+
+namespace contrib {
+ONNX_CPU_OPERATOR_KERNEL(
+    GatherGrad,
+    9,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    GatherGrad);
+
+Status GatherGrad::Compute(OpKernelContext* /*context*/) const {
+  return Status::OK();
+}
+
+}  // namespace contrib
 
 }  // namespace onnxruntime

@@ -22,17 +22,20 @@ namespace test {
 struct TensorInfo {
   TensorInfo(const std::initializer_list<int64_t>& shape,
              bool has_gradient = true,
-             std::function<float(float)>* transformer = nullptr)
-      : shape(shape), has_gradient(has_gradient), transformer(transformer) {}
+             std::function<float(float)>* transformer = nullptr,
+             MLDataType data_type = DataTypeImpl::GetTensorType<float>())
+      : shape(shape), has_gradient(has_gradient), transformer(transformer), data_type(data_type) {}
 
   TensorInfo(const TensorShape& shape,
              bool has_gradient = true,
-             std::function<float(float)>* transformer = nullptr)
-      : shape(shape), has_gradient(has_gradient), transformer(transformer) {}
+             std::function<float(float)>* transformer = nullptr,
+             MLDataType data_type = DataTypeImpl::GetTensorType<float>())
+      : shape(shape), has_gradient(has_gradient), transformer(transformer), data_type(data_type) {}
 
   TensorShape shape;
   bool has_gradient;
   std::function<float(float)>* transformer;
+  MLDataType data_type;
 };
 
 // TODO: This class currently assumes the inputs share types and the outputs share a type.

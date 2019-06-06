@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gather.h"
-#include "gather_impl.h"
+#include "core/providers/cuda/tensor/gather_impl.h"
+#include "core/providers/cuda/tensor/gather.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
+
 ONNX_OPERATOR_KERNEL_EX(
     Gather,
     kOnnxDomain,
@@ -85,6 +86,89 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   TYPED_FUNCTION_CALL(bool)
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
+}
+
+ONNX_OPERATOR_KERNEL_EX(
+    GatherGrad,
+    kOnnxDomain,
+    9,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    GatherGrad);
+
+#define TYPED_GRAD_FUNCTION_CALL(T)                                           \
+  if (T_type == DataTypeImpl::GetType<T>()) {                                 \
+    const T* grad_data = grad->template Data<T>();                            \
+    T* output_data = output->template MutableData<T>();                       \
+                                                                              \
+    if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                       \
+      GatherGradImpl(                                                         \
+          input_block_size,                                                   \
+          indices_max,                                                        \
+          indices->template Data<int32_t>(),                                  \
+          div_strides.GpuPtr(),                                               \
+          reinterpret_cast<const ToCudaType<T>::MappedType*>(grad_data),      \
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
+          grad->Shape().Size());                                              \
+      return Status::OK();                                                    \
+    }                                                                         \
+    if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                       \
+      GatherGradImpl(                                                         \
+          input_block_size,                                                   \
+          indices_max,                                                        \
+          indices->template Data<int64_t>(),                                  \
+          div_strides.GpuPtr(),                                               \
+          reinterpret_cast<const ToCudaType<T>::MappedType*>(grad_data),      \
+          reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
+          grad->Shape().Size());                                              \
+      return Status::OK();                                                    \
+    }                                                                         \
+  }
+
+Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* data = context->Input<Tensor>(0);
+  const TensorShape& data_shape = data->Shape();
+  const Tensor* indices = context->Input<Tensor>(1);
+  const Tensor* grad = context->Input<Tensor>(2);
+
+  Tensor* output = context->Output(0, data_shape);
+
+  auto axis = HandleNegativeAxis(axis_, data_shape.NumDimensions());
+  const int64_t block_size = data_shape.SizeFromDimension(axis + 1);
+  size_t N = indices->Shape().Size();
+  const int64_t input_block_size = data_shape.SizeFromDimension(axis);
+  const int64_t output_block_size = N * block_size;
+  const int64_t indices_max = data_shape[axis];
+
+  // Put the output_block_size and block_size into div_strides
+  // for divmod calling in _GatherKernel to calculate the input index
+  CudaAsyncBuffer<fast_divmod> div_strides(this, 0, 2);
+  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
+  div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
+  div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
+  ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
+
+  MLDataType T_type = data->DataType();
+  MLDataType Tin_type = indices->DataType();
+
+  //TYPED_GRAD_FUNCTION_CALL(int8_t)
+  //TYPED_GRAD_FUNCTION_CALL(int16_t)
+  TYPED_GRAD_FUNCTION_CALL(int32_t)
+  //TYPED_GRAD_FUNCTION_CALL(int64_t)
+  //TYPED_GRAD_FUNCTION_CALL(uint8_t)
+  //TYPED_GRAD_FUNCTION_CALL(uint16_t)
+  TYPED_GRAD_FUNCTION_CALL(uint32_t)
+  //TYPED_GRAD_FUNCTION_CALL(uint64_t)
+  //TYPED_GRAD_FUNCTION_CALL(MLFloat16)
+  TYPED_GRAD_FUNCTION_CALL(float)
+  //TYPED_GRAD_FUNCTION_CALL(double)
+  //TYPED_GRAD_FUNCTION_CALL(bool)
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in GatherGrad.");
 }
 
 }  // namespace cuda

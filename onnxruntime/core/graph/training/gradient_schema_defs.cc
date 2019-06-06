@@ -102,6 +102,21 @@ void RegisterGradientSchemas() {
       .NumOutputs(1)
       .Reference("Dropout");
 
+  ONNX_GRADIENT_OPERATOR_SCHEMA(GatherGrad)
+      .Input(0, "X", "Tensor of rank r >= 1.", "T")
+      .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
+      .Input(2, "dY", "Gradient of output", "T")
+      .Output(0, "dX", "Gradient of input", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types")
+      .ReferenceAttributes("Gather");
+
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
   ONNX_GRADIENT_OPERATOR_SCHEMA(SGDOptimizer)
