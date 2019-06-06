@@ -1056,15 +1056,20 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // cast is not compute heavy, and may be placed outside
     }
 
+
     if (!not_supported && !force_inside) {
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
       bool all_non_initializer_inputs_from_outside = true;
       node.ForEachWithIndex(
           node.InputDefs(),
-          [&](const NodeArg& def, size_t) {
+          [&](const NodeArg& def, size_t index) {
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def))
+            // The input is not a initializer and the input is from CPU
+            // or the input declared as CPU memory and is from CPU 
+            // in that case we should still keep the node on CUDA
+            if ((!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def)) ||
+                (defs_outside_cuda.count(&def) && cuda_kernel_def->kernel_def->IsInputOnCpu(index)))
               all_non_initializer_inputs_from_outside = false;
             return Status::OK();
           });
