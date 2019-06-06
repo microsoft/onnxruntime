@@ -20,6 +20,8 @@ void convPoolShapeInference(
     int input1Idx,
     int input2Idx);
 }
+void gloablPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
+
 namespace onnxruntime {
 namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
@@ -42,6 +44,18 @@ void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
   schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
     ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
+  });
+}
+
+void NchwcGlobalPoolOpSchemaGenerator(OpSchema& schema) {
+  schema.SetDomain(kMSNchwcDomain);
+  schema.SinceVersion(1);
+  schema.SetDoc(R"DOC(For internal use.)DOC");
+  schema.Input(0, "X", "", "T");
+  schema.Output(0, "Y", "", "T");
+  schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
+  schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+    gloablPoolTypeShapeInference(ctx);
   });
 }
 
@@ -715,6 +729,12 @@ Sample echo operator.)DOC");
           "",
           AttributeProto::INT,
           static_cast<int64_t>(0));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalMaxPool)
+      .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalAveragePool)
+      .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)

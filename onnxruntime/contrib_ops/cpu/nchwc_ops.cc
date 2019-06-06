@@ -45,7 +45,23 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     NchwcMaxPool);
 
 ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
+    GlobalMaxPool,
+    1,
+    float,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    NchwcMaxPool);
+
+ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     AveragePool,
+    1,
+    float,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    NchwcAveragePool);
+
+ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
+    GlobalAveragePool,
     1,
     float,
     KernelDefBuilder()

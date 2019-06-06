@@ -63,16 +63,10 @@ class NchwcTransformerImpl {
   };
 
   const ONNX_NAMESPACE::AttributeProto* GetAttribute(const Node& node, const char* attribute_name);
-  const ONNX_NAMESPACE::AttributeProto* GetIntsAttribute(const Node& node, const char* attribute_name, int expected_size);
   size_t RemoveOutputEdges(Node& node);
   void CreateNchwcArgument(Node& node, Node& nchwc_node, int64_t channels, const NchwcArgument::Shape& shape);
   void FuseNchwcArgument(Node& node, const NchwcArgument& nchwc_arg);
   void InsertReorderInput(Node& node);
-
-  void ConvPoolShapeInference(const Node& node,
-                              const NchwcArgument::Shape& input_shape,
-                              NchwcArgument::Shape& output_shape,
-                              const ONNX_NAMESPACE::TensorProto* filter_shape);
 
   void TransformConv(Node& node);
   void TransformPool(Node& node);
@@ -100,17 +94,6 @@ const ONNX_NAMESPACE::AttributeProto* NchwcTransformerImpl::GetAttribute(const N
   auto it = node_attributes.find(attribute_name);
   if (it != node_attributes.end()) {
     return &(it->second);
-  } else {
-    return nullptr;
-  }
-}
-
-const ONNX_NAMESPACE::AttributeProto* NchwcTransformerImpl::GetIntsAttribute(const Node& node,
-                                                                             const char* attribute_name,
-                                                                             int expected_size) {
-  auto* attr = GetAttribute(node, attribute_name);
-  if (attr != nullptr && attr->ints_size() == expected_size) {
-    return attr;
   } else {
     return nullptr;
   }
@@ -183,71 +166,6 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
     input_defs[0] = input_nchwc_arg;
   } else {
     input_defs[0] = it->second;
-  }
-}
-
-void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
-                                                  const NchwcArgument::Shape& input_shape,
-                                                  NchwcArgument::Shape& output_shape,
-                                                  const ONNX_NAMESPACE::TensorProto* filter_shape) {
-  auto output_original_arg = node.OutputDefs()[0];
-
-  // Default the shape to preserve the batch count from the input and override
-  // the other dimensions. The channel count is also preserved for pooling
-  // operations.
-  output_shape.dims_[0] = input_shape.dims_[0];
-  output_shape.dims_[1] = (filter_shape == nullptr) ? input_shape.dims_[1] : output_original_arg;
-  output_shape.dims_[2] = output_original_arg;
-  output_shape.dims_[3] = output_original_arg;
-
-  const int kernel_size = kNchwcDims - 2;
-
-  const ONNX_NAMESPACE::AttributeProto* pads_attr = GetIntsAttribute(node, "pads", kernel_size * 2);
-  const ONNX_NAMESPACE::AttributeProto* strides_attr = GetIntsAttribute(node, "strides", kernel_size);
-  const ONNX_NAMESPACE::AttributeProto* dilations_attr = GetIntsAttribute(node, "dilations", kernel_size);
-
-  auto* auto_pad_attr = GetAttribute(node, "auto_pad");
-  if (auto_pad_attr != nullptr && auto_pad_attr->has_s()) {
-    auto& auto_pad = auto_pad_attr->s();
-    if (auto_pad != "NOTSET") {
-      if (auto_pad != "VALID") {
-        return;
-      }
-      pads_attr = nullptr;
-    }
-  }
-
-  // Require the kernel_shape attribute for pooling operators. Convolution
-  // uses the weight tensor shape to derive the kernel shape.
-  const ONNX_NAMESPACE::AttributeProto* kernel_shape_attr = nullptr;
-  if (filter_shape == nullptr) {
-    kernel_shape_attr = GetIntsAttribute(node, "kernel_shape", kernel_size);
-    if (kernel_shape_attr == nullptr) {
-      return;
-    }
-  }
-
-  for (int i = 0; i < kernel_size; i++) {
-    if ((strides_attr != nullptr && strides_attr->ints(i) != 1) ||
-        (dilations_attr != nullptr && dilations_attr->ints(i) != 1)) {
-      continue;
-    }
-
-    int64_t padding = 0;
-    if (pads_attr != nullptr) {
-      padding = pads_attr->ints(i) + pads_attr->ints(i + kernel_size);
-    }
-
-    int64_t kernel;
-    if (kernel_shape_attr != nullptr) {
-      kernel = kernel_shape_attr->ints(i);
-    } else {
-      kernel = filter_shape->dims(2 + i);
-    }
-
-    if (padding + 1 == kernel) {
-      output_shape.dims_[2 + i] = input_shape.dims_[2 + i];
-    }
   }
 }
 
@@ -346,13 +264,15 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
 
   if (do_reorder_input) {
-    auto nchwc_input = nchwc_args_.find(input_defs[0]);
-    if (nchwc_input == nchwc_args_.end()) {
+    auto it = nchwc_args_.find(input_defs[0]);
+    if (it == nchwc_args_.end()) {
       InsertReorderInput(nchwc_node);
     } else {
-      ConvPoolShapeInference(node, nchwc_input->second->shape_, output_shape, &new_conv_W_tensor_proto);
-      nchwc_node.MutableInputDefs()[0] = nchwc_input->second->nchwc_arg_;
-      nchwc_input->second->remaining_original_uses_--;
+      auto* nchwc_input = it->second.get();
+      nchwc_node.MutableInputDefs()[0] = nchwc_input->nchwc_arg_;
+      nchwc_input->remaining_original_uses_--;
+      // Maintain the batch count dimension from the NCHWc input.
+      output_shape.dims_[0] = nchwc_input->shape_.dims_[0];
     }
   }
 
@@ -398,13 +318,15 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   NchwcArgument::Shape output_shape;
   std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
 
-  auto nchwc_input = nchwc_args_.find(input_defs[0]);
-  if (nchwc_input == nchwc_args_.end()) {
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it == nchwc_args_.end()) {
     InsertReorderInput(nchwc_node);
   } else {
-    ConvPoolShapeInference(node, nchwc_input->second->shape_, output_shape, nullptr);
-    nchwc_node.MutableInputDefs()[0] = nchwc_input->second->nchwc_arg_;
-    nchwc_input->second->remaining_original_uses_--;
+    auto* nchwc_input = it->second.get();
+    nchwc_node.MutableInputDefs()[0] = nchwc_input->nchwc_arg_;
+    nchwc_input->remaining_original_uses_--;
+    // Maintain the batch count dimension from the NCHWc input.
+    output_shape.dims_[0] = nchwc_input->shape_.dims_[0];
   }
 
   CreateNchwcArgument(node, nchwc_node, channels, output_shape);
@@ -581,7 +503,9 @@ void NchwcTransformerImpl::Transform(Node& node) {
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10}) ||
-             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10})) {
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalMaxPool", {1}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "GlobalAveragePool", {1})) {
     TransformPool(node);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
