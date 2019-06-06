@@ -37,7 +37,14 @@ class TestResultStat {
 
   struct OrderPair {
     bool operator () (const std::pair<std::string, std::string>& p1, const std::pair<std::string, std::string>& p2) const {
-      return strcmp(p1.first.c_str(), p2.first.c_str()) < 0 || strcmp(p1.second.c_str(), p2.second.c_str()) < 0;
+      auto ret = strcmp(p1.first.c_str(), p2.first.c_str());
+      if (ret < 0) {
+        return true;
+      } else if (ret > 0) {
+        return false;
+      } else {
+        return strcmp(p1.second.c_str(), p2.second.c_str()) < 0;
+      }
     }
   };//struct OrderPair
 
