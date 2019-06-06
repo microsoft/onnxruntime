@@ -646,8 +646,3 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  add_definitions(-DENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
-endif()
