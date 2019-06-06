@@ -199,48 +199,46 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
 /**
  * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
  */
-ORT_API(OrtSessionOptions*, OrtCreateSessionOptions);
+ORT_API_STATUS(OrtCreateSessionOptions, _Out_ OrtSessionOptions** output);
 
 // create a copy of an existing OrtSessionOptions
-ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions*);
-ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
-ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtCloneSessionOptions, _In_ OrtSessionOptions* in, _Out_ OrtSessionOptions** output);
+ORT_API_STATUS(OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
 
 // Enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
-ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
+ORT_API_STATUS(OrtDisableProfiling, _In_ OrtSessionOptions* options);
 
 // Enable the memory pattern optimization.
 // The idea is if the input shapes are the same, we could trace the internal memory allocation
 // and generate a memory pattern for future request. So next time we could just do one allocation
 // with a big chunk for all the internal memory allocation.
 // Note: memory pattern optimization is only available when SequentialExecution enabled.
-ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options);
-ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtEnableMemPattern, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtDisableMemPattern, _In_ OrtSessionOptions* options);
 
 // Enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
 // set this option to false if you don't want it.
-ORT_API(void, OrtEnableCpuMemArena, _In_ OrtSessionOptions* options);
-ORT_API(void, OrtDisableCpuMemArena, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtEnableCpuMemArena, _In_ OrtSessionOptions* options);
+ORT_API_STATUS(OrtDisableCpuMemArena, _In_ OrtSessionOptions* options);
 
 // < logger id to use for session output
-ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
+ORT_API_STATUS(OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
 
 // < applies to session load, initialization, etc
-ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
+ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
 
 // Set Graph optimization level.
-// Return 0 on success and -1 otherwise
 // Available options are : 0, 1, 2.
 // 0 -> Disable all optimizations
 // 1 -> Enable basic optimizations
 // 2 -> Enable all optimizations
-ORT_API(int, OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level);
+ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level);
 
 // How many threads in the session thread pool.
-// Returns 0 on success, and -1 otherwise
-ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
+ORT_API_STATUS(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
   * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
