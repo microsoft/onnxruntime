@@ -105,7 +105,7 @@ jobs:
       inputs:
         script: |
          FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
-      workingFolder: '$(Build.SourcesDirectory)\csharp'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: VSTest@2
       displayName: 'VsTest - C# RelWithDebInfo'
