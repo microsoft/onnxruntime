@@ -159,8 +159,23 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
         result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
       }
     }
+    if (node->InputDefs()[0]->Type() != nullptr)
+      FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
   }
 
+  if (FP16_graph) {
+    // FP16 not supported yet.
+    use_subgraph = false;
+    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+  } else {
+    const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
+    if (env != nullptr) {
+      if (atoi(env) == 0) {
+        use_subgraph = false;
+        result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+      }
+    }
+  }
   return use_subgraph;
 }
 
