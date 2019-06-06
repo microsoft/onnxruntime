@@ -107,67 +107,68 @@ inline RunOptions& RunOptions::SetTerminate(bool flag) {
   return *this;
 }
 
-inline SessionOptions::SessionOptions() : Base<OrtSessionOptions>{OrtCreateSessionOptions()} {
+inline SessionOptions::SessionOptions() {
+  ORT_THROW_ON_ERROR(OrtCreateSessionOptions(&p_));
 }
 
 inline SessionOptions SessionOptions::Clone() const {
-  return SessionOptions{OrtCloneSessionOptions(p_)};
+  OrtSessionOptions* out;
+  ORT_THROW_ON_ERROR(OrtCloneSessionOptions(p_, &out));
+  return SessionOptions{out};
 }
 
 inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool_size) {
-  if (OrtSetSessionThreadPoolSize(p_, session_thread_pool_size) == -1)
-    throw Exception("Error calling SessionOptions::SetThreadPoolSize", ORT_FAIL);
+  ORT_THROW_ON_ERROR(OrtSetSessionThreadPoolSize(p_, session_thread_pool_size));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_optimization_level) {
-  if (OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level) == -1)
-    throw Exception("Error calling SessionOptions::SetGraphOptimizationLevel", ORT_FAIL);
+  ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
-  OrtEnableProfiling(p_, profile_file_prefix);
+  ORT_THROW_ON_ERROR(OrtEnableProfiling(p_, profile_file_prefix));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableProfiling() {
-  OrtDisableProfiling(p_);
+  ORT_THROW_ON_ERROR(OrtDisableProfiling(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableMemPattern() {
-  OrtEnableMemPattern(p_);
+  ORT_THROW_ON_ERROR(OrtEnableMemPattern(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableMemPattern() {
-  OrtDisableMemPattern(p_);
+  ORT_THROW_ON_ERROR(OrtDisableMemPattern(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableCpuMemArena() {
-  OrtEnableCpuMemArena(p_);
+  ORT_THROW_ON_ERROR(OrtEnableCpuMemArena(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableCpuMemArena() {
-  OrtDisableCpuMemArena(p_);
+  ORT_THROW_ON_ERROR(OrtDisableCpuMemArena(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::EnableSequentialExecution() {
-  OrtEnableSequentialExecution(p_);
+  ORT_THROW_ON_ERROR(OrtEnableSequentialExecution(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::DisableSequentialExecution() {
-  OrtDisableSequentialExecution(p_);
+  ORT_THROW_ON_ERROR(OrtDisableSequentialExecution(p_));
   return *this;
 }
 
 inline SessionOptions& SessionOptions::SetLogId(const char* logid) {
-  OrtSetSessionLogId(p_, logid);
+  ORT_THROW_ON_ERROR(OrtSetSessionLogId(p_, logid));
   return *this;
 }
 inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) {

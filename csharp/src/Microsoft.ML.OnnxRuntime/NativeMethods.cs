@@ -116,49 +116,49 @@ namespace Microsoft.ML.OnnxRuntime
         #region SessionOptions API
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*OrtSessionOptions* */ OrtCreateSessionOptions();
+        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateSessionOptions(out IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void OrtReleaseSessionOptions(IntPtr /*(OrtSessionOptions*)*/session);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtSessionOptions*)*/OrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtCloneSessionOptions(IntPtr /*(OrtSessionOptions*)*/ sessionOptions, out IntPtr /*(OrtSessionOptions**)*/ output);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtEnableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtEnableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtDisableSequentialExecution(IntPtr /*(OrtSessionOptions*)*/ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtDisableProfiling(IntPtr /* OrtSessionOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtDisableProfiling(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtEnableMemPattern(IntPtr /* OrtSessionOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtEnableMemPattern(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtDisableMemPattern(IntPtr /* OrtSessionOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtDisableMemPattern(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtEnableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtEnableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtDisableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtDisableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionLogVerbosityLevel(IntPtr /* OrtSessionOptions* */ options, LogLevel sessionLogVerbosityLevel);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern int OrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionThreadPoolSize(IntPtr /* OrtSessionOptions* */ options, int sessionThreadPoolSize);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern int OrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, uint graphOptimizationLevel);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSetSessionGraphOptimizationLevel(IntPtr /* OrtSessionOptions* */ options, uint graphOptimizationLevel);
 
 
         ///**
