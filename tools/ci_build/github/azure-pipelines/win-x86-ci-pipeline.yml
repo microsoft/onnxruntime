@@ -65,7 +65,7 @@ jobs:
           configuration: Debug
           platform: x86
 
-    - script: echo '##vso[task.setvariable variable=Configuration]RelWithDebInfo'
+    - script: echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
 
     - task: CmdLine@2
       displayName: 'Display variables'

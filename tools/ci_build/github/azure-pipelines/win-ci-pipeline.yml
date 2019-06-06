@@ -64,7 +64,7 @@ jobs:
           runInParallel: true
           configuration: Debug
 
-    - script: echo '##vso[task.setvariable variable=Configuration]RelWithDebInfo'
+    - script: echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
     - task: CmdLine@2
       displayName: 'Display variables'
       inputs:
@@ -100,6 +100,13 @@ jobs:
         workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
+    - task: CmdLine@2
+      displayName: 'DotNet vstest'
+      inputs:
+        script: |
+         FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
+      workingFolder: '$(Build.SourcesDirectory)\csharp'
+
     - task: VSTest@2
       displayName: 'VsTest - C# RelWithDebInfo'
       inputs:
@@ -107,13 +114,6 @@ jobs:
         searchFolder: '$(Build.SourcesDirectory)\csharp\test'
         runInParallel: true
         configuration: RelWithDebInfo
-
-    - task: CmdLine@2
-      displayName: 'DotNet vstest'
-      inputs:
-        script: |
-         FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
-      workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
