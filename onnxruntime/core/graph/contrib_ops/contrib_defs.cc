@@ -26,6 +26,25 @@ using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL;
 
+void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
+  schema.SetDomain(kMSNchwcDomain);
+  schema.SinceVersion(1);
+  schema.SetDoc(R"DOC(For internal use.)DOC");
+  schema.Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"));
+  schema.Attr("kernel_shape", "", AttributeProto::INTS);
+  schema.Attr("dilations", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("strides", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("pads", "", AttributeProto::INTS, OPTIONAL);
+  schema.Attr("ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0));
+  schema.Input(0, "X", "", "T");
+  schema.Output(0, "Y", "", "T");
+  schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
+  schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
+  });
+}
+
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
   // Experimental operators do not have version history. However, RS5 takes bunch of experimental operators
@@ -586,7 +605,7 @@ Sample echo operator.)DOC");
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderInput)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSNchwcDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
       .Input(0, "X", "", "T")
@@ -595,7 +614,7 @@ Sample echo operator.)DOC");
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderOutput)
-      .SetDomain(kMSDomain)
+      .SetDomain(kMSNchwcDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
       .Attr(
@@ -627,8 +646,8 @@ Sample echo operator.)DOC");
         channels_dim->set_dim_value(channels);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(NchwcConv)
-      .SetDomain(kMSDomain)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Conv)
+      .SetDomain(kMSNchwcDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(For internal use.)DOC")
       .Attr(
@@ -674,57 +693,28 @@ Sample echo operator.)DOC");
       .Input(1, "W", "", "T")
       .Input(2, "B", "", "T", OpSchema::Optional)
       .Input(3, "Sum", "", "T", OpSchema::Optional)
-      .Output(0, "Y", "","T")
+      .Output(0, "Y", "", "T")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(NchwcMaxPool)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(For internal use.)DOC")
-      .Attr(
-          "auto_pad",
-          "",
-          AttributeProto::STRING,
-          std::string("NOTSET"))
-      .Attr(
-          "kernel_shape",
-          "",
-          AttributeProto::INTS)
-      .Attr(
-          "dilations",
-          "",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "strides",
-          "",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "pads",
-          "",
-          AttributeProto::INTS, OPTIONAL)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaxPool)
+      .FillUsing(NchwcPoolOpSchemaGenerator)
       .Attr(
           "storage_order",
           "",
           AttributeProto::INT,
-          static_cast<int64_t>(0))
+          static_cast<int64_t>(0));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AveragePool)
+      .FillUsing(NchwcPoolOpSchemaGenerator)
       .Attr(
-          "ceil_mode",
+          "count_include_pad",
           "",
           AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(0, "X", "", "T")
-      .Output(0, "Y", "","T")
-      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
-      });
+          static_cast<int64_t>(0));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)

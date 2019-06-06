@@ -178,7 +178,7 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
                                               {input_original_arg},
                                               {input_nchwc_arg},
                                               nullptr,
-                                              kMSDomain);
+                                              kMSNchwcDomain);
     reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
     input_defs[0] = input_nchwc_arg;
   } else {
@@ -328,14 +328,14 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   graph_.AddInitializedTensor(new_conv_W_tensor_proto);
 
   // Create the replacement node.
-  std::string nchwc_node_name = graph_.GenerateNodeName("NchwcConv");
+  std::string nchwc_node_name = graph_.GenerateNodeName("Nchwc");
   Node& nchwc_node = graph_.AddNode(output_defs[0]->Name() + "_nchwc",
-                                    "NchwcConv",
+                                    "Conv",
                                     nchwc_node_name,
                                     input_defs,
                                     output_defs,
                                     &node.GetAttributes(),
-                                    kMSDomain);
+                                    kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
   if (output_channels != nchwc_output_channels) {
@@ -372,7 +372,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
 
   auto* input_shape = input_defs[0]->Shape();
-  if (input_shape->dim_size() != 4) {
+  if ((input_shape == nullptr) || (input_shape->dim_size() != 4)) {
     return;
   }
   auto& channels_dim = input_shape->dim(1);
@@ -385,14 +385,14 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   }
 
   // Create the replacement node.
-  std::string nchwc_node_name = graph_.GenerateNodeName("NchwcMaxPool");
+  std::string nchwc_node_name = graph_.GenerateNodeName("Nchwc");
   Node& nchwc_node = graph_.AddNode(output_defs[0]->Name() + "_nchwc",
-                                    "NchwcMaxPool",
+                                    node.OpType(),
                                     nchwc_node_name,
                                     input_defs,
                                     output_defs,
                                     &node.GetAttributes(),
-                                    kMSDomain);
+                                    kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
   NchwcArgument::Shape output_shape;
@@ -470,11 +470,10 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
       auto& nchwc_node = nchwc_input_n->output_node_;
       auto& nchwc_input_defs = nchwc_node.MutableInputDefs();
       auto& nchwc_input_args_count = nchwc_node.MutableInputArgsCount();
-      // Check if this is a NCHWc convolution. Note that nchwc_node can only
-      // be a node that was created by this transformer, so there is no need
-      // to also check operator domain and version. The Add/Sum can only be
-      // fused if the convolution doesn't have an activation also fused.
-      if ((nchwc_node.OpType() == "NchwcConv") &&
+      // Check if this is a single use NCHWc convolution that hasn't already
+      // been fused with another Add/Sum node. The Add/Sum can also only be
+      // fused if the convolution isn't itself fused with an activation.
+      if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
           (nchwc_input_defs.size() < 4) && (nchwc_input_args_count.size() < 4) &&
           (nchwc_input_n->starting_original_uses_ == 1) &&
           (GetAttribute(nchwc_node, "activation") == nullptr)) {
@@ -550,8 +549,10 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
     input_defs[0] = nchwc_input->nchwc_arg_;
     nchwc_input->remaining_original_uses_--;
 
+    // Check if this is a single use NCHWc convolution that hasn't already
+    // been fused with another activation.
     auto& nchwc_node = nchwc_input->output_node_;
-    if (nchwc_node.OpType() == "NchwcConv" &&
+    if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
         (nchwc_input->starting_original_uses_ == 1) &&
         (GetAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
@@ -579,7 +580,8 @@ void NchwcTransformerImpl::Transform(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
     TransformConv(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10})) {
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {1, 8, 10}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "AveragePool", {1, 7, 10})) {
     TransformPool(node);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
@@ -612,7 +614,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
                                                  {output_nchwc_arg},
                                                  {output_original_arg},
                                                  nullptr,
-                                                 kMSDomain);
+                                                 kMSNchwcDomain);
       reorder_output_node.AddAttribute("channels", nchwc_output.second->channels_);
       reorder_output_node.SetExecutionProviderType(kCpuExecutionProvider);
     }
