@@ -8,6 +8,8 @@
 #include <string>
 #include <atomic>
 #include <core/platform/ort_mutex.h>
+#include <cstring>
+#include <set>
 
 class TestResultStat {
  public:
@@ -21,7 +23,7 @@ class TestResultStat {
   std::atomic_int skipped;
   std::atomic_int invalid_graph;
 
-  TestResultStat() : succeeded(0), not_implemented(0), load_model_failed(0), throwed_exception(0), result_differs(0), skipped(0), invalid_graph(0) {}
+  TestResultStat() : succeeded(0), not_implemented(0), load_model_failed(0), throwed_exception(0), result_differs(0), skipped(0), invalid_graph(0){}
 
   void AddNotImplementedKernels(const std::string& s) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
@@ -33,12 +35,22 @@ class TestResultStat {
     failed_kernels.insert(s);
   }
 
+  struct OrderPair {
+    bool operator () (const std::pair<std::string, std::string>& p1, const std::pair<std::string, std::string>& p2) const {
+      return strcmp(p1.first.c_str(), p2.first.c_str()) < 0 || strcmp(p1.second.c_str(), p2.second.c_str()) < 0;
+    }
+  };//struct OrderPair
+
+  using FailedTestSet = std::set<std::pair<std::string,std::string>, OrderPair>;
+
   void AddFailedTest(const std::pair<std::string, std::string>& p) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
-    failed_test_cases.push_back(p);
+    if (failed_test_cases.find(p) == failed_test_cases.end()) {
+      failed_test_cases.insert(p);
+    }
   }
 
-  const std::vector< std::pair<std::string, std::string> >& GetFailedTest() const {
+  const FailedTestSet& GetFailedTest() const {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
     return failed_test_cases;
   }
@@ -75,5 +87,5 @@ class TestResultStat {
   mutable onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
-  std::vector< std::pair<std::string, std::string> > failed_test_cases; // pairs of test name and version
+  FailedTestSet failed_test_cases; // pairs of test name and version
 };
