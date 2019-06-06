@@ -116,7 +116,7 @@ namespace Microsoft.ML.OnnxRuntime
         #region SessionOptions API
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateSessionOptions(IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtCreateSessionOptions(out IntPtr /*(OrtSessionOptions**)*/ sessionOptions);
 
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern void OrtReleaseSessionOptions(IntPtr /*(OrtSessionOptions*)*/session);
