@@ -26,7 +26,6 @@ class Logger;
 
 namespace utils {
 
-
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
@@ -51,6 +50,9 @@ common::Status ExecuteGraphWithCachedInfo(
     const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
     const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, bool sequential_execution,
     const bool& terminate_flag, const logging::Logger& logger);
+
+void DumpInputs(const OpKernelContext& context, const Node& node);
+void DumpOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
 
 #define DispatchOnTensorType(tensor_type, function, ...)        \
   if (tensor_type == DataTypeImpl::GetType<float>())            \

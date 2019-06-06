@@ -15,6 +15,8 @@
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 
+#include "core/util/math_cpuonly.h"
+
 namespace onnxruntime {
 namespace utils {
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
@@ -564,6 +566,148 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
   }
 
   return Status::OK();
+}
+
+std::ostream& operator<<(std::ostream& out, const BFloat16& value) {
+  return out << value.ToFloat();
+}
+
+std::ostream& operator<<(std::ostream& out, const MLFloat16& value) {
+  return out << value.val;
+}
+
+template <typename T>
+static void DumpTensorWithCustomType(const Tensor& tensor) {
+  // simple print for custom types
+  auto span = tensor.DataAsSpan<T>();
+  auto cur = span.begin(), end = span.end();
+  if (cur != end) {
+    std::cout << (*cur++);
+    for (; cur != end; ++cur) {
+      std::cout << ", " << *cur;
+    }
+  }
+
+  std::cout << std::endl;
+}
+
+template <typename T>
+static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
+  if (shape.Size() <= 0) {
+    std::cout << "no data";
+    return;
+  }
+
+  // pretty print with eigen
+  if (shape.NumDimensions() > 1) {
+    auto dim0 = shape[0];
+    ConstEigenArrayMap<T> map(tensor.Data<T>(), dim0, shape.Size() / dim0);
+    std::cout << map;
+  } else {
+    std::cout << EigenMap<T>(tensor);  // ConstEigenVectorMap<T>(tensor.Data<T>, dim0)
+  }
+
+  std::cout << std::endl;
+}
+
+template <>
+void DumpTensor<MLFloat16>(const Tensor& tensor, const TensorShape& shape) {
+  ORT_UNUSED_PARAMETER(shape);
+  DumpTensorWithCustomType<MLFloat16>(tensor);
+}
+
+template <>
+void DumpTensor<BFloat16>(const Tensor& tensor, const TensorShape& shape) {
+  ORT_UNUSED_PARAMETER(shape);
+  DumpTensorWithCustomType<BFloat16>(tensor);
+}
+
+void DumpInputs(const OpKernelContext& context, const Node& node) {
+  std::cout << "-----------\n";
+  std::cout << node.OpType() << " node: " << node.Name() << "\n";
+
+  const auto& input_defs = node.InputDefs();
+
+  for (auto i = 0, end = context.InputCount(); i < end; ++i) {
+    if (input_defs[i]->Exists()) {
+      std::cout << "Input " << i << " Name: " << input_defs[i]->Name();
+
+      const auto* type = context.InputType(i);
+
+      if (type) {
+        if (type->IsTensorType()) {
+          const auto& tensor = *context.Input<Tensor>(i);
+          const auto& shape = tensor.Shape();
+
+          std::cout << " Shape: " << shape << "\n";
+          /*
+        The input data is coming from either graph inputs/initializers or other nodes outputs. As such we
+        don't need to dump it. 
+        std::cout << "Data: ";
+
+        const auto data_type = tensor.DataType();
+        DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
+        */
+        } else {
+          std::cout << " is non-tensor type.\n";
+        }
+      } else {
+        // should never happen...
+        std::cout << " was missing data type\n";
+      }
+    } else {
+      std::cout << "Input " << i << " is optional and was not provided.\n";
+    }
+  }
+}
+
+void DumpOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state) {
+  std::cout << "-----------\n";
+  const auto& output_defs = node.OutputDefs();
+
+  const auto& execution_providers = session_state.GetExecutionProviders();
+  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+
+  for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
+    if (output_defs[i]->Exists()) {
+      std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
+
+      const auto* type = context.OutputType(i);
+
+      if (type) {
+        if (type->IsTensorType()) {
+          const auto& tensor = *context.Output<Tensor>(i);
+          const auto data_type = tensor.DataType();
+          const auto& shape = tensor.Shape();
+
+          std::cout << " Shape: " << shape << "\n";
+          std::cout << "Data: ";
+
+          // check tensor is on CPU before dumping it
+          auto& tensor_location = tensor.Location();
+          auto* provider = execution_providers.Get(tensor_location);
+          if (!provider) {
+            provider = cpu_execution_provider;
+          }
+
+          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
+            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
+          } else {
+            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+          }
+        } else {
+          std::cout << " is non-tensor type.\n";
+        }
+      } else {
+        // should never happen...
+        std::cout << "missing data type\n";
+      }
+    } else {
+      std::cout << "Output " << i << " is optional and was not produced.\n";
+    }
+
+    std::cout << std::endl;
+  }
 }
 
 }  // namespace utils
