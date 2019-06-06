@@ -572,7 +572,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           if provider == 'mkldnn':
              cmd += ['-c', '1']
           if provider == 'openvino':
-             cmd += ['-v']
              cmd += ['-c', '1']
 
         if num_parallel_models > 0:
