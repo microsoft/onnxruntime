@@ -8,6 +8,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 
@@ -20,19 +21,28 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   std::vector<int64_t> input_dims;
   int num_dimensions = input_shape_proto->dim_size();
   for (int i = 0; i < num_dimensions; i++) {
-    ORT_ENFORCE(input_shape_proto->dim(i).has_dim_value());
     input_dims.push_back(gsl::narrow_cast<int64_t>(input_shape_proto->dim(i).dim_value()));
   }
 
-  // Create a tensor that corresponds to the output of the Shape operator.
-  const auto shape_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int64_t>(),
-                                                     TensorShape({gsl::narrow_cast<int64_t>(num_dimensions)}),
-                                                     input_dims.data(), info.GetAllocator()->Info());
-
   // Create the TensorProto that will be used as initializer in place of the Shape operator.
   const auto* shape_out_def = node.OutputDefs()[0];
-  ONNX_NAMESPACE::TensorProto shape_initializer_proto =
-      graph_utils::BuildTensorProtoForInitializer(*shape_tensor, *shape_out_def);
+
+  ONNX_NAMESPACE::TensorProto shape_initializer_proto;
+
+  shape_initializer_proto.set_name(shape_out_def->Name());
+
+  TensorShape tensor_shape({gsl::narrow_cast<int64_t>(num_dimensions)});
+  for (auto& dim : tensor_shape.GetDims()) {
+    shape_initializer_proto.add_dims(dim);
+  }
+
+  auto tensor_proto_data_type = shape_out_def->TypeAsProto()->tensor_type().elem_type();
+
+  shape_initializer_proto.set_data_type(tensor_proto_data_type);
+
+  // Here we expect little-indian format to set raw data of the TensorProto.
+  shape_initializer_proto.set_raw_data(input_dims.data(),
+                                       input_dims.size() * sizeof(decltype(input_dims)::value_type));
 
   // Remove the output edges of the Shape node, then remove the node itself, and replace it with the initializer.
   graph_utils::RemoveNodeOutputEdges(graph, node);
@@ -49,10 +59,21 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
 bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1}) ||
       // Making sure we are not left with a graph with no nodes.
-      graph.IsNodeOutputsInGraphOutputs(node) ||
-      // The shape of the input has to be statically known for applying the rule.
-      !node.InputDefs()[0]->Shape()) {
+      graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
+  }
+
+  // The shape of the input has to be statically known. Moreover, each dimension should have a specific value
+  // (the rule cannot be applied if one of the dimension is a symbolic variable).
+  const auto* input_shape = node.InputDefs()[0]->Shape();
+  if (!input_shape) {
+    return false;
+  }
+
+  for (int i = 0, num_dims = input_shape->dim_size(); i < num_dims; i++) {
+    if (!input_shape->dim(i).has_dim_value()) {
+      return false;
+    }
   }
 
   return true;

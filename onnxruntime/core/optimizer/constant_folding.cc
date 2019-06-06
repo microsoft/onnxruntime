@@ -6,6 +6,7 @@
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ml_value.h"
+#include "core/framework/tensorprotoutils.h"
 
 using namespace onnxruntime::common;
 
@@ -65,7 +66,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       ORT_ENFORCE(ort_value.IsTensor());
       const Tensor& out_tensor = ort_value.Get<Tensor>();
       ONNX_NAMESPACE::TensorProto out_tensorproto =
-          graph_utils::BuildTensorProtoForInitializer(out_tensor, *constant_arg_out);
+          utils::TensorToTensorProto(out_tensor, constant_arg_out->Name(), *constant_arg_out->TypeAsProto());
 
       graph.AddInitializedTensor(out_tensorproto);
     }
