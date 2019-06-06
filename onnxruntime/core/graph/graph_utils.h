@@ -81,12 +81,6 @@ bool RemoveNode(Graph& graph, Node& node);
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-/** Creates a TensorProto that will be used as an initializer to a node.
-    @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
-    @param[in] node_arg the NodeArg of the Node for which the TensorProto will be used as an initializer.
-    @return the TensorProto. */
-ONNX_NAMESPACE::TensorProto BuildTensorProtoForInitializer(const Tensor& tensor, const NodeArg& node_arg);
-
 }  // namespace graph_utils
 
 }  // namespace onnxruntime

@@ -422,24 +422,6 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
-ONNX_NAMESPACE::TensorProto BuildTensorProtoForInitializer(const Tensor& out_tensor, const NodeArg& node_arg) {
-  // Set name, dimensions, type, and data of the TensorProto.
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  
-  tensor_proto.set_name(node_arg.Name());
-
-  for (auto& dim : out_tensor.Shape().GetDims()) {
-    tensor_proto.add_dims(dim);
-  }
-  auto tensorproto_type = node_arg.TypeAsProto()->tensor_type().elem_type();
-
-  tensor_proto.set_data_type(tensorproto_type);
-  auto data_size = out_tensor.Size();
-  tensor_proto.set_raw_data(out_tensor.DataRaw(), data_size);
-
-  return tensor_proto;
-}
-
 }  // namespace graph_utils
 
 }  // namespace onnxruntime
