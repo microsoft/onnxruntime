@@ -107,7 +107,7 @@ jobs:
       inputs:
         script: |
          FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
