@@ -16,7 +16,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "openvino_execution_provider.h"
-#include "openvino_layer.h"
 #include "core/graph/model.h"
 #include "openvino_graph.h"
 
@@ -497,7 +496,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     weights_str_attr.set_s(weights_string);
 
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    //meta_def->attributes["model_proto_str"] = model_proto_str_attr;
     meta_def->attributes["xml_str"] = xml_str_attr;
     meta_def->attributes["weights_str"] = weights_str_attr;
     meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
