@@ -22,7 +22,7 @@ The sub-Tensor applies the relevant offset to the data address from the original
 to avoid any memory allocations/copies for the tensor data.
 */
 template <typename T>
-class MLValueTensorSlicer {
+class OrtValueTensorSlicer {
  public:
   /**
   Create a new instance to slice the Tensor contained in an MLValue
@@ -33,7 +33,7 @@ class MLValueTensorSlicer {
            e.g. if input is [batch, seq_len, data] and you want to slice the seq_len dimension, you need to
                 create an Iterator instance for each batch item, incrementing dim0_offset for each one.
   */
-  static MLValueTensorSlicer Create(T& ort_value, int64_t slice_dimension = 0, int64_t dim0_offset = 0);
+  static OrtValueTensorSlicer Create(T& ort_value, int64_t slice_dimension = 0, int64_t dim0_offset = 0);
 
   class Iterator {
    public:
@@ -131,7 +131,7 @@ class MLValueTensorSlicer {
   }
 
  private:
-  MLValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
+  OrtValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
       : ort_value_{&ort_value}, slice_dimension_{slice_dimension}, dim0_offset_{dim0_offset} {}
 
   T* ort_value_;

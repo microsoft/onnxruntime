@@ -130,8 +130,13 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
-          .SinceVersion(1)
-          .Provider(onnxruntime::kCpuExecutionProvider);
+          .SinceVersion(1);
+      if (op->GetExecutionProviderType) {
+        def_builder.Provider(op->GetExecutionProviderType(op));
+      } else {
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+      }
+
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
 
