@@ -43,6 +43,7 @@ jobs:
           filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
           arguments: '$(buildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
+
       - task: VSBuild@1
         displayName: 'Build C# Debug'
         inputs:
@@ -63,6 +64,12 @@ jobs:
           configuration: Debug
 
     - script: echo '##vso[task.setvariable variable=Configuration]RelWithDebInfo'
+    - task: CmdLine@2
+      displayName: 'Display variables'
+      inputs:
+        script: |
+         set 
+
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:

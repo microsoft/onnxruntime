@@ -31,9 +31,9 @@ jobs:
         displayName: 'Build Debug'
         inputs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-          platform: Win32
-          msbuildArguments: '/m /p:PlatformTarget=x86'
+          platform: 'Win32'
           configuration: 'Debug'
+          msbuildArguments: '/m /p:PlatformTarget=x86'
           msbuildArchitecture: 'x86'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
@@ -66,6 +66,13 @@ jobs:
           platform: x86
 
     - script: echo '##vso[task.setvariable variable=Configuration]RelWithDebInfo'
+
+    - task: CmdLine@2
+      displayName: 'Display variables'
+      inputs:
+        script: |
+         set 
+
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
