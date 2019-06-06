@@ -51,7 +51,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   }
 
   void SetWeightsMemoryBuffer(const std::string& weight_key,
-                        const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
+                              const std::shared_ptr<mkldnn::memory>& filter_dst_mem) {
     weights_mem_map_.insert(std::make_pair(weight_key, filter_dst_mem));
   }
 
@@ -79,8 +79,31 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
   OrtMutex mutex_;
 
- // SUBGRAPH
+  // SUBGRAPH
  private:
+  static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
+    const auto& dm_to_ver = graph_viewer.DomainToVersionMap();
+    return dm_to_ver.at(kOnnxDomain);
+  }
+  
+  std::string GetGraphName(const onnxruntime::GraphViewer& graph_viewer) const {
+    std::string graph_name;
+
+    int opset = GetOnnxOpSet(graph_viewer);
+    
+	int index = 0;
+    if (graph_viewer.MaxNodeIndex() > 0) {
+      auto first_node = graph_viewer.GetNode(index);
+      while (first_node == nullptr) {
+        index++;
+        first_node = graph_viewer.GetNode(index);
+      }
+      auto first_node_outputs = first_node->OutputDefs();
+      graph_name = graph_viewer.Name() + "_opset-" + std::to_string(opset) + "_" + first_node_outputs[0]->Name();
+    }
+    return graph_name;
+  }
+
   bool UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
                    const std::vector<const KernelRegistry*>& kernel_registries,
                    std::vector<std::unique_ptr<ComputeCapability>>& result) const;
@@ -101,17 +124,18 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
       if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
         supported = false;
       }
-      
-	  if(node->Op()->SinceVersion() == 10)
+
+      if (node->Op()->SinceVersion() == 10)
         supported = false;
 
-	  if (node->OutputDefs().size() > 1)
+      if (node->OutputDefs().size() > 1)
         supported = false;
     }
     return supported;
   }
 
   void CreateOrUpdateMklDnnNode(const Node* node,
+                                std::shared_ptr<mkl_dnn::Subgraph>& subgraph_ptr,
                                 mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                 bool fused,
                                 std::map<std::string, size_t>& output_to_source_node_map,
@@ -121,6 +145,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   // collect attribtes
   void CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
                      const NodeAttributes& subgraph_attributes,
+                     std::shared_ptr<mkl_dnn::Subgraph>& subgraph_ptr,
                      mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                      std::vector<std::unique_ptr<ComputeCapability>>& result) const;
 
@@ -134,7 +159,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   std::set<std::string> mkldnn_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
                                        "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
 
-  mutable std::unordered_map<std::string, std::shared_ptr<mkl_dnn::Subgraph>> mkl_subgraphs_;  
+  mutable std::unordered_map<std::string, std::shared_ptr<mkl_dnn::Subgraph>> mkl_subgraphs_;
 };
 
 }  // namespace onnxruntime

@@ -37,8 +37,11 @@ class MkldnnFuncKernel {
     if (sub_it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
       params_.subgraph_id = sub_it->second.s();
       params_.subgraph = provider->GetMklDnnSubgraph(params_.subgraph_id);
-      std::ostringstream key_os;
-      key_os << params_.subgraph_id << "-" << params_.subgraph->mkldnn_nodes.back().ToString() << "-" << params_.subgraph->mkldnn_nodes.back().output_name;
+      
+	  std::ostringstream key_os;
+      key_os << params_.subgraph->graph_name << "_" << params_.subgraph_id << "-";
+      key_os << params_.subgraph->mkldnn_nodes.back().ToString() << "-";
+      key_os << params_.subgraph->mkldnn_nodes.back().output_name;
 
       if (params_.subgraph->mkldnn_nodes[0].name == "Conv") {
         std::ostringstream os;

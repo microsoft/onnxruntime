@@ -135,18 +135,36 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
   // MKLDNN_SUBGRAPH environment variable
   bool use_subgraph = true;
 
-  const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
-  if (env != nullptr) {
-    if (atoi(env) == 0) {
-      use_subgraph = false;
-      result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+  bool FP16_graph = false;
+  if (graph_viewer.MaxNodeIndex() > 0) {
+    int index = 0;
+    auto node = graph_viewer.GetNode(index);
+    while (node == NULL) {
+      index++;
+      node = graph_viewer.GetNode(index);
     }
+    if (node->InputDefs()[0]->Type() != nullptr)
+      FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
   }
 
+  if (FP16_graph) {
+    // FP16 not supported yet.
+    use_subgraph = false;
+    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+  } else {
+    const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
+    if (env != nullptr) {
+      if (atoi(env) == 0) {
+        use_subgraph = false;
+        result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
+      }
+    }
+  }
   return use_subgraph;
 }
 
 void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
+                                                       std::shared_ptr<mkl_dnn::Subgraph>& subgraph_ptr,
                                                        mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                                        bool fused,
                                                        std::map<std::string, size_t>& output_to_source_node_map,
@@ -159,7 +177,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
     mkldnn_node.name = node->OpType();
     mkldnn_node.num_inputs = static_cast<int>(node->InputDefs().size());
     mkldnn_node.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
-    mkldnn_node.node_index = static_cast<int>(sub_var.subgraph_ptr->mkldnn_nodes.size()) + 1;
+    mkldnn_node.node_index = static_cast<int>(subgraph_ptr->mkldnn_nodes.size()) + 1;
     const auto& node_outputs = node->OutputDefs();
     mkldnn_node.output_name = node_outputs[0]->Name();
     if (node->OpType() == "Conv") {
@@ -170,13 +188,13 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
       if (iter != output_to_source_node_map.end())
         mkldnn_node.parent_nodes.push_back(iter->second);
     }
-    sub_var.subgraph_ptr->mkldnn_nodes.push_back(mkldnn_node);
-    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), sub_var.subgraph_ptr->mkldnn_nodes.size() - 1));
+    subgraph_ptr->mkldnn_nodes.push_back(mkldnn_node);
+    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), subgraph_ptr->mkldnn_nodes.size() - 1));
   } else {
     const auto& node_outputs = node->OutputDefs();
-    output_to_source_node_map.erase(sub_var.subgraph_ptr->mkldnn_nodes.back().output_name);
-    sub_var.subgraph_ptr->mkldnn_nodes.back().output_name = node_outputs[0]->Name();
-    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), sub_var.subgraph_ptr->mkldnn_nodes.size() - 1));
+    output_to_source_node_map.erase(subgraph_ptr->mkldnn_nodes.back().output_name);
+    subgraph_ptr->mkldnn_nodes.back().output_name = node_outputs[0]->Name();
+    output_to_source_node_map.insert(std::make_pair(node_outputs[0]->Name(), subgraph_ptr->mkldnn_nodes.size() - 1));
   }
 
   // Add inputs which are not in the outputs vector.
@@ -194,7 +212,7 @@ void MKLDNNExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
 
   NodeAttributes attributes = node->GetAttributes();
   if (attributes.size() > 0) {
-    size_t index = sub_var.subgraph_ptr->mkldnn_nodes.size();
+    size_t index = subgraph_ptr->mkldnn_nodes.size();
 
     for (auto att_it = attributes.begin(); att_it != attributes.end(); ++att_it) {
       std::string key = node->OpType() + "-" + std::to_string(index) + "-" + att_it->first;
@@ -216,8 +234,17 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     return result;
   }
 
+  LOGS_DEFAULT(INFO) << "Using MKL-DNN Subgraph";
   // use sub-graph implementation
   mkl_dnn::Subgraph::SubgraphVariables sub_var;
+  std::shared_ptr<mkl_dnn::Subgraph> subgraph_ptr;
+
+  // We need graph name make PrimitivePool keys unique.
+  // There are several identical graphs in Model zoo and only differ in
+  // few attribute values. GetGraphName return graph-name + first-node-output name
+  std::string graph_name = GetGraphName(graph_viewer);
+  subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
   std::map<std::string, size_t> output_to_source_node_map;
@@ -243,8 +270,8 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       // can we fuse (at mkldnn level) nodes?
       bool fused = false;
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "Relu") {
-        if (sub_var.subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || sub_var.subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
-          sub_var.subgraph_ptr->mkldnn_nodes.back().name += "-Relu";
+        if (subgraph_ptr->mkldnn_nodes.back().name == "BatchNormalization" || subgraph_ptr->mkldnn_nodes.back().name == "Conv") {
+          subgraph_ptr->mkldnn_nodes.back().name += "-Relu";
           fused = true;
         }
       }
@@ -252,7 +279,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       // Create MklDnn node:
       //   Update inputs, outputs and parent nodes
       //   Collect attributes and modify the key to make it unique
-      CreateOrUpdateMklDnnNode(node, sub_var, fused, output_to_source_node_map, subgraph_attributes);
+      CreateOrUpdateMklDnnNode(node, subgraph_ptr, sub_var, fused, output_to_source_node_map, subgraph_attributes);
 
       auto temp_index = node_index + 1;
       if (temp_index < graph_viewer.MaxNodeIndex()) {
@@ -281,8 +308,9 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
               }
             }
             if (input_from_subgraph == false) {
-              CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
+              CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
               subgraph_attributes.clear();
+              subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
               output_to_source_node_map.clear();
             }
           }
@@ -320,7 +348,8 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
               temp_index++;
             }
             if (create_subgraph) {
-              CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
+              CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
+              subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
               subgraph_attributes.clear();
               output_to_source_node_map.clear();
             }
@@ -329,21 +358,26 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       }
     } else {
       if (!sub_var.subgraph_node_indexes.empty()) {
-        CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
+        CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
+        subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
         subgraph_attributes.clear();
+        output_to_source_node_map.clear();
       }
     }
     node_index++;
   }  // graph_viewer node iterator ends
   if (!sub_var.subgraph_node_indexes.empty()) {
-    CreateMetaDef(graph_viewer, subgraph_attributes, sub_var, result);
+    CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
+    subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
     subgraph_attributes.clear();
+    output_to_source_node_map.clear();
   }
   return result;
 }
 
 void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
                                             const NodeAttributes& subgraph_attributes,
+                                            std::shared_ptr<mkl_dnn::Subgraph>& subgraph_ptr,
                                             mkl_dnn::Subgraph::SubgraphVariables& sub_var,
                                             std::vector<std::unique_ptr<ComputeCapability>>& result) const {
   std::string graph_fused_nodes;
@@ -359,8 +393,6 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   ONNX_NAMESPACE::AttributeProto initializers;
   initializers.set_name("initializers");
   initializers.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
-  //auto tensor = initializers.add_tensors();
-  //*tensor = *(graph_viewer.GetAllInitializedTensors().at(sub_var.inputs[1]));
 
   for (const auto& init : sub_var.inputs) {
     if (graph_viewer.GetAllInitializedTensors().count(init)) {
@@ -379,7 +411,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   meta_def->attributes.insert(subgraph_attributes.begin(), subgraph_attributes.end());
 
   // Find the end nodes
-  for (auto& mklnode : sub_var.subgraph_ptr->mkldnn_nodes) {
+  for (auto& mklnode : subgraph_ptr->mkldnn_nodes) {
     auto itr = std::find(sub_var.outputs_as_input_other_node.begin(),
                          sub_var.outputs_as_input_other_node.end(), mklnode.output_name);
     if (itr == sub_var.outputs_as_input_other_node.end()) {
@@ -396,7 +428,7 @@ void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& grap
   sub_graph->nodes = sub_var.subgraph_node_indexes;
   sub_graph->SetMetaDef(meta_def);
   result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  mkl_subgraphs_.insert(std::make_pair(subgraph_id, sub_var.subgraph_ptr));
+  mkl_subgraphs_.insert(std::make_pair(subgraph_id, subgraph_ptr));
 
   // Reset subgraph and meta_Def
   sub_var.Reset();
