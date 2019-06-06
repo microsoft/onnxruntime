@@ -23,7 +23,7 @@ class TestResultStat {
   std::atomic_int skipped;
   std::atomic_int invalid_graph;
 
-  TestResultStat() : succeeded(0), not_implemented(0), load_model_failed(0), throwed_exception(0), result_differs(0), skipped(0), invalid_graph(0){}
+  TestResultStat() : succeeded(0), not_implemented(0), load_model_failed(0), throwed_exception(0), result_differs(0), skipped(0), invalid_graph(0) {}
 
   void AddNotImplementedKernels(const std::string& s) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
