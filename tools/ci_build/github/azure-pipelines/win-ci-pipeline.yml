@@ -1,15 +1,17 @@
 parameters:
-  runDebugBuild: 'false'
-  runComplianceTasks: 'false'
   agentPool : 'Win-CPU'
+  DoDebugBuild: 'false'
+  DoCompliance: 'false'
+  DoNugetPack: 'true'
 
 jobs:
 - job: Windows_CI_Dev
   pool: ${{ parameters.agentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
-    buildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc'
 
   steps:
     - template: templates/set-test-data-variables-step.yml
@@ -23,10 +25,10 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(buildCommand) --update --config RelWithDebInfo'
+        arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
         workingDirectory: "$(Build.BinariesDirectory)"
 
-    - ${{ if eq(parameters['runDebugBuild'], 'true') }}:
+    - ${{ if eq(parameters['DoDebugBuild'], 'true') }}:
       - task: VSBuild@1
         displayName: 'Build Debug'
         inputs:
@@ -42,7 +44,7 @@ jobs:
         displayName: 'Test Debug'
         inputs:
           filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-          arguments: '$(buildCommand) --test --config Debug'
+          arguments: '$(BuildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
 
       - task: VSBuild@1
@@ -54,17 +56,18 @@ jobs:
           restoreNugetPackages: false
           msbuildArchitecture: 'x64'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
-          msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+          msbuildArguments: '/m'
 
-      - task: VSTest@2
-        displayName: 'VsTest - C# Debug'
+      - task: CmdLine@2
+        displayName: 'Test C# Debug'
         inputs:
-          testAssemblyVer2: '**\bin\Debug\**\*Tests.dll'
-          searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-          runInParallel: true
-          configuration: Debug
+          script: |
+           FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - script: echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+    - script: |
+       echo "##vso[task.setvariable variable=Configuration]RelWithDebInfo"
+
     - task: CmdLine@2
       displayName: 'Display variables'
       inputs:
@@ -86,7 +89,7 @@ jobs:
       displayName: 'Test RelWithDebInfo'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(buildCommand) --test --config RelWithDebInfo'
+        arguments: '$(BuildCommand) --test --config RelWithDebInfo'
         workingFolder: "$(Build.BinariesDirectory)"
 
     - task: VSBuild@1
@@ -98,22 +101,14 @@ jobs:
         msbuildArchitecture: 'x64'
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+        msbuildArguments: '/m'
 
     - task: CmdLine@2
-      displayName: 'DotNet VStest C# tests'
+      displayName: 'Test C# RelWithDebInfo'
       inputs:
         script: |
          FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: VSTest@2
-      displayName: 'VsTest - C# RelWithDebInfo'
-      inputs:
-        testAssemblyVer2: '**\bin\RelWithDebInfo\**\*Tests.dll'
-        searchFolder: '$(Build.SourcesDirectory)\csharp\test'
-        runInParallel: true
-        configuration: RelWithDebInfo
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
@@ -123,21 +118,20 @@ jobs:
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
 
-    - script: |
-       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=$(buildConfig) /t:CreatePackage
-       copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-      displayName: 'Create NuGet Package'
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory) 
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - script: |
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=$(buildConfig) /t:CreatePackage
+         copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact: drop-nuget'
-      inputs:
-        artifactName: 'drop-nuget'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: drop-nuget'
+        inputs:
+          artifactName: 'drop-nuget'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    - ${{ if eq(parameters['runComplianceTasks'], 'true') }}:
+    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
