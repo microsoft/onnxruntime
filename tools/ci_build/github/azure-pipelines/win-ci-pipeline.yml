@@ -8,6 +8,7 @@ jobs:
   pool: ${{ parameters.agentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    DotNetExe: 'dotnet.exe'
     buildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc'
 
   steps:
@@ -106,6 +107,13 @@ jobs:
         searchFolder: '$(Build.SourcesDirectory)\csharp\test'
         runInParallel: true
         configuration: RelWithDebInfo
+
+    - task: CmdLine@2
+      displayName: 'DotNet vstest'
+      inputs:
+        script: |
+         FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
+      workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
