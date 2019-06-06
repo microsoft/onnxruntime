@@ -347,8 +347,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"operator_non_float_params", "disable reason"},
       {"operator_params", "disable reason"},
       {"operator_pow", "disable reason"},
-      {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
-      {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
+      {"cast_FLOAT_to_STRING", "Numpy float to string has strange rounding for some results. e.g. 0.296140194 -> '0.2961402' not '0.29614019'"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
       {"tf_inception_v4", "Cast opset 9 not supported yet"},
       {"tf_nasnet_large", "disable temporarily"},
@@ -383,7 +382,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123","onnx130","onnx141","onnx150","onnxtip"}});
+  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
   broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
   broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
@@ -427,11 +426,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
   int result = 0;
-  for (const auto& p: stat.GetFailedTest()) {
+  for (const auto& p : stat.GetFailedTest()) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() ||
-       (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+        (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }
