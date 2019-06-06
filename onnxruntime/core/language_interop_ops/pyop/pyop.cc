@@ -1,4 +1,18 @@
 #include "pyop.h"
+#ifdef _WIN32
+#define LIB_PYOP "onnxruntime_pywrapper.dll"
+#define LOAD_PYOP_LIB(n,v,m) ORT_ENFORCE((v=LoadLibraryA(n))!=nullptr,m)
+#else
+#ifdef __APPLE__
+#define LIB_PYOP "./libonnxruntime_pywrapper.dylib"
+#else
+#define LIB_PYOP "./libonnxruntime_pywrapper.so"
+#endif
+#define LOAD_PYOP_LIB(n,v,m) ORT_ENFORCE((v=dlopen(n,RTLD_NOW|RTLD_GLOBAL))!=nullptr,m)
+#include "dlfcn.h"
+#endif
+#include "core/platform/env.h"
+#define LOAD_PYOP_SYM(n,v,m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_,n,reinterpret_cast<void**>(&v))==Status::OK(),m)
 
 namespace onnxruntime {
 

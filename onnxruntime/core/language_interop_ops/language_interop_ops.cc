@@ -7,10 +7,12 @@
 namespace onnxruntime {
 
 void InterOpDomainDeleter(OrtCustomOpDomain* domain) {
-    for (auto op: domain->custom_ops_) {
-        delete op;
+    if (nullptr != domain) {
+        for (auto op: domain->custom_ops_) {
+            delete op;
+        }
+        delete domain;
     }
-    delete domain;
 }
 
 void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& domains, const InterOpLogFunc& log_func)

@@ -1,18 +1,4 @@
 #pragma once
-#ifdef _WIN32
-#include <Windows.h>
-#define LIB_PYOP "onnxruntime_pywrapper.dll"
-#define LOAD_PYOP_LIB(n,v,m) ORT_ENFORCE((v=LoadLibraryA(n))!=nullptr,m)
-#else
-#ifdef __APPLE__
-#define LIB_PYOP "./libonnxruntime_pywrapper.dylib"
-#else
-#define LIB_PYOP "./libonnxruntime_pywrapper.so"
-#endif
-#define LOAD_PYOP_LIB(n,v,m) ORT_ENFORCE((v=dlopen(n,RTLD_NOW|RTLD_GLOBAL))!=nullptr,m)
-#define HMODULE void*
-#include "dlfcn.h"
-#endif
 #include "core/platform/env.h"
 #define LOAD_PYOP_SYM(n,v,m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_,n,reinterpret_cast<void**>(&v))==Status::OK(),m)
 #include "core/framework/ml_value.h"
@@ -21,6 +7,11 @@
 #include <iostream>
 #include <vector>
 #include <unordered_map>
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#define HMODULE void*
+#endif
 
 namespace onnxruntime {
 
