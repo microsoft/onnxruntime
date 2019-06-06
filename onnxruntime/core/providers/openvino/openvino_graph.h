@@ -30,7 +30,7 @@ class OpenVINOGraph {
   static void ConvertONNXModelToOpenVINOIR(std::string& onnx_model, std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32);
 
  private:
-  std::shared_ptr<InferenceEngine::CNNNetwork> BuildCNNNetworkWithMO();
+  std::shared_ptr<InferenceEngine::CNNNetwork> BuildOpenVINONetworkWithMO();
 
   std::vector<InferenceEngine::InferRequest::Ptr> GetExecutableHandle(
       std::shared_ptr<InferenceEngine::CNNNetwork> network,
@@ -50,7 +50,7 @@ class OpenVINOGraph {
   std::vector<std::string> GetEnvLdLibraryPath();
 
   onnxruntime::Node* fused_node_;
-  std::shared_ptr<InferenceEngine::CNNNetwork> cnn_network_;
+  std::shared_ptr<InferenceEngine::CNNNetwork> openvino_network_;
   size_t num_inf_reqs_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;

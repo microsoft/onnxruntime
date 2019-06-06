@@ -66,7 +66,7 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
   // If the different Infer Requests are scheduled on different hardware instances, inference
   // operations associated with the Infer Requests may be scheduled in parallel.
   // Infer Requests hold resources representing the entire network on their target hardware. So,
-  // having more Infer Requests than needed would waster system resources.
+  // having more Infer Requests than needed would waste system resources.
   // In VAD-R (HDDL) accelerator, there are 8 parallel execution units. So, creating 8 instances
   // of Infer Requests only if the VAD-R accelerator is being used.
   // sets number of maximum parallel inferences
@@ -95,10 +95,10 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
   }
 
   // Create hardware agnostic OpenVINO network representation
-  cnn_network_ = BuildCNNNetworkWithMO();
+  openvino_network_ = BuildOpenVINONetworkWithMO();
 
   // Create hardware specific OpenVINO network representation
-  infer_requests_ = GetExecutableHandle(cnn_network_, device_id_, precision_);
+  infer_requests_ = GetExecutableHandle(openvino_network_, device_id_, precision_);
 }
 
 std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
@@ -177,7 +177,7 @@ void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(std::string& onnx_model,
   //    Py_Finalize();
 }
 
-std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildCNNNetworkWithMO() {
+std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetworkWithMO() {
 
   const auto& attributes = fused_node_->GetAttributes();
   std::string xml_string = attributes.at("xml_str").s();
@@ -315,7 +315,7 @@ void OpenVINOGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* in
                                         size_t infer_req_idx) {
 
   auto infer_request = infer_requests_[infer_req_idx];
-  auto graph_input_info = cnn_network_->getInputsInfo();
+  auto graph_input_info = openvino_network_->getInputsInfo();
 
   size_t i = 0;
   for (auto input_info_iter = graph_input_info.begin();
@@ -348,7 +348,7 @@ void OpenVINOGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* outpu
 
   // Wait for Async inference completion
   infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
-  auto graph_output_info = cnn_network_->getOutputsInfo();
+  auto graph_output_info = openvino_network_->getOutputsInfo();
 
   size_t i = 0;
   for (auto output_info_iter = graph_output_info.begin();
@@ -368,7 +368,7 @@ void OpenVINOGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* outpu
 }
 
 void OpenVINOGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[]) {
-  size_t input_count = cnn_network_->getInputsInfo().size();
+  size_t input_count = openvino_network_->getInputsInfo().size();
 
   for (size_t i = 0; i < input_count; i++) {
     input_tensors[i] = ort.KernelContext_GetInput(context, input_indexes_[i]);
@@ -376,7 +376,7 @@ void OpenVINOGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* cont
 }
 
 void OpenVINOGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size) {
-  auto graph_output_info = cnn_network_->getOutputsInfo();
+  auto graph_output_info = openvino_network_->getOutputsInfo();
 
   // All infer_requests process identical tensor slices from the batch.
   // So using info from first infer_request to allocate all output tensors.
@@ -411,8 +411,8 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   std::cout << "[OpenVINO-EP] Inference Started\n";
 
   // Get Input and Output tensors
-  size_t input_count = cnn_network_->getInputsInfo().size();
-  size_t output_count = cnn_network_->getOutputsInfo().size();
+  size_t input_count = openvino_network_->getInputsInfo().size();
+  size_t output_count = openvino_network_->getOutputsInfo().size();
   const OrtValue* input_tensors[input_count];
   OrtValue* output_tensors[output_count];
 
@@ -420,7 +420,7 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
 
   // Calculate the batch_size from the input tensor shape.
   auto batch_size = DeduceBatchSize(ort, input_tensors[0],
-                                    cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
+                                    openvino_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
   if (batch_size != 1) {
     std::cout << "[OpenVINO-EP] Batch Size: " << batch_size << std::endl;
   }
