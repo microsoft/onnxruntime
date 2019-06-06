@@ -65,8 +65,11 @@ jobs:
            FOR /F  %f IN ('dir /s /b \*Tests.dll') DO %dotnetexe% vstest %f 
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - script: |
-       echo "##vso[task.setvariable variable=Configuration]RelWithDebInfo"
+    - task: CmdLine@2
+      displayName: 'Set Configuration to RelWithDebInfo'
+      inputs:
+        script: |
+         @echo ##vso[task.setvariable variable=Configuration;]RelWithDebInfo
 
     - task: CmdLine@2
       displayName: 'Display variables'
