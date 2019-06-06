@@ -555,10 +555,10 @@ common::Status OpenVINOExecutionProvider::Compile(
             function_state->openvino_graph->Infer(ort, context);
           } catch (const char* msg) {
             std::cerr << "Caught Runtime exception: " << msg << std::endl;
-            return common::StatusCode::RUNTIME_EXCEPTION;
+            return common::Status(common::ONNXRUNTIME, common::FAIL);
           }
 
-          return common::StatusCode::OK;
+          return common::Status(common::ONNXRUNTIME, common::OK);
         };
 
     compute_info.release_state_func =
