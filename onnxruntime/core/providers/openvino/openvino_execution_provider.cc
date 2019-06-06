@@ -558,7 +558,7 @@ common::Status OpenVINOExecutionProvider::Compile(
             return common::Status(common::ONNXRUNTIME, common::FAIL);
           }
 
-          return common::Status(common::ONNXRUNTIME, common::OK);
+          return Status::OK();
         };
 
     compute_info.release_state_func =
