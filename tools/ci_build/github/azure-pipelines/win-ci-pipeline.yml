@@ -32,7 +32,7 @@ jobs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'x64'
           configuration: 'Debug'
-          msbuildArgs: '/m'
+          msbuildArguments: '/m'
           msbuildArchitecture: 'x64'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
@@ -52,7 +52,7 @@ jobs:
           restoreNugetPackages: false
           msbuildArchitecture: 'x64'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
-          msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+          msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
       - task: VSTest@2
         displayName: 'VsTest - C# Debug'
@@ -62,16 +62,18 @@ jobs:
           runInParallel: true
           configuration: Debug
 
+    - script: echo '##vso[task.setvariable variable=Configuration]RelWithDebInfo'
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'x64'
         configuration: 'RelWithDebInfo'
-        msbuildArgs: '/m'
+        msbuildArguments: '/m'
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+
     - task: BatchScript@1
       displayName: 'Test RelWithDebInfo'
       inputs:
@@ -88,7 +90,7 @@ jobs:
         msbuildArchitecture: 'x64'
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+        msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
     - task: VSTest@2
       displayName: 'VsTest - C# RelWithDebInfo'

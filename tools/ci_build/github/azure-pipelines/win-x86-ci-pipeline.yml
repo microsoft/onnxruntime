@@ -53,7 +53,7 @@ jobs:
           restoreNugetPackages: false
           msbuildArchitecture: 'x86'
           workingFolder: '$(Build.SourcesDirectory)\csharp'
-          msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
+          msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
       - task: VSTest@2
         displayName: 'VsTest - C# Debug'
@@ -64,14 +64,14 @@ jobs:
           configuration: Debug
           platform: x86
 
-
+    - script: echo '##vso[task.setvariable variable=Configuration]RelWithDebInfo'
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: Win32
-        msbuildArguments: '/m /p:PlatformTarget=x86'
+        platform: 'Win32'
         configuration: 'RelWithDebInfo'
+        msbuildArguments: '/m /p:PlatformTarget=x86'
         msbuildArchitecture: 'x86'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
@@ -92,7 +92,7 @@ jobs:
         msbuildArchitecture: 'x86'
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArgs: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:RuntimeIdentifier=win-x86'
+        msbuildArguments: '/m /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)'
 
     - task: VSTest@2
       displayName: 'VsTest - C# RelWithDebInfo'
