@@ -5,7 +5,6 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
-#include "core/framework/ml_value.h"
 
 namespace onnxruntime {
 
