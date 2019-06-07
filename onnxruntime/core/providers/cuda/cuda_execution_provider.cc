@@ -568,6 +568,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int32_t, Resize);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, uint8_t, Resize);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 2, Split);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, ConstantOfShape);
 
 static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -896,6 +897,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int32_t, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, uint8_t, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 2, Split)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, ConstantOfShape)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -1060,19 +1062,24 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // cast is not compute heavy, and may be placed outside
     }
 
+
     if (!not_supported && !force_inside) {
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
-      bool all_non_initializer_inputs_from_outside = true;
+      bool should_force_outside = true;
       node.ForEachWithIndex(
           node.InputDefs(),
-          [&](const NodeArg& def, size_t) {
+          [&](const NodeArg& def, size_t index) {
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def))
-              all_non_initializer_inputs_from_outside = false;
+            // The input is not a initializer and the input is from CPU
+            // or the input declared as CPU memory and is from CPU
+            // in that case we should still keep the node on CUDA
+            if ((!graph.GetInitializedTensor(def.Name(), initializer) && !defs_outside_cuda.count(&def)) ||
+                (defs_outside_cuda.count(&def) && cuda_kernel_def->kernel_def->IsInputOnCpu(index)))
+              should_force_outside = false;
             return Status::OK();
           });
-      if (all_non_initializer_inputs_from_outside) {
+      if (should_force_outside) {
         force_outside = true;
       }
     }
