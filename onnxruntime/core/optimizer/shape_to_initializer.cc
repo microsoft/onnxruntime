@@ -49,9 +49,8 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
 
   if (graph.RemoveNode(node.Index())) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
+    graph.AddInitializedTensor(shape_initializer_proto);
   }
-
-  graph.AddInitializedTensor(shape_initializer_proto);
 
   return Status::OK();
 }
