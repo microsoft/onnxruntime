@@ -8,7 +8,7 @@
 #include <string>
 
 #include <boost/beast/http.hpp>
-#include "../../util.h"
+#include "../../request_id.h"
 
 namespace onnxruntime {
 namespace server {
@@ -28,7 +28,7 @@ class HttpContext {
   http::status error_code;
   std::string error_message;
 
-  HttpContext() : request_id(internal::InternalRequestId()),
+  HttpContext() : request_id(util::InternalRequestId()),
                   client_request_id(""),
                   error_code(http::status::internal_server_error),
                   error_message("An unknown server error has occurred") {}

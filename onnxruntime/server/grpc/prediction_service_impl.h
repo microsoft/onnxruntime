@@ -1,7 +1,7 @@
 #pragma once
 #include "prediction_service.grpc.pb.h"
-#include "../environment.h"
-#include "../executor.h"
+#include "environment.h"
+#include "executor.h"
 #include <grpcpp/grpcpp.h>
 
 namespace onnxruntime {
@@ -13,8 +13,9 @@ class PredictionServiceImpl final : public onnxruntime::server::PredictionServic
   ::grpc::Status Predict(::grpc::ServerContext* context, const ::onnxruntime::server::PredictRequest* request, ::onnxruntime::server::PredictResponse* response);
 
  private:
-  std::shared_ptr<onnxruntime::server::ServerEnvironment> m_env;
+  std::shared_ptr<onnxruntime::server::ServerEnvironment> environment_;
 
+  //Extract customer request ID and set request ID for response.
   std::string SetRequestContext(::grpc::ServerContext* context);
 };
 }  // namespace grpc

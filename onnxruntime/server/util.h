@@ -41,11 +41,5 @@ class MemBufferArray {
 // Generate protobuf status from ONNX Runtime status
 google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message);
 
-namespace internal {
-std::string InternalRequestId();
-extern const char* REQUEST_HEADER;
-extern const char* CLIENT_REQUEST_HEADER;
-}
-
 }  // namespace server
 }  // namespace onnxruntime

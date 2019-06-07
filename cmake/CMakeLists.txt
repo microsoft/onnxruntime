@@ -3,6 +3,7 @@
 
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.13)
+
 # Project
 project(onnxruntime C CXX)
 cmake_policy(SET CMP0069 NEW)
@@ -75,7 +76,6 @@ option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
-
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -248,7 +248,6 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 # use protobuf as a submodule
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
-
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")

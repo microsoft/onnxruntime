@@ -26,6 +26,7 @@ set(_gRPC_PROTOBUF_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
 
 set(_gRPC_PROTOBUF_INCLUDE_DIR ${PROTOBUF_INCLUDE_DIRS})
 
+
 MESSAGE(STATUS ${_gRPC_PROTOBUF_WELLKNOWN_INCLUDE_DIR})
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/grpc EXCLUDE_FROM_ALL)
@@ -82,9 +83,9 @@ add_custom_command(
     )
 
 add_library(server_grpc ${grpc_srcs})
-target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/onnx PRIVATE)
 set(grpc_reflection -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
-set(grpc_static_libs grpc++ grpcpp_channelz) #TODO: stuff for Windows.
+set(grpc_static_libs grpc++ grpcpp_channelz)
 target_link_libraries(server_grpc ${grpc_static_libs})
 add_dependencies(server_grpc server_proto)
 # Include generated *.pb.h files
@@ -107,6 +108,7 @@ set(onnxruntime_server_lib_srcs
   "${ONNXRUNTIME_ROOT}/server/executor.cc"
   "${ONNXRUNTIME_ROOT}/server/converter.cc"
   "${ONNXRUNTIME_ROOT}/server/util.cc"
+  "${ONNXRUNTIME_ROOT}/server/request_id.cc"
   "${ONNXRUNTIME_ROOT}/server/grpc/prediction_service_impl.cc"
   "${ONNXRUNTIME_ROOT}/server/grpc/grpc_app.cc"
   )
@@ -144,9 +146,9 @@ onnxruntime_add_include_to_target(onnxruntime_server_lib gsl onnx_proto server_p
 target_include_directories(onnxruntime_server_lib PRIVATE
   ${ONNXRUNTIME_ROOT}
   ${CMAKE_CURRENT_BINARY_DIR}/onnx
-  ${ONNXRUNTIME_ROOT}/server
   ${ONNXRUNTIME_ROOT}/server/http
   PUBLIC
+  ${ONNXRUNTIME_ROOT}/server
   ${Boost_INCLUDE_DIR}
   ${re2_src}
 )
@@ -200,6 +202,6 @@ target_include_directories(${SERVER_APP_NAME} PRIVATE
 target_link_libraries(${SERVER_APP_NAME} PRIVATE
     onnxruntime_server_http_core_lib
     onnxruntime_server_lib
-    ${grpc_reflection} #Note that this will break the tests if we try to link it to the normal lib so just link to server.
+    ${grpc_reflection} #Note that this will break the tests if we try to link it to the lib so just link to the executable.
 )
 
