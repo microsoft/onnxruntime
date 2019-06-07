@@ -2,6 +2,8 @@ jobs:
 - job: NuGet_Packaging
   pool: Win-CPU
   steps:
+  variables:
+     DotNetExe: '"c:\program files (x86)\dotnet\dotnet.exe"'
 
   - task: CmdLine@2
     displayName: 'Test C# RelWithDebInfo'
