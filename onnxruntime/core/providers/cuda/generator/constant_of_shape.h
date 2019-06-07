@@ -16,6 +16,7 @@ namespace cuda {
 class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
  public:
   explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {};
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstantOfShape);
 
   Status Compute(OpKernelContext* ctx) const override;

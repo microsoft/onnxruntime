@@ -24,50 +24,25 @@ ONNX_OPERATOR_KERNEL_EX(
 Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
   Tensor* output_tensor = nullptr;
   ORT_RETURN_IF_ERROR(PrepareCompute(ctx, &output_tensor));
-
   auto output_data = output_tensor->MutableDataRaw();
-
   const auto size = output_tensor->Shape().Size();
-  const auto tensor_type = GetTensorType();
-  switch (tensor_type) {
-    case TensorProto::BOOL:
-      cuda::Fill(reinterpret_cast<bool*>(output_data), GetAttrValue().GetFromUnsigned<bool>(), size);
+  const void* value_ptr = GetValuePtr();
+  const auto element_size = output_tensor->DataType()->Size();
+  switch (element_size) {
+    case sizeof(int8_t):
+      cuda::Fill(reinterpret_cast<int8_t*>(output_data), *(reinterpret_cast<const int8_t*>(value_ptr)), size);
       break;
-    case TensorProto::FLOAT:
-      cuda::Fill(reinterpret_cast<float*>(output_data), GetAttrValue().GetFloat(), size);
+    case sizeof(int16_t):
+      cuda::Fill(reinterpret_cast<int16_t*>(output_data), *(reinterpret_cast<const int16_t*>(value_ptr)), size);
       break;
-    case TensorProto::FLOAT16:
-      cuda::Fill(reinterpret_cast<half*>(output_data), reinterpret_cast<half&>(GetAttrValue().GetFloat16()), size);
+    case sizeof(int32_t):
+      cuda::Fill(reinterpret_cast<int32_t*>(output_data), *(reinterpret_cast<const int32_t*>(value_ptr)), size);
       break;
-    case TensorProto::DOUBLE:
-      cuda::Fill(reinterpret_cast<double*>(output_data), GetAttrValue().GetDouble(), size);
-      break;
-    case TensorProto::INT8:
-      cuda::Fill(reinterpret_cast<int8_t*>(output_data), GetAttrValue().GetFromSigned<int8_t>(), size);
-      break;
-    case TensorProto::INT16:
-      cuda::Fill(reinterpret_cast<int16_t*>(output_data), GetAttrValue().GetFromSigned<int16_t>(), size);
-      break;
-    case TensorProto::INT32:
-      cuda::Fill(reinterpret_cast<int32_t*>(output_data), GetAttrValue().GetFromSigned<int32_t>(), size);
-      break;
-    case TensorProto::INT64:
-      cuda::Fill(reinterpret_cast<int64_t*>(output_data), GetAttrValue().GetFromSigned<int64_t>(), size);
-      break;
-    case TensorProto::UINT8:
-      cuda::Fill(reinterpret_cast<uint8_t*>(output_data), GetAttrValue().GetFromUnsigned<uint8_t>(), size);
-      break;
-    case TensorProto::UINT16:
-      cuda::Fill(reinterpret_cast<uint16_t*>(output_data), GetAttrValue().GetFromUnsigned<uint16_t>(), size);
-      break;
-    case TensorProto::UINT32:
-      cuda::Fill(reinterpret_cast<uint32_t*>(output_data), GetAttrValue().GetFromUnsigned<uint32_t>(), size);
-      break;
-    case TensorProto::UINT64:
-      cuda::Fill(reinterpret_cast<uint64_t*>(output_data), GetAttrValue().GetFromUnsigned<uint64_t>(), size);
+    case sizeof(int64_t):
+      cuda::Fill(reinterpret_cast<int64_t*>(output_data), *(reinterpret_cast<const int64_t*>(value_ptr)), size);
       break;
     default:
-      ORT_THROW("Unsupported value attribute datatype: ", GetTensorType());
+      ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
       break;
   }
 

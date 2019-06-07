@@ -10,44 +10,47 @@
 namespace onnxruntime {
 
 class ConstantOfShapeBase {
-  union AttrValue {
-    float fl_;
-    MLFloat16 fl16_;
-    double dbl_;
-    int64_t i64_;
-    uint64_t ui64_;
-    AttrValue() : ui64_(0) {}
-
-    float GetFloat() const {
-      return fl_;
-    }
-
-    MLFloat16 GetFloat16() const {
-      return fl16_;
-    }
-
-    double GetDouble() const {
-      return dbl_;
-    }
-
-    template <class T>
-    T GetFromSigned() const;
-
-    template <class T>
-    T GetFromUnsigned() const;
-
+  union SizeBasedValue {
+    int8_t int8_;
+    int16_t int16_;
+    int32_t int32_;
+    int64_t int64_;
   };
 
  protected:
   ConstantOfShapeBase(const OpKernelInfo& info);
-  AttrValue GetAttrValue() const { return value_; }
-  ONNX_NAMESPACE::TensorProto_DataType GetTensorType() const { return tensor_type_; }
 
   Status PrepareCompute(OpKernelContext* ctx, Tensor** output_tensor) const;
 
+  void SetValue(size_t size, void* value) {
+    switch (size) {
+      case sizeof(int8_t):
+        s_value_.int8_ = *(reinterpret_cast<int8_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int8_));
+        break;
+      case sizeof(int16_t):
+        s_value_.int16_ = *(reinterpret_cast<int16_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int16_));
+        break;
+      case sizeof(int32_t):
+        s_value_.int32_ = *(reinterpret_cast<int32_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int32_));
+        break;
+      case sizeof(int64_t):
+        s_value_.int64_ = *(reinterpret_cast<int64_t*>(value));
+        p_value_ = reinterpret_cast<void*>(&(s_value_.int64_));
+        break;
+      default:
+        ORT_THROW("Unsupported value attribute datatype with sizeof=: ", size);
+        break;
+    }
+  }
+
+  void* GetValuePtr() const { return p_value_; }
+
  private:
-  ONNX_NAMESPACE::TensorProto_DataType tensor_type_;
-  AttrValue value_;
+  SizeBasedValue s_value_;
+  void* p_value_;
 
   void SetValue(const ONNX_NAMESPACE::TensorProto&);
 };
@@ -57,9 +60,6 @@ class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
   explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {};
 
   Status Compute(OpKernelContext* ctx) const override;
-
- private:
-  void DispatchTypeAndFillOutput(Tensor* output_tensor) const;
 };
 
 }  // namespace onnxruntime

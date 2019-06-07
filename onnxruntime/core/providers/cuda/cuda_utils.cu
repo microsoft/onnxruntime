@@ -68,17 +68,9 @@ template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
 #define SPECIALIZED_FILL(T)                                 \
 template void Fill<T>(T* output, T value, int64_t count);
 
-SPECIALIZED_FILL(float)
-SPECIALIZED_FILL(double)
-SPECIALIZED_FILL(half)
-SPECIALIZED_FILL(bool)
 SPECIALIZED_FILL(int8_t)
 SPECIALIZED_FILL(int16_t)
 SPECIALIZED_FILL(int32_t)
 SPECIALIZED_FILL(int64_t)
-SPECIALIZED_FILL(uint8_t)
-SPECIALIZED_FILL(uint16_t)
-SPECIALIZED_FILL(uint32_t)
-SPECIALIZED_FILL(uint64_t)
 }  // namespace cuda
 }  // namespace onnxruntime
