@@ -159,22 +159,6 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
         result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
       }
     }
-    if (node->InputDefs()[0]->Type() != nullptr)
-      FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
-  }
-
-  if (FP16_graph) {
-    // FP16 not supported yet.
-    use_subgraph = false;
-    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
-  } else {
-    const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
-    if (env != nullptr) {
-      if (atoi(env) == 0) {
-        use_subgraph = false;
-        result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
-      }
-    }
   }
   return use_subgraph;
 }
@@ -469,8 +453,7 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::mkl_dnn::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<mkl_dnn::MkldnnFuncKernel<float>*>(state);
-      const Status compute_status = custom_op->Compute(api, context);
-      return compute_status == Status::OK() ? 0 : 1;
+      return  custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);
