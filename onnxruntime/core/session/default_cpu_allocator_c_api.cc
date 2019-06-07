@@ -12,11 +12,17 @@ struct OrtAllocatorImpl : OrtAllocator {
 };
 
 struct OrtDefaultAllocator : OrtAllocatorImpl {
+ private:
+  static void* ORT_API_FUNCTION(AllocImpl)(OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); }
+  static void ORT_API_FUNCTION(FreeImpl)(OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); }
+  static const struct OrtAllocatorInfo* ORT_API_FUNCTION(InfoImpl)(const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
+
+ public:
   OrtDefaultAllocator() {
     OrtAllocator::version = ORT_API_VERSION;
-    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
-    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
-    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
+    OrtAllocator::Alloc = &AllocImpl;
+    OrtAllocator::Free = &FreeImpl;
+    OrtAllocator::Info = &InfoImpl;
     ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
   }
 

@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 typedef struct OrtCallback {
-  void(ORT_API_CALL* f)(void* param) NO_EXCEPTION;
+  void(ORT_API_FUNCTION(*f))(void* param) NO_EXCEPTION;
   void* param;
 } OrtDeleter;
 

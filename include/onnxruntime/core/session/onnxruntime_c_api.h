@@ -28,7 +28,6 @@ extern "C" {
 #define _Frees_ptr_opt_
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
-#define ORT_API_CALL
 #if defined(__i386__)
 #define ORT_API_FUNCTION(name) __attribute__((stdcall)) name
 #else
@@ -37,7 +36,6 @@ extern "C" {
 #else
 #define ORT_ALL_ARGS_NONNULL
 #define ORT_MUST_USE_RESULT
-#define ORT_API_CALL _stdcall
 #define ORT_API_FUNCTION(name) name _stdcall
 #endif
 
@@ -166,12 +164,12 @@ ORT_RUNTIME_CLASS(CustomOpDomain);
 // is not destroyed until the last allocated object using it is freed.
 typedef struct OrtAllocator {
   uint32_t version;  // Initialize to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
-  const struct OrtAllocatorInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
+  void*(ORT_API_FUNCTION(*Alloc))(struct OrtAllocator* this_, size_t size);
+  void(ORT_API_FUNCTION(*Free))(struct OrtAllocator* this_, void* p);
+  const struct OrtAllocatorInfo*(ORT_API_FUNCTION(*Info))(const struct OrtAllocator* this_);
 } OrtAllocator;
 
-typedef void(ORT_API_CALL* OrtLoggingFunction)(
+typedef void ORT_API_FUNCTION((*OrtLoggingFunction))(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
     const char* message);
 

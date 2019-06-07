@@ -41,7 +41,7 @@ namespace onnxruntime {
 namespace {
 constexpr int OneMillion = 1000000;
 
-static void ORT_API_CALL DeleteBuffer(void* param) noexcept { ::free(param); }
+static void ORT_API_FUNCTION(DeleteBuffer)(void* param) noexcept { ::free(param); }
 
 class UnmapFileParam {
  public:
@@ -50,7 +50,7 @@ class UnmapFileParam {
   int fd;
 };
 
-static void ORT_API_CALL UnmapFile(void* param) noexcept {
+static void ORT_API_FUNCTION(UnmapFile)(void* param) noexcept {
   UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {

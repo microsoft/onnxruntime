@@ -13,7 +13,7 @@ typedef const char* PATH_TYPE;
 #endif
 
 //empty
-static inline void ORT_API_CALL MyLoggingFunction(void*, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
+static inline void ORT_API_FUNCTION(MyLoggingFunction)(void*, OrtLoggingLevel, const char*, const char*, const char*, const char*) {
 }
 
 template <bool use_customer_logger>
