@@ -1,9 +1,5 @@
 #!/bin/bash
 set -e
-#install ninja
-aria2c -q -d /tmp https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip
-unzip -oq /tmp/ninja-linux.zip -d /usr/bin
-rm -f /tmp/ninja-linux.zip
 #install protobuf
 mkdir -p /tmp/src
 mkdir -p /opt/cmake
@@ -21,8 +17,8 @@ for build_type in 'Debug' 'Relwithdebinfo'; do
   pushd .
   mkdir build_$build_type
   cd build_$build_type
-  /opt/cmake/bin/cmake -G Ninja ../cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=$PB_LIBDIR  -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=$build_type
-  ninja
+  /opt/cmake/bin/cmake ../cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=$PB_LIBDIR  -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=$build_type
+  make -j`nproc`
   ninja install
   popd
 done
