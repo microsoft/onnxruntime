@@ -52,9 +52,7 @@ class TestResultStat {
 
   void AddFailedTest(const std::pair<std::string, std::string>& p) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
-    if (failed_test_cases.find(p) == failed_test_cases.end()) {
-      failed_test_cases.insert(p);
-    }
+    failed_test_cases.insert(p);
   }
 
   const FailedTestSet& GetFailedTest() const {
