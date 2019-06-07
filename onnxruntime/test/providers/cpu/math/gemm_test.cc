@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(GemmOpTest, GemmNoTrans) {
+TEST(GemmOpTest, DISABLED_GemmNoTrans) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -28,7 +28,7 @@ TEST(GemmOpTest, GemmNoTrans) {
 
 // Only CUDA kernel has float 16 support
 #ifdef USE_CUDA
-TEST(GemmOpTest, GemmNoTrans_f16) {
+TEST(GemmOpTest, DISABLED_GemmNoTrans_f16) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);

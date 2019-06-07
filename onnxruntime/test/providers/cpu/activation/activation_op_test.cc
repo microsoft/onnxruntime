@@ -228,7 +228,7 @@ TEST(ActivationOpTest, Softplus) {
                          }, {}, false);
 }
 
-TEST(ActivationOpTest, Softsign) {
+TEST(ActivationOpTest, DISABLED_Softsign) {
   TestUnaryElementwiseOp("Softsign",
                          no_inf_input_vals,
                          [](float x) { return x / (1 + std::abs(x)); });
