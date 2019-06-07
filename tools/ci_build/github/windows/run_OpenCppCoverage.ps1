@@ -5,8 +5,29 @@
 Param(
     [Parameter(Mandatory=$true, HelpMessage="OpenCppCoverage exe.")][string]$OpenCppCoverageExe,
     [Parameter(Mandatory=$true, HelpMessage="Lotus enlistment root.")][string]$SourceRoot,
-    [Parameter(Mandatory=$true, HelpMessage="Build root.")][string]$BuildRoot
+    [Parameter(Mandatory=$true, HelpMessage="Build root.")][string]$BuildRoot,
+    [Parameter(Mandatory=$false, HelpMessage="IsLocalBuild")][switch]$LocalBuild = $true
 )
+
+if (-not $LocalBuild) {
+# This is a hack to get the target path of the junctions in the build machine, lacking a neater way to do this.
+# Assumes that the junction is 2 level upper from the SourceRoot/BuildRoot
+# This is needed, because apparently the OpenCppCoverage cannot load the PDB symbol files from a junction 
+
+    $sourceLeaf = Split-Path $SourceRoot -Leaf
+    $sourceParent = Split-Path $SourceRoot -Parent
+    $sourceParentLeaf = Split-Path $sourceParent -Leaf
+    $sourceParentParent = Split-Path $sourceParent -Parent
+    $sourceParentParentTarget = Get-Item $sourceParentParent | Select-Object -ExpandProperty Target
+    $buildLeaf = Split-Path $BuildRoot -Leaf
+    $buildParentLeaf = Split-Path $SourceRoot -Parent | Split-Path -Leaf
+
+    $SourceRoot = Join-Path $sourceParentParentTarget $sourceParentLeaf
+    $SourceRoot = Join-Path $SourceRoot $sourceLeaf
+
+    $BuildRoot = Join-Path $sourceParentParentTarget $$buildParentLeaf
+    $BuildRoot = Join-Path $BuildRoot $buildLeaf
+}
 
 $coreSources = Join-Path $SourceRoot "onnxruntime\core"
 $headerSources = Join-Path $SourceRoot "include"
