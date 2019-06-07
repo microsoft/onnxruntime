@@ -19,7 +19,7 @@ for build_type in 'Debug' 'Relwithdebinfo'; do
   cd build_$build_type
   /opt/cmake/bin/cmake ../cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=$PB_LIBDIR  -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=$build_type
   make -j`nproc`
-  ninja install
+  make install
   popd
 done
 export ONNX_ML=1
