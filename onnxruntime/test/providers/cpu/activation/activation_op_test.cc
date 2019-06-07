@@ -87,7 +87,7 @@ TEST(ActivationOpTest, Tanh) {
 TEST(ActivationOpTest, Relu) {
   TestUnaryElementwiseOp("Relu",
                          input_vals,
-                         [](float x) { return std::max(x, 0.0f); }, {}, true);
+                         [](float x) { return std::max(x, 0.0f); });
 }
 
 TEST(ActivationOpTest, Elu) {
@@ -103,7 +103,7 @@ TEST(ActivationOpTest, LeakyRelu) {
   TestUnaryElementwiseOp("LeakyRelu",
                          input_vals,
                          [alpha](float x) { return (x >= 0) ? x : alpha * x; },
-                         {{"alpha", alpha}},true);
+                         {{"alpha", alpha}});
 }
 
 TEST(ActivationOpTest, ThresholdedRelu) {

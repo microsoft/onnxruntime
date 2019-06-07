@@ -53,7 +53,6 @@ option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolut
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
-option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_USE_JEMALLOC "Use jecmalloc" OFF)
@@ -505,6 +504,10 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
+    if(WIN32)
+        message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
+    endif()
+
     add_definitions(-DUSE_OPENVINO=1)
 
 	if (onnxruntime_USE_OPENVINO_SOURCE)
@@ -513,11 +516,11 @@ if(onnxruntime_USE_OPENVINO)
 	  link_directories(${OPENVINO_LIB_DIR})
 	  #TODO: set plugin path var
 	endif()
-	
+
 	if (onnxruntime_USE_OPENVINO_BINARY)
 	    #TODO: set plugin path var
 	endif()
-	
+
 	if(onnxruntime_USE_OPENVINO_MYRIAD)
 		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
 	endif()
@@ -537,7 +540,7 @@ if(onnxruntime_USE_OPENVINO)
 	if(onnxruntime_USE_OPENVINO_VAD_R)
 		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
 	endif()
-	
+
 endif()
 
 
