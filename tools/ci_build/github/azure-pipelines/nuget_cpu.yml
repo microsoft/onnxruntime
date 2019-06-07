@@ -1,24 +1,25 @@
 jobs: 
-- job: NuGet_Packaging
-  pool: Win-CPU
-  variables:
-     DotNetExe: '"c:\program files (x86)\dotnet\dotnet.exe"'
+- template: win-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: win-x86-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: linux-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: linux-x86-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: mac-ci-pipeline.yml
+  parameters:
+    GenNuGetPackage : 'true'
+- template: nuget-packaging.yml
+- template: nuget_test_win.yml
+- template: nuget_test_linux.yml
+- template: nuget_test_macos.yml
 
-  steps:
-  - task: CmdLine@2
-    displayName: 'Test C# RelWithDebInfo'
-    inputs:
-      script: |
-       FOR /F  %%f IN ('dir /s /b *') do echo  %%f 
-    condition: always()
 
-
-  - task: CmdLine@2
-    displayName: 'Test C# RelWithDebInfo'
-    inputs:
-      script: |
-       FOR /F  %%f IN ('dir /s /b *') do echo %dotnetexe% 
-    condition: always()
 
 
 
