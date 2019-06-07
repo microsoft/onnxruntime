@@ -869,7 +869,7 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 }
 
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
-Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_consumed) {
+Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   const std::unordered_set<std::string>& outer_scope_node_args = resolve_context_.outer_scope_node_args;
   std::unordered_set<Node*> inner_nodes;
 
@@ -879,7 +879,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
 
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
-        std::vector<std::string> node_args_consumed;
+        std::unordered_set<std::string> node_args_consumed;
         ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed));
 
         for (auto& node_arg_name : node_args_consumed) {
@@ -889,7 +889,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
             // it's a node arg from outside this graph's scope, so add that to the list we return
             // so that we can add the dependency at the next level up. this happens if you have multiple
             // levels of subgraphs between the graph with the original NodeArg and the subgraph with implicit usage.
-            outer_scope_node_args_consumed.push_back(node_arg_name);
+            ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
 
             if (!parent_graph_) {
               return ORT_MAKE_STATUS(
@@ -958,15 +958,22 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
           continue;
         }
 
-        auto output_arg_iter = resolve_context_.output_args.find(input_arg->Name());
+        const auto& input_arg_name = input_arg->Name();
+        auto output_arg_iter = resolve_context_.output_args.find(input_arg_name);
         if (resolve_context_.output_args.end() == output_arg_iter) {
           // No such output_arg matching this input_arg.
           // This input arg should be fed when running evaluation.
+          
           // See if it's present in the outer scope. If so it will be 'fed' by the execution frame
           // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
           // be linked correctly at that level.
-          if (outer_scope_node_args.find(input_arg->Name()) != outer_scope_node_args.cend()) {
-            outer_scope_node_args_consumed.push_back(input_arg->Name());
+          if (outer_scope_node_args.find(input_arg_name) != outer_scope_node_args.cend()) {
+            // if it matches an outer scope value make sure it's not also a graph input or initializer
+            // as the ONNX checker currently allows a graph input to shadow an outer scope value
+            if (resolve_context_.inputs_and_initializers.find(input_arg_name) ==
+                resolve_context_.inputs_and_initializers.cend()) {
+              ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
+            }
           }
 
           continue;
@@ -1321,8 +1328,8 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-      subgraph_inputs = &required_subgraph_inputs;
-      num_subgraph_inputs = num_required_subgraph_inputs;
+    subgraph_inputs = &required_subgraph_inputs;
+    num_subgraph_inputs = num_required_subgraph_inputs;
   }
 
   // apply type/shape info to the subgraph's inputs
@@ -1837,7 +1844,7 @@ Status Graph::Resolve(bool no_proto_sync_required) {
   // recursively set the outer scope node args.
   ORT_RETURN_IF_ERROR(SetOuterScopeNodeArgs(resolve_context_.outer_scope_node_args));
 
-  std::vector<std::string> outer_scope_node_args_consumed;
+  std::unordered_set<std::string> outer_scope_node_args_consumed;
 
   // recursively build connections between nodes in this graph and all subgraphs
   ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
