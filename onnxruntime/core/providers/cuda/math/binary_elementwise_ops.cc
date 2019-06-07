@@ -154,6 +154,11 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, int
   BINARY_OP_TYPED(name, ver, int64_t)  \
   BINARY_OP_HFD(name, ver)
 
+#define BINARY_OP_REGISTER_OIL(name, ver)                        \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)  \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)
+
 #define BINARY_OP_REGISTER_HFD(name, ver)                        \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, MLFloat16) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, float)     \
@@ -397,9 +402,46 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+template <typename T>
+Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  const onnxruntime::Node& node = OpKernel::Node();
+  const std::string& name = node.Name();
+
+  const Tensor* input0 = context->Input<Tensor>(0);
+  const Tensor* input1 = context->Input<Tensor>(1);
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(name, input0->Shape(), input1->Shape(), output_shape));
+  size_t output_size = output_shape.Size();
+  Tensor* output_tensor = context->Output(0, output_shape);
+
+  BinaryElementwisePreparation prepare(this);
+  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(0, input0, input1, output_tensor, &prepare));
+
+  IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
+  Impl_Equal<CudaT>(
+      prepare.output_rank_or_simple_broadcast,
+      prepare.lhs_padded_strides.GpuPtr(),
+      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+      prepare.rhs_padded_strides.GpuPtr(),
+      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+      prepare.fdm_output_strides.GpuPtr(),
+      prepare.fdm_H,
+      prepare.fdm_C,
+      reinterpret_cast<CudaT*>(output_buffer.get()),
+      output_size);
+
+  Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
+      reinterpret_cast<CudaT*>(output_buffer.get()),
+      reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
+      output_size);
+  return Status::OK();
+}
+
 BINARY_OP_REGISTER_UZILHFD(Sum, 8)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
 BINARY_OP_REGISTER_UZILHFD(Greater, 9)
+BINARY_OP_REGISTER_OIL(Equal, 7)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_OP_REGISTER_HFD(Max, 8)
 BINARY_OP_REGISTER_VERSIONED_HFD(Max, 6, 7)

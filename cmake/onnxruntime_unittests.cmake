@@ -315,6 +315,10 @@ if (SingleUnitTestProject)
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
 
+  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+    target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+  endif()
+
   set(test_data_target onnxruntime_test_all)
 else()
   AddTest(
@@ -464,6 +468,10 @@ set(onnx_test_libs
 
 list(APPEND onnx_test_libs ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 onnxruntime_add_include_to_target(onnx_test_runner gsl)
@@ -541,6 +549,10 @@ else()
   target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 endif()
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
+  target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
