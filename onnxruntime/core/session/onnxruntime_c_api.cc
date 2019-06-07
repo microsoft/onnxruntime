@@ -62,13 +62,6 @@ struct OrtEnv {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
 };
 
-#define API_IMPL_BEGIN try {
-#define API_IMPL_END                                          \
-  }                                                           \
-  catch (std::exception & ex) {                               \
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
-  }
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \

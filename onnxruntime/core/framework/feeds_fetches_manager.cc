@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::string>& names,
-                                                       const MLValueNameIdxMap& ort_value_name_idx_map,
+                                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
                                                        std::vector<int>& ort_value_idxs) {
   auto status = Status::OK();
 
@@ -25,7 +25,7 @@ common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::st
   return status;
 }
 
-Status FeedsFetchesInfo::SetMLValueIdxs(const MLValueNameIdxMap& ort_value_name_idx_map) {
+Status FeedsFetchesInfo::SetMLValueIdxs(const OrtValueNameIdxMap& ort_value_name_idx_map) {
   auto status = MapNamesToMLValueIdxs(feed_names, ort_value_name_idx_map, feeds_mlvalue_idxs);
   if (!status.IsOK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error mapping feeds: " + status.ErrorMessage());
@@ -41,7 +41,7 @@ Status FeedsFetchesInfo::SetMLValueIdxs(const MLValueNameIdxMap& ort_value_name_
 
 Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
                                    const std::vector<std::string>& output_names,
-                                   const MLValueNameIdxMap& ort_value_name_idx_map,
+                                   const OrtValueNameIdxMap& ort_value_name_idx_map,
                                    std::unique_ptr<FeedsFetchesManager>& feed_fetch_manager) {
   FeedsFetchesInfo info;
   info.feed_names = feed_names;

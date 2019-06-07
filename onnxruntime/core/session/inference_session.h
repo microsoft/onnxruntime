@@ -19,6 +19,9 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+#include "core/language_interop_ops/language_interop_ops.h"
+#endif
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -57,7 +60,7 @@ struct SessionOptions {
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
   // with a big chunk for all the internal memory allocation.
-  // See class 'MLValuePatternPlanner'.
+  // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
   // enable the memory arena on CPU
@@ -425,5 +428,9 @@ class InferenceSession {
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS 
+  InterOpDomains interop_domains_;
+#endif
 };
 }  // namespace onnxruntime

@@ -61,7 +61,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+            options.SetSessionGraphOptimizationLevel(graphOptimizationLevel);
             if(disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))

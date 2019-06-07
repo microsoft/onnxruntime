@@ -12,7 +12,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
 #include "core/common/callback.h"
 #include "core/framework/data_types.h"
@@ -537,6 +537,31 @@ TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
     dtype = TensorProto_DataType_BFLOAT16;
 
   return dtype;
+}
+
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
+                                                const onnx::TypeProto& tensor_proto_type) {
+  // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
+  ORT_ENFORCE(IsLittleEndianOrder());
+
+  // Set name, dimensions, type, and data of the TensorProto.
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+
+  tensor_proto.set_name(tensor_proto_name);
+
+  for (auto& dim : tensor.Shape().GetDims()) {
+    tensor_proto.add_dims(dim);
+  }
+
+  // TODO Once utils::GetTensorProtoType supports all data types, you can get the tensor proto type from the tensor,
+  // as follows (which will allow us to get rid of the tensor_proto_type argument).
+  //tensor_proto.set_data_type(utils::GetTensorProtoType(tensor));
+
+  tensor_proto.set_data_type(tensor_proto_type.tensor_type().elem_type());
+
+  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.Size());
+
+  return tensor_proto;
 }
 
 template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
