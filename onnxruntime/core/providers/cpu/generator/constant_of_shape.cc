@@ -37,7 +37,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     SetValue(sizeof(c_type), reinterpret_cast<void*>(&val));                                                \
   }
 
-void onnxruntime::ConstantOfShapeBase::SetValue(const ONNX_NAMESPACE::TensorProto& t_proto) {
+void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto& t_proto) {
   using namespace utils;
   ORT_ENFORCE(t_proto.has_data_type());
   ORT_ENFORCE(TensorProto::DataType_IsValid(t_proto.data_type()));
@@ -101,7 +101,7 @@ ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info){
   if (info.GetAttr<TensorProto>("value", &t_proto).IsOK()) {
     ORT_ENFORCE(t_proto.dims_size() == 1, "Must have a single dimension");
     ORT_ENFORCE(t_proto.dims()[0] == 1, "Must have a single dimension of 1");
-    SetValue(t_proto);
+    SetValueFromTensorProto(t_proto);
   } else {
     float f_value = 0.f;
     SetValue(sizeof(float), reinterpret_cast<void*>(&f_value));

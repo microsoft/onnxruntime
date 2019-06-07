@@ -10,17 +10,22 @@
 namespace onnxruntime {
 
 class ConstantOfShapeBase {
-  union SizeBasedValue {
-    int8_t int8_;
-    int16_t int16_;
-    int32_t int32_;
-    int64_t int64_;
-  };
 
  protected:
   ConstantOfShapeBase(const OpKernelInfo& info);
 
   Status PrepareCompute(OpKernelContext* ctx, Tensor** output_tensor) const;
+
+  void* GetValuePtr() const { return p_value_; }
+
+ private:
+  union SizeBasedValue {
+    int8_t int8_;
+    int16_t int16_;
+    int32_t int32_;
+    int64_t int64_;
+  } s_value_;
+  void* p_value_;
 
   void SetValue(size_t size, void* value) {
     switch (size) {
@@ -46,13 +51,7 @@ class ConstantOfShapeBase {
     }
   }
 
-  void* GetValuePtr() const { return p_value_; }
-
- private:
-  SizeBasedValue s_value_;
-  void* p_value_;
-
-  void SetValue(const ONNX_NAMESPACE::TensorProto&);
+  void SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto&);
 };
 
 class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
