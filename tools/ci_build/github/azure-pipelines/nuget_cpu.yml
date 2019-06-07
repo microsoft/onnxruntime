@@ -1,16 +1,21 @@
 jobs: 
-- task: CmdLine@2
-  displayName: 'Test C# RelWithDebInfo'
-  inputs:
-    script: |
-     FOR /F  %f IN ('dir /s /b \*.cs') echo  %f 
+- job: NuGet_Packaging
+  pool: Win-CPU
+  steps:
+  - task: DownloadPipelineArtifact@0
+
+  - task: CmdLine@2
+    displayName: 'Test C# RelWithDebInfo'
+    inputs:
+      script: |
+       FOR /F  %f IN ('dir /s /b \*.cs') echo  %f 
 
 
-- task: CmdLine@2
-  displayName: 'Test C# RelWithDebInfo'
-  inputs:
-    script: |
-     FOR /F  %f IN ('dir /s /b \*.cs') echo %dotnetexe% 
+  - task: CmdLine@2
+    displayName: 'Test C# RelWithDebInfo'
+    inputs:
+      script: |
+       FOR /F  %f IN ('dir /s /b \*.cs') echo %dotnetexe% 
 
 
 
