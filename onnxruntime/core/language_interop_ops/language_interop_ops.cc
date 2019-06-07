@@ -18,11 +18,11 @@ void InterOpDomainDeleter(OrtCustomOpDomain* domain) {
 void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& domains, const InterOpLogFunc& log_func)
 {
     int fd;
-    ORT_ENFORCE(Env::Default().FileOpenRd(model_uri, fd).IsOK(), "Failed to read model file to load pyop");
+    ORT_ENFORCE(Env::Default().FileOpenRd(model_uri, fd).IsOK(), "Failed to read model file");
     google::protobuf::io::FileInputStream f(fd);
     f.SetCloseOnDelete(true);
     ONNX_NAMESPACE::ModelProto model_proto;
-    ORT_ENFORCE(model_proto.ParseFromZeroCopyStream(&f), "Failed to parse model proto to load pyop");
+    ORT_ENFORCE(model_proto.ParseFromZeroCopyStream(&f), "Failed to parse model proto");
     LoadInterOp(model_proto, domains, log_func);
 }
 

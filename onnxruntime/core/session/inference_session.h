@@ -29,7 +29,6 @@ class GraphTransformer;
 
 namespace ONNX_NAMESPACE {
 class ModelProto;
-class GraphProto;
 }  // namespace ONNX_NAMESPACE
 
 struct OrtCustomOpDomain {
@@ -42,7 +41,6 @@ class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
 class Notification;
-struct PyCustomOp;
 
 namespace logging {
 class LoggingManager;
