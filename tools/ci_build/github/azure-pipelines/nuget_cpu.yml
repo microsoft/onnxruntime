@@ -7,14 +7,16 @@ jobs:
     displayName: 'Test C# RelWithDebInfo'
     inputs:
       script: |
-       FOR /F  %f IN ('dir /s /b \*.cs') echo  %f 
+       FOR /F  %f IN ('dir /s /b \*.cs') do echo  %f 
+    condition: always()
 
 
   - task: CmdLine@2
     displayName: 'Test C# RelWithDebInfo'
     inputs:
       script: |
-       FOR /F  %f IN ('dir /s /b \*.cs') echo %dotnetexe% 
+       FOR /F  %f IN ('dir /s /b \*.cs') do echo %dotnetexe% 
+    condition: always()
 
 
 
