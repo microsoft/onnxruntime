@@ -60,6 +60,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
+#ifndef USE_TENSORRT
 TEST(GemmOpTest, GemmBroadcast) {
   OpTester test("Gemm");
 
@@ -211,6 +212,7 @@ TEST(GemmOpTest, GemmEmptyTensor) {
                         {});
   test.Run();
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
