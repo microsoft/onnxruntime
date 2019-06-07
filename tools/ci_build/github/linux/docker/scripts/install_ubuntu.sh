@@ -50,14 +50,14 @@ locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 #Install dotnet-sdk
-if [ $SYS_LONG_BIT = "64" ]
+if [ $SYS_LONG_BIT = "64" ]; then
   OS_VER=`lsb_release -r -s`
   mkdir -p /tmp/dotnet
   aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
   dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
   apt-get update
   apt-get install -y dotnet-sdk-2.2
-  rm -rf /tmp/dotnet || true
+  rm -rf /tmp/dotnet
 fi
 
 if [ $PYTHON_VER!="3.5" ]; then
@@ -75,7 +75,7 @@ fi
 rm -rf /var/lib/apt/lists/*
 
 #Install azcopy
-if [ $SYS_LONG_BIT = "64" ]
+if [ $SYS_LONG_BIT = "64" ]; then
   mkdir -p /tmp/azcopy
   aria2c -q -d /tmp/azcopy -o azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
