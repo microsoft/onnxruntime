@@ -15,23 +15,10 @@ namespace cuda {
 
 class ConstantOfShape final : public ConstantOfShapeBase, public OpKernel {
  public:
-  explicit ConstantOfShape(const OpKernelInfo& info);
+  explicit ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {};
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstantOfShape);
 
   Status Compute(OpKernelContext* ctx) const override;
-
- private:
-  std::unique_ptr<cuda::IConstantBuffer<float>> constant_float_;
-  std::unique_ptr<cuda::IConstantBuffer<double>> constant_double_;
-  std::unique_ptr<cuda::IConstantBuffer<half>> constant_half_;
-  std::unique_ptr<cuda::IConstantBuffer<bool>> constant_bool_;
-  std::unique_ptr<cuda::IConstantBuffer<int8_t>> constant_int8_;
-  std::unique_ptr<cuda::IConstantBuffer<int16_t>> constant_int16_;
-  std::unique_ptr<cuda::IConstantBuffer<int32_t>> constant_int32_;
-  std::unique_ptr<cuda::IConstantBuffer<int64_t>> constant_int64_;
-  std::unique_ptr<cuda::IConstantBuffer<uint8_t>> constant_uint8_;
-  std::unique_ptr<cuda::IConstantBuffer<uint16_t>> constant_uint16_;
-  std::unique_ptr<cuda::IConstantBuffer<uint32_t>> constant_uint32_;
-  std::unique_ptr<cuda::IConstantBuffer<uint64_t>> constant_uint64_;
 };
 
 }  // namespace cuda

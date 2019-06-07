@@ -20,6 +20,13 @@ __global__ void _Fill(
 }
 
 template <typename T>
+void Fill(T* output, T value, int64_t count) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
+  CUDA_LONG N = static_cast<CUDA_LONG>(count);
+  _Fill<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
+}
+
+template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
  public:
   ConstantBufferImpl(T val) : val_(val), buffer_(nullptr), count_(0) {
@@ -38,9 +45,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
       CUDA_CALL_THROW(cudaMalloc(&buffer_, count * sizeof(T)));
       count_ = count;
 
-      int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
-      CUDA_LONG N = static_cast<CUDA_LONG>(count);
-      _Fill<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(buffer_, val_, N);
+      Fill(buffer_, val_, count);
     }
     return buffer_;
   }
@@ -56,27 +61,24 @@ std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
   return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
-template <typename T>
-std::unique_ptr<IConstantBuffer<T>> CreateConstantValue(T value) {
-  return std::make_unique<ConstantBufferImpl<T>>(value);
-}
-
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
 template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
 template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
 
-template std::unique_ptr<IConstantBuffer<float>> CreateConstantValue<float>(float value);
-template std::unique_ptr<IConstantBuffer<double>> CreateConstantValue<double>(double value);
-template std::unique_ptr<IConstantBuffer<half>> CreateConstantValue<half>(half value);
-template std::unique_ptr<IConstantBuffer<bool>> CreateConstantValue<bool>(bool value);
-template std::unique_ptr<IConstantBuffer<int8_t>> CreateConstantValue<int8_t>(int8_t value);
-template std::unique_ptr<IConstantBuffer<int16_t>> CreateConstantValue<int16_t>(int16_t value);
-template std::unique_ptr<IConstantBuffer<int32_t>> CreateConstantValue<int32_t>(int32_t value);
-template std::unique_ptr<IConstantBuffer<int64_t>> CreateConstantValue<int64_t>(int64_t value);
-template std::unique_ptr<IConstantBuffer<uint8_t>> CreateConstantValue<uint8_t>(uint8_t value);
-template std::unique_ptr<IConstantBuffer<uint16_t>> CreateConstantValue<uint16_t>(uint16_t value);
-template std::unique_ptr<IConstantBuffer<uint32_t>> CreateConstantValue<uint32_t>(uint32_t value);
-template std::unique_ptr<IConstantBuffer<uint64_t>> CreateConstantValue<uint64_t>(uint64_t value);
+#define SPECIALIZED_FILL(T)                                 \
+template void Fill<T>(T* output, T value, int64_t count);
 
+SPECIALIZED_FILL(float)
+SPECIALIZED_FILL(double)
+SPECIALIZED_FILL(half)
+SPECIALIZED_FILL(bool)
+SPECIALIZED_FILL(int8_t)
+SPECIALIZED_FILL(int16_t)
+SPECIALIZED_FILL(int32_t)
+SPECIALIZED_FILL(int64_t)
+SPECIALIZED_FILL(uint8_t)
+SPECIALIZED_FILL(uint16_t)
+SPECIALIZED_FILL(uint32_t)
+SPECIALIZED_FILL(uint64_t)
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -90,12 +90,12 @@ void onnxruntime::ConstantOfShapeBase::SetValue(const ONNX_NAMESPACE::TensorProt
 #undef FETCH_VALUE_DATA
 
 template <class T>
-inline T onnxruntime::ConstantOfShapeBase::Value::GetFromSigned() const {
+inline T onnxruntime::ConstantOfShapeBase::AttrValue::GetFromSigned() const {
   return static_cast<T>(i64_);
 }
 
 template <class T>
-inline T onnxruntime::ConstantOfShapeBase::Value::GetFromUnsigned() const {
+inline T onnxruntime::ConstantOfShapeBase::AttrValue::GetFromUnsigned() const {
   return static_cast<T>(ui64_);
 }
 
@@ -117,73 +117,75 @@ ConstantOfShapeBase::ConstantOfShapeBase(const OpKernelInfo& info){
   }
 }
 
-void onnxruntime::ConstantOfShape::DispatchTypeAndFillOutput(Tensor* output_tensor) const {
-  switch (tensor_type_) {
-    case TensorProto::BOOL:
-      FilloutOutput(value_.GetFromUnsigned<bool>(), output_tensor);
-      break;
-    case TensorProto::FLOAT:
-      FilloutOutput(value_.GetFloat(), output_tensor);
-      break;
-    case TensorProto::FLOAT16:
-      FilloutOutput(value_.GetFloat16(), output_tensor);
-      break;
-    case TensorProto::DOUBLE:
-      FilloutOutput(value_.GetDouble(), output_tensor);
-      break;
-    case TensorProto::INT8:
-      FilloutOutput(value_.GetFromSigned<int8_t>(), output_tensor);
-      break;
-    case TensorProto::INT16:
-      FilloutOutput(value_.GetFromSigned<int16_t>(), output_tensor);
-      break;
-    case TensorProto::INT32:
-      FilloutOutput(value_.GetFromSigned<int32_t>(), output_tensor);
-      break;
-    case TensorProto::INT64:
-      FilloutOutput(value_.GetFromSigned<int64_t>(), output_tensor);
-      break;
-    case TensorProto::UINT8:
-      FilloutOutput(value_.GetFromUnsigned<uint8_t>(), output_tensor);
-      break;
-    case TensorProto::UINT16:
-      FilloutOutput(value_.GetFromUnsigned<uint16_t>(), output_tensor);
-      break;
-    case TensorProto::UINT32:
-      FilloutOutput(value_.GetFromUnsigned<uint32_t>(), output_tensor);
-      break;
-    case TensorProto::UINT64:
-      FilloutOutput(value_.GetFromUnsigned<uint64_t>(), output_tensor);
-      break;
-    default:
-      ORT_THROW("Unsupported value attribute datatype: ", tensor_type_);
-      break;
-  }
-}
-
-ConstantOfShape::ConstantOfShape(const OpKernelInfo& info) : ConstantOfShapeBase(info), OpKernel(info) {
-}
-
-Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
-  auto shape_tensor = ctx->Input<Tensor>(0);
-
-  if (shape_tensor->DataType() != DataTypeImpl::GetType<int64_t>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input tensor expected to contain int64 data");
-  }
-
-  auto& input_shape = shape_tensor->Shape();
+Status ConstantOfShapeBase::PrepareCompute(OpKernelContext* ctx, Tensor** output_tensor) const {
+  const auto shape_tensor = ctx->Input<Tensor>(0);
+  const auto& input_shape = shape_tensor->Shape();
 
   // If empty the output is a scalar with empty shape
   // TensorShape::Size() will still return 1 and we will output
   // one value
   std::vector<int64_t> output_dims;
-  if (input_shape.NumDimensions() > 0) {
-    auto span = gsl::make_span(shape_tensor->Data<int64_t>(), input_shape.Size());
-    output_dims.insert(output_dims.end(), span.cbegin(), span.cend());
-  }
+  ORT_ENFORCE(input_shape.NumDimensions() > 0, "Must have a valid input shape.");
+
+  const auto span = gsl::make_span(shape_tensor->Data<int64_t>(), input_shape.Size());
+  output_dims.insert(output_dims.end(), span.cbegin(), span.cend());
 
   TensorShape output_shape(output_dims);
-  auto output_tensor = ctx->Output(0, output_shape);
+  (*output_tensor) = ctx->Output(0, output_shape);
+
+  return Status::OK();
+}
+
+void onnxruntime::ConstantOfShape::DispatchTypeAndFillOutput(Tensor* output_tensor) const {
+  auto tensor_type = GetTensorType();
+  switch (tensor_type) {
+    case TensorProto::BOOL:
+      FilloutOutput(GetAttrValue().GetFromUnsigned<bool>(), output_tensor);
+      break;
+    case TensorProto::FLOAT:
+      FilloutOutput(GetAttrValue().GetFloat(), output_tensor);
+      break;
+    case TensorProto::FLOAT16:
+      FilloutOutput(GetAttrValue().GetFloat16(), output_tensor);
+      break;
+    case TensorProto::DOUBLE:
+      FilloutOutput(GetAttrValue().GetDouble(), output_tensor);
+      break;
+    case TensorProto::INT8:
+      FilloutOutput(GetAttrValue().GetFromSigned<int8_t>(), output_tensor);
+      break;
+    case TensorProto::INT16:
+      FilloutOutput(GetAttrValue().GetFromSigned<int16_t>(), output_tensor);
+      break;
+    case TensorProto::INT32:
+      FilloutOutput(GetAttrValue().GetFromSigned<int32_t>(), output_tensor);
+      break;
+    case TensorProto::INT64:
+      FilloutOutput(GetAttrValue().GetFromSigned<int64_t>(), output_tensor);
+      break;
+    case TensorProto::UINT8:
+      FilloutOutput(GetAttrValue().GetFromUnsigned<uint8_t>(), output_tensor);
+      break;
+    case TensorProto::UINT16:
+      FilloutOutput(GetAttrValue().GetFromUnsigned<uint16_t>(), output_tensor);
+      break;
+    case TensorProto::UINT32:
+      FilloutOutput(GetAttrValue().GetFromUnsigned<uint32_t>(), output_tensor);
+      break;
+    case TensorProto::UINT64:
+      FilloutOutput(GetAttrValue().GetFromUnsigned<uint64_t>(), output_tensor);
+      break;
+    default:
+      ORT_THROW("Unsupported value attribute datatype: ", GetTensorType());
+      break;
+  }
+}
+
+Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
+
+  Tensor* output_tensor = nullptr;
+  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, &output_tensor));
+
   DispatchTypeAndFillOutput(output_tensor);
   return Status::OK();
 }
