@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifdef _MSC_VER
+#include <sal.h>
+#include <specstrings.h>
+#endif
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with
 #define ORT_API_VERSION 1
 
@@ -14,7 +18,7 @@ extern "C" {
 #endif
 
 // SAL2 Definitions
-#ifndef _WIN32
+#ifndef _MSC_VER
 #define _In_
 #define _In_opt_
 #define _Out_
@@ -23,9 +27,18 @@ extern "C" {
 #define _Inout_opt_
 #define _Frees_ptr_opt_
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
+#define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
+#define ORT_API_CALL
+#if defined(__i386__)
+#define ORT_API_FUNCTION(name) __attribute__((stdcall)) name
 #else
-#include <specstrings.h>
+#define ORT_API_FUNCTION(name) name
+#endif
+#else
 #define ORT_ALL_ARGS_NONNULL
+#define ORT_MUST_USE_RESULT
+#define ORT_API_CALL _stdcall
+#define ORT_API_FUNCTION(name) name _stdcall
 #endif
 
 #ifdef _WIN32
@@ -36,13 +49,9 @@ extern "C" {
 #else
 #define ORT_EXPORT
 #endif
-#define ORT_API_CALL _stdcall
-#define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
 #define ORT_EXPORT
-#define ORT_API_CALL
-#define ORT_MUST_USE_RESULT __attribute__((warn_unused_result))
 #define ORTCHAR_T char
 #endif
 
@@ -124,14 +133,14 @@ typedef enum OrtErrorCode {
 
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) \
-  ORT_EXPORT RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ORT_EXPORT RETURN_TYPE ORT_API_FUNCTION(NAME)(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_API_STATUS(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
+  ORT_EXPORT OrtStatus* ORT_API_FUNCTION(NAME)(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
 
 // Used in *.cc files. Almost as same as ORT_API_STATUS, except without ORT_MUST_USE_RESULT
 #define ORT_API_STATUS_IMPL(NAME, ...) \
-  ORT_EXPORT OrtStatus* ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
+  ORT_EXPORT OrtStatus* ORT_API_FUNCTION(NAME)(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_RUNTIME_CLASS(X)    \
   struct Ort##X;                \
@@ -545,25 +554,25 @@ struct OrtCustomOpApi {
   /*
    * These allow reading node attributes during kernel creation
   */
-  OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_float)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
-  OrtStatus*(ORT_API_CALL* KernelInfoGetAttribute_int64)(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
+  OrtStatus*(ORT_API_FUNCTION(*KernelInfoGetAttribute_float))(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
+  OrtStatus*(ORT_API_FUNCTION(*KernelInfoGetAttribute_int64))(_In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
 
-  OrtStatus*(ORT_API_CALL* GetTensorTypeAndShape)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
+  OrtStatus*(ORT_API_FUNCTION(*GetTensorTypeAndShape))(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
-  int64_t(ORT_API_CALL* GetTensorShapeElementCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
-  enum ONNXTensorElementDataType(ORT_API_CALL* GetTensorElementType)(_In_ const OrtTensorTypeAndShapeInfo*);
+  int64_t(ORT_API_FUNCTION(*GetTensorShapeElementCount))(_In_ const OrtTensorTypeAndShapeInfo* info);
+  enum ONNXTensorElementDataType(ORT_API_FUNCTION(*GetTensorElementType))(_In_ const OrtTensorTypeAndShapeInfo*);
 
-  size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
-  void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
-  OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
-  OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Out_ void** data);
+  size_t(ORT_API_FUNCTION(*GetDimensionCount))(_In_ const OrtTensorTypeAndShapeInfo* info);
+  void(ORT_API_FUNCTION(*GetDimensions))(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
+  OrtStatus*(ORT_API_FUNCTION(*SetDimensions))(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
+  OrtStatus*(ORT_API_FUNCTION(*GetTensorMutableData))(_Inout_ OrtValue* value, _Out_ void** data);
 
-  void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
+  void(ORT_API_FUNCTION(*ReleaseTensorTypeAndShapeInfo))(OrtTensorTypeAndShapeInfo* input);
 
-  size_t(ORT_API_CALL* KernelContext_GetInputCount)(const OrtKernelContext* context);
-  const OrtValue*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index);
-  size_t(ORT_API_CALL* KernelContext_GetOutputCount)(const OrtKernelContext* context);
-  OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+  size_t(ORT_API_FUNCTION(*KernelContext_GetInputCount))(const OrtKernelContext* context);
+  const OrtValue*(ORT_API_FUNCTION(*KernelContext_GetInput))(const OrtKernelContext* context, _In_ size_t index);
+  size_t(ORT_API_FUNCTION(*KernelContext_GetOutputCount))(const OrtKernelContext* context);
+  OrtValue*(ORT_API_FUNCTION(*KernelContext_GetOutput))(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;
 
@@ -575,24 +584,24 @@ struct OrtCustomOp {
   uint32_t version;  // Initialize to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
-  void*(ORT_API_CALL* CreateKernel)(_In_ struct OrtCustomOp* op, _In_ const OrtCustomOpApi* api, _In_ const OrtKernelInfo* info);
+  void*(ORT_API_FUNCTION(*CreateKernel))(_In_ struct OrtCustomOp* op, _In_ const OrtCustomOpApi* api, _In_ const OrtKernelInfo* info);
 
   // Returns the name of the op
-  const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_FUNCTION(*GetName))(_In_ struct OrtCustomOp* op);
 
   // Returns the type of the execution provider
   // If the function pointer is null, use CPU execution provider by default
-  const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
+  const char*(ORT_API_FUNCTION(*GetExecutionProviderType))(_In_ struct OrtCustomOp* op);
 
   // Returns the count and types of the input & output tensors
-  ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetInputTypeCount)(_In_ struct OrtCustomOp* op);
-  ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ struct OrtCustomOp* op, _In_ size_t index);
-  size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_FUNCTION(*GetInputType))(_In_ struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_FUNCTION(*GetInputTypeCount))(_In_ struct OrtCustomOp* op);
+  ONNXTensorElementDataType(ORT_API_FUNCTION(*GetOutputType))(_In_ struct OrtCustomOp* op, _In_ size_t index);
+  size_t(ORT_API_FUNCTION(*GetOutputTypeCount))(_In_ struct OrtCustomOp* op);
 
   // Op kernel callbacks
-  void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
-  void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
+  void(ORT_API_FUNCTION(*KernelCompute))(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+  void(ORT_API_FUNCTION(*KernelDestroy))(_In_ void* op_kernel);
 };
 typedef struct OrtCustomOp OrtCustomOp;
 
