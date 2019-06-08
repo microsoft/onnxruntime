@@ -10,6 +10,8 @@ done
 PYTHON_VER=${PYTHON_VER:=3.5}
 DEBIAN_FRONTEND=noninteractive
 
+SYS_LONG_BIT=$(getconf LONG_BIT)
+
 apt-get update && apt-get install -y software-properties-common
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
@@ -47,14 +49,16 @@ apt-get update && apt-get install -y --no-install-recommends \
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-OS_VER=`lsb_release -r -s`
-mkdir -p /tmp/dotnet
-aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
-dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
-apt-get install -y apt-transport-https
-apt-get update
-apt-get install -y dotnet-sdk-2.2
-rm -rf /tmp/dotnet || true
+#Install dotnet-sdk
+if [ $SYS_LONG_BIT = "64" ]; then
+  OS_VER=`lsb_release -r -s`
+  mkdir -p /tmp/dotnet
+  aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VER}/packages-microsoft-prod.deb
+  dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
+  apt-get update
+  apt-get install -y dotnet-sdk-2.2
+  rm -rf /tmp/dotnet
+fi
 
 if [ $PYTHON_VER!="3.5" ]; then
     apt-get install -y --no-install-recommends \
@@ -70,7 +74,10 @@ fi
 /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall requests==2.21.0
 rm -rf /var/lib/apt/lists/*
 
-mkdir -p /tmp/azcopy
-aria2c -q -d /tmp/azcopy -o azcopy.tar.gz https://aka.ms/downloadazcopylinux64
-tar -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
-/tmp/azcopy/install.sh
+#Install azcopy
+if [ $SYS_LONG_BIT = "64" ]; then
+  mkdir -p /tmp/azcopy
+  aria2c -q -d /tmp/azcopy -o azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux
+  tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
+  cp /tmp/azcopy/azcopy /usr/bin
+fi
