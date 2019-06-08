@@ -48,7 +48,6 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -111,7 +110,6 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -163,7 +161,6 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -230,7 +227,6 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -273,6 +269,5 @@ jobs:
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
 
     - template: templates/clean-agent-build-directory-step.yml
