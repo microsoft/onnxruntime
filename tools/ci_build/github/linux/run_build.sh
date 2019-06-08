@@ -17,15 +17,14 @@ done
 if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
-    /opt/cmake/bin/cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
-    /opt/cmake/bin/cmake --build . -- -j$(nproc)
+    cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
+    make -j$(nproc)
 else
-    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp"
+    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
     if [ $BUILD_DEVICE = "gpu" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release $COMMON_BUILD_ARGS \
-            --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest \
             --use_cuda \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda $BUILD_EXTR_PAR
@@ -33,13 +32,11 @@ else
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \
-            --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest \
             --use_tensorrt --tensorrt_home /workspace/tensorrt \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
     else #cpu and ngraph
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
-            --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest \
             --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
 fi
