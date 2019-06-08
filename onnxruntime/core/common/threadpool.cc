@@ -55,19 +55,20 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
   void ParallelFor(int64_t total, int64_t unit_size, std::function<void(int64_t, int64_t)> fn) {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
-    unsigned int spawnedThreads = (unsigned int)ceil((double)total / (double)unit_size) - 1;
-    Eigen::Barrier barrier(spawnedThreads);
+    int64_t remainder = total - unit_size * NumThreads();
+    int64_t spawnedThreads = (total / unit_size) - 1;
+    Eigen::Barrier barrier(static_cast<unsigned int>(spawnedThreads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
 
-    for (int64_t first = unit_size; first < total; first += unit_size) {
-      int64_t last = (first + unit_size < total) ? first + unit_size : total;
+    for (int64_t iteration = 1; iteration <= spawnedThreads; iteration++) {
+      int64_t first = iteration * unit_size;
+      int64_t last = first + unit_size + (remainder-- > 0 ? 1 : 0);
       Schedule([=, &handle_iteration]() { handle_iteration(first, last); });
     }
 
-    // TODO: Make this iteration the last thread to simplify the last calculation.
     fn(0, unit_size);
     barrier.Wait();
   }
@@ -114,14 +115,16 @@ class ThreadPool::Impl : public TaskThreadPool {
       fn(first, last);
     }
 #else
-    unsigned int spawnedThreads = (unsigned int)ceil(total / unit_size) - 1;
-    Eigen::Barrier barrier(spawnedThreads);
+    int64_t remainder = total - unit_size * NumThreads();
+    int64_t spawnedThreads = (total / unit_size) - 1;
+    Eigen::Barrier barrier(static_cast<unsigned int>(spawnedThreads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
-    for (int64_t first = unit_size; first < total; first += unit_size) {
-      int64_t last = (first + unit_size < total) ? first + unit_size : total;
+    for (int64_t iteration = 1; iteration <= spawnedThreads; iteration++) {
+      int64_t first = iteration * unit_size;
+      int64_t last = first + unit_size + (remainder-- > 0 ? 1 : 0);
       std::packaged_task<void()> task(std::bind(handle_iteration, first, last));
       RunTask(std::move(task));
     }
@@ -144,8 +147,12 @@ void ThreadPool::Schedule(std::function<void()> fn) { impl_->Schedule(fn); }
 void ThreadPool::ParallelFor(int64_t total, std::function<void(int64_t)> fn) {
   if (total <= 0) return;
 
+  // If we have no need for threads, run sequentially
   if (total == 1 || NumThreads() == 1) {
-    fn(0);
+    for (int i = 0; i < total; i++) {
+      fn(0);
+    }
+
     return;
   }
 
@@ -153,9 +160,10 @@ void ThreadPool::ParallelFor(int64_t total, std::function<void(int64_t)> fn) {
 }
 
 void ThreadPool::ParallelFor(int64_t total, int64_t unit_size, std::function<void(int64_t, int64_t)> fn) {
-  if (total <= 0 || unit_size <= 0) return;
+  if (total <= 0 || unit_size < 0) return;
 
-  if (total <= unit_size || NumThreads() == 1) {
+  // If we have no need for threads, run one block
+  if (total == 1 || NumThreads() == 1) {
     fn(0, total);
     return;
   }
@@ -164,17 +172,13 @@ void ThreadPool::ParallelFor(int64_t total, int64_t unit_size, std::function<voi
 }
 
 int64_t ThreadPool::CalculateShardSize(int64_t total, float complexity) {
-  // TODO: Simple implementation with four quadrants
-  // Complexity Low / Total Low => 1 (total for now)
-  // Complexity Low / Total High => total/threads
-  // Complexity High / Total Low => total
-  // Complexity High / Total High => total/threads
+  // TODO: Simplified calculation, ignores complexity.
   if (total <= NumThreads()) {
     return 1;
   }
-  
+
   // Block larger iteration counts across threads
-  return (int64_t)ceil((double)total / (double)NumThreads());
+  return total / NumThreads();
 }
 
 // void ThreadPool::SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions) {
