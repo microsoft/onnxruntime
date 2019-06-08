@@ -62,7 +62,7 @@ jobs:
         displayName: 'Test C# Debug'
         inputs:
           script: |
-           FOR /F  %%f IN ('dir /s /b *Tests.dll') DO %dotnetexe% vstest %%f 
+           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CmdLine@2
@@ -110,7 +110,7 @@ jobs:
       displayName: 'Test C# RelWithDebInfo'
       inputs:
         script: |
-         FOR /F  %%f IN ('dir /s /b *Tests.dll') DO %dotnetexe% vstest %%f 
+         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
