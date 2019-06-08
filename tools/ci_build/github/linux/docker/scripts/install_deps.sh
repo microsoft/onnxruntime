@@ -24,7 +24,7 @@ else
 fi
 
 #The last onnx version will be kept
-
+cd /
 rm -rf /tmp/src
 DISTRIBUTOR=$(lsb_release -i -s)
 if [ "$DISTRIBUTOR" = "Ubuntu" ]; then
