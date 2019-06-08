@@ -234,10 +234,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocator"></param>
         /// <param name="memory"></param>
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern void OrtAllocatorFree(IntPtr allocator, IntPtr memory);
+        public static extern IntPtr /*(OrtStatus*)*/OrtAllocatorFree(IntPtr allocator, IntPtr memory);
 
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(const struct OrtAllocatorInfo*)*/ OrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr);
+        public static extern IntPtr /*(OrtStatus*)*/OrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtAllocatorInfo**)*/info);
 
         #endregion Allocator/AllocatorInfo API
 
