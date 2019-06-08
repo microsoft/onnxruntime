@@ -35,27 +35,12 @@ class TestResultStat {
     failed_kernels.insert(s);
   }
 
-  struct OrderPair {
-    bool operator () (const std::pair<std::string, std::string>& p1, const std::pair<std::string, std::string>& p2) const {
-      auto ret = strcmp(p1.first.c_str(), p2.first.c_str());
-      if (ret < 0) {
-        return true;
-      } else if (ret > 0) {
-        return false;
-      } else {
-        return strcmp(p1.second.c_str(), p2.second.c_str()) < 0;
-      }
-    }
-  };//struct OrderPair
-
-  using FailedTestSet = std::set<std::pair<std::string,std::string>, OrderPair>;
-
   void AddFailedTest(const std::pair<std::string, std::string>& p) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
     failed_test_cases.insert(p);
   }
 
-  const FailedTestSet& GetFailedTest() const {
+  const std::set<std::pair<std::string, std::string>>& GetFailedTest() const {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
     return failed_test_cases;
   }
@@ -92,5 +77,5 @@ class TestResultStat {
   mutable onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
-  FailedTestSet failed_test_cases; // pairs of test name and version
+  std::set<std::pair<std::string, std::string>> failed_test_cases; // pairs of test name and version
 };

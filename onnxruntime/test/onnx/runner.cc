@@ -27,6 +27,8 @@
 using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
+// Permanently exclude obsolete tests from the runner
+// Please make no more changes to the list
 std::set<std::string> immutable_broken_tests = 
 {
     "AvgPool1d", 
@@ -498,7 +500,7 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 
 void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
 
-  // for test in immutable list, do not even run it
+  //for test in immutable list, do not even run it
   if (immutable_broken_tests.find(info->GetTestCaseName()) != immutable_broken_tests.end()) {
     on_finished(std::make_shared<TestCaseResult>(0, EXECUTE_RESULT::NOT_SUPPORT, info->GetNodeName()), pci);
     return;
