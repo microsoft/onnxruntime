@@ -38,7 +38,7 @@ jobs:
       displayName: 'Run Test Coverage'
       inputs:
         filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
-        arguments: '"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" "$(Build.SourcesDirectory)" "$(Build.BinariesDirectory)"'
+        arguments: '-OpenCppCoverageExe:"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$false'
 
     - task: PublishCodeCoverageResults@1
       inputs:
