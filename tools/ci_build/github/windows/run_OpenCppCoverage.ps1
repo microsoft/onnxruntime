@@ -25,7 +25,7 @@ if (-not $LocalBuild) {
     $SourceRoot = Join-Path $sourceParentParentTarget $sourceParentLeaf
     $SourceRoot = Join-Path $SourceRoot $sourceLeaf
 
-    $BuildRoot = Join-Path $sourceParentParentTarget $$buildParentLeaf
+    $BuildRoot = Join-Path $sourceParentParentTarget $buildParentLeaf
     $BuildRoot = Join-Path $BuildRoot $buildLeaf
 }
 
