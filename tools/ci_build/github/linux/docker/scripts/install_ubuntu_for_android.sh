@@ -6,7 +6,7 @@ in
 p) PYTHON_VER=${OPTARG};;
 esac
 done
-
+echo "${PYTHON_VER}"
 PYTHON_VER=${PYTHON_VER:=3.5}
 DEBIAN_FRONTEND=noninteractive
 
@@ -14,18 +14,20 @@ apt-get update && apt-get install -y software-properties-common
 add-apt-repository ppa:deadsnakes/ppa
 apt-get update && apt-get install -y --no-install-recommends \
         autotools-dev \
+        automake \
         build-essential \
-        git apt-transport-https \
+        git apt-transport-https apt-utils \
         ca-certificates \
         pkg-config \
         wget \
         zlib1g \
         zlib1g-dev \
         libssl-dev \
-        curl \
+        curl libcurl4-openssl-dev \
         autoconf \
         sudo \
         gfortran \
+        python3-dev \
         language-pack-en \
         libopenblas-dev \
         liblttng-ust0 \
@@ -33,11 +35,26 @@ apt-get update && apt-get install -y --no-install-recommends \
         libssl1.0.0 \
         libkrb5-3 \
         libicu55 \
+        libtinfo-dev \
+        libtool \
         aria2 \
         bzip2 \
         unzip \
         zip \
-        rsync libunwind8 libpng16-dev
+        rsync libunwind8 libpng16-dev libexpat1-dev \
+        python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest
+
+if [ $PYTHON_VER != "3.5" ]; then
+    apt-get install -y --no-install-recommends \
+            python${PYTHON_VER} \
+            python${PYTHON_VER}-dev
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.5 2
+    update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+    #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
+    #put at /usr/local/. Then there will be two pips.
+    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+fi
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
