@@ -683,33 +683,20 @@ def run_server_model_tests(build_dir, configs):
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-
         if is_windows():
             cwd = os.path.join(cwd, config)
+        args = [sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel']
         if nightly_build:
-            if use_tensorrt:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt', '--nightly_build'], cwd=cwd)
-            elif use_cuda:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda', '--nightly_build'], cwd=cwd)
-            elif use_ngraph:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_ngraph', '--nightly-build'], cwd=cwd)
-            elif use_openvino:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_openvino', '--nightly-build'], cwd=cwd)
-            else:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--nightly_build'], cwd=cwd)
-        else:
-            if use_tensorrt:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
-            elif use_cuda:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
-            elif use_ngraph:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_ngraph'], cwd=cwd)
-            elif use_openvino:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_openvino'], cwd=cwd)
-            else:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
-        if is_ubuntu_1604():
-            run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
+            args.append('--nightly_build')
+        if use_tensorrt:
+            args.append('--use_tensorrt')
+        elif use_cuda:
+            args.append('--use_cuda')
+        elif use_ngraph:
+            args.append('--use_ngraph')
+        elif use_openvino:
+            args.append('--use_openvino')
+        run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     if not is_windows():
