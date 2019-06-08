@@ -14,26 +14,19 @@ if (-not $LocalBuild) {
 # Assumes that the junction is 2 level upper from the SourceRoot/BuildRoot
 # This is needed, because apparently the OpenCppCoverage cannot load the PDB symbol files from a junction 
 
-    $sourceLeaf = Split-Path $SourceRoot -Leaf
-    $sourceParent = Split-Path $SourceRoot -Parent
-    $sourceParentLeaf = Split-Path $sourceParent -Leaf
-    $sourceParentParent = Split-Path $sourceParent -Parent
-    $sourceParentParentTarget = Get-Item $sourceParentParent | Select-Object -ExpandProperty Target
     $buildLeaf = Split-Path $BuildRoot -Leaf
-    $buildParentLeaf = Split-Path $SourceRoot -Parent | Split-Path -Leaf
+    $buildParent = Split-Path $BuildRoot -Parent
+    $buildParentLeaf = Split-Path $buildParent -Leaf
+    $buildParentParent = Split-Path $buildParent -Parent
+    $buildParentParentTarget = Get-Item $buildParentParent | Select-Object -ExpandProperty Target
 
-#    $SourceRoot = Join-Path $sourceParentParentTarget $sourceParentLeaf
-#    $SourceRoot = Join-Path $SourceRoot $sourceLeaf
-
-    $BuildRoot = Join-Path $sourceParentParentTarget $buildParentLeaf
+    $BuildRoot = Join-Path $buildParentParentTarget $buildParentLeaf
     $BuildRoot = Join-Path $BuildRoot $buildLeaf
 }
 
 $coreSources = Join-Path $SourceRoot "onnxruntime\core"
 $headerSources = Join-Path $SourceRoot "include"
 $buildDir = Join-Path $BuildRoot "Debug\Debug" 
-#-Resolve
-#$buildDir = Get-Item $buildDir | Select-Object -ExpandProperty Target  # get the target of the symlink/junction
 
 function RunTest([string]$test_cmd, [string[]]$test_cmd_args, [string[]]$export_types, [string[]]$inputs)
 {
@@ -64,8 +57,8 @@ $modelDir = Join-Path $BuildRoot "models"
 
 
 # ONNX test runner tests. 
-# $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
-# RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
+$onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
+RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
 # C-API/Shared-lib test
@@ -74,14 +67,13 @@ RunTest $shared_lib_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_shar
 
 
 # MLAS test
-# $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
-# RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
+$mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
+RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
 
 # Lotus unit tests
 # need to copy the tvm.dll, since it is not in the buildDir path
 Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir
 
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
-RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov")
-#,"onnx_test_runner.cov","onnxruntime_mlas_test.cov")
+RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnx_test_runner.cov","onnxruntime_mlas_test.cov")
 
