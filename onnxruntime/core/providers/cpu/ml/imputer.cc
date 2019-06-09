@@ -121,9 +121,8 @@ common::Status ImputerOp::Compute(OpKernelContext* context) const {
   }
   if (input_type == DataTypeImpl::GetType<int64_t>()) {
     return ComputeByType<int64_t>(context, replaced_value_int64_, imputed_values_int64_);
-  } else {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid type");
   }
+  return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid type");
 }
 }  // namespace ml
 }  // namespace onnxruntime

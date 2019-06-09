@@ -33,7 +33,8 @@ static inline int XGETBV() {
 #if defined(_MSC_VER)
   return static_cast<int>(_xgetbv(0));
 #elif defined(__GNUC__)
-  int eax, edx;
+  int eax;
+  int edx;
   __asm__ volatile("xgetbv"
                    : "=a"(eax), "=d"(edx)
                    : "c"(0));

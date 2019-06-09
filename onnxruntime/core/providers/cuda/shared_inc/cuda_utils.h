@@ -13,17 +13,18 @@ namespace onnxruntime {
 namespace cuda {
 
 enum class SimpleBroadcast : size_t {
-  NoBroadcast = (size_t)-1,
-  LeftScalar = (size_t)-2,
-  RightScalar = (size_t)-3,
-  RightPerChannelBatch1 = (size_t)-4,
-  RightPerChannelBatchN = (size_t)-5,
+  NoBroadcast = static_cast<size_t>(-1),
+  LeftScalar = static_cast<size_t>(-2),
+  RightScalar = static_cast<size_t>(-3),
+  RightPerChannelBatch1 = static_cast<size_t>(-4),
+  RightPerChannelBatchN = static_cast<size_t>(-5),
 };
 
 template <typename T>
 class IConstantBuffer {
  public:
-  virtual ~IConstantBuffer(){};
+  virtual ~IConstantBuffer() = default;
+  ;
   virtual const T* GetBuffer(size_t count) = 0;
 };
 

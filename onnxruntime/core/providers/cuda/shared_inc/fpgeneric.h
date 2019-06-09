@@ -43,7 +43,9 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOpera
 }
 inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, const half* alpha, const half* Aarray[], int lda, const half* Barray[], int ldb, const half* beta, half* Carray[], int ldc, int batchCount) {
   cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
-  return cublasHgemmBatched(handle, transa, transb, m, n, k, alpha, (const __half**)Aarray, lda, (const __half**)Barray, ldb, beta, (__half**)Carray, ldc, batchCount);
+  return cublasHgemmBatched(handle, transa, transb, m, n, k, alpha, static_cast<const __half**>(Aarray), lda,
+                            static_cast<const __half**>(Barray), ldb, beta, static_cast<__half**>(Carray), ldc,
+                            batchCount);
 }
 
 // axpy
@@ -77,7 +79,8 @@ inline cublasStatus_t cublasAsumHelper(cublasHandle_t handle, int n, const doubl
 inline cublasStatus_t cublasAsumHelper(cublasHandle_t, int n, const half* x, int incx, half* result) {
   // pass in cudnn handle/descriptor to remove overhead?
   cudnnHandle_t cudnnHandle;
-  cudnnTensorDescriptor_t srcTensorDesc, dstTensorDesc;
+  cudnnTensorDescriptor_t srcTensorDesc;
+  cudnnTensorDescriptor_t dstTensorDesc;
   cudnnReduceTensorDescriptor_t reduceTensorDesc;
 
   cudnnCreate(&cudnnHandle);
@@ -94,7 +97,7 @@ inline cublasStatus_t cublasAsumHelper(cublasHandle_t, int n, const half* x, int
                                  CUDNN_REDUCE_TENSOR_NO_INDICES,
                                  CUDNN_32BIT_INDICES);
 
-  void* workspace = NULL;
+  void* workspace = nullptr;
   size_t workspaceSizeInBytes = 0;
   cudnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
   if (workspaceSizeInBytes > 0) cudaMalloc(&workspace, workspaceSizeInBytes);
@@ -105,18 +108,8 @@ inline cublasStatus_t cublasAsumHelper(cublasHandle_t, int n, const half* x, int
   void* d_res;
   cudaMalloc(&d_res, sizeof(half));
 
-  cudnnReduceTensor(cudnnHandle,
-                    reduceTensorDesc,
-                    NULL,
-                    0,
-                    workspace,
-                    workspaceSizeInBytes,
-                    &alpha,
-                    srcTensorDesc,
-                    (void*)x,
-                    &beta,
-                    dstTensorDesc,
-                    d_res);
+  cudnnReduceTensor(cudnnHandle, reduceTensorDesc, nullptr, 0, workspace, workspaceSizeInBytes, &alpha, srcTensorDesc,
+                    (void*)x, &beta, dstTensorDesc, d_res);
 
   cudaMemcpy((void*)result, d_res, sizeof(half), cudaMemcpyDeviceToHost);
 
@@ -127,7 +120,7 @@ inline cublasStatus_t cublasAsumHelper(cublasHandle_t, int n, const half* x, int
   cudaFree(d_res);
   cudaFree(workspace);
 
-  return (cublasStatus_t)0;
+  return static_cast<cublasStatus_t>(0);
 }
 
 // amax
@@ -141,7 +134,8 @@ inline cublasStatus_t cublasAmaxHelper(cublasHandle_t, int n, const half* x, int
   unsigned int h_result_uint = 0;
   // pass in cudnn handle/descriptor to remove overhead?
   cudnnHandle_t cudnnHandle;
-  cudnnTensorDescriptor_t srcTensorDesc, dstTensorDesc;
+  cudnnTensorDescriptor_t srcTensorDesc;
+  cudnnTensorDescriptor_t dstTensorDesc;
   cudnnReduceTensorDescriptor_t reduceTensorDesc;
 
   cudnnCreate(&cudnnHandle);
@@ -158,7 +152,7 @@ inline cublasStatus_t cublasAmaxHelper(cublasHandle_t, int n, const half* x, int
                                  CUDNN_REDUCE_TENSOR_FLATTENED_INDICES,
                                  CUDNN_32BIT_INDICES);
 
-  void* workspace = NULL;
+  void* workspace = nullptr;
   size_t workspaceSizeInBytes = 0;
   cudnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
   if (workspaceSizeInBytes > 0) cudaMalloc(&workspace, workspaceSizeInBytes);
@@ -193,8 +187,8 @@ inline cublasStatus_t cublasAmaxHelper(cublasHandle_t, int n, const half* x, int
   cudaFree(d_max);
   cudaFree(d_result_uint);
 
-  *result = (int)h_result_uint;
-  return (cublasStatus_t)0;
+  *result = static_cast<int>(h_result_uint);
+  return static_cast<cublasStatus_t>(0);
 }
 
 // scal

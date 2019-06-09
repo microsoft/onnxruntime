@@ -14,7 +14,7 @@ class Scatter final : public OpKernel {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
   }
-  ~Scatter() = default;
+  ~Scatter() override = default;
   Status Compute(OpKernelContext* context) const override;
 
  private:

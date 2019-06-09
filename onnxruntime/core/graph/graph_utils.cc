@@ -364,10 +364,9 @@ bool RemoveNode(Graph& graph, Node& node) {
   if (node.InputDefs().size() == 1) {
     // If a single initializer is the only input.
     return RemoveNodeWithSingleInitializerIn(graph, node);
-  } else {
+  }
     // No other node removal is supported, because there will be no way to connect its inputs to its outputs.
     return false;
-  }
 }
 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {

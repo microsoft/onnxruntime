@@ -18,7 +18,6 @@ class Pool : public OpKernel, public PoolBase {
   }
 
   ~Pool() override = default;
-  ;
 
   Status Compute(OpKernelContext* context) const override;
 

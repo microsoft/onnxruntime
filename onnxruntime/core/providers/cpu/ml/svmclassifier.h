@@ -53,7 +53,7 @@ class SVMCommon {
       for (int64_t i = len; i > 0; --i, ++pA, ++pB)
         sum += *pA * *pB;
     }
-    return (float)sum;
+    return static_cast<float>(sum);
   }
 
  private:

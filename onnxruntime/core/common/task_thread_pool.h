@@ -118,9 +118,7 @@ class TaskThreadPool {
     }
   }
 
-  int NumThreads() const {
-    return (int)threads_.size();
-  }
+  int NumThreads() const { return static_cast<int>(threads_.size()); }
 
   // This thread pool does not support ids
   int CurrentThreadId() const {

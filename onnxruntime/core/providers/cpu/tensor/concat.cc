@@ -117,7 +117,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
     // no data in this tensor - so skip it
     if (prep.num_elements == 0)
       continue;
-    auto input_axis_pitch = prep.axis_pitch;
+    int64_t input_axis_pitch = prep.axis_pitch;
     const uint8_t* input = static_cast<const uint8_t*>(prep.tensor->DataRaw());
 
     auto input_size = prep.num_elements;
@@ -126,7 +126,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
     uint8_t* output = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
     for (size_t idxCopy = 0; idxCopy < input_size / input_axis_pitch; ++idxCopy) {
       if (is_string_type) {
-        for (int idxItem = 0; idxItem < input_axis_pitch; ++idxItem)
+        for (int64_t idxItem = 0; idxItem < input_axis_pitch; ++idxItem)
           reinterpret_cast<std::string*>(output)[output_offset + idxCopy * p.output_axis_pitch + idxItem] =
               reinterpret_cast<const std::string*>(input)[idxCopy * input_axis_pitch + idxItem];
       } else

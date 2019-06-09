@@ -22,7 +22,7 @@ template <typename T>
 Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor& X = *ctx->Input<Tensor>(0);
-  const TensorShape input_shape{X.Shape()};
+  const TensorShape& input_shape{X.Shape()};
 
   Tensor* Y = ctx->Output(0, input_shape);
 

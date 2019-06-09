@@ -49,9 +49,8 @@ inline T FloatingImpl(T val) {
   }
   if (val > T(0)) {
     return T(1);
-  } else {
-    return T(-1);
   }
+  return T(-1);
 }
 
 void SignMLFloat16(const Tensor* input, Tensor* output) {

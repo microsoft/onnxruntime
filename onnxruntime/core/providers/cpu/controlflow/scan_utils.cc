@@ -434,8 +434,8 @@ Status OutputIterator::AllocateFinalBuffer() {
                                       ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
                                       : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
     } else {
-      auto batch_size = final_shape_[0];
-      for (int i = 0; i < batch_size; ++i) {
+      int64_t batch_size = final_shape_[0];
+      for (int64_t i = 0; i < batch_size; ++i) {
         // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
         slicer_iterators_.push_back(
             (direction_ == ScanDirection::kForward)

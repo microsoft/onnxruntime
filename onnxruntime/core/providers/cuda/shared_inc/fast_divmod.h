@@ -15,16 +15,17 @@ __host__ __device__ __inline__ int mulhi(const int M, const int n) {
 #ifdef __CUDA_ARCH__
   return __mulhi(M, n);
 #else
-  return (((unsigned long long)((long long)M * (long long)n)) >> 32);
+  return ((static_cast<unsigned long long>(static_cast<long long>(M) * static_cast<long long>(n))) >> 32);
 #endif
 }
 
 // Based on code from Chapter 10 of "Hacker's Delight, 2nd ed."
 class fast_divmod {
  public:
-  fast_divmod(int d = 1) : d_(d), a_(0) { find_magic_numbers(); }
+  fast_divmod(int d = 1) : d_(d) { find_magic_numbers(); }
 
-  fast_divmod(const fast_divmod& other) : d_(other.d_), M_(other.M_), s_(other.s_), a_(other.a_){};
+  fast_divmod(const fast_divmod& other) = default;
+  ;
 
   __host__ __device__ __inline__ int div(int n) const {
     // get high 32 bits of M * n
@@ -36,7 +37,7 @@ class fast_divmod {
     // shift if necessary
     if (s_ >= 0) {
       q >>= s_;
-      q += ((unsigned int)q >> 31);
+      q += (static_cast<unsigned int>(q) >> 31);
     }
 
     return q;
@@ -58,7 +59,7 @@ class fast_divmod {
   }
 
  public:
-  int d_, M_, s_, a_;
+  int d_, M_, s_, a_{0};
 
  private:
   // Based on code from Hacker's delight 2.ed
@@ -70,7 +71,8 @@ class fast_divmod {
       s_ = 0;
       a_ = 1;
       return;
-    } else if (d_ == -1) {
+    }
+    if (d_ == -1) {
       M_ = 0;
       s_ = -1;
       a_ = -1;
@@ -79,7 +81,7 @@ class fast_divmod {
     // general case
     const unsigned two31 = 0x80000000;
     unsigned abs_d = (d_ == 0) ? 1 : abs(d_);
-    unsigned t = two31 + ((unsigned)d_ >> 31);  // t = 2^31 + (d < 0) ? 1 : 0
+    unsigned t = two31 + (static_cast<unsigned>(d_) >> 31);  // t = 2^31 + (d < 0) ? 1 : 0
     unsigned abs_nc = t - 1 - (t % abs_d);      // |n_c| = t - 1 - rem(t, |d|)
     int p = 31;
     unsigned q1 = two31 / abs_nc;       // Init q_1 = 2^31 / |n_c|

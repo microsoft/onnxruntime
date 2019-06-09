@@ -204,7 +204,7 @@ int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
 
 int ThreadPool::CurrentThreadId() const { return impl_->CurrentThreadId(); }
 
-ThreadPool::~ThreadPool() {}
+ThreadPool::~ThreadPool() = default;
 
 }  // namespace concurrency
 }  // namespace onnxruntime

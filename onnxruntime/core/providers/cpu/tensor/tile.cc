@@ -129,8 +129,7 @@ Status Tile::Compute(OpKernelContext* ctx) const {
       dtype == DataTypeImpl::GetType<uint64_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
-  else if (dtype == DataTypeImpl::GetType<int8_t>() ||
-           dtype == DataTypeImpl::GetType<uint8_t>())
+  if (dtype == DataTypeImpl::GetType<int8_t>() || dtype == DataTypeImpl::GetType<uint8_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int8_t));
 
   if (dtype == DataTypeImpl::GetType<int16_t>() || dtype == DataTypeImpl::GetType<uint16_t>())

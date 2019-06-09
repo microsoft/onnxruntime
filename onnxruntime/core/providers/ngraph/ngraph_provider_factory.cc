@@ -11,7 +11,7 @@ using namespace onnxruntime;
 namespace onnxruntime {
 struct NGraphProviderFactory : IExecutionProviderFactory {
   NGraphProviderFactory(std::string&& ng_backend_type) : ng_backend_type_(std::move(ng_backend_type)) {}
-  ~NGraphProviderFactory() = default;
+  ~NGraphProviderFactory() override = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     NGRAPHExecutionProviderInfo info{ng_backend_type_};

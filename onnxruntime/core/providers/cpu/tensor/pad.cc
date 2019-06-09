@@ -109,7 +109,8 @@ Status PadCpuImpl<float>(OpKernelContext* ctx,
   size_t new_dims_count = reshaped_input_dims.size();
   size_t inner_axis = new_dims_count - 1;
   size_t inner_no_pad_size = reshaped_input_dims[inner_axis] / output_dims[inner_axis];
-  std::vector<int64_t> reshaped_pad(2 * new_dims_count), reshaped_slice(2 * new_dims_count);
+  std::vector<int64_t> reshaped_pad(2 * new_dims_count);
+  std::vector<int64_t> reshaped_slice(2 * new_dims_count);
   ReshapePads(pads, dimension_count, new_dims_count, inner_no_pad_size, reshaped_pad);
   ReshapePads(slices, dimension_count, new_dims_count, inner_no_pad_size, reshaped_slice);
 

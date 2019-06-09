@@ -47,10 +47,10 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
   }
 
   using_strings_ = false;
-  if (classlabels_strings_.size() > 0) {
+  if (!classlabels_strings_.empty()) {
     using_strings_ = true;
     class_count_ = classlabels_strings_.size();
-  } else if (classlabels_ints_.size() > 0) {
+  } else if (!classlabels_ints_.empty()) {
     class_count_ = classlabels_ints_.size();
   } else {
     class_count_ = 1;
@@ -63,9 +63,9 @@ SVMClassifier<T>::SVMClassifier(const OpKernelInfo& info)
     mode_ = SVM_TYPE::SVM_LINEAR;
     set_kernel_type(KERNEL::LINEAR);
   }
-  ORT_ENFORCE(classlabels_strings_.size() > 0 || classlabels_ints_.size() > 0);
+  ORT_ENFORCE(!classlabels_strings_.empty() || !classlabels_ints_.empty());
   ORT_ENFORCE(proba_.size() == probb_.size());
-  ORT_ENFORCE(coefficients_.size() > 0);
+  ORT_ENFORCE(!coefficients_.empty());
   weights_are_all_positive_ = true;
   for (int64_t i = 0; i < static_cast<int64_t>(coefficients_.size()); i++) {
     if (coefficients_[i] < 0) {
@@ -83,7 +83,7 @@ int _set_score_svm(Tensor* Y, float max_weight, const int64_t maxclass, const in
   auto output_data = Y->template MutableData<LabelType>();
   if (classlabels.size() == 2) {
     write_additional_scores = post_transform_ == POST_EVAL_TRANSFORM::NONE ? 2 : 0;
-    if (proba_.size() == 0) {
+    if (proba_.empty()) {
       if (weights_are_all_positive_ && max_weight >= 0.5)
         output_data[n] = classlabels[1];
       else if (max_weight > 0 && !weights_are_all_positive_)
@@ -111,7 +111,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, TensorShape({N}));
 
   int64_t nb_columns = class_count_;
-  if (proba_.size() == 0 && vector_count_ > 0) {
+  if (proba_.empty() && vector_count_ > 0) {
     if (class_count_ > 2)
       nb_columns = class_count_ * (class_count_ - 1) / 2;
     else
@@ -173,14 +173,14 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
             sum += *val1 * *val2;
 
           sum += rho_[evals];
-          scores.push_back((float)sum);
+          scores.push_back(static_cast<float>(sum));
           ++(votes[sum > 0 ? i : j]);
           ++evals;  //index into rho
         }
       }
     }
 
-    if (proba_.size() > 0 && mode_ == SVM_TYPE::SVM_SVC) {
+    if (!proba_.empty() && mode_ == SVM_TYPE::SVM_SVC) {
       //compute probabilities from the scores
       int64_t num = class_count_ * class_count_;
       std::vector<float> probsp2(num, 0.f);
@@ -206,7 +206,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
     }
 
     float max_weight = 0;
-    if (votes.size() > 0) {
+    if (!votes.empty()) {
       auto it_maxvotes = std::max_element(votes.begin(), votes.end());
       maxclass = std::distance(votes.begin(), it_maxvotes);
     } else {

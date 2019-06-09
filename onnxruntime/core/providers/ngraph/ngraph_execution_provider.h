@@ -22,7 +22,7 @@ struct NGRAPHExecutionProviderInfo {
 class NGRAPHExecutionProvider : public IExecutionProvider {
  public:
   explicit NGRAPHExecutionProvider(const NGRAPHExecutionProviderInfo& info);
-  ~NGRAPHExecutionProvider() = default;
+  ~NGRAPHExecutionProvider() override = default;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
