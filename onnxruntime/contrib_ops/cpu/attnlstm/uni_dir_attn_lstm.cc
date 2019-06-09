@@ -199,8 +199,8 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                                         const gsl::span<const T>& recurrent_weights,
                                         gsl::span<T>& outputs,
                                         gsl::span<T>& final_hidden_state,
-                                        gsl::span<T>& final_cell_state,
-                                        onnxruntime::concurrency::ThreadPool* tp) {
+                                        gsl::span<T>& final_cell_state) {
+  onnxruntime::concurrency::ThreadPool* tp = &ttp_;
   // copy spans (just T* and size, not data in span) as we may change them
   gsl::span<const T> inputs = inputs_arg;
   gsl::span<const int> sequence_lengths = sequence_lengths_arg;

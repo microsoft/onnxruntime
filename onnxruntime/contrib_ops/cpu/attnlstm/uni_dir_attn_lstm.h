@@ -60,7 +60,7 @@ class UniDirectionalAttnLstm {
                const gsl::span<const T>& recurrent_weights,
                gsl::span<T>& outputs,
                gsl::span<T>& final_hidden_state,
-               gsl::span<T>& final_cell_state, onnxruntime::concurrency::ThreadPool* tp);
+               gsl::span<T>& final_cell_state);
 
   ~UniDirectionalAttnLstm() = default;
 
