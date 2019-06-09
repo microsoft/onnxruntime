@@ -35,17 +35,9 @@ jobs:
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --test'
         workingFolder: '$(Build.BinariesDirectory)'
     
-    - task: PowerShell@2
-      displayName: 'Run Test Coverage'
-      inputs:
-        filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
-        arguments: '-OpenCppCoverageExe:"$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$false'
-
-    - task: PublishCodeCoverageResults@1
-      inputs:
-        codeCoverageTool: 'Cobertura'
-        summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
-        reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
+    - template: templates/windows-code-coverage-steps.yml
+      parameters:
+        OpenCppCoverageExe: "$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe"
     
     - task: VSBuild@1
       displayName: 'Build C# Debug'

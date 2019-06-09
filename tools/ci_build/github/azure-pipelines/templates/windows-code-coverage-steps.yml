@@ -1,0 +1,20 @@
+# sets variables $(TestDataUrl) and $(TestDataChecksum)
+
+parameters:
+  OpenCppCoverageExe: "$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe"
+
+steps:
+
+- task: PowerShell@2
+  displayName: 'Run Test Coverage'
+  inputs:
+    filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
+    arguments: '-OpenCppCoverageExe:"${{parameters.OpenCppCoverageExe}}" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$false'
+  continueOnError: true  
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
+    reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
+  continueOnError: true

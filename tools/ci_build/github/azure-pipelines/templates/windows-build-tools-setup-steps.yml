@@ -60,6 +60,7 @@ steps:
     
     - task: PowerShell@2
       displayName: 'Download OpenCppCoverage installer'
+      continueOnError: true
       inputs:
         targetType: 'inline'
         script: '
@@ -71,6 +72,7 @@ steps:
           '
 
     - task: CmdLine@1
+      continueOnError: true
       displayName: 'Run OpenCPPCoverage installer'
       inputs:
         filename: '$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe'
