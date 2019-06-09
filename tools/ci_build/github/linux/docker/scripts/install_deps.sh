@@ -12,9 +12,9 @@ if [ $SYS_LONG_BIT = "64" ]; then
 fi
 
 mkdir -p /tmp/src
-aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2.tar.gz
-tar -xf /tmp/src/cmake-3.13.2.tar.gz -C /tmp/src
-cd /tmp/src/cmake-3.13.2
+aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.14.5/cmake-3.14.5.tar.gz
+tar -xf /tmp/src/cmake-3.14.5.tar.gz -C /tmp/src
+cd /tmp/src/cmake-3.14.5
 ./configure --prefix=/usr --parallel=`nproc` --system-curl --system-zlib --system-expat
 make -j`nproc`
 make install
