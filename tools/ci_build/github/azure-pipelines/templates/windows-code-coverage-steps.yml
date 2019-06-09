@@ -1,7 +1,7 @@
 # sets variables $(TestDataUrl) and $(TestDataChecksum)
 
 parameters:
-  OpenCppCoverageExe: "$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe"
+  OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
 
 steps:
 
