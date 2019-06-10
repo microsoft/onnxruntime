@@ -100,7 +100,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
-    utils::DumpInputs(op_kernel_context, p_op_kernel->Node());
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#endif
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
@@ -117,7 +119,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
     if (!compute_status.IsOK()) {
       std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " << p_op_kernel->Node().Name() << " Status Message: " << compute_status.ErrorMessage();
+      ss << "Non-zero status code returned while running Node: " <<
+            p_op_kernel->Node().Name() <<
+            " Status Message: " <<
+            compute_status.ErrorMessage();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
@@ -161,7 +166,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
-    utils::DumpOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();

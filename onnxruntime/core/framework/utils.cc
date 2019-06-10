@@ -568,6 +568,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
   return Status::OK();
 }
 
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
 std::ostream& operator<<(std::ostream& out, const BFloat16& value) {
   return out << value.ToFloat();
 }
@@ -622,7 +623,7 @@ void DumpTensor<BFloat16>(const Tensor& tensor, const TensorShape& shape) {
   DumpTensorWithCustomType<BFloat16>(tensor);
 }
 
-void DumpInputs(const OpKernelContext& context, const Node& node) {
+void DumpNodeInputs(const OpKernelContext& context, const Node& node) {
   std::cout << "-----------\n";
   std::cout << node.OpType() << " node: " << node.Name() << "\n";
 
@@ -640,14 +641,6 @@ void DumpInputs(const OpKernelContext& context, const Node& node) {
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
-          /*
-        The input data is coming from either graph inputs/initializers or other nodes outputs. As such we
-        don't need to dump it. 
-        std::cout << "Data: ";
-
-        const auto data_type = tensor.DataType();
-        DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-        */
         } else {
           std::cout << " is non-tensor type.\n";
         }
@@ -661,7 +654,7 @@ void DumpInputs(const OpKernelContext& context, const Node& node) {
   }
 }
 
-void DumpOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state) {
+void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state) {
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
@@ -709,6 +702,7 @@ void DumpOutputs(OpKernelContext& context, const Node& node, const SessionState&
     std::cout << std::endl;
   }
 }
+#endif
 
 }  // namespace utils
 }  // namespace onnxruntime
