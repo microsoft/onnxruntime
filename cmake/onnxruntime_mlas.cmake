@@ -96,7 +96,14 @@ else()
     OUTPUT_VARIABLE dumpmachine_output
     ERROR_QUIET
   )
-
+  #dumpmachine_output is target triplet of the compiler, it has form of
+  #cpu-vendor-os. like:
+  #"x86_64-redhat-linux"
+  #Even we call it triplet, sometimes it only has 2 parts, like:
+  #"aarch64-elf"  (os is missing)
+  #Sometimes, it has 4 parts, because the last part(os) could contain a '-', like
+  #"x86_64-unknown-linux-gnu"
+  #However, here we only care about the the first part: cpu
   if(dumpmachine_output MATCHES "^arm.*")
 
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
@@ -113,8 +120,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/sgemma.s
     )
 
-  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
-
+  elseif(dumpmachine_output MATCHES "^i[0-9]86.*")
     enable_language(ASM)
 
     set(mlas_platform_srcs_sse2
@@ -131,8 +137,8 @@ else()
       ${mlas_platform_srcs_sse2}
       ${mlas_platform_srcs_avx}
     )
-
-  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(MLAS_C_FLAGS "-msse2" "-mfpmath=sse" "-Wno-narrowing")
+  elseif(dumpmachine_output MATCHES "^x86_64.*")
 
     enable_language(ASM)
 
@@ -181,4 +187,5 @@ endif()
 
 add_library(onnxruntime_mlas STATIC ${mlas_common_srcs} ${mlas_platform_srcs})
 target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+target_compile_options(onnxruntime_mlas PRIVATE ${MLAS_C_FLAGS})
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")

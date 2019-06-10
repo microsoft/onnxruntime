@@ -162,7 +162,6 @@ set(onnxruntime_test_framework_libs
   onnxruntime_util
   onnxruntime_graph
   onnxruntime_common
-  onnxruntime_mlas
   )
 
 set(onnxruntime_test_server_libs
@@ -212,7 +211,6 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
-    onnxruntime_mlas
 )
 
 set(onnxruntime_test_providers_libs
@@ -644,6 +642,7 @@ if (onnxruntime_BUILD_SERVER)
   )
 
 endif()
+
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)

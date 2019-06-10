@@ -47,8 +47,6 @@ option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
-option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
-option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
@@ -192,11 +190,6 @@ else()
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
   endif()
-  if(onnxruntime_BUILD_x86)
-    set (CMAKE_SYSTEM_PROCESSOR "x86")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -269,10 +262,6 @@ if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
 
-if (onnxruntime_USE_EIGEN_FOR_BLAS)
-  add_definitions(-DUSE_EIGEN_FOR_BLAS)
-endif()
-
 if (onnxruntime_USE_OPENBLAS AND "${onnxruntime_OPENBLAS_HOME}" STREQUAL "" AND WIN32)
   # On linux we assume blas is installed via 'apt-get install libopenblas-dev'
   message(FATAL_ERROR "onnxruntime_OPENBLAS_HOME required for onnxruntime_USE_OPENBLAS")
@@ -311,6 +300,7 @@ include(eigen)
 # mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf re2)
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES onnxruntime_mlas)
 
 function(onnxruntime_add_include_to_target dst_target)
     foreach(src_target ${ARGN})
@@ -361,10 +351,6 @@ endif()
 
 if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
-endif()
-
-if (onnxruntime_USE_MLAS)
-  add_definitions(-DUSE_MLAS)
 endif()
 
 #Adjust warning flags
