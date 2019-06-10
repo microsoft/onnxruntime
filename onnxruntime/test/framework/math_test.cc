@@ -17,12 +17,14 @@
 
 #include "core/util/math.h"
 #include <gtest/gtest.h>
+#include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"
 namespace onnxruntime {
 
 #define VECTOR_HEAD(x) x.size() > 0 ? &x[0] : NULL
 
 TEST(MathTest, GemmNoTransNoTrans) {
+  concurrency::ThreadPool tp("", 1);
   auto& provider = CPUMathUtil::Instance();
   std::vector<float> X(50);  // 5 * 10
   std::vector<float> W(60);  // 10 * 6
@@ -40,26 +42,26 @@ TEST(MathTest, GemmNoTransNoTrans) {
   const float kOne = 1.0;
   const float kPointFive = 0.5;
   const float kZero = 0.0;
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
-                                 VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
-                                 &provider);
+  math::Gemm<float, concurrency::ThreadPool>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
+                                             VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
+                                             &tp);
   EXPECT_EQ(Y.size(), 30);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 10) << i;
   }
   // Test Accumulate
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
-                                 VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
-                                 VECTOR_HEAD(Y), &provider);
+  math::Gemm<float, concurrency::ThreadPool>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
+                                             VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
+                                             VECTOR_HEAD(Y), &tp);
   EXPECT_EQ(Y.size(), 30);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 15) << i;
   }
   // Test Accumulate
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasNoTrans, 5, 6, 10,
-                                 kPointFive,
-                                 VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
-                                 &provider);
+  math::Gemm<float, concurrency::ThreadPool>(CblasNoTrans, CblasNoTrans, 5, 6, 10,
+                                             kPointFive,
+                                             VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
+                                             &tp);
   EXPECT_EQ(Y.size(), 30);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 20) << i;
@@ -68,6 +70,8 @@ TEST(MathTest, GemmNoTransNoTrans) {
 
 TEST(MathTest, GemmNoTransTrans) {
   auto& provider = CPUMathUtil::Instance();
+  concurrency::ThreadPool tp("", 1);
+
   std::vector<float> X(50);  // 5 * 10
   std::vector<float> W(60);  // 10 * 6
   std::vector<float> Y(30);  // 5 * 6
@@ -84,24 +88,24 @@ TEST(MathTest, GemmNoTransTrans) {
   const float kOne = 1.0;
   const float kPointFive = 0.5;
   const float kZero = 0.0;
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
-                                 VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
-                                 &provider);
+  math::Gemm<float, concurrency::ThreadPool>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
+                                             VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
+                                             &tp);
   EXPECT_EQ(Y.size(), 30);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 10) << i;
   }
   // Test Accumulate
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
-                                 VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
-                                 VECTOR_HEAD(Y), &provider);
+  math::Gemm<float, concurrency::ThreadPool>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
+                                             VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
+                                             VECTOR_HEAD(Y), &tp);
   EXPECT_EQ(Y.size(), 30);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 15) << i;
   }
-  math::Gemm<float, CPUMathUtil>(CblasNoTrans, CblasTrans, 5, 6, 10, kPointFive,
-                                 VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
-                                 &provider);
+  math::Gemm<float, concurrency::ThreadPool>(CblasNoTrans, CblasTrans, 5, 6, 10, kPointFive,
+                                             VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
+                                             &tp);
   EXPECT_EQ(Y.size(), 30);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 20) << i;
