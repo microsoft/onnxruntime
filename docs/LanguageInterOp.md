@@ -1,27 +1,27 @@
 # LANGUAGE INTEROP OPERATORS
 ## Introduction
-To facilitate Python developers on model inferencing, onnxruntime provides a way to invoke operators implemented in Python.
+To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
 To use the feature, model designer needs to do following things:
 1. Define the node with all required attributes;
-2. Implement the Python operator in right format;
-3. Before inferencing, place the Python module where the operator(s) are defined under python system path, then set PYTHONHOME environment variable;
+2. Implement a Python module of referred operators in required format;
+3. Before inferencing, place the Python module into python system path, then set PYTHONHOME as an env variable;
 
-## Example
-To showcase the usage, let's first create an onnx model with muliple Python operators:
-
-A = helper.make_tensor_value_info('A', TensorProto.FLOAT, [3,3])
-B = helper.make_tensor_value_info('B', TensorProto.FLOAT, [3,3])
-C = helper.make_tensor_value_info('C', TensorProto.FLOAT, [3,3])
-D = helper.make_tensor_value_info('D', TensorProto.FLOAT, [3,3])
-E = helper.make_tensor_value_info('E', TensorProto.FLOAT, [3,3])
-F = helper.make_tensor_value_info('F', TensorProto.FLOAT, [3,3])
-
+## Usage and Example
+First, developer need to create an onnx model contains Python operator nodes:
+```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
-py1_node = helper.make_node('PyOp',['S','P'], ['L','M','N'], domain = 'pyopmulti_1',
-                            input_types  = [TensorProto.FLOAT, TensorProto.FLOAT],
-                            output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
-                            module = 'mymodule', class_name='Multi_1', W1='5', W2='7', W3='9')
+py1_node = helper.make_node(
+                            op_type='Op', #required
+                            inputs=['S','P'], #required
+                            outputs=['L','M','N'], #required
+                            domain = 'pyopmulti_1', #required
+                            input_types  = [TensorProto.FLOAT, TensorProto.FLOAT], #required
+                            output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT], #required
+                            module = 'mymodule', #required
+                            class_name='Multi_1', #required
+                            compute='compute', #optional,default value is 'compute'
+                            W1='5', W2='7', W3='9') #optional, must be strings, pass as constructor args
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
                             input_types  = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
@@ -31,25 +31,9 @@ sub_node = helper.make_node('Sub', ['O','W'], ['F'])
 graph = helper.make_graph([ad1_node,mul_node,py1_node,ad2_node,py2_node,sub_node], 'multi_pyop_graph', [A,B,C,D,E], [F])
 model = helper.make_model(graph, producer_name='pyop_model')
 onnx.save(model, './model.onnx')
-
-Here is the graph layout:
-
-A     B   C     D     E
- \   /     \   /     /
-  Add       Mul     /
-    \      /       /
-      PyOp        /
-      | | \      /
-      Add  |    /
-       \   |   /
-         PyOp
-         |  |
-         Subt
-           |
-           F
-
+```
 Next, implement mymodule.py:
-
+```python
 class Multi_1:
     def __init__(self,W1,W2,W3):
         self.W1 = int(W1)
@@ -62,8 +46,8 @@ class Multi_2:
     def compute(self,H,N,E):
         r1,r2 = H+N,N+E
         return r1,r2
-
-Before inferencing, place mymodule.py into Python system path, then set PYTHONHOME as environment variable properly.
+```
+Before inferencing, copy mymodule.py into Python system path, then set PYTHONHOME as environment variable properly.
 Finally, inference model.onnx with onnxruntime, Multi_1 and Multi_2 will each be instantiated with compute function triggered.
 
 ## Limitations
@@ -78,4 +62,4 @@ Finally, inference model.onnx with onnxruntime, Multi_1 and Multi_2 will each be
 
 ## Tests
 
-<TBD>
+TBD
