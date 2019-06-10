@@ -588,12 +588,11 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
         cmd_base = ['-e', 'mkldnn', '-c', '1', '-j', '1']
-        cmd = cmd_base
         if os.path.exists(onnx_test_data_dir):
-          cmd + [onnx_test_data_dir]
-        # /data/onnx
-        run_subprocess([exe] + cmd, cwd=cwd)
-        run_subprocess([exe,'-x'] + cmd, cwd=cwd)
+          onnxdata_cmd = cmd_base + [onnx_test_data_dir]
+          # /data/onnx
+          run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
+          run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
 
         # models/opset7, models/opset8, models/opset9
         if config != 'Debug' and os.path.exists(model_dir):
