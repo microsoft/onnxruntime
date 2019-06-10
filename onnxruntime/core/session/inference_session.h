@@ -19,6 +19,9 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+#include "core/language_interop_ops/language_interop_ops.h"
+#endif
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -425,5 +428,9 @@ class InferenceSession {
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS 
+  InterOpDomains interop_domains_;
+#endif
 };
 }  // namespace onnxruntime
