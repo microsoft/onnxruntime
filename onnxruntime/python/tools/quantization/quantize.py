@@ -35,31 +35,11 @@ type_to_name = {
 }
 
 # Quantization mode
-# IntegerOps_Static: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
-#               Use static quantization for weights and inputs/activations.
-# IntegerOps_Dynamic: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
-#               Use static quantization for weights and dynamic quantization for inputs/activations.
-# QLinearOps_Static: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
-#               Use static quantization for weights and inputs/activations.
-# QLinearOps_Dynamic: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
-#               Use static quantization for weights and dynamic quantization for inputs/activations.
+# IntegerOps: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
+# QLinearOps: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
 class QuantizationMode():
-    IntegerOps_Static = 0
-    IntegerOps_Dynamic = 1
-    QLinearOps_Static = 2
-    QLinearOps_Dynamic = 3
-
-    @staticmethod
-    def is_integer_ops_mode(mode):
-        return mode in [QuantizationMode.IntegerOps_Static, QuantizationMode.IntegerOps_Dynamic]
-
-    @staticmethod
-    def is_qlinear_ops_mode(mode):
-        return mode in [QuantizationMode.QLinearOps_Static, QuantizationMode.QLinearOps_Dynamic]
-
-    @staticmethod
-    def is_static_mode(mode):
-        return mode in [QuantizationMode.IntegerOps_Static, QuantizationMode.QLinearOps_Static]
+    IntegerOps = 0
+    QLinearOps = 1
 
 # Data Quantization mode
 # Linear_NonScaled: Quantize data using linear, non scaled tranformation.
@@ -245,12 +225,13 @@ def _find_nodes_using_initializer(graph, initializer):
     return result
 
 class ONNXQuantizer:
-    def __init__(self, model, per_channel, mode, weight_qType, input_qType,
+    def __init__(self, model, per_channel, mode, static, weight_qType, input_qType,
             input_quantization_params, output_quantization_params):
         self.model = model
         self.per_channel = per_channel # weight-pack per channel
         self.weight_qType = weight_qType  # quantize data type
         self.mode = mode # QuantizationMode.Value
+        self.static = static # use static quantization for inputs.
         self.input_qType = input_qType # quantize input type
         self.input_quantization_params = input_quantization_params # zero point and scale values for node inputs.
         self.output_quantization_params = output_quantization_params # zero point and scale values for node outputs.
@@ -259,7 +240,7 @@ class ONNXQuantizer:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
 
         # QuantizeRange tensor name and zero tensor name for scale and zero point calculation.
-        # Used when QuantizationMode.is_static_mode() is False
+        # Used when static is False
         self.fixed_qrange_non_scaled_name = "fixed_quantization_range_non_scaled"
         self.fixed_qrange_scaled_name = "fixed_quantization_range_scaled"
         # In non scaled mode, to compute zero point, we subtract rmin from 0 (represented by fixed_zero_name tensor)
@@ -601,7 +582,7 @@ class ONNXQuantizer:
     def _get_output_quantization_params(self, output_name):
         '''
         Create initializers and inputs in the graph for zero point and scale of output.
-        Used when QuantizationMode.is_qlinear_ops_mode() is true.
+        Used when mode is QuantizationMode.QLinearOps.
 
         Zero point and scale values are obtained from self.output_quantization_params if specified.
         ValueError is thrown otherwise.
@@ -654,7 +635,7 @@ class ONNXQuantizer:
         input_name = node.input[input_index]
 
         nodes = []
-        if QuantizationMode.is_static_mode(self.mode):
+        if self.static:
             scale_name, zp_name, scale_shape, zp_shape = \
                 self._get_static_input_quantization_params(input_name, qType)
         else:
@@ -786,7 +767,7 @@ class ONNXQuantizer:
 
     def _quantize_convolution_integer_ops(self, node, new_nodes_list):
         '''
-        Used when QuantizationMode.is_integer_ops_mode(self.mode) is true.
+        Used when self.mode is QuantizationMode.IntegerOps.
             parameter node: Conv node.
             parameter new_nodes_list: List of new nodes created before processing this node.
             return: a list of nodes in topological order that represents quantized Conv node.
@@ -837,7 +818,7 @@ class ONNXQuantizer:
 
     def _quantize_matmul_integer_ops(self, node, new_nodes_list):
         '''
-        Used when QuantizationMode.is_integer_ops_mode(self.mode) is true.
+        Used when self.mode is QuantizationMode.IntegerOps.
             parameter node: MatMul node.
             parameter new_nodes_list: List of new nodes created before processing this node.
             return: a list of nodes in topological order that represents quantized MatMul node.
@@ -886,7 +867,7 @@ class ONNXQuantizer:
 
     def _quantize_convolution_qlinear_ops(self, node, new_nodes_list):
         '''
-        Used when QuantizationMode.is_qlinear_ops_mode(self.mode) is true.
+        Used when self.mode is QuantizationMode.QLinearOps.
             parameter node: Conv node.
             parameter new_nodes_list: List of new nodes created before processing this node.
             return: a list of nodes in topological order that represents quantized Conv node.
@@ -932,7 +913,7 @@ class ONNXQuantizer:
 
     def _quantize_matmul_qlinear_ops(self, node, new_nodes_list):
         '''
-        Used when QuantizationMode.is_qlinear_ops_mode(self.mode) is true.
+        Used when self.mode is QuantizationMode.QLinearOps.
             parameter node: MatMul node.
             parameter new_nodes_list: List of new nodes created before processing this node.
             return: a list of nodes in topological order that represents quantized Conv node.
@@ -983,10 +964,10 @@ class ONNXQuantizer:
         '''
         assert (node.op_type == "Conv")
 
-        if QuantizationMode.is_integer_ops_mode(self.mode):
+        if self.mode == QuantizationMode.IntegerOps:
             return self._quantize_convolution_integer_ops(node, new_nodes_list)
 
-        if QuantizationMode.is_qlinear_ops_mode(self.mode):
+        if self.mode == QuantizationMode.QLinearOps:
             return self._quantize_convolution_qlinear_ops(node, new_nodes_list)
 
         return [node]
@@ -1000,17 +981,17 @@ class ONNXQuantizer:
         '''
         assert(node.op_type == 'MatMul')
 
-        if QuantizationMode.is_integer_ops_mode(self.mode):
+        if self.mode == QuantizationMode.IntegerOps:
             return self._quantize_matmul_integer_ops(node, new_nodes_list)
 
-        if QuantizationMode.is_qlinear_ops_mode(self.mode):
+        if self.mode == QuantizationMode.QLinearOps:
             return self._quantize_matmul_qlinear_ops(node, new_nodes_list)
 
         return [node]
 
 
-def quantize(model, per_channel=True, nbits=8, quantization_mode=QuantizationMode.IntegerOps_Dynamic,
-    asymmetric_input_types=False, input_quantization_params=None, output_quantization_params=None):
+def quantize(model, per_channel=True, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
+    static=False, asymmetric_input_types=False, input_quantization_params=None, output_quantization_params=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
 
@@ -1018,28 +999,21 @@ def quantize(model, per_channel=True, nbits=8, quantization_mode=QuantizationMod
     :param per_channel: quantize weights per channel
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
     :param quantization_mode: Can be one of the QuantizationMode types.
-        IntegerOps_Static:
+        IntegerOps:
             the function will use integer ops. Only ConvInteger and MatMulInteger ops are supported now.
-            The inputs/activations are quantized using static scale and zero point values
-            specified through input_quantization_params.
-        IntegerOps_Dynamic:
-            the function will use integer ops. Only ConvInteger and MatMulInteger ops are supported now.
-            The inputs/activations are quantized using dynamic scale and zero point values
-            computed while running the model.
-        QLinearOps_Static:
+        QLinearOps:
             the function will use QLinear ops. Only QLinearConv and QLinearMatMul ops are supported now.
-            The inputs/activations are quantized using static scale and zero point values
-            specified through input_quantization_params.
-        QLinearOps_Dynamic:
-            the function will use QLinear ops. Only QLinearConv and QLinearMatMul ops are supported now.
-            The inputs/activations are quantized using dynamic scale and zero point values
-            computed while running the model.
+    :param static:
+        True: The inputs/activations are quantized using static scale and zero point values
+              specified through input_quantization_params.
+        False: The inputs/activations are quantized using dynamic scale and zero point values
+               computed while running the model.
     :param asymmetric_input_types:
         True: Weights are quantized into signed integers and inputs/activations into unsigned integers.
         False: Weights and inputs/activations are quantized into unsigned integers.
     :param input_quantization_params:
         Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
-        Used in QuantizationMode.IntegerOps_Static or QuantizationMode.QLinearOps_Static mode.
+        Should be specified when static is set to True.
         The input_quantization_params should be specified in the following format:
             {
                 "input_name": [zero_point, scale]
@@ -1052,7 +1026,7 @@ def quantize(model, per_channel=True, nbits=8, quantization_mode=QuantizationMod
             }
     :param output_quantization_params:
         Dictionary to specify the zero point and scale values for outputs of conv and matmul nodes.
-        Used in QuantizationMode.QLinearOps_Static or QuantizationMode.QLinearOps_Dynamic mode.
+        Should be specified in QuantizationMode.QLinearOps mode.
         The output_quantization_params should be specified in the following format:
             {
                 "output_name": [zero_point, scale]
@@ -1071,7 +1045,7 @@ def quantize(model, per_channel=True, nbits=8, quantization_mode=QuantizationMod
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
-        quantizer = ONNXQuantizer(copy_model, per_channel, mode, weight_qType, input_qType,
+        quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, weight_qType, input_qType,
                         input_quantization_params, output_quantization_params)
         quantizer.quantize_model()
         quantizer.model.producer_name = __producer__
