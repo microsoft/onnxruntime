@@ -80,6 +80,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   p.output_axis_pitch = 1;
   for (size_t i = inputs_0_rank; i-- > axis;) p.output_axis_pitch *= dims[i];
 
+  p.inputs.reserve(input_count);
   for (int input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = ctx->Input<Tensor>(input_index);
     auto& data_n = *data_n_ptr;
