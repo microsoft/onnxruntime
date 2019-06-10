@@ -27,7 +27,7 @@
 using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
-// Permanently exclude obsolete tests from the runner
+// Permanently exclude following tests because ORT support only opset staring from 7, 
 // Please make no more changes to the list
 std::set<std::string> immutable_broken_tests = 
 {

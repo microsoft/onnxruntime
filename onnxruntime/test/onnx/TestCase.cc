@@ -54,6 +54,8 @@ using google::protobuf::RepeatedPtrField;
 
 using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>;
 
+const std::string TestModelInfo::unknown_version = "unknown version";
+
 namespace {
 
 template <typename T>
@@ -211,7 +213,7 @@ class OnnxModelInfo : public TestModelInfo {
     if (std::regex_search(url_string, match, onnx_tag_regex)) {
       onnx_commit_tag_ = match[0].str();   
     } else {
-      onnx_commit_tag_ = "unknown version";
+      onnx_commit_tag_ = TestModelInfo::unknown_version;
     }
 #endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
