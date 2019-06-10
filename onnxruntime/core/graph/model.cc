@@ -3,6 +3,7 @@
 
 #include "core/graph/model.h"
 #include <memory>
+#include "core/common/logging/logging.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -42,7 +43,7 @@ Model::Model(const std::string& graph_name,
   }
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
-  for (auto schema_collection : local_registries) {
+  for (const auto& schema_collection : local_registries) {
     schema_registry->RegisterRegistry(schema_collection);
   }
 
@@ -53,7 +54,7 @@ Model::Model(const std::string& graph_name,
     p_domain_to_version = &domain_to_version_static;
   }
 
-  for (auto domain : *p_domain_to_version) {
+  for (const auto& domain : *p_domain_to_version) {
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
     opset_id_proto->set_domain(domain.first);
     opset_id_proto->set_version(domain.second);
@@ -97,18 +98,32 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
   if (local_registries != nullptr) {
-    for (auto schema_collection : *local_registries) {
+    for (const auto& schema_collection : *local_registries) {
       schema_registry->RegisterRegistry(schema_collection);
     }
   }
 
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_->opset_import()) {
-    domain_to_version[opSet.domain()] = gsl::narrow_cast<int>(opSet.version());
+    const auto& domain = opSet.domain();
+    const auto version = opSet.version();
+    // empty domain and 'ai.onnx' are equivalent
+    if ((domain.empty() || domain == "ai.onnx") && version < 7) {
+      // TODO: Check if we can upgrade all the current opset 6 models that are being tested
+      // in CI to opset 7 or above
+      LOGS_DEFAULT(WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
+                               "with opset version 7 or above for opset domain 'ai.onnx'. "
+                               "Please upgrade your model to opset 7 or higher. "
+                               "For now, this opset "
+                            <<  version
+                            << " model may run depending upon legacy support "
+                               "of some older opset version operators.";
+    }
+    domain_to_version[domain] = gsl::narrow_cast<int>(version);
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
-  for (auto domain : domain_map) {
+  for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
@@ -391,8 +406,7 @@ Status Model::Save(Model& model, int p_fd) {
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
-  } else {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
   }
+  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 }  // namespace onnxruntime

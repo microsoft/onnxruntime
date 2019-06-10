@@ -13,11 +13,11 @@ namespace graph_utils {
 /** Checks if the operator's type, version, and domain of the given node match the given values. */
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
-                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain = kOnnxDomainAlias);
 
 /** Checks if the node has the same operator since version as the given one. */
-bool MatchesOpSinceVersion(const Node& node, ONNX_NAMESPACE::OperatorSetVersion version);
+bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions);
 
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, const std::string& domain);
@@ -31,6 +31,9 @@ bool IsSupportedProvider(const Node& node,
     another node or an initializer, but not an implicit input from a parent subgraph. The single output can be 
     fed to multiple downstream operators, i.e., it can have multiple output edges. */
 bool IsSingleInSingleOutNode(const Node& node);
+
+/** Checks if the output at the specified index is input to downstream Nodes. */
+bool IsOutputUsed(const Node& node, int index);
 
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
@@ -56,18 +59,22 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   if (attr) {
     values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
-/** Removes the given single-input Node from the Graph. The single input might be either
-    another node or an initializer, but not an implicit input. The node should have a single
-    output but can have multiple output edges. */
-bool RemoveSingleInputNode(Graph& graph, Node& node);
+/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
+    We support the removal of the Node as long as the following conditions hold:
+    - There should be no implicit inputs.
+    - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
+    - If the Node has a single incoming node (and possibly multiple initializers), we can remove the Node and
+      connect its incoming node to its outgoing nodes.
+    - If the Node has a single initializer as input, we remove the Node and feed the initializer as input to its
+      output nodes. */
+bool RemoveNode(Graph& graph, Node& node);
 
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */

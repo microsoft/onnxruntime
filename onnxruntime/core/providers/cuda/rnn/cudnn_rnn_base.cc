@@ -51,13 +51,13 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
   int r_offset = 0;
   int bias_offset = 0;
   for (int layer = 0; layer < num_layers_ * num_directions_; ++layer) {
-    for (int idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
+    for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
       SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, W_lin_layer_id_[idx], W_data, w_offset, true);
       if (B_data != nullptr) {
         SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, W_lin_layer_id_[idx], B_data, bias_offset, false);
       }
     }
-    for (int idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
+    for (size_t idx = 0; idx < R_lin_layer_id_.size(); ++idx) {
       SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, R_lin_layer_id_[idx], R_data, r_offset, true);
       if (B_data != nullptr) {
         SetWeightBias(cudnn_handle, rnn_desc, layer, x_desc, w_desc, filter_desc_, w_data, R_lin_layer_id_[idx], B_data, bias_offset, false);

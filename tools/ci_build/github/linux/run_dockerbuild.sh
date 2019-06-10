@@ -25,7 +25,7 @@ esac
 done
 
 EXIT_CODE=1
-
+PYTHON_VER=${PYTHON_VER:=3.5}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 cd $SCRIPT_DIR/docker
@@ -48,6 +48,7 @@ else
     else
         IMAGE="ubuntu16.04"
         if [ $BUILD_ARCH = "x86" ]; then
+            IMAGE="$IMAGE.x86"
             docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
         else
             docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .

@@ -36,10 +36,6 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
 
   Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
-
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   std::shared_ptr<mkldnn::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {

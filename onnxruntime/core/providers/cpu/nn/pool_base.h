@@ -25,7 +25,7 @@ class PoolProcessContext {
 
  public:
   friend class LpPool;
-  PoolProcessContext() {}
+  PoolProcessContext() = default;
   void init(const OpKernelInfo& info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("p", &p_).IsOK());
   }
@@ -50,11 +50,11 @@ class AveragePool {
   static const PoolType type = PoolType::kAveragePool;
 };
 
-template <int VERSION>
+template <int START_VERSION>
 class MaxPool;
 
 template <>
-class MaxPool<1 /*VERSION*/> {
+class MaxPool<1 /*START_VERSION*/> {
  public:
   static float Initialize() {
     return std::numeric_limits<float>::lowest();
@@ -74,7 +74,7 @@ class MaxPool<1 /*VERSION*/> {
 };
 
 template <>
-class MaxPool<8 /*VERSION*/> {
+class MaxPool<8 /*START_VERSION*/> {
  public:
   static const PoolType type = PoolType::kMaxPool;
 };
@@ -102,6 +102,8 @@ class PoolBase {
   PoolBase(const OpKernelInfo& info) {
     op_name_ = info.GetKernelDef().OpName();
     global_pooling_ = (op_name_ == "GlobalAveragePool" || op_name_ == "GlobalMaxPool" || op_name_ == "GlobalLpPool");
+    int end;
+    info.GetKernelDef().SinceVersion(&start_version_, &end);
 
     if (!global_pooling_) {
       ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
@@ -123,8 +125,12 @@ class PoolBase {
         ceil_mode_ = 0;
       }
 
+      default_dilations_ = false;
       if (!info.GetAttrs<int64_t>("dilations", dilations_).IsOK() || dilations_.empty()) {
         dilations_.resize(kernel_shape_.size(), 1);
+        default_dilations_ = true;
+      } else {
+        default_dilations_ = std::all_of(dilations_.begin(), dilations_.end(), [](int64_t i) { return i == 1; });
       }
 
       if (op_name_ == "AveragePool") {
@@ -134,9 +140,7 @@ class PoolBase {
       }
 
       if (op_name_ == "MaxPool") {
-        int start, end;
-        info.GetKernelDef().SinceVersion(&start, &end);
-        if (start == 8) {
+        if (start_version_ == 8) {
           storage_order_ = info.GetAttrOrDefault<int64_t>("storage_order", 0 /*default_value*/);
         }
       }
@@ -153,7 +157,8 @@ class PoolBase {
     }
   }
 
-  ~PoolBase(){};
+  ~PoolBase() = default;
+  ;
 
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
@@ -242,9 +247,9 @@ class PoolBase {
                                    int64_t ceil_mode) const {
     if (ceil_mode == 0) {
       return static_cast<int64_t>(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1);
-    } else {
-      return static_cast<int64_t>(ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
     }
+    return static_cast<int64_t>(
+        std::ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
   }
 
   Status Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const;
@@ -259,6 +264,9 @@ class PoolBase {
   std::vector<int64_t> pads_;
   std::vector<int64_t> strides_;
   std::vector<int64_t> dilations_;  // Introduced in MaxPool_10
+  int start_version_;
+  // default_dilations_ is true if dilations_ is not set or all dilations_ are 1
+  bool default_dilations_;
 
   AutoPadType auto_pad_;
 

@@ -49,17 +49,15 @@ Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_
 }
 
 void QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, int* right_shift) {
-  uint32_t* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
+  auto* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
   auto current_exponent = (*fp_as_bits >> 23);
   // bring multiplier in [.5,1) range and calculate the shift
   auto bumped_multiplier_as_bits =
       (*fp_as_bits & UINT32_C(0x007fffff)) | UINT32_C(0x3f000000);
-  float* bumped_multiplier =
-      reinterpret_cast<float*>(&bumped_multiplier_as_bits);
+  auto* bumped_multiplier = reinterpret_cast<float*>(&bumped_multiplier_as_bits);
   auto shift = 126 - current_exponent;
   // convert to fixed point number
-  std::int64_t int_multiplier =
-      static_cast<std::int64_t>(std::round(*bumped_multiplier * (1ll << 31)));
+  auto int_multiplier = static_cast<std::int64_t>(std::round(*bumped_multiplier * (1ll << 31)));
 
   *integer_multiplier = static_cast<int32_t>(int_multiplier);
   *right_shift = shift;

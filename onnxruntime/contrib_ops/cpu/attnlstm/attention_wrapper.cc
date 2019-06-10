@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "attention_wrapper.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
 #include <stdexcept>
@@ -34,14 +35,14 @@ AttentionWrapper<T>::AttentionWrapper(AllocatorPtr alloc, const logging::Logger&
 
 // rnn_cell_output is of [batch_size, rnn_cell_hidden_size]
 template <typename T>
-void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_output) {
+void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_output, concurrency::ThreadPool* tp) {
   if (has_attn_layer_) {
     // rnn_cell_output * cell_weights, (part of the attention layer above the attention mechanism).
-    math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                                 batch_size_, attn_layer_depth_, inner_cell_hidden_size_, T{1.0},
-                                 rnn_cell_output.data(), inner_cell_hidden_size_,
-                                 attn_layer_cell_weights_.data(), attn_layer_depth_, T{0.0},
-                                 attn_states_.data(), attn_layer_depth_, &CPUMathUtil::Instance());
+    math::GemmEx<T, concurrency::ThreadPool>(CblasNoTrans, CblasNoTrans,
+                                             batch_size_, attn_layer_depth_, inner_cell_hidden_size_, T{1.0},
+                                             rnn_cell_output.data(), inner_cell_hidden_size_,
+                                             attn_layer_cell_weights_.data(), attn_layer_depth_, T{0.0},
+                                             attn_states_.data(), attn_layer_depth_, tp);
   }
 
   // Get the context which is calculated within attention mechanism.
@@ -54,11 +55,11 @@ void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_outpu
     //concat([p_cell_output, context]) * stack([attn_layer_cell_weights_, attn_layer_attn_weights_]) =
     //     p_cell_output * attn_layer_cell_weights_ + context * attn_layer_attn_weights_
     // The first part is calulated above. Here just add the later.
-    math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                                 batch_size_, attn_layer_depth_, attn_context_depth_, T{1.0},
-                                 attn_context_.data(), attn_context_depth_,
-                                 attn_layer_attn_weights_.data(), attn_layer_depth_, T{1.0},
-                                 attn_states_.data(), attn_layer_depth_, &CPUMathUtil::Instance());
+    math::GemmEx<T, concurrency::ThreadPool>(CblasNoTrans, CblasNoTrans,
+                                             batch_size_, attn_layer_depth_, attn_context_depth_, T{1.0},
+                                             attn_context_.data(), attn_context_depth_,
+                                             attn_layer_attn_weights_.data(), attn_layer_depth_, T{1.0},
+                                             attn_states_.data(), attn_layer_depth_, tp);
   }
 }
 

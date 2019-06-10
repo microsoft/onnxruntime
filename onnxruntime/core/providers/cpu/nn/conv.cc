@@ -10,8 +10,8 @@ namespace onnxruntime {
 template <>
 Status Conv<float>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(1);
   const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
@@ -44,10 +44,15 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  const float* Xdata = X->template Data<float>();
-  float* Ydata = Y->template MutableData<float>();
+  const auto* Xdata = X->template Data<float>();
+  auto* Ydata = Y->template MutableData<float>();
 
   const size_t kernel_rank = kernel_shape.size();
+
+  // Get access to the internal threadpool
+  // Temporarily derive concurrency parameters without access to session state
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
+  auto thread_pool = ctx_internal->GetOperatorThreadPool();
 
   if (kernel_rank == 2 || kernel_rank == 3) {
     MLAS_ACTIVATION Activation;
@@ -66,11 +71,6 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
       ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_);
     }
 
-    // Get access to the internal threadpool
-    // Temporarily derive concurrency parameters without access to session state
-    auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
-    auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
@@ -87,9 +87,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / group_),
                     &Activation,
                     &WorkingBufferSize,
-                    const_cast<concurrency::ThreadPool*>(thread_pool));
+                    thread_pool);
 
-    auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
+    auto working_data = WorkingBufferSize > 0 ? alloc->AllocArray(sizeof(float), WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
 
     MlasConv(&Parameters,
@@ -98,7 +98,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              B != nullptr ? B->template Data<float>() : nullptr,
              static_cast<float*>(working_buffer.get()),
              Ydata,
-             const_cast<concurrency::ThreadPool*>(thread_pool));
+             thread_pool);
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -111,7 +111,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     auto col_data = alloc->Alloc(sizeof(float) * col_buffer_size);
     BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
-    float* col_buffer_data = static_cast<float*>(col_buffer.get());
+    auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
     TensorShape image_shape = X->Shape().Slice(1);
     std::vector<int64_t> col_buffer_shape{kernel_dim};
@@ -120,7 +120,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < group_; ++group_id) {
-        math::Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
+        math::Im2colNd<float, onnxruntime::concurrency::ThreadPool, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
             col_buffer_shape.data(),
@@ -132,8 +132,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             pads.data(),
             static_cast<int>(kernel_shape.size()),
             col_buffer_data,
-            &CPUMathUtil::Instance());
-        math::Gemm<float, CPUMathUtil>(
+            thread_pool);
+        math::Gemm<float, onnxruntime::concurrency::ThreadPool>(
             CblasNoTrans,
             CblasNoTrans,
             M / group_,
@@ -144,7 +144,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             0,
             Ydata + group_id * Y_offset,
-            &CPUMathUtil::Instance());
+            thread_pool);
       }
 
       if (B != nullptr) {

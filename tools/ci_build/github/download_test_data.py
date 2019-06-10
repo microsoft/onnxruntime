@@ -17,13 +17,15 @@ def get_azure_region():
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime Data Downloader.")
     parser.add_argument("--test_data_url", help="Test data URL.")
+    parser.add_argument("--azure_region", help="Azure region")
     return parser.parse_args()
 
 
-def get_server_hostname():
-    #should be northcentralus or centralus
-    azure_location=get_azure_region()
-    print(azure_location)
+def get_server_hostname(azure_location):
+    if azure_location is None:
+      #should be northcentralus or centralus
+      azure_location=get_azure_region()
+    print("This VM is in azure location: %s" % azure_location)
     if azure_location == 'centralus':
         hostname='onnxruntimetestdata'
     elif azure_location == 'northcentralus':
@@ -34,7 +36,7 @@ def get_server_hostname():
     return hostname
 
 args = parse_arguments()
-hostname=get_server_hostname()
+hostname=get_server_hostname(args.azure_region)
 url=args.test_data_url.replace('onnxruntimetestdata', hostname)
 print('data url=%s' % url)
 subprocess.run(['./azcopy','cp', '--log-level','ERROR', url,'.'],check=True)

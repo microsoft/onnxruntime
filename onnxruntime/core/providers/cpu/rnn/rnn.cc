@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/rnn/rnn.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
@@ -27,8 +28,8 @@ template <typename T>
 T Clip(const T& x, T clip) {
   if (clip < 0)
     return x;
-  else
-    return std::max(std::min(x, clip), -clip);
+
+  return std::max(std::min(x, clip), -clip);
 }
 
 template <typename T>
@@ -98,6 +99,9 @@ using EigenMatrixMapRowMajor = Eigen::Map<
 
 template <>
 Status RNN<float>::Compute(OpKernelContext* ctx) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  auto tp = ctx_internal->GetOperatorThreadPool();
+
   using namespace rnn::detail;
 
   // inputs
@@ -106,9 +110,9 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   const Tensor& R = *ctx->Input<Tensor>(2);
 
   // optional inputs
-  const Tensor* B = ctx->Input<Tensor>(3);
-  const Tensor* sequence_lens = ctx->Input<Tensor>(4);
-  const Tensor* initial_h = ctx->Input<Tensor>(5);
+  const auto* B = ctx->Input<Tensor>(3);
+  const auto* sequence_lens = ctx->Input<Tensor>(4);
+  const auto* initial_h = ctx->Input<Tensor>(5);
 
   int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
   int64_t seq_length = X.Shape()[0];
@@ -132,7 +136,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
   // X * W^t, each direction has shape of [seq_length, batch_size, hidden_size]
   auto x_matmul_data = alloc->Alloc(sizeof(float) * seq_length * batch_size * hidden_size_);
   BufferUniquePtr x_matmul_buffer(x_matmul_data, BufferDeleter(alloc));
-  float* x_matmul_w_buffer_data = static_cast<float*>(x_matmul_buffer.get());
+  auto* x_matmul_w_buffer_data = static_cast<float*>(x_matmul_buffer.get());
 
   float* Y_buffer_data;
   void* Y_data;
@@ -160,7 +164,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
     }
 
     // X * W[direction]^t + B
-    math::Gemm<float, CPUMathUtil>(
+    math::Gemm<float, onnxruntime::concurrency::ThreadPool>(
         CblasNoTrans,
         CblasTrans,
         static_cast<int>(seq_length * batch_size),
@@ -171,7 +175,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
         W.template Data<float>() + direction * hidden_size_ * input_size,
         1,
         x_matmul_w_buffer_data,
-        &CPUMathUtil::Instance());
+        tp);
 
     for (int64_t t = 0; t < seq_length; t++) {
       int64_t time_step = isReverse ? (seq_length - t - 1) : t;
@@ -192,7 +196,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
       if (h_prev != nullptr) {
         // H_t_1 * R[direction]^t
-        math::Gemm<float, CPUMathUtil>(
+        math::Gemm<float, onnxruntime::concurrency::ThreadPool>(
             CblasNoTrans,
             CblasTrans,
             static_cast<int>(batch_size),
@@ -203,7 +207,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
             R.template Data<float>() + direction * hidden_size_ * hidden_size_,
             0,
             Y_buffer_data_current_frame,
-            &CPUMathUtil::Instance());
+            tp);
       } else {
         math::Set<float, CPUMathUtil>(batch_size * hidden_size_, 0, Y_buffer_data_current_frame, &CPUMathUtil::Instance());
       }

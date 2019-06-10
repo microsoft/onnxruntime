@@ -36,14 +36,17 @@ ONNX Runtime python binding only supports Python 3.5, 3.6 and 3.7.
    cd onnxruntime
    ```
 2. Install cmake-3.13 or better from https://cmake.org/download/.
-3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned off. After the installation, you should have the 'protoc' executable in your PATH.
-4. (optional) Install onnx from source code (cmake/external/onnx)
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF on Windows and turned ON on Linux. After the installation, you should have the 'protoc' executable in your PATH. On Linux it is recommended to run `ldconfig` to make sure protobuf libraries are found.
+4. If you installed your protobuf in a non standard location it would be helpful on Linux build to set the following env var:
+`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it.
+On Linux also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
+5. (optional) Install onnx from source code (cmake/external/onnx)
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-5. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows)
+6. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows). Upon successful build you should be able to find the wheel under `dist` folder.
 
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
@@ -52,6 +55,10 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 ## Build x86
 1. For Windows, just add --x86 argument when launching build.bat
 2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
+
+## Build ONNX Runtime Server on Linux
+
+1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 
 ## Build/Test Flavors for CI
 
@@ -109,6 +116,9 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 ### MKL-DNN/MKLML
 To build ONNX Runtime with MKL-DNN support, build it with `./build.sh --use_mkldnn`
 To build ONNX Runtime using MKL-DNN built with dependency on MKL small libraries, build it with `./build.sh --use_mkldnn --use_mklml`
+
+### nGraph
+ONNX runtime with nGraph as an execution provider (released as preview) can be built on Linux as follows : `./build.sh --use_ngraph`.  Similarly, on Windows use `.\build.bat --use_ngraph`.
 
 ### TensorRT
 ONNX Runtime supports the TensorRT execution provider (released as preview). You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit), [CUDNN](https://developer.nvidia.com/cudnn) and [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download).
@@ -316,3 +326,17 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ### Using other compilers
 (TODO)
+
+## Android Builds
+
+### Cross compiling on Linux
+
+1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
+
+2. Get a pre-compiled protoc:
+
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
+
+3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it. 
+
+Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.

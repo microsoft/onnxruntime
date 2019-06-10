@@ -14,6 +14,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -187,32 +188,17 @@ struct ActivationInfo {
 template <typename T>
 class UniDirectionalLstm {
  public:
-  UniDirectionalLstm(AllocatorPtr allocator,
-                     const logging::Logger& logger,
-                     const int seq_length,
-                     const int batch_size,
-                     const int input_size,
-                     const int hidden_size,
-                     Direction direction,
-                     const bool input_forget,
-                     const gsl::span<const T>& bias,
-                     const gsl::span<const T>& peephole_weights,
-                     const gsl::span<const T>& initial_hidden_state,
-                     const gsl::span<const T>& initial_cell_state,
-                     const ActivationFuncs::Entry& activation_func_f,
-                     const ActivationFuncs::Entry& activation_func_g,
-                     const ActivationFuncs::Entry& activation_func_h,
-                     const float clip,
+  UniDirectionalLstm(AllocatorPtr allocator, const logging::Logger& logger, int seq_length, int batch_size,
+                     int input_size, int hidden_size, Direction direction, bool input_forget,
+                     const gsl::span<const T>& bias, const gsl::span<const T>& peephole_weights,
+                     const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
+                     const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
+                     const ActivationFuncs::Entry& activation_func_h, float clip,
                      onnxruntime::concurrency::ThreadPool& ttp);
 
-  void Compute(const gsl::span<const T>& inputs,
-               const gsl::span<const int>& sequence_lengths,
-               const int num_directions,
-               const gsl::span<const T>& input_weights,
-               const gsl::span<const T>& recurrent_weights,
-               gsl::span<T>& outputs,
-               gsl::span<T>& final_hidden_state,
-               gsl::span<T>& final_cell_state);
+  void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
+               const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state, gsl::span<T>& final_cell_state);
 
   ~UniDirectionalLstm() = default;
 
@@ -222,16 +208,11 @@ class UniDirectionalLstm {
 
   void SetNumThreads();
 
-  void GateComputations(span_T_iter& out, span_T_iter& out_end,
-                        span_T_iter& C_prev, span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
-                        span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end,
-                        span_T_iter& batched_output, span_T_iter& batched_output_end,
-                        const gsl::span<const int>& seq_lengths,
-                        const int min_sequence_length,
-                        const int step,
-                        const int row,
-                        const int local_fused_hidden_rows,
-                        bool output_sequence);
+  void GateComputations(span_T_iter& out, span_T_iter& out_end, span_T_iter& C_prev,
+                        span_T_iter& C_prev_end,  // Ct-1 value not 'ct'. using 'C' for clarity
+                        span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end, span_T_iter& batched_output,
+                        span_T_iter& batched_output_end, const gsl::span<const int>& seq_lengths,
+                        int min_sequence_length, int step, int row, int local_fused_hidden_rows, bool output_sequence);
 
   void AllocateBuffers();
 
@@ -372,6 +353,11 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
     }
   }
 
+  auto& ctx_internal = static_cast<OpKernelContextInternal&>(context);
+  // the session always has a threadpool so dereferencing is safe
+  // TODO: Fix having to use a const_cast to run tasks using the threadpool
+  auto& thread_pool = const_cast<concurrency::ThreadPool&>(*ctx_internal.GetOperatorThreadPool());
+
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
@@ -476,7 +462,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[0],
                                                          activation_funcs_.Entries()[1],
                                                          activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+                                                         clip_, thread_pool);
 
     bw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
                                                          seq_length, batch_size, input_size,
@@ -485,7 +471,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[3],
                                                          activation_funcs_.Entries()[4],
                                                          activation_funcs_.Entries()[5],
-                                                         clip_, ttp_);
+                                                         clip_, thread_pool);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
@@ -497,7 +483,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[0],
                                                          activation_funcs_.Entries()[1],
                                                          activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+                                                         clip_, thread_pool);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }
@@ -797,7 +783,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),  // W[iofc]
               input_size_, beta,
               output_iofc_.begin(), output_iofc_.end(),
-              hidden_size_x4);
+              hidden_size_x4, &ttp_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -846,12 +832,13 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                     recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                     hidden_size_, beta,
                     step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                    hidden_size_x4);
+                    hidden_size_x4, &ttp_);
 
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str,
                    &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
 
-        span_T_iter batched_output, batched_output_end;
+        span_T_iter batched_output;
+        span_T_iter batched_output_end;
         if (output_sequence) {
           batched_output = outputs.begin() + step * output_step_length;
           batched_output_end = outputs.end();
@@ -923,9 +910,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                   hidden_size_, beta,
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4);
+                  hidden_size_x4, &ttp_);
 
-      span_T_iter batched_output, batched_output_end;
+      span_T_iter batched_output;
+      span_T_iter batched_output_end;
       if (output_sequence) {
         batched_output = outputs.begin() + step * output_step_length;
         batched_output_end = outputs.end();
@@ -975,7 +963,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto final_hidden_state_dst = final_hidden_state.begin() + i * hidden_size_;
       std::fill_n(final_hidden_state_dst, hidden_size_, T{});
       continue;
-    } else if (output_sequence) {  // copy last output to final_hidden_state
+    }
+    if (output_sequence) {  // copy last output to final_hidden_state
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
@@ -1104,6 +1093,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
     // DumpMatrix("H" + row_str, pH, 1, hidden_size_);
   }
 
+#ifdef DUMP_MATRIXES
   auto num_rows = local_fused_hidden_rows - row;
   std::string rows_str = " rows[" + std::to_string(row) + ".." + std::to_string(num_rows) + "]";
 
@@ -1113,6 +1103,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
   DumpMatrix("c" + rows_str, &*out, num_rows, hidden_size_, 3 * hidden_size_, hidden_size_x4);
   DumpMatrix("C" + rows_str, &*C_prev, num_rows, hidden_size_);  // Ct overwrites the input C_prev value
   DumpMatrix("H" + rows_str, &*batched_output, num_rows, hidden_size_);
+#endif
 }
 
 template <typename T>
