@@ -590,19 +590,19 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         cmd_base = ['-e', 'mkldnn', '-c', '1', '-j', '1']
         cmd = cmd_base
         if os.path.exists(onnx_test_data_dir):
-          cmd.append(onnx_test_data_dir)
+          cmd + [onnx_test_data_dir]
         # /data/onnx
         run_subprocess([exe] + cmd, cwd=cwd)
         run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
         # models/opset7, models/opset8, models/opset9
         if config != 'Debug' and os.path.exists(model_dir):
-          opset7_model_dir = os.path.join(model_dir, "opset7")
-          opset7_cmd = cmd_base.append(opset7_model_dir)
-          opset8_model_dir = os.path.join(model_dir, "opset8")
-          opset8_cmd = cmd_base.append(opset8_model_dir)
-          opset9_model_dir = os.path.join(model_dir, "opset9")
-          opset9_cmd = cmd_base.append(opset9_model_dir)
+          opset7_model_dir = os.path.join(model_dir, 'opset7')
+          opset7_cmd = cmd_base + [opset7_model_dir]
+          opset8_model_dir = os.path.join(model_dir, 'opset8')
+          opset8_cmd = cmd_base + [opset8_model_dir]
+          opset9_model_dir = os.path.join(model_dir, 'opset9')
+          opset9_cmd = cmd_base + [opset9_model_dir]
           run_subprocess([exe] + opset7_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
           run_subprocess([exe] + opset8_cmd, cwd=cwd)
