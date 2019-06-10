@@ -1,19 +1,19 @@
 jobs: 
 - template: win-ci-pipeline.yml
   parameters:
-    GenNuGetPackage : 'true'
+    DoNugetPack : 'true'
 - template: win-x86-ci-pipeline.yml
   parameters:
-    GenNuGetPackage : 'true'
+    DoNugetPack : 'true'
 - template: linux-ci-pipeline.yml
   parameters:
-    GenNuGetPackage : 'true'
+    DoNugetPack : 'true'
 - template: linux-x86-ci-pipeline.yml
   parameters:
-    GenNuGetPackage : 'true'
+    DoNugetPack : 'true'
 - template: mac-ci-pipeline.yml
   parameters:
-    GenNuGetPackage : 'true'
+    DoNugetPack : 'true'
 - template: nuget-packaging.yml
 - template: nuget_test_win.yml
 - template: nuget_test_linux.yml
