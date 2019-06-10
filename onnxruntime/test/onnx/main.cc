@@ -299,13 +299,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
-#if defined(__GNUG__) && !defined(__LP64__)
-      {"constantofshape_float_ones", "test data bug"},
-      {"constantofshape_int_zeros", "test data bug"},
-#else
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-#endif
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
       {"gemm_broadcast", "disable reason"},
@@ -313,9 +308,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"operator_non_float_params", "disable reason"},
-      {"operator_params", "disable reason"},
-      {"operator_pow", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
