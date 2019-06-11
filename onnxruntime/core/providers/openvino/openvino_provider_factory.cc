@@ -5,8 +5,6 @@
 #include "openvino_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 
-using namespace onnxruntime;
-
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device) : device_(device) {

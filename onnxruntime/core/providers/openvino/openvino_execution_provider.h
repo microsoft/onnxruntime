@@ -1,6 +1,8 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
+#pragma once
+
 #include "core/common/common.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/execution_provider.h"
@@ -11,7 +13,6 @@
 namespace onnxruntime {
 
 constexpr const char* OPENVINO = "OpenVINO";
-using namespace InferenceEngine;
 
 // Information needed to construct OpenVINO execution providers.
 struct OpenVINOExecutionProviderInfo {

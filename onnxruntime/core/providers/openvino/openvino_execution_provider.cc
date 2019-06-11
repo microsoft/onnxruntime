@@ -26,7 +26,7 @@ constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
-  (void)info;
+  ORT_UNUSED_PARAMETER(info);
 
   DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(OPENVINO, OrtDeviceAllocator, 0, OrtMemTypeDefault)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
@@ -63,7 +63,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 }
 
 //Checks whether the node is supported by OpenVINO
-bool isOpSupported(std::string name){
+bool IsOpSupported(std::string name){
 
     std::set<std::string> supported_ops = {
         "Add",
@@ -91,18 +91,13 @@ bool isOpSupported(std::string name){
         "GlobalMaxPool"};
 
     auto iter = supported_ops.find(name);
-    if(iter == supported_ops.end()){
-        return false;
-    }
-    else{
-        return true;
-    }
+    return iter != supported_ops.end();
 }
 
 
 //Checks if the entire graph is supported by OpenVINO EP and returns false if it is not.
 
-bool isGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id){
+bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id){
 
   auto initializers = graph_viewer.GetAllInitializedTensors();
 
@@ -144,30 +139,30 @@ bool isGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       return false;
   }
 
-  bool OpSum = false, OpGemm = false;
-
+  bool op_sum = false;
+  bool op_gemm = false;
 
   for (auto index : node_indexes) {
     auto node = graph_viewer.GetNode(index);
 
 
     //Check if the Operation is Supported by OpenVINO
-    if (!isOpSupported(node->OpType())) {
+    if (!IsOpSupported(node->OpType())) {
       return false;
     }
 
     if (node->OpType() == "Sum") {
-      OpSum = true;
+      op_sum = true;
     }
 
     if (node->OpType() == "Gemm") {
-      OpGemm = true;
+      op_gemm = true;
     }
 
     //BatchNorm, Conv and Reshape cant take more than 1 input
     if (node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape") {
       int count = 0;
-      for (auto input : node->InputDefs()) {
+      for (const auto& input : node->InputDefs()) {
         auto name = input->Name();
         auto it = initializers.find(name);
         if (it == initializers.end()) {
@@ -225,16 +220,16 @@ bool isGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         }
       }
 
-      bool isGraphInput = false;
+      bool is_graph_input = false;
 
       auto graph_inputs = graph_viewer.GetInputs();
-      for (auto input : node->InputDefs()) {
+      for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
-          isGraphInput = true;
+          is_graph_input = true;
         }
       }
-      if (isGraphInput) {
+      if (is_graph_input) {
         size_t input_dims_size = input_arrays[0].size();
 
         //Only support 2D Matmul operations
@@ -403,7 +398,7 @@ bool isGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     }
   }
   //Disable Resnet DUC for MYRIAD and HDDL
-  if (OpSum == true && OpGemm == false) {
+  if (op_sum == true && op_gemm == false) {
     if (dev_id == "MYRIAD" || dev_id == "HDDL") {
       return false;
     }
@@ -446,7 +441,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
   std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
-  if (isGraphSupported(graph_viewer,device_id)) {
+  if (IsGraphSupported(graph_viewer,device_id)) {
     std::string model_proto_strbuf;
     model_proto.SerializeToString(&model_proto_strbuf);
 

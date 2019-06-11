@@ -22,7 +22,7 @@
 namespace onnxruntime{
 namespace openvino_ep {
 
-OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device_info*/) {
+OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node, std::string /*device_info*/) {
   // TODO: stop passing the unused device_info
 
   device_id_ = "CPU";
@@ -103,7 +103,7 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
   infer_requests_ = GetExecutableHandle(openvino_network_, device_id_, precision_);
 }
 
-std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
+std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() const {
   std::string plugin_path = std::getenv("LD_LIBRARY_PATH");
   std::vector<std::string> paths;
   std::string token;
@@ -116,7 +116,7 @@ std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() {
   return paths;
 }
 
-void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(std::string& onnx_model,
+void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
     std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32) {
 
   Py_Initialize();

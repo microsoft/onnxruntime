@@ -1,6 +1,8 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
+#pragma once
+
 #include <map>
 #include <memory>
 
@@ -13,22 +15,17 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/graph.h"
 
-#ifndef OPENVINO_EP__OPENVINO_GRAPH_H
-#define OPENVINO_EP__OPENVINO_GRAPH_H
-
 namespace onnxruntime {
 namespace openvino_ep {
 
 class OpenVINOGraph {
  public:
-  InferenceEngine::Precision precision_;
-  const onnxruntime::Graph* onnx_graph_;
 
-  OpenVINOGraph(onnxruntime::Node* fused_node, std::string device_info);
+  OpenVINOGraph(const onnxruntime::Node* fused_node, std::string device_info);
 
   void Infer(Ort::CustomOpApi ort, OrtKernelContext* context);
 
-  static void ConvertONNXModelToOpenVINOIR(std::string& onnx_model, std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32);
+  static void ConvertONNXModelToOpenVINOIR(const std::string& onnx_model, std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32);
 
  private:
   std::shared_ptr<InferenceEngine::CNNNetwork> BuildOpenVINONetworkWithMO();
@@ -48,17 +45,17 @@ class OpenVINOGraph {
 
   void CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[], size_t batch_slice_idx, size_t infer_req_idx);
 
-  std::vector<std::string> GetEnvLdLibraryPath();
+  std::vector<std::string> GetEnvLdLibraryPath() const;
 
-  onnxruntime::Node* fused_node_;
+  const onnxruntime::Node* fused_node_;
   std::shared_ptr<InferenceEngine::CNNNetwork> openvino_network_;
   size_t num_inf_reqs_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
   mutable std::mutex compute_lock_;
   std::vector<int> input_indexes_;
+  InferenceEngine::Precision precision_;
+  const onnxruntime::Graph* onnx_graph_;
 };
 }  // namespace openvino_ep
 }  // namespace onnxruntime
-
-#endif
