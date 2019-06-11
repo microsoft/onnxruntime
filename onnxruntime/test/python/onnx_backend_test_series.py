@@ -36,7 +36,7 @@ class OrtBackendTest(onnx.backend.test.BackendTest):
 
 # ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
 def tests_with_pre_opset7_dependencies_filters():
-    filters = ('^test_AvgPool1d_cpu.*',
+    filters = ['^test_AvgPool1d_cpu.*',
                '^test_AvgPool1d_stride_cpu.*',
                '^test_AvgPool2d_cpu.*',
                '^test_AvgPool2d_stride_cpu.*',
@@ -69,14 +69,14 @@ def tests_with_pre_opset7_dependencies_filters():
                '^test_operator_mm_cpu.*',
                '^test_operator_non_float_params_cpu.*',
                '^test_operator_params_cpu.*',
-               '^test_operator_pow_cpu.*')
+               '^test_operator_pow_cpu.*']
 
     return filters
 
 
 def unsupported_usages_filters():
-    filters = ('^test_convtranspose_1d_cpu.*',  # ConvTransponse supports 4-D only
-               '^test_convtranspose_3d_cpu.*')
+    filters = ['^test_convtranspose_1d_cpu.*',  # ConvTransponse supports 4-D only
+               '^test_convtranspose_3d_cpu.*']
 
     return filters
 
@@ -84,7 +84,7 @@ def other_tests_failing_permanently_filters():
     # Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
     # e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8, which
     # doesn't match the expected output that was generated with numpy.
-    filters = ('^test_cast_FLOAT_to_STRING_cpu.*')
+    filters = ['^test_cast_FLOAT_to_STRING_cpu.*']
 
     return filters
 
@@ -98,10 +98,10 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = ('^test_dequantizelinear_cpu.*',
+        current_failing_tests = ['^test_dequantizelinear_cpu.*',
                                  '^test_qlinearconv_cpu.*',
                                  '^test_quantizelinear_cpu.*',
-                                 '^test_gru_seq_length_cpu.*')
+                                 '^test_gru_seq_length_cpu.*']
 
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
@@ -113,7 +113,7 @@ def create_backend_test(testname=None):
                   other_tests_failing_permanently_filters()
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
-        print ('excluded tests:', filters)
+        print('excluded tests:', filters)
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
