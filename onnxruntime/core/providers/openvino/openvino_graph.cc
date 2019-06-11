@@ -86,11 +86,12 @@ OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device
 
   auto inputs = fused_node_->GetFunctionBody()->Body().GetInputs();
   for (auto input : inputs) {
-    if (inputdef_index_map.find(input->Name()) == inputdef_index_map.end()) {
+    auto it = inputdef_index_map.find(input->Name());
+    if (it == inputdef_index_map.end()) {
       throw "Input not found in the input defs list";
     }
 
-    int index = inputdef_index_map[input->Name()];
+    int index = it->second;
     input_indexes_.push_back(index);
   }
 
