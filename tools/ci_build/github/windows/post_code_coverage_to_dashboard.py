@@ -61,6 +61,9 @@ def write_to_db(coverage_data, args):
                                     )
 
         cursor.execute(insert_query) 
+        cnx.commit()
+
+        cursor.close()
         cnx.close()
     except BaseException as e:
         cnx.close()

@@ -1,4 +1,4 @@
-# sets variables $(TestDataUrl) and $(TestDataChecksum)
+# Runs steps to generate and publish code coverage data
 
 parameters:
   OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
