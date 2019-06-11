@@ -10,8 +10,8 @@ namespace cuda {
 template <typename T>
 __global__ void _ShrinkKernel(
     const T* input_data,
-    const T bias,
-    const T lambda,
+    const float bias,
+    const float lambda,
     T* output_data,
     const CUDA_LONG N) {
 
@@ -19,11 +19,11 @@ __global__ void _ShrinkKernel(
 
   T x = input_data[id];
   if (x < -lambda) {
-    output_data[id] = x - bias;    
+    output_data[id] = (T)(x - bias);    
   } else if (x > lambda) {
-    output_data[id] = x + bias;
+    output_data[id] = (T)(x + bias);
   } else {
-    output_data[id] = (T)0;
+    output_data[id] = x - x;
   }
 
 }
@@ -41,7 +41,7 @@ void ShrinkImpl(
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void ShrinkImpl<T>(const T* input_data, const T bias, const T lambda, T* output_data, size_t N);
+  template void ShrinkImpl<T>(const T* input_data, const float bias, const float lambda, T* output_data, size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

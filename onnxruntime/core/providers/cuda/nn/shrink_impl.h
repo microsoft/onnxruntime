@@ -9,8 +9,8 @@ namespace cuda {
 template <typename T>
 void ShrinkImpl(
     const T* input_data,
-    const T bias,
-    const T lambda,
+    const float bias,
+    const float lambda,
     T* output_data,
     size_t count);
 
