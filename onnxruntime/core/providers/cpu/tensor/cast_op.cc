@@ -86,7 +86,7 @@ inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& s
       }
     } else {
       std::ostringstream convert;
-      if (std::is_floating_point_v<SrcType>) {
+      if (std::is_floating_point<SrcType>::value) {
         // match numpy default behavior
         convert << std::setprecision(8);
       }
