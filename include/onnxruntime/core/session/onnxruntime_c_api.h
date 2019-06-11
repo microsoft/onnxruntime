@@ -580,8 +580,7 @@ struct OrtCustomOp {
   // Returns the name of the op
   const char*(ORT_API_CALL* GetName)(_In_ struct OrtCustomOp* op);
 
-  // Returns the type of the execution provider
-  // If the function pointer is null, use CPU execution provider by default
+  // Returns the type of the execution provider, return nullptr to use CPU execution provider
   const char*(ORT_API_CALL* GetExecutionProviderType)(_In_ struct OrtCustomOp* op);
 
   // Returns the count and types of the input & output tensors
