@@ -1,11 +1,11 @@
 parameters:
-  agentPool : 'Linux-CPU'
+  AgentPool : 'Linux-CPU'
   DoNugetPack: 'false'
   BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
 
 jobs:
 - job: Linux_CI_Dev
-  pool: ${{ parameters.agentPool }}
+  pool: ${{ parameters.AgentPool }}
   steps:
     - template: templates/linux-set-variables-and-download.yml
 

@@ -1,5 +1,5 @@
 parameters:
-  agentPool : 'Win-CPU'
+  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
   DoCompliance: 'false'
   DoNugetPack: 'false'
@@ -8,7 +8,7 @@ parameters:
 
 jobs:
 - job: Windows_CI_Dev
-  pool: ${{ parameters.agentPool }}
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'

@@ -1,0 +1,6 @@
+jobs: 
+- template: cpu_win_linux_mac_x86.yml
+  parameters:
+    AgentPoolWin : 'AI-Win-CPU'
+    AgentPoolLinux : 'AI-Linux-CPU'
+

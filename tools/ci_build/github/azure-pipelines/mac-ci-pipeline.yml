@@ -1,11 +1,11 @@
 parameters:
-  agentPool : 'macOS-10.13'
+  AgentPool : 'macOS-10.13'
   DoNugetPack: 'false'
 
 jobs:
 - job: MacOS_CI_Dev
   pool:
-    vmImage: 'macOS-10.13'
+    vmImage: ${{ parameters.AgentPool }}
   steps:
     - template: templates/mac-set-variables-and-download.yml
     - script: |
