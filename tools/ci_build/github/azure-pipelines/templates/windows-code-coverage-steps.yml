@@ -25,3 +25,4 @@ steps:
     filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
     arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_code_coverage_to_dashboard.py --commit_hash={{parameters.GitCommitHash}} --report_file="$(Build.BinariesDirectory)/Debug/Debug/cobertura.xml" --report_url="https://dev.azure.com/onnxruntime/not-a-valid-url-yet"'
     workingFolder: "$(Build.BinariesDirectory)"
+  continueOnError: true
