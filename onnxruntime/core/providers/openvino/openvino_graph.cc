@@ -397,7 +397,7 @@ void OpenVINOGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* con
     size_t num_dims = graph_output_dims.size();
     int64_t output_shape[num_dims];
     for (size_t j = 0; j < num_dims; j++) {
-      output_shape[j] = (int64_t)graph_output_dims[j];
+      output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
     }
 
     output_tensors[i] = ort.KernelContext_GetOutput(context, i, output_shape, num_dims);
