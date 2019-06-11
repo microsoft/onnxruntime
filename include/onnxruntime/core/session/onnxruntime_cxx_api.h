@@ -256,7 +256,7 @@ struct CustomOpApi {
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
-  int64_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+  size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
   size_t GetDimensionCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
@@ -279,30 +279,31 @@ struct CustomOpApi {
 };
 
 namespace CustomOpImpl {
-  // SFINAE definition to determine whether class T as GetExecutionProviderType interface
-  template <typename T, typename... Args>
-  class HasProvider {
-    template <typename U = T,
-              typename = decltype( std::declval<U>().GetExecutionProviderType(std::declval<Args>()...) )>
-    static std::true_type test(int);
-    template <typename U = T>
-    static std::false_type test(...);
-  public:
-    static constexpr bool value = decltype(test(0))::value;
-  };
+// SFINAE definition to determine whether class T as GetExecutionProviderType interface
+template <typename T, typename... Args>
+class HasProvider {
+  template <typename U = T,
+            typename = decltype(std::declval<U>().GetExecutionProviderType(std::declval<Args>()...))>
+  static std::true_type test(int);
+  template <typename U = T>
+  static std::false_type test(...);
 
-  // SFINAE definitions to get the execution provider of op.
-  // If type T has GetExecutionProviderType, use the result of op->GetExecutionProviderType().
-  // Otherwise, use kCpuExecutionProvider by default.
-  template <typename T>
-  std::enable_if_t<HasProvider<T>::value, const char*> GetProvider(T* op) {
-    return op->GetExecutionProviderType();
-  }
-  template <typename T>
-  std::enable_if_t<!HasProvider<T>::value, const char*> GetProvider(T*) {
-    return "CPUExecutionProvider";
-  }
-} // namespace CustomOpImpl
+ public:
+  static constexpr bool value = decltype(test(0))::value;
+};
+
+// SFINAE definitions to get the execution provider of op.
+// If type T has GetExecutionProviderType, use the result of op->GetExecutionProviderType().
+// Otherwise, use kCpuExecutionProvider by default.
+template <typename T>
+std::enable_if_t<HasProvider<T>::value, const char*> GetProvider(T* op) {
+  return op->GetExecutionProviderType();
+}
+template <typename T>
+std::enable_if_t<!HasProvider<T>::value, const char*> GetProvider(T*) {
+  return "CPUExecutionProvider";
+}
+}  // namespace CustomOpImpl
 
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
