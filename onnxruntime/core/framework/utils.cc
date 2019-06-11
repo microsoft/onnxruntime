@@ -599,13 +599,12 @@ static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
     return;
   }
 
-  // pretty print with eigen
+  // print with eigen
   if (shape.NumDimensions() > 1) {
     auto dim0 = shape[0];
-    ConstEigenArrayMap<T> map(tensor.Data<T>(), dim0, shape.Size() / dim0);
-    std::cout << map;
+    std::cout << ConstEigenArrayMap<T>(tensor.Data<T>(), dim0, shape.Size() / dim0);
   } else {
-    std::cout << EigenMap<T>(tensor);  // ConstEigenVectorMap<T>(tensor.Data<T>, dim0)
+    std::cout << EigenMap<T>(tensor);
   }
 
   std::cout << std::endl;
@@ -674,7 +673,6 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
           const auto& shape = tensor.Shape();
 
           std::cout << " Shape: " << shape << "\n";
-          std::cout << "Data: ";
 
           // check tensor is on CPU before dumping it
           auto& tensor_location = tensor.Location();
