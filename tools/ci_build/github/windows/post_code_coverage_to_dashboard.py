@@ -25,7 +25,7 @@ def parse_xml_report(report_file):
     result = {}
     
     result['coverage'] = float(root.get('line-rate'))
-    result['linse_covered'] = int(root.get('lines-covered'))
+    result['lines_covered'] = int(root.get('lines-covered'))
     result['lines_valid'] = int(root.get('lines-valid'))
     return result
 
@@ -37,37 +37,42 @@ def write_to_db(coverage_data, args):
         host='onnxruntimedashboard.mysql.database.azure.com', 
         database='onnxruntime')
 
-    cursor = cnx.cursor()
+    try:
+        cursor = cnx.cursor()
 
-    #delete old records
-    delete_query = ('DELETE FROM onnxruntime.test_coverage '
-        'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 30 DAY);'
-    )
-    
-    cursor.execute(delete_query)
+        #delete old records
+        delete_query = ('DELETE FROM onnxruntime.test_coverage '
+            'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 30 DAY);'
+        )
+        
+        cursor.execute(delete_query)
 
-    #insert current record
-    insert_query = ('INSERT INTO onnxruntime.test_coverage '
-        '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
-        'VALUES (Now(), %s, %f, %d, %d, %s);'
-    )
-    
-    cursor.execute(insert_query, 
-                   args.commit_hash, 
-                   coverage_data['coverage'], 
-                   coverage_data['lines_covered']
-                   coverage_data['lines_valid']
-                   args.report_url
-    )
+        #insert current record
+        insert_query = ('INSERT INTO onnxruntime.test_coverage '
+            '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
+            'VALUES (Now(), "%s", %f, %d, %d, "%s");'
+        )
+        
+        insert_query = insert_query % (args.commit_hash, 
+                                    coverage_data['coverage'], 
+                                    coverage_data['lines_covered'],  
+                                    coverage_data['lines_valid'],
+                                    args.report_url
+                                    )
 
-    cnx.close()
+        cursor.execute(insert_query) 
+        cnx.close()
+    except BaseException as e:
+        cnx.close()
+        raise e
+
 
 if __name__ == "__main__":
     try:
         args = parse_arguments()
         coverage_data = parse_xml_report(args.report_file)
         write_to_db(coverage_data, args)
-    except e:
+    except BaseException as e:
         print(str(e))
         sys.exit(1)
 
