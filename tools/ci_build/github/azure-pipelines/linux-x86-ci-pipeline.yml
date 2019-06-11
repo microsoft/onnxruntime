@@ -12,21 +12,21 @@ jobs:
       displayName: 'Command Line Script'
 
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-    - script: |
-       set -e -x
-       mkdir $(Build.BinariesDirectory)/linux-x86
-       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
-       cd $(Build.BinariesDirectory)
-       zip -r linux-x86.zip linux-x86
-       cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
-       ls -al $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts'
+      - script: |
+         set -e -x
+         mkdir $(Build.BinariesDirectory)/linux-x86
+         cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x86
+         cd $(Build.BinariesDirectory)
+         zip -r linux-x86.zip linux-x86
+         cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
+         ls -al $(Build.ArtifactStagingDirectory)
+        displayName: 'Create Artifacts'
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        artifactName: 'drop-linux-x86'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: 'drop-linux-x86'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
