@@ -102,9 +102,9 @@ int main(int argc, char* argv[]) {
 
         context.response.result(context.error_code);
         context.response.insert("Content-Type", "application/json");
-        context.response.insert("x-ms-request-id", context.request_id);
+        context.response.insert(server::util::MS_REQUEST_ID_HEADER, context.request_id);
         if (!context.client_request_id.empty()) {
-          context.response.insert("x-ms-client-request-id", (context).client_request_id);
+          context.response.insert(server::util::MS_CLIENT_REQUEST_ID_HEADER, (context).client_request_id);
         }
         context.response.body() = server::CreateJsonError(context.error_code, context.error_message);
       });

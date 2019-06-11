@@ -13,8 +13,8 @@ namespace util {
 std::string InternalRequestId() {
   return boost::uuids::to_string(boost::uuids::random_generator()());
 }
-const std::string REQUEST_HEADER = "x-ms-request-id";
-const std::string CLIENT_REQUEST_HEADER = "x-ms-client-request-id";
+const std::string MS_REQUEST_ID_HEADER = "x-ms-request-id";
+const std::string MS_CLIENT_REQUEST_ID_HEADER = "x-ms-client-request-id";
 }  // namespace util
 }  // namespace server
 }  // namespace onnxruntime

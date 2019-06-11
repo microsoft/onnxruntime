@@ -2,14 +2,13 @@
 # Licensed under the MIT License.
 
 set(SERVER_APP_NAME "onnxruntime_server")
-
 set(gRPC_BUILD_TESTS OFF)
 set(gRPC_GFLAGS_PROVIDER "")
 set(gRPC_BENCHMARK_PROVIDER "")
 set(gRPC_ZLIB_PROVIDER "package")
 set(gRPC_PROTOBUF_PROVIDER "")
 
-if(HAS_UNUSED_PARAMETER)
+if(HAS_UNUSED_PARAMETER) # disable warning for unused parameters because some external libraries (BoringSSL specifically) have unused parameters.
   string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
   string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
 endif()
@@ -26,12 +25,9 @@ set(_gRPC_PROTOBUF_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
 
 set(_gRPC_PROTOBUF_INCLUDE_DIR ${PROTOBUF_INCLUDE_DIRS})
 
-
-MESSAGE(STATUS ${_gRPC_PROTOBUF_WELLKNOWN_INCLUDE_DIR})
-
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/grpc EXCLUDE_FROM_ALL)
 
-if(HAS_UNUSED_PARAMETER)
+if(HAS_UNUSED_PARAMETER) # reenable warning for unused parameters for our code.
   string(APPEND CMAKE_CXX_FLAGS " -Wunused-parameter")
   string(APPEND CMAKE_C_FLAGS " -Wunused-parameter")
 endif()
@@ -61,11 +57,9 @@ endif()
 include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 
-# Genrate GPRC stuff
+# Generate GRPC service source and headers.
 get_filename_component(grpc_proto "${ONNXRUNTIME_ROOT}/server/protobuf/prediction_service.proto" ABSOLUTE)
 get_filename_component(grpc_proto_path "${grpc_proto}" PATH)
-
-# Generated sources
 
 set(grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.cc")
 set(grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.h")
@@ -82,19 +76,19 @@ add_custom_command(
       COMMENT "Running ${_GRPC_CPP_PLUGIN_EXECUTABLE} on ${grpc_proto}"
     )
 
-add_library(server_grpc ${grpc_srcs})
-target_include_directories(server_grpc PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/onnx PRIVATE)
+add_library(server_grpc_proto ${grpc_srcs})
+target_include_directories(server_grpc_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/onnx PRIVATE)
 set(grpc_reflection -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
 set(grpc_static_libs grpc++ grpcpp_channelz)
-target_link_libraries(server_grpc ${grpc_static_libs})
-add_dependencies(server_grpc server_proto)
+target_link_libraries(server_grpc_proto ${grpc_static_libs})
+add_dependencies(server_grpc_proto server_proto)
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
-  set_source_files_properties(${grpc_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  set_source_files_properties(${onnxruntime_server_grpc_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${grpc_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${onnxruntime_server_grpc_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
 
@@ -155,7 +149,7 @@ target_include_directories(onnxruntime_server_lib PRIVATE
 
 target_link_libraries(onnxruntime_server_lib PRIVATE
   server_proto
-  server_grpc
+  server_grpc_proto
   ${Boost_LIBRARIES}
   onnxruntime_server_http_core_lib
   onnxruntime_session
