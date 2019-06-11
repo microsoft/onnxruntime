@@ -35,10 +35,11 @@ jobs:
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc --test'
         workingFolder: '$(Build.BinariesDirectory)'
     
+    - template: templates/set-version-number-variables.yml
     - template: templates/windows-code-coverage-steps.yml
       parameters:
         OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
-    
+        GitCommitHash: $(OnnxRuntimeGitCommitHash)    
     - task: VSBuild@1
       displayName: 'Build C# Debug'
       inputs:

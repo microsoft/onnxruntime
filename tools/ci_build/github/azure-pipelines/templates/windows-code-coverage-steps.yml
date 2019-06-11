@@ -2,7 +2,7 @@
 
 parameters:
   OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
-
+  GitCommitHash: $(OnnxRuntimeGitCommitHash)
 steps:
 
 - task: PowerShell@2
@@ -18,3 +18,10 @@ steps:
     summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
     reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
   continueOnError: true
+
+- task: BatchScript@1
+  displayName: 'Post code coverage data to the Dashboard'
+  inputs:
+    filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+    arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_code_coverage_to_dashboard.py --commit_hash={{parameters.GitCommitHash}} --report_file="$(Build.BinariesDirectory)/Debug/Debug/cobertura.xml" --report_url="https://dev.azure.com/onnxruntime/not-a-valid-url-yet"'
+    workingFolder: "$(Build.BinariesDirectory)"
