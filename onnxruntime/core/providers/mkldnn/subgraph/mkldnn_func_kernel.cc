@@ -21,7 +21,7 @@ namespace mkl_dnn {
 
 namespace {
 template <typename T>
-class SubgraphPrimitive : public PrimitiveBase {
+class SubgraphPrimitive : public MklDnnPrimitiveBase {
  public:
   SubgraphPrimitive(const OrtCustomOpApi* api,
                     OrtKernelContext* context,
@@ -50,8 +50,12 @@ class SubgraphPrimitive : public PrimitiveBase {
       if (!status.IsOK())
         break;
     }
-    if (status.IsOK())
+    if (status.IsOK()) {
       context_.stream->submit(context_.net);
+
+      for (auto& kernel : context_.kernels)
+        kernel->ReleaseMemory();
+    }
     return status;
   }
 
@@ -195,7 +199,7 @@ class SubgraphPrimitive : public PrimitiveBase {
 // Pool which allows for reuse of MKLDNN Conv primitives which are expensive to instantiate.
 // To address thread safety, the primitives are stored in a map on thread local storage.
 template <typename T>
-class SubgraphPrimitivePool : public PrimitivePool<T> {
+class SubgraphPrimitivePool {
  public:
   static SubgraphPrimitive<T>* Get(const OrtCustomOpApi* api,
                                    OrtKernelContext* context,
@@ -216,12 +220,12 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
     }
 
     SubgraphPrimitive<T>* primitive = dynamic_cast<SubgraphPrimitive<T>*>(
-        SubgraphPrimitivePool<T>::GetInstance().GetPrimitive(params.subgraph_key + dims_str));
+        params.provider->GetPrimitive(params.subgraph_key + dims_str));
 
     if (primitive == nullptr) {
       auto subgraph_primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params);
       primitive = subgraph_primitive.get();
-      SubgraphPrimitivePool<T>::GetInstance().SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
+      params.provider->SetPrimitive(params.subgraph_key + dims_str, std::move(subgraph_primitive));
     }
     return primitive;
   }
@@ -242,7 +246,7 @@ Status MkldnnFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext*
   Status status;
   try {
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
-    primitive->UpdateProvider(params_);
+    // primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
   } catch (const mkldnn::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,

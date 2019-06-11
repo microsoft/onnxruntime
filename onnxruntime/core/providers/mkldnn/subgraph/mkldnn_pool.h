@@ -239,6 +239,12 @@ class MklDnnPool : public MklDnnKernel {
     return Status::OK();
   }
 
+  virtual void ReleaseMemory() override {
+    if (src_reorder_buffer_ != nullptr) {
+      src_reorder_buffer_.reset(nullptr);
+      src_reorder_buffer_ = nullptr;
+    }
+  }
  private:
   void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
@@ -408,8 +414,7 @@ class MklDnnPool : public MklDnnKernel {
   }
 
  private:
-  IAllocatorUniquePtr<void> src_reorder_buffer_;
-  IAllocatorUniquePtr<void> dst_reorder_buffer_;
+  IAllocatorUniquePtr<void> src_reorder_buffer_;  // keep the buffer in scope from Bind and Submit calls
 
  private:
   std::string op_name_;

@@ -454,6 +454,13 @@ class MklDnnConv : public MklDnnKernel {
     return Status::OK();
   }
 
+  virtual void ReleaseMemory() override {
+    if (src_reorder_buffer_ != nullptr) {
+      src_reorder_buffer_.reset(nullptr);
+      src_reorder_buffer_ = nullptr;
+    }
+  }
+
  private:
   void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
@@ -538,8 +545,7 @@ class MklDnnConv : public MklDnnKernel {
   std::unique_ptr<mkldnn::primitive> conv_fwd_;
 
  private:
-  IAllocatorUniquePtr<void> src_reorder_buffer_;
-  IAllocatorUniquePtr<void> dst_reorder_buffer_;
+  IAllocatorUniquePtr<void> src_reorder_buffer_; // keep the buffer in scope from Bind and Submit calls
 
  private:
   Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {

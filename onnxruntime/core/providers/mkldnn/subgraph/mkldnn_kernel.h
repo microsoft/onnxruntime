@@ -45,6 +45,8 @@ class MklDnnKernel {
 
   virtual Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) = 0;
 
+  virtual void ReleaseMemory() {}
+
  protected:
   virtual void ReadAttributes(const NodeAttributes& attributes,
                               const std::string attributes_prefix = "") {

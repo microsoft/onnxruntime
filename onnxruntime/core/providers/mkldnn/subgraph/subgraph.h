@@ -12,6 +12,11 @@
 namespace onnxruntime {
 namespace mkl_dnn {
 
+class MklDnnPrimitiveBase {
+ public:
+  virtual ~MklDnnPrimitiveBase() = default;
+};
+
 struct MklDnnNode {
   std::string name;
   int node_index = -1;

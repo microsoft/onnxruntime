@@ -156,6 +156,26 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
                                        "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
 
   mutable std::unordered_map<std::string, std::shared_ptr<mkl_dnn::Subgraph>> mkl_subgraphs_;
+
+//PrimitivePools Map
+ public:
+  void SetPrimitive(const std::string& key, std::unique_ptr<mkl_dnn::MklDnnPrimitiveBase> primitive) {
+    GetPoolMap().insert(std::make_pair(key, std::move(primitive)));
+  }
+
+  mkl_dnn::MklDnnPrimitiveBase* GetPrimitive(const std::string& key) {
+    auto iter = GetPoolMap().find(key);
+    if (iter != GetPoolMap().end())
+      return iter->second.get();
+    return nullptr;
+  }
+
+ private:
+  // For thread safety, the map needs to be kept in thread local storage.
+  static inline std::unordered_map<std::string, std::unique_ptr<mkl_dnn::MklDnnPrimitiveBase>>& GetPoolMap() {
+    static thread_local std::unordered_map<std::string, std::unique_ptr<mkl_dnn::MklDnnPrimitiveBase>> map;
+    return map;
+  }
 };
 
 }  // namespace onnxruntime
