@@ -32,27 +32,23 @@ Status Shrink<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const {
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  ShrinkImpl<T>(x_data, *(reinterpret_cast<const ToCudaType<float>::MappedType*>(&bias_)), 
-               *(reinterpret_cast<ToCudaType<float>::MappedType*>(&lambd_)), y_data, x_size);
+  ShrinkImpl<CudaT>(reinterpret_cast<const CudaT*>(x_data), static_cast<CudaT>(bias_), 
+               static_cast<CudaT>(lambd_), y_data, x_size);
 
   return Status::OK();
 }
 
-#define SPECIALIZED_COMPUTE(T) \
-  SHRINK_REGISTER_KERNEL(T)    \
-  template Status Shrink<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const;
-
-SPECIALIZED_COMPUTE(float)
-SPECIALIZED_COMPUTE(double)
-//SPECIALIZED_COMPUTE(MLFloat16)
-SPECIALIZED_COMPUTE(uint8_t)
-SPECIALIZED_COMPUTE(int8_t)
-SPECIALIZED_COMPUTE(uint16_t)
-SPECIALIZED_COMPUTE(int16_t)
-SPECIALIZED_COMPUTE(uint32_t)
-SPECIALIZED_COMPUTE(int32_t)
-SPECIALIZED_COMPUTE(uint64_t)
-SPECIALIZED_COMPUTE(int64_t)
+SHRINK_REGISTER_KERNEL(float)
+SHRINK_REGISTER_KERNEL(double)
+SHRINK_REGISTER_KERNEL(MLFloat16)
+SHRINK_REGISTER_KERNEL(uint8_t)
+SHRINK_REGISTER_KERNEL(int8_t)
+SHRINK_REGISTER_KERNEL(uint16_t)
+SHRINK_REGISTER_KERNEL(int16_t)
+SHRINK_REGISTER_KERNEL(uint32_t)
+SHRINK_REGISTER_KERNEL(int32_t)
+SHRINK_REGISTER_KERNEL(uint64_t)
+SHRINK_REGISTER_KERNEL(int64_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime
