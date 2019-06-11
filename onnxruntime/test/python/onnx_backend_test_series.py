@@ -14,24 +14,6 @@ import onnxruntime.backend as c2
 
 pytest_plugins = 'onnx.backend.test.report',
 
-def GetVersionTag():
-    version2tag = {}
-    file_path = '/data/onnx/version2tag'
-    if os.path.isfile(file_path):
-       with open(file_path, 'r') as f:
-           for line in f.readlines():
-               fields = line.strip().split(':')
-               version2tag[fields[0]] = fields[1]
-    print ("version2tag map", version2tag)
-    if onnx.version.git_version in version2tag:
-        return version2tag[onnx.version.git_version]
-    else: return "unknown"
-        
-version_tag = GetVersionTag()
-print ("onnx version:", onnx.__version__)
-print ("git version:", onnx.version.git_version)
-print ("VERSION TAG:", version_tag)
-
 class OrtBackendTest(onnx.backend.test.BackendTest):
 
     def __init__(self, backend, parent_module=None):
@@ -114,11 +96,6 @@ def create_backend_test(testname=None):
                                  '^test_qlinearconv_cpu.*',
                                  '^test_quantizelinear_cpu.*',
                                  '^test_gru_seq_length_cpu.*')
-        global version_tag
-        if version_tag == 'onnx141' or onnx.__version__ == '1.4.1':
-            current_failing_tests = current_failing_tests + ('^test_shrink_cpu.*', '^test_constantofshape_*.*',)
-        if version_tag == 'onnx150' or onnx.__version__ == '1.5.0':
-            current_failing_tests = current_failing_tests + ('^test_constantofshape_*.*',)
 
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):
