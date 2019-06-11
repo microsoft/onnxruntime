@@ -304,7 +304,7 @@ TEST(TensorOpTest, CastToString) {
                                                     std::numeric_limits<float>::infinity()};
 
   // float output precision is 8, so the expected output differs slightly from the input due to that
-  std::initializer_list<std::string> string_output = {"NaN", "-1", "0.039187793", "0.296140194",
+  std::initializer_list<std::string> string_output = {"NaN", "-1", "0.039187793", "0.29614019",
                                                       "-0.12019656", "5", "-INF", "INF"};
   TestCastOp(float_input, string_output, shape, TensorProto::STRING);
 
