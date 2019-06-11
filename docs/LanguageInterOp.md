@@ -51,12 +51,12 @@ Finally, inference model.onnx with onnxruntime, Multi_1 and Multi_2 will each be
 
 ## Supported Data Types
 TensorProto.BOOL,
-TensorProto.UINT8
-TensorProto.UINT16
-TensorProto.UINT32
-TensorProto.INT16
-TensorProto.INT32
-TensorProto.FLOAT
+TensorProto.UINT8,
+TensorProto.UINT16,
+TensorProto.UINT32,
+TensorProto.INT16,
+TensorProto.INT32,
+TensorProto.FLOAT,
 TensorProto.DOUBLE
 
 ## Limitations
