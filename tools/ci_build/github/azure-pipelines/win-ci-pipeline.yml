@@ -42,6 +42,7 @@ jobs:
           msbuildArchitecture: 'x64'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
+          createLogFile: true
 
       - task: BatchScript@1
         displayName: 'Test Debug'
