@@ -40,6 +40,9 @@ extern "C" {
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
+namespace concurrency {
+class ThreadPool;
+}
 
 enum StorageOrder {
   UNKNOWN = 0,
@@ -187,10 +190,7 @@ void Gemm(
     const T* B,
     float beta,
     T* C,
-    Provider* provider,
-    //Caffe2 use this type to control on GPU, what presicion do we want to do the calculation
-    //But not sure is this a good design for us. Keep it here for now.
-    MLDataType math_type = FLOAT_TYPE);
+    Provider*);
 
 // We also provide a gemm that has explicit lda, ldb and ldc specified.
 // In most cases you probably want to use the function above, though.
@@ -209,7 +209,7 @@ void GemmEx(
     T beta,
     T* C,
     int ldc,
-    Provider* provider);
+    Provider*);
 
 // GemmBatched provides a simple abstraction into library routines
 template <typename T, class Provider>
@@ -228,9 +228,7 @@ void GemmBatched(
     const T* B,
     float beta,
     T* C,
-    Provider* provider,
-    Tensor* scratch = nullptr,
-    MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
+    Provider* tp);
 
 // Gemv always takes in a M*N matrix A, and depending on whether we set TransA
 // to Trans, the output is:

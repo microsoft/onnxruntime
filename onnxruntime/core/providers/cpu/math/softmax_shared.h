@@ -6,6 +6,9 @@
 #include "core/common/status.h"
 
 namespace onnxruntime {
+namespace concurrency {
+class ThreadPool;
+}
 /**
 Calculate Softmax using CPU memory.
 @param N Number of rows
@@ -18,5 +21,5 @@ Calculate Softmax using CPU memory.
 @param rowmax Storage for calculation of maximum in each row. Size must be >= N.
 */
 common::Status SoftmaxCPU(int64_t N, int64_t D, const float* Xdata, float* Ydata, float* scale,
-                          const float* sum_multiplier, bool logarithmic, float* rowmax);
+                          const float* sum_multiplier, bool logarithmic, float* rowmax, concurrency::ThreadPool* tp);
 }  // namespace onnxruntime
