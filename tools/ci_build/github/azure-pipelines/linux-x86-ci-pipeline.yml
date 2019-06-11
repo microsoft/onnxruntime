@@ -1,6 +1,6 @@
 parameters:
   agentPool : 'Linux-CPU'
-  DoNugetPack: 'true'
+  DoNugetPack: 'false'
 
 jobs:
 - job: Linux_CI_Dev_x86

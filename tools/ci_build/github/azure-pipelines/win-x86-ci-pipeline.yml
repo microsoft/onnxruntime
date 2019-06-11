@@ -1,7 +1,7 @@
 parameters:
   agentPool : 'Win-CPU'
   DoDebugBuild: 'false'
-  DoNugetPack: 'true'
+  DoNugetPack: 'false'
 
 jobs:
 - job: Windows_CI_Dev_x86

@@ -1,0 +1,26 @@
+jobs: 
+- template: ../win-ci-pipeline.yml
+  parameters:
+    DoNugetPack : 'true'
+- template: ../win-x86-ci-pipeline.yml
+  parameters:
+    DoNugetPack : 'true'
+- template: ../linux-ci-pipeline.yml
+  parameters:
+    DoNugetPack : 'true'
+- template: ../linux-x86-ci-pipeline.yml
+  parameters:
+    DoNugetPack : 'true'
+- template: ../mac-ci-pipeline.yml
+  parameters:
+    DoNugetPack : 'true'
+- template: templates/gen_package.yml
+- template: packagetests/win.yml
+- template: packagetests/linux.yml
+- template: packagetests/macos.yml
+
+
+
+
+
+
