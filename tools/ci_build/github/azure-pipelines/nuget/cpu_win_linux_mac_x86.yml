@@ -1,4 +1,4 @@
-parameters:
+variables:
   AgentPoolWin : 'Win-CPU'
   AgentPoolLinux : 'Linux-CPU'
   AgentPoolMacOS : 'macOS-10.13'
