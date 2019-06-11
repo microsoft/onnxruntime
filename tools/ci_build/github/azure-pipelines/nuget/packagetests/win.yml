@@ -25,6 +25,12 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
+  - task: CmdLine@2
+    displayName: 'Display variables'
+    inputs:
+      script: |
+       set
+
   - script: |
      @echo "Running build.py --update"
      $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(buildDirectory) --config Debug --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe  --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --update --download_test_data  --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
