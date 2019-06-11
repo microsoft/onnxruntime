@@ -31,7 +31,7 @@ jobs:
         workingDirectory: "$(Build.BinariesDirectory)"
 
     # Build Debug Mode
-    - ${{ if eq($(DoDebugBuild), 'true') }}:
+    - ${{ if eq(variables['DoDebugBuild'], 'true') }}:
       - task: VSBuild@1
         displayName: 'Build Debug'
         inputs:
@@ -70,7 +70,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     # Compliance tasks require logs from Debug Build
-    - ${{ if eq($(DoCompliance), 'true') }}:
+    - ${{ if eq(variables['DoCompliance'], 'true') }}:
       - template: compliance.yml
 
     # Build RelWithDebInfo -- this variable required to build C#
@@ -122,7 +122,7 @@ jobs:
       condition: succeededOrFailed()
 
     # Nuget packaging if needed
-    - ${{ if eq($(DoNugetPack), 'true') }}:
+    - ${{ if eq(variables['DoNugetPack'], 'true') }}:
       - script: |
          msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=$(buildConfig) /t:CreatePackage
          copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
