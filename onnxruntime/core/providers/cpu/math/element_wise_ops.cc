@@ -38,6 +38,10 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sub<float>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(Sub, 7, double,
+                               KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+                               Sub<double>);
+
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sub,
     7,
@@ -86,6 +90,10 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Div<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(Div, 7, double,
+                               KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+                               Div<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Div,

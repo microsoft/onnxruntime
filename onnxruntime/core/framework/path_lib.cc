@@ -6,7 +6,15 @@
 #include "core/common/common.h"
 #include <assert.h>
 #ifdef _WIN32
+
+// Desktop apps need to support back to Windows 7, so we can't use PathCch.lib as it was added in Windows 8
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include <shlwapi.h>
+#pragma comment(lib, "Shlwapi.lib")
+#else
+#include <PathCch.h>
+#pragma comment(lib, "PathCch.lib")
+#endif
 #else
 #include <libgen.h>
 #endif
@@ -16,6 +24,7 @@ namespace onnxruntime {
 namespace {
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
     ;
   PWSTR pszLast = PathSkipRootW(pszPath);
@@ -40,8 +49,27 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
     for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
       ;
   return Status::OK();
+#else
+  // Remove any trailing backslashes
+  auto result = PathCchRemoveBackslash(pszPath, cchPath);
+  if (result == S_OK || result == S_FALSE) {
+    // Remove any trailing filename
+    result = PathCchRemoveFileSpec(pszPath, cchPath);
+    if (result == S_OK || result == S_FALSE) {
+      // If we wind up with an empty string, turn it into '.'
+      if (*pszPath == L'\0') {
+        pszPath[0] = L'.';
+        pszPath[1] = L'\0';
+      }
+      return Status::OK();
+    }
+  }
+  return Status(common::ONNXRUNTIME, common::FAIL, "unexpected failure");
+#endif
 }
+
 }  // namespace
+
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& ret) {
   std::wstring input = s;
   if (input.empty()) {

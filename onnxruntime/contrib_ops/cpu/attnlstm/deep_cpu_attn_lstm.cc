@@ -71,6 +71,8 @@ static gsl::span<const T> SecondHalfSpan(const gsl::span<const T>& dspan) {
 
 template <typename T>
 Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  auto tp = ctx_internal->GetOperatorThreadPool();
   auto& logger = context.Logger();
 
   // original lstm processing
@@ -202,7 +204,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
   }
 
   auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  auto ttp = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
+  auto tp = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
 
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
@@ -233,7 +235,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                  last_cell_size_per_direction);
 
     auto fam = std::make_unique<BahdanauAttention<T>>(
-        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
+        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false, tp);
     fam->SetWeights(
         FirstHalfSpan(am_v_weights.DataAsSpan<T>()),
         FirstHalfSpan(am_query_layer_weights.DataAsSpan<T>()),
@@ -252,10 +254,10 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, *ttp);
+        clip_, *tp);
 
     auto bam = std::make_unique<BahdanauAttention<T>>(
-        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
+        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false, tp);
     bam->SetWeights(
         SecondHalfSpan(am_v_weights.DataAsSpan<T>()),
         SecondHalfSpan(am_query_layer_weights.DataAsSpan<T>()),
@@ -274,14 +276,14 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[3],
         activation_funcs_.Entries()[4],
         activation_funcs_.Entries()[5],
-        clip_, *ttp);
+        clip_, *tp);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
 
   } else {
     auto fam = std::make_unique<BahdanauAttention<T>>(
-        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
+        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false, tp);
     fam->SetWeights(
         am_v_weights.DataAsSpan<T>(),
         am_query_layer_weights.DataAsSpan<T>(),
@@ -300,7 +302,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, *ttp);
+        clip_, *tp);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }

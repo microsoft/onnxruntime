@@ -201,6 +201,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                                         gsl::span<T>& outputs,
                                         gsl::span<T>& final_hidden_state,
                                         gsl::span<T>& final_cell_state) {
+  onnxruntime::concurrency::ThreadPool* tp = &ttp_;
   // copy spans (just T* and size, not data in span) as we may change them
   gsl::span<const T> inputs = inputs_arg;
   gsl::span<const int> sequence_lengths = sequence_lengths_arg;
@@ -255,7 +256,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),  // W[iofc]^T
               input_size_ + attention_size_, T{0.0},
               output_iofc_.begin(), output_iofc_.end(),
-              hidden_size_x4);
+              hidden_size_x4, tp);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -297,7 +298,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   input_weights.cbegin() + input_size_, input_weights.cend(),  // WA[iofc]
                   input_size_ + attention_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4);
+                  hidden_size_x4, tp);
 
       // calculate Xt*(W[iofc]^T) + Ht-1*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, T{1.0},
@@ -306,7 +307,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                   hidden_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4);
+                  hidden_size_x4, tp);
 
       span_T_iter batched_output, batched_output_end;
       if (output_sequence) {
@@ -346,7 +347,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       previous_state = batched_output;
       previous_state_end = batched_output_end;
 
-      attention_wrapper_.ProcessOutput(outputs.subspan(step * output_step_length, batch_size_ * hidden_size_));
+      attention_wrapper_.ProcessOutput(outputs.subspan(step * output_step_length, batch_size_ * hidden_size_), tp);
     }
   }
 

@@ -29,7 +29,7 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
@@ -227,6 +227,12 @@ template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   model_location_ = ToWideString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_location_, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
+    for(const auto& domain: interop_domains_) {
+        AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
@@ -251,6 +257,12 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
+    for(const auto& domain: interop_domains_) {
+        AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
@@ -259,6 +271,12 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(*p_model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
+    for(const auto& domain: interop_domains_) {
+        AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
@@ -276,7 +294,12 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
-
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
+    for(const auto& domain: interop_domains_) {
+        AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
@@ -292,6 +315,12 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
+    for(const auto& domain: interop_domains_) {
+        AddCustomOpDomains({domain.get()});
+    }
+#endif
 
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
@@ -606,7 +635,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
     FeedsFetchesInfo info(feed_names, output_names);
-    ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetMLValueNameIdxMap()));
+    ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetOrtValueNameIdxMap()));
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
     if (!run_options.run_tag.empty()) {
