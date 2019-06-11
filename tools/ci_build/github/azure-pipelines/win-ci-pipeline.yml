@@ -40,6 +40,9 @@ jobs:
       parameters:
         OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
         GitCommitHash: $(OnnxRuntimeGitCommitHash)    
+        PublishReport: true
+        PostToDashboard: false
+        
     - task: VSBuild@1
       displayName: 'Build C# Debug'
       inputs:
