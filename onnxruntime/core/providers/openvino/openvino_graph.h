@@ -16,6 +16,7 @@
 #ifndef OPENVINO_EP__OPENVINO_GRAPH_H
 #define OPENVINO_EP__OPENVINO_GRAPH_H
 
+namespace onnxruntime {
 namespace openvino_ep {
 
 class OpenVINOGraph {
@@ -58,5 +59,6 @@ class OpenVINOGraph {
   std::vector<int> input_indexes_;
 };
 }  // namespace openvino_ep
+}  // namespace onnxruntime
 
 #endif

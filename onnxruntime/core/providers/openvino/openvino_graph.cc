@@ -19,6 +19,7 @@
 
 #include "openvino_graph.h"
 
+namespace onnxruntime{
 namespace openvino_ep {
 
 OpenVINOGraph::OpenVINOGraph(onnxruntime::Node* fused_node, std::string /*device_info*/) {
@@ -463,3 +464,4 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
 }
 
 }  // namespace openvino_ep
+} // namespace onnxruntime
