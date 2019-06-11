@@ -3,6 +3,8 @@
 
 #include "core/framework/utils.h"
 
+#include <iomanip>
+
 #include "core/graph/graph_viewer.h"
 
 #include "core/framework/execution_frame.h"
@@ -14,8 +16,6 @@
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
-
-#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -578,48 +578,41 @@ std::ostream& operator<<(std::ostream& out, const MLFloat16& value) {
 }
 
 template <typename T>
-static void DumpTensorWithCustomType(const Tensor& tensor) {
-  // simple print for custom types
-  auto span = tensor.DataAsSpan<T>();
-  auto cur = span.begin(), end = span.end();
-  if (cur != end) {
-    std::cout << (*cur++);
-    for (; cur != end; ++cur) {
-      std::cout << ", " << *cur;
-    }
-  }
-
-  std::cout << std::endl;
-}
-
-template <typename T>
 static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
-  if (shape.Size() <= 0) {
+  auto num_items = shape.Size();
+
+  if (num_items == 0) {
     std::cout << "no data";
     return;
   }
 
-  // print with eigen
-  if (shape.NumDimensions() > 1) {
-    auto dim0 = shape[0];
-    std::cout << ConstEigenArrayMap<T>(tensor.Data<T>(), dim0, shape.Size() / dim0);
-  } else {
-    std::cout << EigenMap<T>(tensor);
+  size_t num_dims = shape.NumDimensions();
+  size_t num_rows = 1;
+  if (num_dims > 1) {
+    num_rows = static_cast<size_t>(shape[0]);
+  }
+
+  size_t row_size = num_items / num_rows;
+
+  auto data = tensor.DataAsSpan<T>();
+
+  auto print_val = [](const T& value) {
+    if (std::is_floating_point_v<T>)
+      std::cout << std::setprecision(8) << value;
+    else
+      std::cout << value;
+  };
+
+  for (int row = 0; row < num_rows; ++row) {
+    print_val(data[row * row_size]);
+    for (int i = 1; i < row_size; ++i) {
+      std::cout << ", ";
+      print_val(data[row * row_size + i]);
+    }
+    std::cout << "\n";
   }
 
   std::cout << std::endl;
-}
-
-template <>
-void DumpTensor<MLFloat16>(const Tensor& tensor, const TensorShape& shape) {
-  ORT_UNUSED_PARAMETER(shape);
-  DumpTensorWithCustomType<MLFloat16>(tensor);
-}
-
-template <>
-void DumpTensor<BFloat16>(const Tensor& tensor, const TensorShape& shape) {
-  ORT_UNUSED_PARAMETER(shape);
-  DumpTensorWithCustomType<BFloat16>(tensor);
 }
 
 void DumpNodeInputs(const OpKernelContext& context, const Node& node) {

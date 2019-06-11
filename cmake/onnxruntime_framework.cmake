@@ -19,8 +19,6 @@ add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
-  # we use Eigen for formatting the output but only need header files for that
-  target_include_directories(onnxruntime_framework PRIVATE ${eigen_INCLUDE_DIRS})
 endif()
 
 
