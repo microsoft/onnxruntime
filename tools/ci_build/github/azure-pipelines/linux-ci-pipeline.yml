@@ -1,6 +1,7 @@
 parameters:
   agentPool : 'Linux-CPU'
   DoNugetPack: 'false'
+  BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
 
 jobs:
 - job: Linux_CI_Dev
@@ -8,15 +9,10 @@ jobs:
   steps:
     - template: templates/linux-set-variables-and-download.yml
 
-    - ${{ if eq(parameters['DoNugetPack'], 'false') }}:
-      - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
-        displayName: 'Command Line Script'
+    - script: ${{ parameters.BuildCommand }}
+      displayName: 'Command Line Script'
 
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-      - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
-        displayName: 'Command Line Script'
-
-
       - script: |
          set -e -x
          mkdir $(Build.BinariesDirectory)/linux-x64

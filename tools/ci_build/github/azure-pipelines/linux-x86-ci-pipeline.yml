@@ -1,6 +1,7 @@
 parameters:
   agentPool : 'Linux-CPU'
   DoNugetPack: 'false'
+  Buildcommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
 
 jobs:
 - job: Linux_CI_Dev_x86
@@ -8,7 +9,7 @@ jobs:
   steps:
     - template: templates/linux-set-variables-and-download.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
+    - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
 
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:

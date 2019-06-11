@@ -2,18 +2,28 @@ jobs:
 - template: ../win-ci-pipeline.yml
   parameters:
     DoNugetPack : 'true'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc'
+
 - template: ../win-x86-ci-pipeline.yml
   parameters:
     DoNugetPack : 'true'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
+
+
 - template: ../linux-ci-pipeline.yml
   parameters:
     DoNugetPack : 'true'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
+
 - template: ../linux-x86-ci-pipeline.yml
   parameters:
     DoNugetPack : 'true'
+    BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
+
 - template: ../mac-ci-pipeline.yml
   parameters:
     DoNugetPack : 'true'
+
 - template: templates/gen_package.yml
 - template: packagetests/win.yml
 - template: packagetests/linux.yml
