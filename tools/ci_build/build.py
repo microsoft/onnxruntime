@@ -579,6 +579,39 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 
+# mkldnn temporary function for running onnx tests and model tests separately.
+def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+    for config in configs:
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+           exe = os.path.join(cwd, config, 'onnx_test_runner')
+           model_dir = os.path.join(cwd, "models")
+        else:
+           exe = os.path.join(cwd, 'onnx_test_runner')
+           model_dir = os.path.join(build_dir, "models")
+        cmd_base = ['-e', 'mkldnn', '-c', '1', '-j', '1']
+        if os.path.exists(onnx_test_data_dir):
+          onnxdata_cmd = cmd_base + [onnx_test_data_dir]
+          # /data/onnx
+          run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
+          run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
+
+        # models/opset7, models/opset8, models/opset9
+        if config != 'Debug' and os.path.exists(model_dir):
+          opset7_model_dir = os.path.join(model_dir, 'opset7')
+          opset7_cmd = cmd_base + [opset7_model_dir]
+          opset8_model_dir = os.path.join(model_dir, 'opset8')
+          opset8_cmd = cmd_base + [opset8_model_dir]
+          opset9_model_dir = os.path.join(model_dir, 'opset9')
+          opset9_cmd = cmd_base + [opset9_model_dir]
+          run_subprocess([exe] + opset7_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
+          run_subprocess([exe] + opset8_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
+          run_subprocess([exe] + opset9_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+
+
 def split_server_binary_and_symbol(build_dir, configs):
     if is_windows():
         # TODO: Windows support
@@ -839,7 +872,7 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
 
               if args.use_mkldnn:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
+                mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)

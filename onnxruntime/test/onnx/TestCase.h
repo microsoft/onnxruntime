@@ -57,6 +57,7 @@ class TestModelInfo {
   virtual ~TestModelInfo() = default;
 
   static TestModelInfo* LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
+  static const std::string unknown_version;
 };
 
 ITestCase* CreateOnnxTestCase(const std::string& test_case_name, TestModelInfo* model,

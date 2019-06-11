@@ -275,17 +275,17 @@ ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t inde
 /**
  * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
  */
-ORT_API(OrtRunOptions*, OrtCreateRunOptions);
+ORT_API_STATUS(OrtCreateRunOptions, _Out_ OrtRunOptions** out);
 
 ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions*, unsigned int);
 ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
 
-ORT_API(unsigned int, OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*);
-ORT_API(const char*, OrtRunOptionsGetRunTag, _In_ OrtRunOptions*);
+ORT_API_STATUS(OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*, _Out_ unsigned int* out);
+ORT_API_STATUS(OrtRunOptionsGetRunTag, _In_ OrtRunOptions*, _Out_ const char** out);
 
 // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
 // will exit as soon as possible if the flag is true.
-ORT_API(void, OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
+ORT_API_STATUS(OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
 
 /**
  * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
@@ -310,9 +310,9 @@ ORT_API_STATUS(OrtCreateTensorWithDataAsOrtValue, _In_ const OrtAllocatorInfo* i
 ORT_API_STATUS(OrtGetTensorMutableData, _Inout_ OrtValue* value, _Out_ void** out);
 
 /**
- * \Return 1 iff an OrtValue is a tensor, 0 otherwise
+ * \Sets *out to 1 iff an OrtValue is a tensor, 0 otherwise
  */
-ORT_API(int, OrtIsTensor, _In_ const OrtValue* value);
+ORT_API_STATUS(OrtIsTensor, _In_ const OrtValue* value, _Out_ int* out);
 
 /**
  * \param value A tensor created from OrtCreateTensor... function.
@@ -364,19 +364,19 @@ ORT_API_STATUS(OrtGetTensorMemSizeInBytesFromTensorProto, _In_ const void* input
                _Out_ size_t* out);
 
 /**
- * Don't free the returned value
+ * Don't free the 'out' value
  */
-ORT_API(const OrtTensorTypeAndShapeInfo*, OrtCastTypeInfoToTensorInfo, _In_ OrtTypeInfo*);
+ORT_API_STATUS(OrtCastTypeInfoToTensorInfo, _In_ OrtTypeInfo*, _Out_ const OrtTensorTypeAndShapeInfo** out);
 
 /**
  * Return OnnxType from OrtTypeInfo
  */
-ORT_API(enum ONNXType, OrtOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*);
+ORT_API_STATUS(OrtOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
 
 /**
- * The retured value should be released by calling OrtReleaseTensorTypeAndShapeInfo
+ * The 'out' value should be released by calling OrtReleaseTensorTypeAndShapeInfo
  */
-ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo);
+ORT_API_STATUS(OrtCreateTensorTypeAndShapeInfo, OrtTensorTypeAndShapeInfo** out);
 
 ORT_API_STATUS(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo*, enum ONNXTensorElementDataType type);
 
@@ -387,9 +387,9 @@ ORT_API_STATUS(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo*, enum ON
  */
 ORT_API_STATUS(OrtSetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
-ORT_API(enum ONNXTensorElementDataType, OrtGetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*);
-ORT_API(size_t, OrtGetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info);
-ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
+ORT_API_STATUS(OrtGetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo*, _Out_ enum ONNXTensorElementDataType* out);
+ORT_API_STATUS(OrtGetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
+ORT_API_STATUS(OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
 
 /**
  * Return the number of elements specified by the tensor shape.
@@ -400,7 +400,7 @@ ORT_API(void, OrtGetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out
  * [2,0,4] -> 0
  * [-1,3,4] -> -1
  */
-ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info);
+ORT_API_STATUS(OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
 /**
  * \param out Should be freed by OrtReleaseTensorTypeAndShapeInfo after use
@@ -414,7 +414,7 @@ ORT_API_STATUS(OrtGetTensorTypeAndShape, _In_ const OrtValue* value, _Out_ OrtTe
  */
 ORT_API_STATUS(OrtGetTypeInfo, _In_ const OrtValue* value, OrtTypeInfo** out);
 
-ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value);
+ORT_API_STATUS(OrtGetValueType, _In_ const OrtValue* value, _Out_ enum ONNXType* out);
 
 typedef enum OrtAllocatorType {
   OrtDeviceAllocator = 0,
@@ -442,22 +442,22 @@ ORT_ALL_ARGS_NONNULL;
 
 /**
  * Test if two allocation info are equal
- * \return 0, equal. zero, not equal
+ * \Sets 'out' to 0 if equal, -1 if not equal
  */
-ORT_API(int, OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2)
+ORT_API_STATUS(OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2, _Out_ int* out)
 ORT_ALL_ARGS_NONNULL;
 
 /**
  * Do not free the returned value
  */
-ORT_API(const char*, OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr);
-ORT_API(int, OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr);
-ORT_API(OrtMemType, OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr);
-ORT_API(OrtAllocatorType, OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr);
+ORT_API_STATUS(OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr, _Out_ const char** out);
+ORT_API_STATUS(OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr, _Out_ int* out);
+ORT_API_STATUS(OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtMemType* out);
+ORT_API_STATUS(OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out);
 
-ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size);
-ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
-ORT_API(const OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr);
+ORT_API_STATUS(OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Out_ void** out);
+ORT_API_STATUS(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
+ORT_API_STATUS(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const OrtAllocatorInfo** out);
 
 ORT_API_STATUS(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out);
 ORT_API(void, OrtReleaseAllocator, _In_ OrtAllocator* allocator);
@@ -550,20 +550,20 @@ struct OrtCustomOpApi {
 
   OrtStatus*(ORT_API_CALL* GetTensorTypeAndShape)(_In_ const OrtValue* value, _Out_ OrtTensorTypeAndShapeInfo** out);
 
-  int64_t(ORT_API_CALL* GetTensorShapeElementCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
-  enum ONNXTensorElementDataType(ORT_API_CALL* GetTensorElementType)(_In_ const OrtTensorTypeAndShapeInfo*);
+  OrtStatus*(ORT_API_CALL* GetTensorShapeElementCount)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
+  OrtStatus*(ORT_API_CALL* GetTensorElementType)(_In_ const OrtTensorTypeAndShapeInfo*, _Out_ enum ONNXTensorElementDataType* out);
 
-  size_t(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info);
-  void(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
+  OrtStatus*(ORT_API_CALL* GetDimensionCount)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
+  OrtStatus*(ORT_API_CALL* GetDimensions)(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
   OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
   OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Out_ void** data);
 
   void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(OrtTensorTypeAndShapeInfo* input);
 
-  size_t(ORT_API_CALL* KernelContext_GetInputCount)(const OrtKernelContext* context);
-  const OrtValue*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index);
-  size_t(ORT_API_CALL* KernelContext_GetOutputCount)(const OrtKernelContext* context);
-  OrtValue*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+  OrtStatus*(ORT_API_CALL* KernelContext_GetInputCount)(const OrtKernelContext* context, _Out_ size_t* out);
+  OrtStatus*(ORT_API_CALL* KernelContext_GetInput)(const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out);
+  OrtStatus*(ORT_API_CALL* KernelContext_GetOutputCount)(const OrtKernelContext* context, _Out_ size_t* out);
+  OrtStatus*(ORT_API_CALL* KernelContext_GetOutput)(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out);
 };
 typedef struct OrtCustomOpApi OrtCustomOpApi;
 
@@ -599,7 +599,7 @@ typedef struct OrtCustomOp OrtCustomOp;
 /*
 * Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
 */
-ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain);
+ORT_API_STATUS(OrtCreateCustomOpDomain, _In_ const char* domain, _Out_ OrtCustomOpDomain** out);
 
 /*
  * Add custom ops to the OrtCustomOpDomain

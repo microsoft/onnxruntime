@@ -971,6 +971,20 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     }
   }
 
+  // zero any values beyond the evaluated steps
+  if (output_sequence && max_sequence_length < seq_length_) {
+    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+      const auto span_to_zero = outputs.subspan(
+          max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
+      std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+    } else {
+      for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
+        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+      }
+    }
+  }
+
   if (output_sequence && direction_ == Direction::kReverse)
     ReverseSequence<T>(outputs, original_outputs, sequence_lengths, seq_length_,
                        batch_size_, hidden_size_, num_directions);
