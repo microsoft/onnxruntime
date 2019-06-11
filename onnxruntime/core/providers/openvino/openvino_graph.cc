@@ -188,10 +188,10 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetwork
                                           InferenceEngine::Layout::C, {weights_string.size()}));
   weightsPtr->allocate();
 
-  std::memcpy(weightsPtr->buffer(), (void*)weights_string.c_str(), weights_string.size());
+  std::memcpy(weightsPtr->buffer(), static_cast<const void*>(weights_string.c_str()), weights_string.size());
 
   InferenceEngine::CNNNetReader networkReader;
-  networkReader.ReadNetwork((const char*)xml_string.c_str(), xml_string.size());
+  networkReader.ReadNetwork(static_cast<const char*>(xml_string.c_str()), xml_string.size());
   networkReader.SetWeights(weightsPtr);
 
   return std::make_shared<InferenceEngine::CNNNetwork>(networkReader.getNetwork());
