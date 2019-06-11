@@ -13,7 +13,6 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
-    BuildCommand: $(BuildCommand)
 
   steps:
     - template: templates/set-test-data-variables-step.yml
