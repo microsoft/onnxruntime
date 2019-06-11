@@ -11,7 +11,7 @@ First, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
-py1_node = helper.make_node(op_type='Op', #required
+py1_node = helper.make_node(op_type='PyOp', #required
                             inputs=['S','P'], #required
                             outputs=['L','M','N'], #required
                             domain = 'pyopmulti_1', #required
@@ -19,7 +19,7 @@ py1_node = helper.make_node(op_type='Op', #required
                             output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT], #required
                             module = 'mymodule', #required
                             class_name='Multi_1', #required
-                            compute='compute', #optional, it's the name of the function with 'compute' as default
+                            compute='compute', #optional, the function name with 'compute' as default
                             W1='5', W2='7', W3='9') #optional, must be strings, pass as constructor args
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
