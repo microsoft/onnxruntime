@@ -6,7 +6,7 @@
 import sys
 import os
 ov_root = os.environ['INTEL_CVSDK_DIR']
-mo_path = ov_root + "/deployment_tools/model_optimizer"
+mo_path = os.path.join(ov_root, "deployment_tools", "model_optimizer")
 sys.path.append(mo_path)
 
 import hashlib

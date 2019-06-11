@@ -14,8 +14,8 @@ from __future__ import unicode_literals
 import sys
 import os
 ov_root = os.environ['INTEL_CVSDK_DIR']
-mo_path = ov_root + "/deployment_tools/model_optimizer"
-mo_extensions = mo_path + "/extensions"
+mo_path = os.path.join(ov_root, "deployment_tools", "model_optimizer")
+mo_extensions = os.path.join(mo_path, "extensions")
 sys.path.append(mo_path)
 
 import argparse
