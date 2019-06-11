@@ -240,7 +240,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   workspace_bytes *= num_directions_;
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
-  if (nullptr == sequence_lens_data) {
+  if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
                                                    rnn_desc_,
                                                    gsl::narrow_cast<int>(seq_length),
@@ -315,6 +315,20 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     } else {
       y_data = y_reorganized_data.get();
     }
+  }
+
+  if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
+    auto count = sequence_lens->Shape().Size();
+    auto sequence_lens_gpu = GetScratchBuffer<int32_t>(count);
+    cudaMemcpyAsync(sequence_lens_gpu.get(), sequence_lens_data, count * sizeof(int32_t), cudaMemcpyHostToDevice);
+    RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
+                gsl::narrow_cast<int32_t>(seq_length),
+                gsl::narrow_cast<int32_t>(batch_size),
+                gsl::narrow_cast<int32_t>(hidden_size_),
+                sequence_lens_gpu.get(),
+                reinterpret_cast<CudaT*>(y_data),
+                reinterpret_cast<CudaT*>(y_h_data),
+                output_size);
   }
 
   return Status::OK();
