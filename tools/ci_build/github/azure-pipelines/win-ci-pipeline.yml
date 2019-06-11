@@ -1,5 +1,5 @@
 variables:
-  AgentPool : ${{ coalesce( $(AgentPool), 'Win-CPU') }}
+  AgentPool : ${{ coalesce( variables['AgentPool'], 'Win-CPU') }}
   DoDebugBuild: ${{ coalesce ( $(DoDebugBuild), 'true') }}
   DoCompliance: ${{ coalesce ( $(DoCompliance), 'false') }}
   DoNugetPack: ${{ coalesce ( $(DoNugetPack), 'false') }}
