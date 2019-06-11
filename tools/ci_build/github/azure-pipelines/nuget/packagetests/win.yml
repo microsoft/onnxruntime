@@ -13,6 +13,7 @@ jobs:
      IF EXIST $(buildDirectory)\RelWithDebInfo rmdir /s /q $(buildDirectory)\RelWithDebInfo
     displayName: 'Clean up stale files if any'
 
+  - template: templates/set-test-data-variables-step.yml
   - template: ../../templates/windows-build-tools-setup-steps.yml
     parameters:
       EnvSetupScript: 'setup_env.bat'
