@@ -80,6 +80,13 @@ def unsupported_usages_filters():
 
     return filters
 
+def other_tests_failing_permanently_filters():
+    # Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
+    # e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8, which
+    # doesn't match the expected output that was generated with numpy.
+    filters = ('^test_cast_FLOAT_to_STRING_cpu.*')
+
+    return filters
 
 def create_backend_test(testname=None):
     backend_test = OrtBackendTest(c2, __name__)
@@ -91,8 +98,7 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = ('^test_cast_FLOAT_to_STRING_cpu.*',  # numpy float to string has strange rounding so results don't match
-                                 '^test_dequantizelinear_cpu.*',
+        current_failing_tests = ('^test_dequantizelinear_cpu.*',
                                  '^test_qlinearconv_cpu.*',
                                  '^test_quantizelinear_cpu.*',
                                  '^test_gru_seq_length_cpu.*')
@@ -103,7 +109,8 @@ def create_backend_test(testname=None):
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
-                  unsupported_usages_filters()
+                  unsupported_usages_filters() + \
+                  other_tests_failing_permanently_filters()
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print ('excluded tests:', filters)
