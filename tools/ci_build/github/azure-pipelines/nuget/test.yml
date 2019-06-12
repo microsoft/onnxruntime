@@ -2,7 +2,9 @@ jobs:
 - template: ../win.yml
   parameters:
     jobname: 'templatejobname'
-    sscript: 'echo hello'
+    sscript: | 
+     echo hello
+     echo from the uberscript!!
 
 
 
