@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_CI_Dev_x86
-  pool: $${{ coalesce( variables['AgentPool'], 'Linux-CPU') }}
+  pool: ${{ coalesce( variables['AgentPoolLinux'], 'Linux-CPU') }}
   variables:
     DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
     BuildCommand: ${{ coalesce ( variables['_BuildCommand_Linux_x86'], 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"') }}
