@@ -319,12 +319,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
     auto count = sequence_lens->Shape().Size();
-    int device_id = 0;
-    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, device_id, count);
+    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, GetDeviceId(), count);
     auto sequence_lens_cpu = sequence_lens_buffer.CpuSpan();
-    for (int i = 0; i < count; ++i) {
-      sequence_lens_cpu[i] = sequence_lens_data[i];
-    }
+    memcpy(sequence_lens_cpu, sequence_lens_data, count * sizeof(int32_t));
     sequence_lens_buffer.CopyToGpu();
     RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
