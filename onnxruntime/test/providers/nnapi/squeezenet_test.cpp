@@ -1,3 +1,5 @@
+// Copyright 2019 JD.com Inc. JD AI
+// 
 // Copyright(c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License.
 //
@@ -47,11 +49,7 @@ int main(int argc, char* argv[]) {
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
   OrtSession* session;
-#ifdef _WIN32
-  const wchar_t* model_path = L"squeezenet.onnx";
-#else
   const char* model_path = "squeezenet.onnx";
-#endif
 
   CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
