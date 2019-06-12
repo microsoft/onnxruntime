@@ -1,3 +1,5 @@
+// Copyright 2019 JD.com Inc. JD AI
+
 #pragma once
 
 #include "core/framework/execution_provider.h"
