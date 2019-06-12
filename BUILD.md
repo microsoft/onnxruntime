@@ -60,6 +60,12 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
 
+ONNX Runtime server requires you to have Go installed to build the server. On ubuntu you can install it with 
+```
+sudo snap install go
+```  
+See https://golang.org/doc/install for other platforms.
+
 ## Build/Test Flavors for CI
 
 ### CI Build Environments

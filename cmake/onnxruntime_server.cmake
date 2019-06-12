@@ -1,17 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
 set(SERVER_APP_NAME "onnxruntime_server")
-set(gRPC_BUILD_TESTS OFF)
-set(gRPC_GFLAGS_PROVIDER "")
-set(gRPC_BENCHMARK_PROVIDER "")
-set(gRPC_ZLIB_PROVIDER "package")
-set(gRPC_PROTOBUF_PROVIDER "")
 
-if(HAS_UNUSED_PARAMETER) # disable warning for unused parameters because some external libraries (BoringSSL specifically) have unused parameters.
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
-  string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
-endif()
+set(gRPC_BUILD_TESTS OFF CACHE INTERNAL "Don't build tests")
+set(gRPC_GFLAGS_PROVIDER "" CACHE INTERNAL "Don't use gflags")
+set(gRPC_BENCHMARK_PROVIDER "" CACHE INTERNAL "Don't use benchmark")
+set(gRPC_ZLIB_PROVIDER "package" CACHE INTERNAL "Use preinstalled zlib library")
+set(gRPC_PROTOBUF_PROVIDER "" CACHE INTERNAL "Don't use grpc protobuf, set it manually.")
+
+
 # protobuf targets have already been included as submodules - adapted from https://github.com/grpc/grpc/blob/master/cmake/protobuf.cmake
 set(_gRPC_PROTOBUF_LIBRARY_NAME "libprotobuf")
 set(_gRPC_PROTOBUF_LIBRARIES protobuf::${_gRPC_PROTOBUF_LIBRARY_NAME})
@@ -25,8 +22,19 @@ set(_gRPC_PROTOBUF_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
 
 set(_gRPC_PROTOBUF_INCLUDE_DIR ${PROTOBUF_INCLUDE_DIRS})
 
+string(REPLACE "-Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}") # Disable werror for included subdirectories
+string(REPLACE "-Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+if(HAS_UNUSED_PARAMETER) # disable warning for unused parameters because (BoringSSL specifically) have unused parameters.
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
+  string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
+endif()
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/grpc EXCLUDE_FROM_ALL)
-
+if(onnxruntime_DEV_MODE) # Reenable Werror for our code subdirectories.
+    if(NOT onnxruntime_USE_TVM)
+      string(APPEND CMAKE_CXX_FLAGS " -Werror")
+      string(APPEND CMAKE_C_FLAGS " -Werror")
+     endif()
+endif()
 if(HAS_UNUSED_PARAMETER) # reenable warning for unused parameters for our code.
   string(APPEND CMAKE_CXX_FLAGS " -Wunused-parameter")
   string(APPEND CMAKE_C_FLAGS " -Wunused-parameter")
