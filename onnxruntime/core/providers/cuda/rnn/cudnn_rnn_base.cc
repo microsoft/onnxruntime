@@ -319,13 +319,18 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
     auto count = sequence_lens->Shape().Size();
-    auto sequence_lens_gpu = GetScratchBuffer<int32_t>(count);
-    cudaMemcpyAsync(sequence_lens_gpu.get(), sequence_lens_data, count * sizeof(int32_t), cudaMemcpyHostToDevice);
+    int device_id = 0;
+    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, device_id, count);
+    auto sequence_lens_cpu = sequence_lens_buffer.CpuSpan();
+    for (int i = 0; i < count; ++i) {
+      sequence_lens_cpu[i] = sequence_lens_data[i];
+    }
+    sequence_lens_buffer.CopyToGpu();
     RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
                 gsl::narrow_cast<int32_t>(batch_size),
                 gsl::narrow_cast<int32_t>(hidden_size_),
-                sequence_lens_gpu.get(),
+                sequence_lens_buffer.GpuPtr(),
                 reinterpret_cast<CudaT*>(y_data),
                 reinterpret_cast<CudaT*>(y_h_data),
                 output_size);
