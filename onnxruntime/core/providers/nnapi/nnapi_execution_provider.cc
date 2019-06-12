@@ -48,9 +48,26 @@ std::shared_ptr<KernelRegistry> NnapiExecutionProvider::GetKernelRegistry() cons
   return kernel_registry;
 }
 
+std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
+  // TODO: Get supported nodes rather than a whole model
+  std::vector<std::vector<int>> supported_nodes_vector;
+
+  try {
+    dnn::OnnxReader onnx_reader;
+    dnn::ModelBuilder model_builder;
+    onnx_reader.ReadOnnx(model_proto, model_builder);
+    std::vector<int> temp(model_proto.graph().node_size());
+    std::iota(temp.begin(), temp.end(), 0);
+    supported_nodes_vector.push_back(temp);
+  } catch (const std::invalid_argument&) {
+  }
+  return supported_nodes_vector;
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  // This method is based on that of TRT EP
   // Construct modelproto from graph
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
@@ -80,13 +97,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  try {
-    dnn::OnnxReader onnx_reader;
-    dnn::ModelBuilder model_builder;
-    onnx_reader.ReadOnnx(model_proto, model_builder);
-  } catch (const std::invalid_argument&) {
-    return {};
-  }
+  const auto supported_nodes_vector = GetSupportedNodes(model_proto);
 
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
@@ -94,11 +105,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   int counter = 0;
-
-  std::vector<std::vector<int>> supported_nodes_vector;
-  std::vector<int> temp(model_proto.graph().node_size());
-  std::iota(temp.begin(), temp.end(), 0);
-  supported_nodes_vector.push_back(temp);
 
   for (const auto& group : supported_nodes_vector) {
     if (!group.empty()) {
