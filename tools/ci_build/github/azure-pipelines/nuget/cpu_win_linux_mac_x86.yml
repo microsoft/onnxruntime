@@ -4,6 +4,9 @@ variables:
   AgentPoolMacOS : 'macOS-10.13'
   Buildcommand : 'Duh'
 
+parameters:
+  abc : 'value'
+
 jobs: 
 - template: ../win-ci-pipeline.yml
   variables:
