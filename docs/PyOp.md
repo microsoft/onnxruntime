@@ -64,3 +64,12 @@ Finally, copy mymodule.py into one of the Python sys path, and do referencing wi
 * On Windows,  "-config Debug" has known issues, so please compile with "-config RelWithDebInfo" if need debug information;
 * Please specify a unique domain for each Python operator referred in the graph;
 * Due to restrictions imposed by python C API, multi-threading is disabled, meaning multiple Python operators will run sequentially.
+
+## Test
+We haved tested the operator in multiple environments, with or without conda:
+
+Platforms | Python 3.5 | Python 3.6 | Python 3.7
+----------- | ------------| -----------  | -----------
+Windows | (conda) passed | (conda) passed | passed
+Linux | (conda) passed | (conda) passed | passed
+
