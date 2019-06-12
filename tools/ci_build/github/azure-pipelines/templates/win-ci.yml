@@ -1,0 +1,155 @@
+parameters:
+  AgentPoolWin : 'Win-CPU'
+  DoDebugBuild: 'true'
+  DoCompliance: 'false'
+  BuildCommand: ''
+  JobName: 'Windows_CI_Dev'
+  DoNugetPack:  'false'
+  NuPackScript : ''
+  DoTestCoverage: 'false'
+
+jobs:
+- job: ${{ parameters.JobName }}
+  timeoutInMinutes: 90
+  pool: ${{ parameters.AgentPoolWin }}
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DotNetExe: 'dotnet.exe'
+
+  steps:
+    - script: |
+       @echo %BuildCommand%
+       @echo %_Buildcommand_Win%
+       @echo %Buildcommand_Win%
+    - template: set-test-data-variables-step.yml
+    - template: windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'x64'
+        setVcvars: false
+
+    - task: CmdLine@1
+      displayName: 'Download test data and generate cmake config'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
+        workingDirectory: "$(Build.BinariesDirectory)"
+
+    # Build Debug Mode
+    - ${{ if eq(parameters['DoDebugBuild'], 'true') }}:
+      - task: VSBuild@1
+        displayName: 'Build Debug'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
+          platform: 'x64'
+          configuration: 'Debug'
+          msbuildArguments: '/m'
+          msbuildArchitecture: 'x64'
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\Debug'
+          createLogFile: true
+
+      - task: BatchScript@1
+        displayName: 'Test Debug'
+        inputs:
+          filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+          arguments: '$(BuildCommand) --test --config Debug'
+          workingFolder: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build C# Debug'
+        inputs:
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          platform: 'any cpu'
+          configuration: 'Debug'
+          restoreNugetPackages: false
+          msbuildArchitecture: 'x64'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
+          msbuildArguments: '/m'
+
+      - task: CmdLine@2
+        displayName: 'Test C# Debug'
+        inputs:
+          script: |
+           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    # Run test coverage report
+    - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
+      - template: windows-code-coverage-steps.yml
+        parameters:
+          OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
+
+    # Compliance tasks require logs from Debug Build
+    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+      - template: compliance.yml
+
+    # Build RelWithDebInfo -- this variable required to build C#
+    - script: |
+       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+
+    - task: VSBuild@1
+      displayName: 'Build RelWithDebInfo'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: 'x64'
+        configuration: 'RelWithDebInfo'
+        msbuildArguments: '/m'
+        msbuildArchitecture: 'x64'
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+
+    - task: BatchScript@1
+      displayName: 'Test RelWithDebInfo'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(BuildCommand) --test --config RelWithDebInfo'
+        workingFolder: "$(Build.BinariesDirectory)"
+
+    - task: VSBuild@1
+      displayName: 'Build c# RelWithDebInfo'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'any cpu'
+        configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x64'
+        restoreNugetPackages: false
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
+        msbuildArguments: '/m'
+
+    - task: CmdLine@2
+      displayName: 'Test C# RelWithDebInfo'
+      inputs:
+        script: |
+         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**\*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
+    # Nuget packaging if needed
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - script: |
+         ${{ parameters.NuPackScript }}
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: drop-nuget'
+        inputs:
+          artifactName: 'drop-nuget'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+
+    - template: clean-agent-build-directory-step.yml
+
