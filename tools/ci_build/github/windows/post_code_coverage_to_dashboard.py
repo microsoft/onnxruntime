@@ -12,6 +12,7 @@ import argparse
 import mysql.connector
 import xml.etree.ElementTree as ET
 import sys
+import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime test coverge report uploader for dashboard")
@@ -32,11 +33,14 @@ def parse_xml_report(report_file):
 
 def write_to_db(coverage_data, args):
     # connect to database
+    print('secret = '+ os.environ['DASHBOARD_MYSQL_ORT_PASSWORD'])
+
     cnx = mysql.connector.connect(
         user='ort@onnxruntimedashboard', 
-        password='N8pKntyJ2SKRxBBp', 
+        password=os.environ['DASHBOARD_MYSQL_ORT_PASSWORD'], 
         host='onnxruntimedashboard.mysql.database.azure.com', 
         database='onnxruntime')
+
 
     try:
         cursor = cnx.cursor()
