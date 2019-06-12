@@ -22,22 +22,27 @@ set(_gRPC_PROTOBUF_PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
 
 set(_gRPC_PROTOBUF_INCLUDE_DIR ${PROTOBUF_INCLUDE_DIRS})
 
-string(REPLACE "-Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}") # Disable werror for included subdirectories
-string(REPLACE "-Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-if(HAS_UNUSED_PARAMETER) # disable warning for unused parameters because (BoringSSL specifically) have unused parameters.
-  string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
-  string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
+if(NOT WIN32)
+  string(REPLACE "-Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}") # Disable werror for included subdirectories - c-ares<1.15 breaks with -Wall
+  string(REPLACE "-Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  if(HAS_UNUSED_PARAMETER) # disable warning for unused parameters because (BoringSSL specifically) have unused parameters.
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
+    string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
+  endif()
 endif()
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/grpc EXCLUDE_FROM_ALL)
-if(onnxruntime_DEV_MODE) # Reenable Werror for our code subdirectories.
-    if(NOT onnxruntime_USE_TVM)
-      string(APPEND CMAKE_CXX_FLAGS " -Werror")
-      string(APPEND CMAKE_C_FLAGS " -Werror")
-     endif()
-endif()
-if(HAS_UNUSED_PARAMETER) # reenable warning for unused parameters for our code.
-  string(APPEND CMAKE_CXX_FLAGS " -Wunused-parameter")
-  string(APPEND CMAKE_C_FLAGS " -Wunused-parameter")
+if(NOT WIN32)
+  if(onnxruntime_DEV_MODE) # Reenable Werror for our code subdirectories.
+      if(NOT onnxruntime_USE_TVM)
+        string(APPEND CMAKE_CXX_FLAGS " -Werror")
+        string(APPEND CMAKE_C_FLAGS " -Werror")
+      endif()
+  endif()
+  if(HAS_UNUSED_PARAMETER) # reenable warning for unused parameters for our code.
+    string(APPEND CMAKE_CXX_FLAGS " -Wunused-parameter")
+    string(APPEND CMAKE_C_FLAGS " -Wunused-parameter")
+  endif()
 endif()
 
 set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
