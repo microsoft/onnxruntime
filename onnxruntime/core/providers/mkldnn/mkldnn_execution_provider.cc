@@ -136,6 +136,9 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
   bool use_subgraph = true;
 
   bool FP16_graph = false;
+  bool opset10_graph = false;
+  bool mkldnn_nodes_in_the_graph = false;
+
   if (graph_viewer.MaxNodeIndex() > 0) {
     int index = 0;
     auto node = graph_viewer.GetNode(index);
@@ -145,9 +148,26 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
     }
     if (node->InputDefs()[0]->Type() != nullptr)
       FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
+
+    if (GetOnnxOpSet(graph_viewer) == 10)
+      opset10_graph = true;
   }
 
-  if (FP16_graph) {
+
+  for (auto node_index = 0; node_index < graph_viewer.MaxNodeIndex(); node_index++) {
+    auto node = graph_viewer.GetNode(node_index);
+    if (node == nullptr) {
+      node_index++;
+      continue;
+    }
+    auto op_it = mkldnn_ops_.find(node->OpType());
+    if (op_it != mkldnn_ops_.end()) {
+      mkldnn_nodes_in_the_graph = true;
+      break;
+    }
+  }
+
+  if (FP16_graph || opset10_graph || !mkldnn_nodes_in_the_graph) {
     // FP16 not supported yet.
     use_subgraph = false;
     result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
@@ -373,7 +393,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     output_to_source_node_map.clear();
   }
   return result;
-}
+ }
 
 void MKLDNNExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
                                             const NodeAttributes& subgraph_attributes,
