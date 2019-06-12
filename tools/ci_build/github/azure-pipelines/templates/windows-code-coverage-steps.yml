@@ -33,3 +33,4 @@ steps:
     workingFolder: "$(Build.BinariesDirectory)"
   continueOnError: ${{parameters.ContinueOnError}}
   condition: ${{parameters.PostToDashBoard}}
+  

@@ -8,6 +8,11 @@ jobs:
     buildArch: 'x64'
 
   steps:
+    - task: CmdLine@2
+      inputs:
+        script: 'echo BuildId = $(Build.BuildId)
+          echo BuildUri = $(Build.BuildUri)'
+    - template: templates/set-test-data-variables-step.yml
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
@@ -30,6 +35,6 @@ jobs:
         GitCommitHash: $(OnnxRuntimeGitCommitHash)    
         PublishReport: true
         PostToDashboard: true
-        
+
     - template: templates/clean-agent-build-directory-step.yml
 
