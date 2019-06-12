@@ -15,7 +15,7 @@
 #endif
 #include "onnx/defs/data_type_utils.h"
 #ifdef __GNUC__
-#pragma GCC diagnostic popfabs
+#pragma GCC diagnostic pop
 #endif
 
 namespace onnxruntime {
