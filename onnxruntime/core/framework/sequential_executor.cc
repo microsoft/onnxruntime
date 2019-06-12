@@ -100,6 +100,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#endif
+
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_before",
@@ -161,6 +165,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
+
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
