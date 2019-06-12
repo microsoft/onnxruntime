@@ -21,7 +21,7 @@ pydir = os.path.join(os.path.dirname(sys.executable),'..')
 for r,d,fs in os.walk(pydir):
   for f in fs:
     if regex.match(f):
-      print (os.path.join(r,f))#(r,f)
+      print (os.path.join(r,f))
       exit
 \"
 "
