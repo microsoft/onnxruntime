@@ -13,16 +13,16 @@ Now, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
-py1_node = helper.make_node(op_type = 'PyOp',                                                                            #required
-                            inputs = ['S','P'],                                                                                                      #required
-                            outputs = ['L','M','N'],                                                                                             #required
-                            domain = 'pyopmulti_1',                                                                                        #required
-                            input_types = [TensorProto.FLOAT, TensorProto.FLOAT],                                     #required
-                            output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],  #required
-                            module = 'mymodule',                                                                                           #required
-                            class_name = 'Multi_1',                                                                                           #required
-                            compute = 'compute',                                                                                            #optional
-                            W1 = '5', W2 = '7', W3 = '9')                                                                                  #optional
+py1_node = helper.make_node(op_type = 'PyOp', #required
+                            inputs = ['S','P'], #required
+                            outputs = ['L','M','N'], #required
+                            domain = 'pyopmulti_1', #required
+                            input_types = [TensorProto.FLOAT, TensorProto.FLOAT], #required
+                            output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT], #required
+                            module = 'mymodule', #required
+                            class_name = 'Multi_1', #required
+                            compute = 'compute', #optional
+                            W1 = '5', W2 = '7', W3 = '9') #optional
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
                             input_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
