@@ -4,96 +4,76 @@
 // Licensed under the MIT License.
 //
 
-#include <assert.h>
+#include <cassert>
 #include <cmath>
-#include <core/session/onnxruntime_c_api.h>
+#include <core/session/onnxruntime_cxx_api.h>
 #include <core/providers/nnapi/nnapi_provider_factory.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstdio>
 #include <vector>
-
-//*****************************************************************************
-// helper function to check for status
-#define CHECK_STATUS(expr)                               \
-  {                                                      \
-    OrtStatus* onnx_status = (expr);                     \
-    if (onnx_status != NULL) {                           \
-      const char* msg = OrtGetErrorMessage(onnx_status); \
-      fprintf(stderr, "%s\n", msg);                      \
-      OrtReleaseStatus(onnx_status);                     \
-      exit(1);                                           \
-    }                                                    \
-  }
 
 int main(int argc, char* argv[]) {
   //*************************************************************************
   // initialize  enviroment...one enviroment per process
   // enviroment maintains thread pools and other state info
-  OrtEnv* env;
-  CHECK_STATUS(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
   // initialize session options if needed
-  OrtSessionOptions* session_options = OrtCreateSessionOptions();
+  Ort::SessionOptions session_options;
   OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options);
-  OrtSetSessionThreadPoolSize(session_options, 1);
+  session_options.SetThreadPoolSize(1);
+
+  // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
+  // session (we also need to include cuda_provider_factory.h above which defines it)
+  // #include "cuda_provider_factory.h"
+  // OrtSessionOptionsAppendExecutionProvider_CUDA(session_opsions, 1);
 
   // Sets graph optimization level
   // Available levels are
   // 0 -> To disable all optimizations
   // 1 -> To enable basic optimizations (Such as redundant node removals)
   // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
-  OrtSetSessionGraphOptimizationLevel(session_options, 0);
+  session_options.SetGraphOptimizationLevel(1);
 
   //*************************************************************************
   // create session and load model into memory
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
-  OrtSession* session;
   const char* model_path = "squeezenet.onnx";
-
-  CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
+  Ort::Session session(env, model_path, session_options);
 
   //*************************************************************************
   // print model input layer (node names, types, shape etc.)
-  size_t num_input_nodes;
-  OrtStatus* status;
-  OrtAllocator* allocator;
-  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
+  Ort::Allocator allocator = Ort::Allocator::CreateDefault();
 
   // print number of model input nodes
-  status = OrtSessionGetInputCount(session, &num_input_nodes);
+  size_t num_input_nodes = session.GetInputCount();
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
-                                        // Otherwise need vector<vector<>>
+                                         // Otherwise need vector<vector<>>
 
   printf("Number of inputs = %zu\n", num_input_nodes);
 
   // iterate over all input nodes
   for (size_t i = 0; i < num_input_nodes; i++) {
     // print input node names
-    char* input_name;
-    status = OrtSessionGetInputName(session, i, allocator, &input_name);
-    printf("Input %zu : name=%s\n", i, input_name);
+    char* input_name = session.GetInputName(i, allocator);
+    printf("Input %ld : name=%s\n", i, input_name);
     input_node_names[i] = input_name;
 
     // print input node types
-    OrtTypeInfo* typeinfo;
-    status = OrtSessionGetInputTypeInfo(session, i, &typeinfo);
-    const OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(typeinfo);
-    ONNXTensorElementDataType type = OrtGetTensorElementType(tensor_info);
-    printf("Input %zu : type=%d\n", i, type);
+    Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+
+    ONNXTensorElementDataType type = tensor_info.GetElementType();
+    printf("Input %ld : type=%d\n", i, type);
 
     // print input shapes/dims
-    size_t num_dims = OrtGetDimensionsCount(tensor_info);
-    printf("Input %zu : num_dims=%zu\n", i, num_dims);
-    input_node_dims.resize(num_dims);
-    OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
-    for (size_t j = 0; j < num_dims; j++)
-      printf("Input %zu : dim %zu=%jd\n", i, j, input_node_dims[j]);
-
-    OrtReleaseTypeInfo(typeinfo);
+    input_node_dims = tensor_info.GetShape();
+    printf("Input %ld : num_dims=%zu\n", i, input_node_dims.size());
+    for (size_t j = 0; j < input_node_dims.size(); j++)
+      printf("Input %ld : dim %ld=%jd\n", i, j, input_node_dims[j]);
   }
-  OrtReleaseAllocator(allocator);
 
   // Results should be...
   // Number of inputs = 1
@@ -120,26 +100,21 @@ int main(int argc, char* argv[]) {
   std::vector<const char*> output_node_names = {"softmaxout_1"};
 
   // initialize input data with values in [0.0, 1.0]
-  for (size_t i = 0; i < input_tensor_size; i++)
+  for (unsigned int i = 0; i < input_tensor_size; i++)
     input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
-  OrtAllocatorInfo* allocator_info;
-  CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
-  OrtValue* input_tensor = NULL;
-  CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-  assert(OrtIsTensor(input_tensor));
-  OrtReleaseAllocatorInfo(allocator_info);
+  Ort::AllocatorInfo allocator_info = Ort::AllocatorInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(allocator_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 4);
+  assert(input_tensor.IsTensor());
 
   // score model & input tensor, get back output tensor
-  OrtValue* output_tensor = NULL;
-  CHECK_STATUS(OrtRun(session, NULL, input_node_names.data(), (const OrtValue* const*)&input_tensor, 1, output_node_names.data(), 1, &output_tensor));
-  assert(OrtIsTensor(output_tensor));
+  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+  assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
 
   // Get pointer to output tensor float values
-  float* floatarr;
-  CHECK_STATUS(OrtGetTensorMutableData(output_tensor, (void**)&floatarr));
-  assert(fabs(floatarr[0] - 0.000045) < 1e-6);
+  float* floatarr = output_tensors.front().GetTensorMutableData<float>();
+  assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes
   for (int i = 0; i < 5; i++)
@@ -151,12 +126,6 @@ int main(int argc, char* argv[]) {
   // Score for class[2] = 0.000125
   // Score for class[3] = 0.001180
   // Score for class[4] = 0.001317
-
-  OrtReleaseValue(output_tensor);
-  OrtReleaseValue(input_tensor);
-  OrtReleaseSession(session);
-  OrtReleaseSessionOptions(session_options);
-  OrtReleaseEnv(env);
   printf("Done!\n");
   return 0;
 }

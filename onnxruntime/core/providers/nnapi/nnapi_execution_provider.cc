@@ -348,7 +348,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       for (auto nhwc_output : nhwc_outputs) {
         delete[] std::get<1>(nhwc_output);
       }
-      return 0;
+      return Status::OK();
     };
 
     node_compute_funcs.push_back(compute_info);
