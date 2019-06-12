@@ -5,6 +5,8 @@ jobs:
     sscript: | 
      echo hello
      echo from the uberscript!!
+     echo agentpoolwin is $AGENTPOOLWIN
+     echo binariesdir is $(Build.BinariesDirectory)
 
 
 
