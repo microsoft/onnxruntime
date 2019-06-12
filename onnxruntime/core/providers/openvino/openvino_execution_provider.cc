@@ -522,7 +522,6 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                                     std::string(info_.device));
 
     } catch (const char* msg) {
-      std::cerr << "Caught Compiler exception: " << msg << std::endl;
       return Status(common::StatusCategory::ONNXRUNTIME,
                     common::StatusCode::NOT_IMPLEMENTED, msg);
     }
@@ -549,7 +548,6 @@ common::Status OpenVINOExecutionProvider::Compile(
           try {
             function_state->openvino_graph->Infer(ort, context);
           } catch (const char* msg) {
-            std::cerr << "Caught Runtime exception: " << msg << std::endl;
             return common::Status(common::ONNXRUNTIME, common::FAIL);
           }
 

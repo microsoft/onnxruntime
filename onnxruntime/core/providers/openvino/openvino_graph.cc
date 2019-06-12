@@ -55,10 +55,6 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node, std::string /*
   precision_str = "FP16";
 #endif
 
-  std::cout << "[OpenVINO-EP] device:" << device_id_ << std::endl;
-  std::cout << "[OpenVINO-EP] precision:" << precision_str << std::endl;
-
-
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -201,8 +197,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   precision = InferenceEngine::Precision::FP32;
 
   // Load Plugin for inference engine
-  std::cout << "[OpenVINO-EP]Loading plugin" << std::endl;
-
   std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
   plugin_path.push_back("");
   InferenceEngine::InferencePlugin plugin = InferenceEngine::PluginDispatcher(
@@ -211,7 +205,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
 
   // Configure input & output
   // Prepare input blobs
-  std::cout << "[OpenVINO-EP]Preparing input blobs" << std::endl;
   size_t first_dim = 1;
 
   auto inputInfo = network->getInputsInfo();
@@ -277,12 +270,10 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   }
 
   // Loading model to the plugin
-  std::cout << "[OpenVINO-EP]Loading model to the plugin" << std::endl;
   InferenceEngine::ExecutableNetwork exeNetwork = plugin.LoadNetwork(*network,
                                                                      {});
 
   // Create infer request
-  //std::cout << "[OpenVINO-EP]Creating Infer requests : " << num_inf_reqs_ << std::endl;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
   for (size_t i = 0; i < num_inf_reqs_; i++) {
     infer_requests.push_back(exeNetwork.CreateInferRequestPtr());
@@ -405,8 +396,6 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Currently allows only one Infer execution at a time
   std::lock_guard<std::mutex> lock(compute_lock_);
 
-  std::cout << "[OpenVINO-EP] Inference Started\n";
-
   // Get Input and Output tensors
   size_t input_count = openvino_network_->getInputsInfo().size();
   size_t output_count = openvino_network_->getOutputsInfo().size();
@@ -418,9 +407,6 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Calculate the batch_size from the input tensor shape.
   auto batch_size = DeduceBatchSize(ort, input_tensors[0],
                                     openvino_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
-  if (batch_size != 1) {
-    std::cout << "[OpenVINO-EP] Batch Size: " << batch_size << std::endl;
-  }
 
   size_t full_parallel_runs = batch_size / num_inf_reqs_;
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
@@ -432,8 +418,6 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
 
   // Run parallel inferences as sets of num_inf_reqs_
   for (size_t set = 0; set < full_parallel_runs; set++) {
-    //std::cout << "[OpenVINO-EP] Running " << num_inf_reqs_
-    //          << " parallel inferences\n";
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
       StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx);
@@ -445,8 +429,6 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   }
 
   // Run parallel inferences for remaining batch slices
-  //std::cout << "[OpenVINO-EP] Running " << remainder_parallel_runs
-  //          << " parallel inferences\n";
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
     StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx);
@@ -455,7 +437,6 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
   }
-  std::cout << "[OpenVINO-EP] Inference Completed\n";
 }
 
 }  // namespace openvino_ep
