@@ -50,19 +50,28 @@ def write_to_db(coverage_data, args):
         #insert current record
         insert_query = ('INSERT INTO onnxruntime.test_coverage '
             '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
-            'VALUES (Now(), "%s", %f, %d, %d, "%s");'
+            'VALUES (Now(), "%s", %f, %d, %d, "%s") '
+            'ON DUPLICATE KEY UPDATE '
+            'UploadTime=Now(), Coverage=%f, LinesCovered=%d, TotalLines=%d, ReportURL="%s";'
+        ) % (args.commit_hash, 
+             coverage_data['coverage'], 
+             coverage_data['lines_covered'],  
+             coverage_data['lines_valid'],
+             args.report_url,
+             coverage_data['coverage'], 
+             coverage_data['lines_covered'],  
+             coverage_data['lines_valid'],
+             args.report_url
         )
-        
-        insert_query = insert_query % (args.commit_hash, 
-                                    coverage_data['coverage'], 
-                                    coverage_data['lines_covered'],  
-                                    coverage_data['lines_valid'],
-                                    args.report_url
-                                    )
 
         cursor.execute(insert_query) 
         cnx.commit()
 
+        # # Use below for debugging:
+        # cursor.execute('select * from onnxruntime.test_coverage')
+        # for r in cursor:
+        #     print(r)
+            
         cursor.close()
         cnx.close()
     except BaseException as e:
