@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Generic implementation of Shrink
 template <typename T>
 __global__ void _ShrinkKernel(
     const T* input_data,
@@ -14,30 +15,50 @@ __global__ void _ShrinkKernel(
     const float lambda,
     T* output_data,
     const CUDA_LONG N) {
-
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   T x = input_data[id];
   if (x < -lambda) {
-    output_data[id] = (T)(x - bias);    
-  } else if (x > lambda) {
     output_data[id] = (T)(x + bias);
+  } else if (x > lambda) {
+    output_data[id] = (T)(x - bias);
   } else {
-    output_data[id] = x - x;
+    output_data[id] = (T)0;
   }
+}
 
+// Specialized implementation for 'half' type
+// the idea is to convert 'half' data to 'float' first,
+// do the operation and convert result back to 'half'
+template <>
+__global__ void _ShrinkKernel(
+    const half* input_data,
+    const float bias,
+    const float lambda,
+    half* output_data,
+    const CUDA_LONG N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+
+  half x = input_data[id];
+  if ((float)x < -lambda) {
+    output_data[id] = half((float)x + bias);
+  } else if ((float)x > lambda) {
+    output_data[id] = half((float)x - bias);
+  } else {
+    output_data[id] = (half)0;
+  }
 }
 
 template <typename T>
 void ShrinkImpl(
     const T* input_data,
-    const T bias,
-    const T lambda,
+    const float bias,
+    const float lambda,
     T* output_data,
     size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   _ShrinkKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      input_data, bias, lambda, output_data, (CUDA_LONG) N);
+      input_data, bias, lambda, output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T) \

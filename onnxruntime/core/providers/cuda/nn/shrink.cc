@@ -25,15 +25,14 @@ Status Shrink<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
-  const T* x_data = X->Data<T>();
+  const auto* x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   const TensorShape& x_shape = X->Shape();
   const size_t x_size = static_cast<size_t>(x_shape.Size());
 
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  ShrinkImpl<CudaT>(reinterpret_cast<const CudaT*>(x_data), static_cast<CudaT>(bias_), 
-               static_cast<CudaT>(lambd_), y_data, x_size);
+  ShrinkImpl<CudaT>(x_data, bias_, lambd_, y_data, x_size);
 
   return Status::OK();
 }
