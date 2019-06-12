@@ -17,8 +17,26 @@ def dump_pb_file(filename):
         tensor.ParseFromString(f.read())
 
     print("Name: {}".format(tensor.name))
+
+    try:
+        np_dtype = mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type]
+    except KeyError:
+        raise RuntimeError(
+            "Tensor data type not understood yet: {}".format(str(tensor.data_type)))
+
+    try:
+        if np_dtype == np.object:
+            strings = []
+            for item in tensor.string_data:
+                strings.append(item)
+            print("Raw strings: {}".format(strings))
+    except:
+        "Failed reading undecoded strings"
+
     np_array = numpy_helper.to_array(tensor)
     print("Shape: {}".format(np_array.shape))
+
+
     print(np_array)
 
 def dump_pb(dir_or_filename):
