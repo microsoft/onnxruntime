@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <typeinfo>
-#include <math.h> //for fabs
+#include <cmath>
 
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
@@ -15,7 +15,7 @@
 #endif
 #include "onnx/defs/data_type_utils.h"
 #ifdef __GNUC__
-#pragma GCC diagnostic pop
+#pragma GCC diagnostic popfabs
 #endif
 
 namespace onnxruntime {
@@ -359,7 +359,7 @@ TEST_F(DataTypeTest, BFloat16Test) {
     BFloat16 flt16(sample);
     auto int_rep = flt16.val;
     BFloat16 flt_from_int(int_rep);
-    const double diff = fabs(sample - flt_from_int.ToFloat());
+    const double diff = std::fabs(sample - flt_from_int.ToFloat());
     if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample))) {
       EXPECT_TRUE(false);
     }
@@ -371,7 +371,7 @@ TEST_F(DataTypeTest, BFloat16Test) {
     static_assert(sizeof(sample) / sizeof(float) == sizeof(converted) / sizeof(BFloat16), "Must have the same count");
     FloatToBFloat16(sample, converted, sizeof(sample) / sizeof(float));
     for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
-      const double diff = fabs(sample[i] - converted[i].ToFloat());
+      const double diff = std::fabs(sample[i] - converted[i].ToFloat());
       if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample[i]))) {
         EXPECT_TRUE(false);
       }
@@ -380,7 +380,7 @@ TEST_F(DataTypeTest, BFloat16Test) {
     float back_converted[sizeof(sample) / sizeof(float)];
     BFloat16ToFloat(converted, back_converted, sizeof(sample) / sizeof(float));
     for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
-      const double diff = fabs(sample[i] - back_converted[i]);
+      const double diff = std::fabs(sample[i] - back_converted[i]);
       if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample[i]))) {
         EXPECT_TRUE(false);
       }
