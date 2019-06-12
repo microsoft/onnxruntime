@@ -22,6 +22,11 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
+static inline std::string NodeIdForLoggingPurpose(const OpKernel* p_op_kernel) {
+  return "\"" + (p_op_kernel->Node().Name().empty() ? p_op_kernel->Node().OpType() : p_op_kernel->Node().Name()) +
+         "\" on \"" + p_op_kernel->KernelDef().Provider() + "\"";
+}
+
 Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
@@ -117,14 +122,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       compute_status = p_op_kernel->Compute(&op_kernel_context);
     } catch (const NotImplementedException& ex) {
       std::ostringstream ss;
-      ss << "Exception was thrown while running Node: " << p_op_kernel->Node().Name()
+      ss << "NotImplementedException was thrown while running Node " << NodeIdForLoggingPurpose(p_op_kernel)
          << ". Error Message: " << ex.what();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
       return Status(ONNXRUNTIME, NOT_IMPLEMENTED, msg_string);
     } catch (const std::exception& ex) {
       std::ostringstream ss;
-      ss << "Exception was thrown while running Node: " << p_op_kernel->Node().Name()
+      ss << "Exception was thrown while running Node " << NodeIdForLoggingPurpose(p_op_kernel)
          << ". Error Message: " << ex.what();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -132,7 +137,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
     if (!compute_status.IsOK()) {
       std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " << p_op_kernel->Node().Name()
+      ss << "Non-zero status code returned while running Node " << NodeIdForLoggingPurpose(p_op_kernel)
          << ". Status Message: " << compute_status.ErrorMessage();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
