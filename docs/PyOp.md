@@ -1,26 +1,26 @@
-# LANGUAGE INTEROP OPERATORS
+# Python Operator 
 ## Introduction
 To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
-To use the feature, model designer needs to do following things:
+To use the feature, model designer needs to:
 1. Define Python operator node with all required attributes;
 2. Implement a Python module of all referred operators in required format;
-3. Before inferencing, place the Python module into python sys path, then set PYTHONHOME as an env variable.
+3. Place the Python module into python sys path, then do referencing with onnxruntime.
 
-## Usage and Example
+## Usage 
 First, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
-py1_node = helper.make_node(op_type = 'PyOp', #required, must be PyOp
-                            inputs = ['S','P'], #required
-                            outputs = ['L','M','N'], #required
-                            domain = 'pyopmulti_1', #required
-                            input_types = [TensorProto.FLOAT, TensorProto.FLOAT], #required
+py1_node = helper.make_node(op_type = 'PyOp',                                                         #required
+                            inputs = ['S','P'],                                                       #required
+                            outputs = ['L','M','N'],                                                  #required
+                            domain = 'pyopmulti_1',                                                   #required
+                            input_types = [TensorProto.FLOAT, TensorProto.FLOAT],                     #required
                             output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT], #required
-                            module = 'mymodule', #required
-                            class_name = 'Multi_1', #required
-                            compute = 'compute', #optional, the function name with 'compute' as default
-                            W1 = '5', W2 = '7', W3 = '9') #optional, must be strings, pass as constructor args
+                            module = 'mymodule',                                                      #required
+                            class_name = 'Multi_1',                                                   #required
+                            compute = 'compute',                                                      #optional
+                            W1 = '5', W2 = '7', W3 = '9')                                             #optional
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
                             input_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
@@ -34,7 +34,7 @@ onnx.save(model, './model.onnx')
 Next, implement mymodule.py:
 ```python
 class Multi_1:
-    def __init__(self, W1, W2, W3):
+    def __init__(self, W1, W2, W3): # W1, W2, W3 must be strings
         self.W1 = int(W1)
         self.W2 = int(W2)
         self.W3 = int(W3)
@@ -46,8 +46,12 @@ class Multi_2:
         r1, r2 = H + N, N + E
         return r1, r2
 ```
-Before inferencing, copy mymodule.py into Python system path, then set PYTHONHOME as environment variable properly.
-Finally, inference model.onnx with onnxruntime, Multi_1 and Multi_2 will each be instantiated with compute function triggered.
+Finally, copy mymodule.py into one of the Python sys path, and do referencing with onnxruntime.
+
+## PYTHONHOME
+On windows, please set PYTHONHOME before inferencing.
+It should point to the path where python is installed. For example:
+C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda
 
 ## Supported Data Types
 TensorProto.BOOL,
