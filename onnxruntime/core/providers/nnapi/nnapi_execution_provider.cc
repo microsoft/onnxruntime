@@ -15,8 +15,8 @@ NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
                                               [](int) { return std::make_unique<CPUAllocator>(
-                                                  std::make_unique<OrtAllocatorInfo>(NNAPI, 
-                                                    OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
+                                                            std::make_unique<OrtAllocatorInfo>(NNAPI,
+                                                                                               OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(
       std::shared_ptr<IArenaAllocator>(
@@ -53,9 +53,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  std::vector<NodeArg *> all_node_inputs;
+  std::vector<NodeArg*> all_node_inputs;
   for (const auto& node : graph.Nodes()) {
-    std::vector<onnxruntime::NodeArg *> inputs, outputs;
+    std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
@@ -264,7 +264,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       dnn::Model* model = reinterpret_cast<dnn::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
       const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
+      ORT_ENFORCE(model->GetInputs().size() <= num_inputs, "Inconsistent input sizes");
       ORT_ENFORCE(model->GetOutputs().size() == num_outputs, "Inconsistent output sizes");
+      // Maintain the created nhwc buffers so that they can be deleted after inferencing
+      std::vector<float*> nhwc_inputs;
+      std::vector<std::tuple<size_t, float*, std::vector<int64_t>>> nhwc_outputs;
       for (size_t i = 0; i < num_outputs; i++) {
         const auto output_name = model->GetOutputs()[i];
         const auto output_shape = model->GetShape(output_name);
@@ -273,19 +277,69 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           // NHWC to NCHW
           std::swap(int64_output_shape[1], int64_output_shape[3]);
           std::swap(int64_output_shape[2], int64_output_shape[3]);
+          float* nhwc_output = new float[model->GetSize(output_name)];
+          model->SetOutputBuffer(i, nhwc_output);
+          nhwc_outputs.push_back(std::make_tuple(i, nhwc_output, int64_output_shape));
+        } else {
+          auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
+          model->SetOutputBuffer(i, ort.GetTensorMutableData<float>(output_tensor));
         }
-        auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
-        model->SetOutputBuffer(i, ort.GetTensorMutableData<float>(output_tensor));
       }
       std::vector<float*> inputs;
-      for (size_t i = 0; i < num_inputs; i++) {
+      for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-        auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
-        inputs.push_back(input);
+
+        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+
+        if (tensor_shape.size() == 4) {
+          // Transpose nchw -> nhwc manually
+          const int N = tensor_shape[0], C = tensor_shape[1], H = tensor_shape[2], W = tensor_shape[3];
+          float* nhwc_input = new float[N * C * H * W];
+          for (int n = 0; n < N; n++) {
+            for (int c = 0; c < C; c++) {
+              for (int h = 0; h < H; h++) {
+                for (int w = 0; w < W; w++) {
+                  nhwc_input[n * H * W * C + h * W * C + w * C + c] = input[n * C * H * W + c * H * W + h * W + w];
+                }
+              }
+            }
+          }
+          inputs.push_back(nhwc_input);
+          nhwc_inputs.push_back(nhwc_input);
+        } else {
+          inputs.push_back(input);
+        }
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
       model->Predict(inputs);
+      // Transpose nhwc -> nchw manually
+      for (size_t i = 0; i < nhwc_outputs.size(); i++) {
+        const auto output = nhwc_outputs[i];
+        size_t index;
+        float* nhwc_data;
+        std::vector<int64_t> nchw_shape;
+        std::tie(index, nhwc_data, nchw_shape) = output;
+        auto* output_tensor = ort.KernelContext_GetOutput(context, index, nchw_shape.data(), nchw_shape.size());
+        const int N = nchw_shape[0], C = nchw_shape[1], H = nchw_shape[2], W = nchw_shape[3];
+        float* nchw_output = ort.GetTensorMutableData<float>(output_tensor);
+        for (int n = 0; n < N; n++) {
+          for (int c = 0; c < C; c++) {
+            for (int h = 0; h < H; h++) {
+              for (int w = 0; w < W; w++) {
+                nchw_output[n * H * W * C + h * W * C + w * C + c] = nhwc_data[n * C * H * W + c * H * W + h * W + w];
+              }
+            }
+          }
+        }
+      }
+      for (auto nhwc_input : nhwc_inputs) {
+        delete[] nhwc_input;
+      }
+      for (auto nhwc_output : nhwc_outputs) {
+        delete[] std::get<1>(nhwc_output);
+      }
       return 0;
     };
 
