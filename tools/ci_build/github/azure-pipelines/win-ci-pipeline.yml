@@ -1,18 +1,14 @@
-variables:
-  AgentPool : ${{ coalesce( variables['AgentPool'], 'Win-CPU') }}
-  DoDebugBuild: ${{ coalesce ( variables['DoDebugBuild'], 'true') }}
-  DoCompliance: ${{ coalesce ( variables['DoCompliance'], 'false') }}
-  DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
-  BuildCommand: ${{ coalesce ( variables['_BuildCommand_Win'], '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc') }}
-
-
 jobs:
 - job: Windows_CI_Dev
-  pool: $(AgentPool)
+  pool: ${{ coalesce( variables['AgentPoolWin'], 'Win-CPU') }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
+    DoDebugBuild: ${{ coalesce ( variables['DoDebugBuild'], 'true') }}
+    DoCompliance: ${{ coalesce ( variables['DoCompliance'], 'false') }}
+    DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
+    BuildCommand: ${{ coalesce ( variables['_BuildCommand_Win'], '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc') }}
 
   steps:
     - script: |

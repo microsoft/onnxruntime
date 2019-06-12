@@ -1,11 +1,10 @@
-variables:
-  AgentPool : ${{ coalesce( variables['AgentPool'], 'Linux-CPU') }}
-  DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
-  BuildCommand: ${{ coalesce ( variables['_BuildCommand_Linux'], 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"') }}
-
 jobs:
 - job: Linux_CI_Dev
-  pool: ${{ parameters.AgentPool }}
+  pool: $${{ coalesce( variables['AgentPool'], 'Linux-CPU') }}
+  variables:
+    DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
+    BuildCommand: ${{ coalesce ( variables['_BuildCommand_Linux'], 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"') }}
+
   steps:
     - template: templates/linux-set-variables-and-download.yml
 

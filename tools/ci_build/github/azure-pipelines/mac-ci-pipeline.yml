@@ -1,11 +1,9 @@
-variables:
-  AgentPool : ${{ coalesce( variables['AgentPool'], 'macOS-10.13') }}
-  DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
-
 jobs:
 - job: MacOS_CI_Dev
   pool:
-    vmImage: ${{ parameters.AgentPool }}
+    vmImage: ${{ coalesce( variables['AgentPool'], 'macOS-10.13') }}
+  variables:
+    DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
   steps:
     - template: templates/mac-set-variables-and-download.yml
     - script: |
