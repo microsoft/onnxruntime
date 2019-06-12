@@ -1,6 +1,7 @@
 import argparse
 import glob
 import os
+import sys
 
 import numpy as np
 
@@ -65,6 +66,10 @@ def get_arg_parser():
 
 
 if __name__ == '__main__':
+
+    print(sys.executable)
+    print(numpy_helper)
+
     parser = get_arg_parser()
     args = parser.parse_args()
 
