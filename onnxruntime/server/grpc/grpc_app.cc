@@ -11,10 +11,8 @@ GRPCApp::GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& 
   ::grpc::channelz::experimental::InitChannelzService();
   ::grpc::reflection::InitProtoReflectionServerBuilderPlugin();
   ::grpc::ServerBuilder builder;
-  std::stringstream ss;
-  ss << host << ":" << port;
   builder.RegisterService(&prediction_service_implementation_);
-  builder.AddListeningPort(ss.str(), ::grpc::InsecureServerCredentials());
+  builder.AddListeningPort(host + ":" + std::to_string(port), ::grpc::InsecureServerCredentials());
 
   server_ = builder.BuildAndStart();
   server_->GetHealthCheckService()->SetServingStatus(PredictionService::service_full_name(), true);
