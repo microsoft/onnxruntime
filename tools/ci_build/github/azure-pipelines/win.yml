@@ -14,6 +14,6 @@ jobs:
      dir
      echo %xyz%
      echo %mycmd%
-     ${{ sscript }}
+     ${{ parameters.sscript }}
      dir
     displayName: 'Command Line Script'
