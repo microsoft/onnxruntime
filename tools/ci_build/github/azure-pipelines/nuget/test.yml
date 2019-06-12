@@ -12,6 +12,7 @@
        echo binariesdir is $(Build.BinariesDirectory)
 
 - stage: "stage2"
+  jobs:
   - template: ../win.yml
     parameters:
       jobname: 'templatejobname'
