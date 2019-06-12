@@ -21,6 +21,9 @@ if [ $BUILD_OS = "android" ]; then
     make -j$(nproc)
 else
     COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    pip3 list
+    python3 $SCRIPT_DIR/../../../python/onnx_test_data_utils.py --action dump_pb --input $SCRIPT_DIR/../../../../cmake/external/onnx/onnx/backend/test/data/node/test_cast_STRING_to_FLOAT/test_data_set_0
+    python3 $SCRIPT_DIR/../../../python/onnx_test_data_utils.py --action dump_pb --input /usr/local/lib/python3.5/dist-packages/onnx/backend/test/data/node/test_cast_STRING_to_FLOAT/test_data_set_0
     if [ $BUILD_DEVICE = "gpu" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
@@ -36,9 +39,6 @@ else
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
     else #cpu and ngraph
-        pip3 list
-        #python3 $SCRIPT_DIR/../../../python/onnx_test_data_utils.py --action dump_pb --input /usr/local/lib/python3.5/dist-packages/onnx/backend/test/data/node/test_cast_STRING_to_FLOAT/test_data_set_0
-        python3 $SCRIPT_DIR/../../../python/onnx_test_data_utils.py --action dump_pb --input $SCRIPT_DIR/../../../../cmake/external/onnx/onnx/backend/test/data/node/test_cast_STRING_to_FLOAT/test_data_set_0
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
