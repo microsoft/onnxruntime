@@ -13,16 +13,16 @@ Now, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
-py1_node = helper.make_node(op_type = 'PyOp', #required
+py1_node = helper.make_node(op_type = 'PyOp', #required, must be 'PyOp'
                             inputs = ['S','P'], #required
                             outputs = ['L','M','N'], #required
-                            domain = 'pyopmulti_1', #required
+                            domain = 'pyopmulti_1', #required, must be unique
                             input_types = [TensorProto.FLOAT, TensorProto.FLOAT], #required
                             output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT], #required
                             module = 'mymodule', #required
                             class_name = 'Multi_1', #required
-                            compute = 'compute', #optional
-                            W1 = '5', W2 = '7', W3 = '9') #optional
+                            compute = 'compute', #optional, 'compute' by default
+                            W1 = '5', W2 = '7', W3 = '9') #optional, must be strings
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
                             input_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
@@ -36,7 +36,7 @@ onnx.save(model, './model.onnx')
 Then, implement mymodule.py:
 ```python
 class Multi_1:
-    def __init__(self, W1, W2, W3): # W1, W2, W3 must be strings
+    def __init__(self, W1, W2, W3):
         self.W1 = int(W1)
         self.W2 = int(W2)
         self.W3 = int(W3)
