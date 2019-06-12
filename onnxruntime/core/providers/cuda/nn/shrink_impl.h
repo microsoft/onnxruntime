@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/shared_inc/fast_divmod.h"
+
 namespace onnxruntime {
 namespace cuda {
 
