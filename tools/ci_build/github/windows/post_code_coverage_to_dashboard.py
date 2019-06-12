@@ -53,6 +53,10 @@ def write_to_db(coverage_data, args):
         
         cursor.execute(delete_query)
 
+        coverage_data['coverage'] = 0.0
+        coverage_data['lines_covered'] = 0  
+        coverage_data['lines_valid'] = 1
+
         #insert current record
         insert_query = ('INSERT INTO onnxruntime.test_coverage '
             '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
@@ -88,7 +92,7 @@ def write_to_db(coverage_data, args):
 if __name__ == "__main__":
     try:
         args = parse_arguments()
-        coverage_data = parse_xml_report(args.report_file)
+        #coverage_data = parse_xml_report(args.report_file)
         write_to_db(coverage_data, args)
     except BaseException as e:
         print(str(e))

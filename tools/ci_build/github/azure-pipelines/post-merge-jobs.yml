@@ -13,7 +13,6 @@ jobs:
 
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
     - template: templates/windows-build-tools-setup-steps.yml
@@ -22,12 +21,12 @@ jobs:
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
         setVcvars: false
 
-    - template: templates/windows-build-and-test-steps.yml
-      parameters:
-        buildAdditionalParams: ' --use_openmp '
-        buildArch: $(buildArch)
-        msbuildPlatform: $(buildArch)
-        buildConfig: $(buildConfig)
+    # - template: templates/windows-build-and-test-steps.yml
+    #   parameters:
+    #     buildAdditionalParams: ' --use_openmp '
+    #     buildArch: $(buildArch)
+    #     msbuildPlatform: $(buildArch)
+    #     buildConfig: $(buildConfig)
 
     - task: CmdLine@2
       displayName: 'Set environment var for SQL access'  
