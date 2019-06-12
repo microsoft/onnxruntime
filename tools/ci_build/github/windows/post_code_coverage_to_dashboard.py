@@ -11,6 +11,7 @@
 import argparse
 import mysql.connector
 import xml.etree.ElementTree as ET
+import sys
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime test coverge report uploader for dashboard")

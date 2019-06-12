@@ -27,10 +27,7 @@ steps:
   displayName: 'Post code coverage data to the Dashboard'
   inputs:
     filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-    arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_code_coverage_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --report_file="$(Build.BinariesDirectory)/Debug/Debug/cobertura.xml" --report_url="https://dev.azure.com/onnxruntime/not-a-valid-url-yet"'
-    # TODO: As of now I don't have a good way to retrieve the URL of the cobertura.xml report published as a build artifact.
-    # For now filling with a stub URL, won't use it in the dashboard
+    arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_code_coverage_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --report_file="$(Build.BinariesDirectory)/Debug/Debug/cobertura.xml" --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"'
     workingFolder: "$(Build.BinariesDirectory)"
   continueOnError: ${{parameters.ContinueOnError}}
   condition: ${{parameters.PostToDashBoard}}
-  
