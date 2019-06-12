@@ -223,10 +223,14 @@ TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
-  module << "\t"   << "def __init__(self,A,B,C):"    << std::endl;
-  module << "\t\t" << "self.a,self.b,self.c = A,B,C" << std::endl;
-  module << "\t"   << "def compute(self,x):"         << std::endl;
-  module << "\t\t" << "return x*2"                   << std::endl;
+  module << "\t"
+         << "def __init__(self,A,B,C):" << std::endl;
+  module << "\t\t"
+         << "self.a,self.b,self.c = A,B,C" << std::endl;
+  module << "\t"
+         << "def compute(self,x):" << std::endl;
+  module << "\t\t"
+         << "return x*2" << std::endl;
   module.close();
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
