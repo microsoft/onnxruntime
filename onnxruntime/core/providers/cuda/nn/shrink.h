@@ -16,12 +16,12 @@ class Shrink final : public CudaKernel {
     float bias_temp;
     // if the attribute exists, use the value
     if (info.GetAttr<float>("bias", &bias_temp).IsOK())
-      bias_ = gsl::narrow_cast<float>(bias_temp);
+      bias_ = bias_temp;
 
     float lambd_temp;
     // if the attribute exists, use the value
     if (info.GetAttr<float>("lambd", &lambd_temp).IsOK())
-      lambd_ = gsl::narrow_cast<float>(lambd_temp);
+      lambd_ = lambd_temp;
   }
 
   Status ComputeInternal(OpKernelContext* p_op_kernel_context) const;
