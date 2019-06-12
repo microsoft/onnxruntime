@@ -33,7 +33,7 @@ def write_to_db(coverage_data, args):
     # connect to database
     cnx = mysql.connector.connect(
         user='ort@onnxruntimedashboard', 
-        password='U5nNR7\e=UPk#Yp!', 
+        password='N8pKntyJ2SKRxBBp', 
         host='onnxruntimedashboard.mysql.database.azure.com', 
         database='onnxruntime')
 

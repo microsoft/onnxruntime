@@ -23,11 +23,13 @@ jobs:
         buildArch: $(buildArch)
         msbuildPlatform: $(buildArch)
         buildConfig: $(buildConfig)
+
     - template: templates/windows-code-coverage-steps.yml
       parameters:
         OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
         GitCommitHash: $(OnnxRuntimeGitCommitHash)    
         PublishReport: true
         PostToDashboard: true
+        
     - template: templates/clean-agent-build-directory-step.yml
 
