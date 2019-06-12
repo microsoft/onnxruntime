@@ -13,6 +13,8 @@ jobs:
   steps:
     - script: |
        @echo %BuildCommand%
+       @echo %_Buildcommand_Win%
+       @echo %Buildcommand_Win%
     - template: templates/set-test-data-variables-step.yml
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:

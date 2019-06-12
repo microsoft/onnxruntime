@@ -1,7 +1,7 @@
 jobs:
 - job: MacOS_CI_Dev
   pool:
-    vmImage: ${{ coalesce( variables['AgentPool'], 'macOS-10.13') }}
+    vmImage: ${{ coalesce( variables['AgentPoolMacOS'], 'macOS-10.13') }}
   variables:
     DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
   steps:
