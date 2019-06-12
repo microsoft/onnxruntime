@@ -85,7 +85,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   if (output_size == 0) {
     return Status::OK();
   }
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<int64_t> starts_buffer(this, device_id, dimension_count);
   gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
   for (int i = 0; i < dimension_count; ++i) {

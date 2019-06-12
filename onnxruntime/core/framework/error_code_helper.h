@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/status.h"
+#include "core/common/exceptions.h"
 
 namespace onnxruntime {
 OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);

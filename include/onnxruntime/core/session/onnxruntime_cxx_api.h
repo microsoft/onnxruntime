@@ -256,7 +256,7 @@ struct CustomOpApi {
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
-  int64_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+  size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
   size_t GetDimensionCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
@@ -278,32 +278,6 @@ struct CustomOpApi {
   const OrtCustomOpApi& api_;
 };
 
-namespace CustomOpImpl {
-  // SFINAE definition to determine whether class T as GetExecutionProviderType interface
-  template <typename T, typename... Args>
-  class HasProvider {
-    template <typename U = T,
-              typename = decltype( std::declval<U>().GetExecutionProviderType(std::declval<Args>()...) )>
-    static std::true_type test(int);
-    template <typename U = T>
-    static std::false_type test(...);
-  public:
-    static constexpr bool value = decltype(test(0))::value;
-  };
-
-  // SFINAE definitions to get the execution provider of op.
-  // If type T has GetExecutionProviderType, use the result of op->GetExecutionProviderType().
-  // Otherwise, use kCpuExecutionProvider by default.
-  template <typename T>
-  std::enable_if_t<HasProvider<T>::value, const char*> GetProvider(T* op) {
-    return op->GetExecutionProviderType();
-  }
-  template <typename T>
-  std::enable_if_t<!HasProvider<T>::value, const char*> GetProvider(T*) {
-    return "CPUExecutionProvider";
-  }
-} // namespace CustomOpImpl
-
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
@@ -311,8 +285,7 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, const OrtCustomOpApi* api, const OrtKernelInfo* info) { return static_cast<TOp*>(this_)->CreateKernel(*api, info); };
     OrtCustomOp::GetName = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetName(); };
 
-    // If OrtCustomOp does not have a definition of GetExecutionProviderType, use CPUExecutorProvider by default
-    OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return CustomOpImpl::GetProvider<TOp>(static_cast<TOp*>(this_)); };
+    OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetExecutionProviderType(); };
 
     OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](OrtCustomOp* this_, size_t index) { return static_cast<TOp*>(this_)->GetInputType(index); };
@@ -323,6 +296,9 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
     OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };
   }
+
+  // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
+  const char* GetExecutionProviderType() const { return nullptr; }
 };
 
 }  // namespace Ort
