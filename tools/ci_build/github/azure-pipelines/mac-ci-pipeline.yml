@@ -1,6 +1,6 @@
-parameters:
-  AgentPool : 'macOS-10.13'
-  DoNugetPack: 'false'
+variables:
+  AgentPool : ${{ coalesce( variables['AgentPool'], 'macOS-10.13') }}
+  DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
 
 jobs:
 - job: MacOS_CI_Dev

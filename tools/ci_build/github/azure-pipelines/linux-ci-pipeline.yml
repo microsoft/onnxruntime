@@ -1,7 +1,7 @@
-parameters:
-  AgentPool : 'Linux-CPU'
-  DoNugetPack: 'false'
-  BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
+variables:
+  AgentPool : ${{ coalesce( variables['AgentPool'], 'Linux-CPU') }}
+  DoNugetPack: ${{ coalesce ( variables['DoNugetPack'], 'false') }}
+  BuildCommand: ${{ coalesce ( variables['_BuildCommand_Linux'], 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"') }}
 
 jobs:
 - job: Linux_CI_Dev

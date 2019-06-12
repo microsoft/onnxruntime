@@ -2,18 +2,24 @@ variables:
   AgentPoolWin : 'Win-CPU'
   AgentPoolLinux : 'Linux-CPU'
   AgentPoolMacOS : 'macOS-10.13'
-  Buildcommand : 'Duh'
-
-parameters:
-  abc : 'value'
+  DoDebugBuild: 'false'
+  DoNugetPack : 'true'
+  DoCompliance: 'true'
+  _Buildcommand_Win: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+  _BuildCommand_Win_x86: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
+  _BuildCommand_Linux: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
+  _BuildCommand_Linux_x86 : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
 
 jobs: 
 - template: ../win-ci-pipeline.yml
-  variables:
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: 'true'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+- template: ../win-x86-ci-pipeline.yml
+- template: ../linux-ci-pipeline.yml
+- template: ../linux-x86-ci-pipeline.yml
+- template: ../mac-ci-pipeline.yml
+- template: templates/gen_package.yml
+- template: packagetests/win.yml
+- template: packagetests/linux.yml
+- template: packagetests/macos.yml
 
 
 
