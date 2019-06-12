@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/slice.h"
-//#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/tensor/slice_impl.h"
 
+using namespace onnxruntime::cuda;
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 #define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                                                                                                                                                                                               \
@@ -22,4 +23,5 @@ REGISTER_TYPED_DYNAMICSLICE(int32_t)
 REGISTER_TYPED_DYNAMICSLICE(int64_t)
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

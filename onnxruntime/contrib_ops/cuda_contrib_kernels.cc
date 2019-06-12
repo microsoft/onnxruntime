@@ -7,6 +7,7 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 // These ops were experimental ops in onnx domain which have been removed now. We add them here as
@@ -66,4 +67,5 @@ void RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

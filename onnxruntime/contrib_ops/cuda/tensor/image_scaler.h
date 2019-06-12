@@ -8,6 +8,7 @@
 #include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -23,4 +24,5 @@ class ImageScaler final : public CudaKernel {
 };
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

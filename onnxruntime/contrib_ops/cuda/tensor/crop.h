@@ -7,6 +7,7 @@
 #include "contrib_ops/cpu/crop.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -19,4 +20,5 @@ class Crop final : public contrib::CropBase, public CudaKernel {
 };
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

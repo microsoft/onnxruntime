@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_activations.h"
+#include "activations.h"
 #include "core/framework/op_kernel.h"
 
+using namespace onnxruntime::cuda;
+
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 #define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
@@ -52,5 +55,6 @@ REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, MLFloat16)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, float)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, double)
 
-}  // namespace cuda
+}  //namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

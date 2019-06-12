@@ -7,15 +7,15 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_*.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"

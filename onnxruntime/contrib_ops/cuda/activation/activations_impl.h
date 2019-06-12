@@ -5,6 +5,7 @@
 #include "core/providers/cuda/activation/activations_impl.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 typedef onnxruntime::cuda::CtxAlphaBeta CtxAffine;
@@ -29,4 +30,5 @@ UNARY_CONTRIB_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

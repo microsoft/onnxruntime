@@ -7,9 +7,12 @@
 #include "core/providers/cuda/math/unary_elementwise_ops.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/activation/activations.h"
-#include "contrib_activations_impl.h"
+#include "activations_impl.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -64,4 +67,5 @@ class ScaledTanh final : public UnaryElementwise {
 };
 
 }  // namespace cuda
+}  //namespace contrib
 }  // namespace onnxruntime

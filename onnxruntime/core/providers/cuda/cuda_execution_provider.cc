@@ -805,7 +805,7 @@ std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
   RegisterCudaKernels(*kernel_registry);
 
 #ifndef DISABLE_CONTRIB_OPS
-  ::onnxruntime::cuda::RegisterCudaContribKernels(*kernel_registry);
+  ::onnxruntime::contrib::cuda::RegisterCudaContribKernels(*kernel_registry);
 #endif
 
   return kernel_registry;

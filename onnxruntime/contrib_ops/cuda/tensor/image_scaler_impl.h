@@ -5,6 +5,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -17,4 +18,5 @@ void ImageScalerImpl(
     const size_t N);
 
 }  // namespace cuda
+}  //namespace contrib
 }  // namespace onnxruntime

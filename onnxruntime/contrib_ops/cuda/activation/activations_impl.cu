@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
-#include "contrib_activations_impl.h"
+#include "activations_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
 
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -58,4 +60,5 @@ UNARY_CONTRIB_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

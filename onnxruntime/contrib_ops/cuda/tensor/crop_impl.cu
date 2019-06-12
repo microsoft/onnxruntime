@@ -4,7 +4,10 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "image_scaler_impl.h"
 
+using namespace onnxruntime::cuda;
+
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -50,4 +53,5 @@ SPECIALIZED_IMPL(double)
 SPECIALIZED_IMPL(half)
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
