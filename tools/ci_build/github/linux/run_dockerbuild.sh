@@ -25,7 +25,7 @@ esac
 done
 
 EXIT_CODE=1
-
+PYTHON_VER=${PYTHON_VER:=3.5}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 cd $SCRIPT_DIR/docker

@@ -31,7 +31,7 @@ class Capture {
   Capture(const Logger& logger, logging::Severity severity, const char* category,
           logging::DataType dataType, const CodeLocation& location)
       : logger_{&logger}, severity_{severity}, category_{category}, data_type_{dataType}, location_{location} {
-      }
+  }
 
   /**
      The stream that can capture the message via operator<<.
@@ -42,7 +42,7 @@ class Capture {
   }
 
 #ifdef _MSC_VER
-  // add SAL annotation for printf format string. requires Code Analysis to run to validate usage.
+// add SAL annotation for printf format string. requires Code Analysis to run to validate usage.
 #define msvc_printf_check _Printf_format_string_
 #define __attribute__(x)  // Disable for MSVC. Supported by GCC and CLang.
 #else

@@ -18,6 +18,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/platform/ort_mutex.h"
 
@@ -171,7 +172,7 @@ class UniDirectionalGru {
 
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
                const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
-               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state);
+               gsl::span<T>& outputs, gsl::span<T>& final_hidden_state, onnxruntime::concurrency::ThreadPool* tp);
 
   ~UniDirectionalGru() = default;
 
@@ -263,6 +264,9 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
+  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
+  auto tp = ctx_internal->GetOperatorThreadPool();
+
   const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
   const Tensor& W = *context.Input<Tensor>(1);  // weights. [num_directions, 3*hidden_size, input_size]
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 3*hidden_size, hidden_size]
@@ -375,7 +379,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         clip_);
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, tp);
 
     std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
@@ -389,7 +393,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[2],
         activation_funcs_.Entries()[3],
         clip_);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2, tp);
   } else {
     std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
         alloc,
@@ -404,7 +408,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[1],
         clip_);
 
-    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, tp);
   }
 
   if (!output.empty())
@@ -505,7 +509,8 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                                    const gsl::span<const T>& input_weights,
                                    const gsl::span<const T>& recurrent_weights,
                                    gsl::span<T>& outputs,
-                                   gsl::span<T>& final_hidden_state) {
+                                   gsl::span<T>& final_hidden_state,
+                                   onnxruntime::concurrency::ThreadPool* tp) {
   using span_T_const_iter = typename gsl::span<T>::const_iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
@@ -559,7 +564,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),
               input_size_, beta,
               outputZRH_.begin(), outputZRH_.end(),
-              hidden_size_x3);
+              hidden_size_x3, tp);
 
   DumpMatrix("inputs with weights applied", outputZRH_.data(), seq_length_ * batch_size_ * 3, hidden_size_);
 
@@ -624,7 +629,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                 recurrent_weightsZR.cbegin(), recurrent_weightsZR.cend(),
                 hidden_size_, beta,
                 outputZRH_.begin() + out_added_offset, outputZRH_.end(),
-                hidden_size_x3);
+                hidden_size_x3, tp);
 
     DumpMatrix("Ht-1 * R[zr] + Xt*(W[zr]^T)" + seqno_str,
                outputZRH_.data() + out_added_offset, batch_size_, hidden_size_x2, 0, hidden_size_x3);
@@ -640,7 +645,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
                   hidden_size_, beta,
                   linear_output_.begin(), linear_output_.end(),  // pre: Rbh, post:output
-                  hidden_size_);
+                  hidden_size_, tp);
 
       DumpMatrix("Ht-1 * (Rh^T) + Rbh " + seqno_str, linear_output_.data(), batch_size_, hidden_size_);
     }
@@ -707,7 +712,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weightsH.cbegin(), recurrent_weightsH.cend(),  // Rh^T
                   hidden_size_, beta,
                   out_H, outputZRH_.end(),
-                  hidden_size_x3);
+                  hidden_size_x3, tp);
     }
 
     DumpMatrix("Xt*(Wh^T) + (" + label + ")" + seqno_str, outputZRH_.data() + out_added_offset,
@@ -800,6 +805,20 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
+    }
+  }
+
+  // zero any values beyond the evaluated steps
+  if (output_sequence && max_sequence_length < seq_length_) {
+    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+      const auto span_to_zero = outputs.subspan(
+          max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
+      std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+    } else {
+      for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
+        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+      }
     }
   }
 

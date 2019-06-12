@@ -71,29 +71,6 @@ TEST(ConstantOfShape, DefaultValue) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-// Our infrastructure does not allow for empty input.
-// But the spec makes a provision for it
-//TEST(ConstantOfShape, EmptyInput) {
-//  // Output must contain a scalar
-//  OpTester test("ConstantOfShape", 9);
-//
-//  TensorProto t_proto;
-//  t_proto.set_data_type(TensorProto::INT32);
-//  t_proto.mutable_dims()->Add(1);
-//  t_proto.mutable_int32_data()->Add(0);
-//  test.AddAttribute("value", t_proto);
-//
-//  std::vector<int64_t> input_dims;
-//  std::vector<int64_t> input;
-//  test.AddInput<int64_t>("input", input_dims, input);
-//
-//  std::vector<int64_t> output_dims{1};
-//  std::vector<float> output{0};
-//  test.AddOutput<float>("output", output_dims, output);
-//
-//  test.Run(OpTester::ExpectResult::kExpectSuccess);
-//}
-
 inline void SetValue(TensorProto& t_proto, float value) {
   t_proto.mutable_float_data()->Add(value);
 }
