@@ -164,10 +164,16 @@ void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
   PyObject* pXML = PyObject_Repr(pArg2);
   openvino_xml = PyUnicode_AsUTF8(pXML);
 
+  Py_XDECREF(pXML);
+  Py_XDECREF(pOutputTuple);
+  Py_XDECREF(pWeights);
+  Py_XDECREF(pArgs);
+  Py_XDECREF(pFunc);
+  Py_XDECREF(pModule);
+
   // Calling Py_Finalize here prevents multiple invocations
   // of the interpreter from the same process. Relying on
   // OS process clean up routines for python shutdown.
-
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetworkWithMO() {
