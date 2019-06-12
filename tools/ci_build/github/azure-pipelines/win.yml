@@ -1,4 +1,4 @@
-paramaeters:
+parameters:
   jobname : 'NoneJob'
   command : 'dummycommand'
   sscript : ''
