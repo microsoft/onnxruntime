@@ -1,5 +1,5 @@
 
--stages: 
+stages: 
 - stage: "stage1"
   jobs: 
   - template: ../win.yml
