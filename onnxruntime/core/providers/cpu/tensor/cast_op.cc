@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
+#include <iomanip>
 #include <sstream>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -72,19 +72,27 @@ template <typename SrcType>
 inline void CastToStringData(const Tensor* in, Tensor* out, const TensorShape& shape) {
   const int64_t len = shape.Size();
   ORT_ENFORCE(len > 0);
+  auto input_data = in->DataAsSpan<SrcType>();
+  auto output_data = out->MutableDataAsSpan<std::string>();
+
   for (int i = 0; i < len; ++i) {
-    if (std::is_floating_point<SrcType>::value && std::isnan(in->Data<SrcType>()[i])) {
-      out->MutableData<std::string>()[i] = "NaN";
-    } else if (std::is_floating_point<SrcType>::value && std::isinf(in->Data<SrcType>()[i])) {
-      if (in->Data<SrcType>()[i] < std::numeric_limits<SrcType>::lowest()) {
-        out->MutableData<std::string>()[i] = "-INF";
+    if (std::is_floating_point<SrcType>::value && std::isnan(input_data[i])) {
+      output_data[i] = "NaN";
+    } else if (std::is_floating_point<SrcType>::value && std::isinf(input_data[i])) {
+      if (input_data[i] < std::numeric_limits<SrcType>::lowest()) {
+        output_data[i] = "-INF";
       } else {
-        out->MutableData<std::string>()[i] = "INF";
+        output_data[i] = "INF";
       }
     } else {
       std::ostringstream convert;
-      convert << in->Data<SrcType>()[i];
-      out->MutableData<std::string>()[i] = convert.str();
+      if (std::is_floating_point<SrcType>::value) {
+        // match numpy default behavior
+        convert << std::setprecision(8);
+      }
+
+      convert << input_data[i];
+      output_data[i] = convert.str();
     }
   }
 }
@@ -195,7 +203,6 @@ class Cast final : public OpKernel {
 
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
-
 
 const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<bool>(),
