@@ -112,13 +112,28 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
-    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
+    Status compute_status;
+    try {
+      compute_status = p_op_kernel->Compute(&op_kernel_context);
+    } catch (const NotImplementedException& ex) {
+      std::ostringstream ss;
+      ss << "Exception was thrown while running Node: " << p_op_kernel->Node().Name()
+         << ". Error Message: " << ex.what();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(ONNXRUNTIME, NOT_IMPLEMENTED, msg_string);
+    } catch (const std::exception& ex) {
+      std::ostringstream ss;
+      ss << "Exception was thrown while running Node: " << p_op_kernel->Node().Name()
+         << ". Error Message: " << ex.what();
+      const auto msg_string = ss.str();
+      LOGS(logger, ERROR) << msg_string;
+      return Status(ONNXRUNTIME, RUNTIME_EXCEPTION, msg_string);
+    }
     if (!compute_status.IsOK()) {
       std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " <<
-            p_op_kernel->Node().Name() <<
-            " Status Message: " <<
-            compute_status.ErrorMessage();
+      ss << "Non-zero status code returned while running Node: " << p_op_kernel->Node().Name()
+         << ". Status Message: " << compute_status.ErrorMessage();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
