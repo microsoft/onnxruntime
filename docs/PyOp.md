@@ -6,21 +6,23 @@ To use the feature, model designer needs to:
 2. Implement a Python module of all referred operators in required format;
 3. Place the Python module into python sys path, then do referencing with onnxruntime.
 
-## Usage 
-First, create an onnx model containing Python operator nodes:
+## Usage
+Currently, Python operator is only published via source under onnxruntime/core/language_interop_ops, developers need to compile with“-enable_language_interop_ops”and override existing onnxruntime binary. Meanwhile, please also copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
+Note that it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
+Now, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
-py1_node = helper.make_node(op_type = 'PyOp',                                                         #required
-                            inputs = ['S','P'],                                                       #required
-                            outputs = ['L','M','N'],                                                  #required
-                            domain = 'pyopmulti_1',                                                   #required
-                            input_types = [TensorProto.FLOAT, TensorProto.FLOAT],                     #required
-                            output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT], #required
-                            module = 'mymodule',                                                      #required
-                            class_name = 'Multi_1',                                                   #required
-                            compute = 'compute',                                                      #optional
-                            W1 = '5', W2 = '7', W3 = '9')                                             #optional
+py1_node = helper.make_node(op_type = 'PyOp',                                                                            #required
+                            inputs = ['S','P'],                                                                                                      #required
+                            outputs = ['L','M','N'],                                                                                             #required
+                            domain = 'pyopmulti_1',                                                                                        #required
+                            input_types = [TensorProto.FLOAT, TensorProto.FLOAT],                                     #required
+                            output_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],  #required
+                            module = 'mymodule',                                                                                           #required
+                            class_name = 'Multi_1',                                                                                           #required
+                            compute = 'compute',                                                                                            #optional
+                            W1 = '5', W2 = '7', W3 = '9')                                                                                  #optional
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
                             input_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
@@ -31,7 +33,7 @@ graph = helper.make_graph([ad1_node,mul_node,py1_node,ad2_node,py2_node,sub_node
 model = helper.make_model(graph, producer_name = 'pyop_model')
 onnx.save(model, './model.onnx')
 ```
-Next, implement mymodule.py:
+Then, implement mymodule.py:
 ```python
 class Multi_1:
     def __init__(self, W1, W2, W3): # W1, W2, W3 must be strings
@@ -46,33 +48,19 @@ class Multi_2:
         r1, r2 = H + N, N + E
         return r1, r2
 ```
-Finally, copy mymodule.py into one of the Python sys path, and do referencing with onnxruntime.
-
-## PYTHONHOME
-On windows, please set PYTHONHOME before inferencing.
-It should point to the path where python is installed. For example:
-C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda
+Finally, copy mymodule.py into one of the Python sys path, and do referencing with onnxruntime. On windows, please set PYTHONHOME beforehand. It points to path where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
-TensorProto.BOOL,
-TensorProto.UINT8,
-TensorProto.UINT16,
-TensorProto.UINT32,
-TensorProto.INT16,
-TensorProto.INT32,
-TensorProto.FLOAT,
-TensorProto.DOUBLE
+* TensorProto.BOOL,
+* TensorProto.UINT8,
+* TensorProto.UINT16,
+* TensorProto.UINT32,
+* TensorProto.INT16,
+* TensorProto.INT32,
+* TensorProto.FLOAT,
+* TensorProto.DOUBLE
 
 ## Limitations
-1. Currently, Python operator is only published via source, developers need to compile onnxruntime with "-enable_language_interop_ops" to consume the functionality. When compile complete, override existing onnxruntime binary with the latest one from build. Also, depends on the os, please copy onnxruntime_pywrapper.dll/libonnxruntime_pywrapper.so/libonnxruntime_pywrapper.dylib to the path where onnxruntime binary file is placed. 
-2. On Windows, please go with "-config RelWithDebInfo" if you need binary with debug information, "-config Debug" has known issues.
-3. Please specify a unique domain for each Python operator referred in the graph;
-4. Due to restrictions imposed by python C API, multi-threading is disabled, meaning multiple Python operators have to run sequentially.
-
-## Pitfalls
-1. In python module, developers are free to import any installed python packages for all kinds of purposes, this may introduce security issues, please go with caution;
-2. Python modules are called via Python C API, the inferencing may be significantly less performant when any such operator is included in the graph;
-3. Missing of PYTHONHOME may cause undefined results.
-
-## Tests
-In progress
+* On Windows,  "-config Debug" has known issues, so please compile with "-config RelWithDebInfo" if need debug information;
+* Please specify a unique domain for each Python operator referred in the graph;
+* Due to restrictions imposed by python C API, multi-threading is disabled, meaning multiple Python operators will run sequentially.
