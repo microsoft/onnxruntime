@@ -1,26 +1,13 @@
+jobs: 
+- template: ../win.yml
+  parameters:
+    jobname: 'templatejobname'
+    sscript: | 
+     echo hello
+     echo from the uberscript!!
+     echo agentpoolwin is $(AGENTPOOLWIN)
+     echo binariesdir is $(Build.BinariesDirectory)
 
-stages: 
-- stage: "stage1"
-  jobs: 
-  - template: ../win.yml
-    parameters:
-      jobname: 'templatejobname'
-      sscript: | 
-       echo hello
-       echo from the uberscript!!
-       echo agentpoolwin is $(AGENTPOOLWIN)
-       echo binariesdir is $(Build.BinariesDirectory)
-
-- stage: "stage2"
-  jobs:
-  - template: ../win.yml
-    parameters:
-      jobname: 'templatejobname'
-      sscript: | 
-       echo hello
-       echo from the uberscript!!
-       echo agentpoolwin is $(AGENTPOOLWIN)
-       echo binariesdir is $(Build.BinariesDirectory)
 
 
 
