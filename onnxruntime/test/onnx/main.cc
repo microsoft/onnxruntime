@@ -342,6 +342,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"operator_non_float_params", "disable reason"},
       {"operator_params", "disable reason"},
       {"operator_pow", "disable reason"},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data"},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8. 
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.

@@ -98,7 +98,8 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = ['^test_dequantizelinear_cpu.*',
+        current_failing_tests = [''^test_cast_STRING_to_FLOAT_cpu.*',  # old test data that is bad on Linux CI builds
+                                   ^test_dequantizelinear_cpu.*',
                                  '^test_qlinearconv_cpu.*',
                                  '^test_quantizelinear_cpu.*',
                                  '^test_gru_seq_length_cpu.*']
