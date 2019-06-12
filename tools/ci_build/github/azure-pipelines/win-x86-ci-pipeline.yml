@@ -4,12 +4,12 @@ jobs:
     buildDirectory: '$(Build.BinariesDirectory)'
   timeoutInMinutes: 90
   steps:
-    - template: templates/win-ci.yml
+    - template: templates/win-x86-ci.yml
       parameters:
         AgentPoolWin : 'Win-CPU'
         DoDebugBuild: 'true'
         DoCompliance: 'false'
         BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
-        JobName: 'Windows_CI_Dev'
+        JobName: 'Windows_CI_Dev_x86'
         DoNugetPack:  'false'
         NuPackScript : ''
