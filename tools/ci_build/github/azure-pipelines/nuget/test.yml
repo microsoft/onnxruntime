@@ -1,8 +1,9 @@
-variables:
-  xyz : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
-
 jobs: 
 - template: ../win.yml
+  parameters:
+    jobname: 'templatejobname'
+    sscript: 'echo hello'
+
 
 
 
