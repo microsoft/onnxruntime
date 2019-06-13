@@ -3,8 +3,8 @@
 To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
 
 ## Usage
-Step 1, since Python operator is only published via source under onnxruntime/core/language_interop_ops, developers need to compile with“-enable_language_interop_ops”and override existing onnxruntime binary. Meanwhile, please also copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
-Note that it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
+Step 1, since Python operator is only published via source under onnxruntime/core/language_interop_ops, developers need to compile with “-enable_language_interop_ops” and override existing onnxruntime binary. Meanwhile, please also copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
+Further, it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
 Step 2, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
