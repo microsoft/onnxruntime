@@ -50,10 +50,6 @@ def write_to_db(coverage_data, args):
         
         cursor.execute(delete_query)
 
-        coverage_data['coverage'] = 0.0
-        coverage_data['lines_covered'] = 0  
-        coverage_data['lines_valid'] = 1
-
         #insert current record
         insert_query = ('INSERT INTO onnxruntime.test_coverage '
             '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
