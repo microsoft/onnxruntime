@@ -14,6 +14,7 @@ jobs:
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    BuildCommand: ${{ parameters.BuildCommand }}
     PlatformTarget: x86
     RuntimeIdentifier: win-x86
     DotNetExe: '"c:\program files (x86)\dotnet\dotnet.exe"'
