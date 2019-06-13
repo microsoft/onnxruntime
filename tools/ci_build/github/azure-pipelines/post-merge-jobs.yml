@@ -28,11 +28,11 @@ jobs:
     #     msbuildPlatform: $(buildArch)
     #     buildConfig: $(buildConfig)
 
-    - task: CmdLine@2
-      displayName: 'Set environment var for SQL access'  
-      inputs:
-        script: 'SET DASHBOARD_MYSQL_ORT_PASSWORD = $(dashboard-mysql-ort-password)
-        echo $DASHBOARD_MYSQL_ORT_PASSWORD'
+    # - task: CmdLine@2
+    #   displayName: 'Set environment var for SQL access'  
+    #   inputs:
+    #     script: 'SET DASHBOARD_MYSQL_ORT_PASSWORD = $(dashboard-mysql-ort-password)
+    #     echo $DASHBOARD_MYSQL_ORT_PASSWORD'
     - template: templates/windows-code-coverage-steps.yml
       parameters:
         OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
