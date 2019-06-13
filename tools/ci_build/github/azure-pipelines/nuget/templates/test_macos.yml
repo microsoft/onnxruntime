@@ -32,12 +32,6 @@ jobs:
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
-    condition: succeeded()
-
-  - template: ../../templates/clean-agent-build-directory-step.yml
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
     condition: always()
 
-
+  - template: ../../templates/clean-agent-build-directory-step.yml
