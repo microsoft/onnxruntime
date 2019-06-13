@@ -56,6 +56,24 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Enable Mem Pattern. By default, it is enabled
+        /// </summary>
+        /// </param>
+        public void EnableMemPattern()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(_nativePtr));
+        }
+
+        /// <summary>
+        /// Disable Mem Pattern.
+        /// </summary>
+        /// </param>
+        public void DisableSequentialExecution()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(_nativePtr));
+        }
+
+        /// <summary>
         /// Default instance
         /// </summary>
         public static SessionOptions Default
