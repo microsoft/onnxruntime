@@ -61,7 +61,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            options.SetSessionGraphOptimizationLevel(graphOptimizationLevel);
+            Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
             if(disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))
@@ -208,7 +208,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        [Fact]
+        [x64Fact]
         private void TestPreTrainedModelsOpset7And8()
         {
             var skipModels = new List<String>() {
@@ -782,6 +782,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 if (System.Environment.GetEnvironmentVariable("TESTONGPU") == null)
                 {
                     Skip = "GPU testing not enabled";
+                }
+            }
+        }
+
+        private class x64Fact : FactAttribute
+        {
+            public x64Fact()
+            {
+                if (System.Environment.Is64BitProcess == false)
+                {
+                    Skip = "Not 64-bit process";
                 }
             }
         }

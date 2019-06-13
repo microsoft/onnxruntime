@@ -3,6 +3,7 @@ parameters:
   JobName : 'Linux_CI_Dev'
   BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
   DoNugetPack: 'false'
+  NuPackScript: ''
   ZipDir : 'linux-x64'
   ArtifactName: 'drop-linux'
 
@@ -16,8 +17,9 @@ jobs:
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
          set -e -x
-         mkdir $(Build.BinariesDirectory)/linux-x64
+         mkdir $(Build.BinariesDirectory)/${{ parameters.ZipDir }}
          cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/${{ parameters.ZipDir }}
+         ${{ parameters.NuPackScript }}
          cd $(Build.BinariesDirectory)
          zip -r ${{ parameters.ZipDir }}.zip ${{ parameters.ZipDir }}
          cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
