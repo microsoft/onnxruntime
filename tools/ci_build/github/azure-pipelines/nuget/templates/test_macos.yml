@@ -34,7 +34,7 @@ jobs:
     displayName: 'Component Detection'
     condition: succeeded()
 
-  - template: clean-agent-build-directory-step.yml
+  - template: ../../templates/clean-agent-build-directory-step.yml
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
