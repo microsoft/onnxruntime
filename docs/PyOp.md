@@ -68,4 +68,5 @@ Platforms | Python 3.5 | Python 3.6 | Python 3.7
 ----------- | ------------| -----------  | -----------
 Windows | (conda) passed | (conda) passed | passed
 Linux | (conda) passed | (conda) passed | passed
+Mac |  (conda) passed | (conda) passed | (conda) passed
 
