@@ -475,12 +475,12 @@ and op)DOC";
 
           // actual shape inference processing
           // [N, C] can be copied over from the input as is
-          *output_shape->mutable_dim((int)0) = input_shape.dim((int)0);
-          *output_shape->mutable_dim((int)1) = input_shape.dim((int)1);
+          *output_shape->mutable_dim(static_cast<int>(0)) = input_shape.dim(static_cast<int>(0));
+          *output_shape->mutable_dim(static_cast<int>(1)) = input_shape.dim(static_cast<int>(1));
 
           // process 'H' and 'W'
-          if (!input_shape.dim((int)2).has_dim_value() ||
-              !input_shape.dim((int)3).has_dim_value()) {
+          if (!input_shape.dim(static_cast<int>(2)).has_dim_value() ||
+              !input_shape.dim(static_cast<int>(3)).has_dim_value()) {
             // either height and width input has symbolic dims, so can't proceed further
             // add two dims as placeholders for output_H and output_W and return
             output_shape->add_dim();
@@ -488,8 +488,8 @@ and op)DOC";
             return;
           }
 
-          int64_t H = input_shape.dim((int)2).dim_value();
-          int64_t W = input_shape.dim((int)3).dim_value();
+          int64_t H = input_shape.dim(static_cast<int>(2)).dim_value();
+          int64_t W = input_shape.dim(static_cast<int>(3)).dim_value();
 
           int64_t left_border = border[0],
                   top_border = border[1],
@@ -1197,7 +1197,7 @@ Example 4:
           if ((pads_initializer->dims_size() != 1 &&
                pads_initializer->dims_size() != 2) ||
               (pads_initializer->dims_size() == 2 &&
-               pads_shape.dim((int)0).dim_value() != 1) ||
+               pads_shape.dim(static_cast<int>(0)).dim_value() != 1) ||
               pads_initializer->data_type() != ONNX_NAMESPACE::TensorProto::INT64)
             fail_shape_inference(
                 "'pads' input must be a 1D (shape: [input_rank]) "
@@ -1220,8 +1220,8 @@ Example 4:
 
           const auto& output_shape =
               ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
-            const auto& input_dim = input_shape.dim((int)i);
+          for (size_t i = 0; static_cast<int64_t>(i) < input_rank; ++i) {
+            const auto& input_dim = input_shape.dim(static_cast<int>(i));
             auto* output_dim = output_shape->add_dim();
             if (input_dim.has_dim_value()) {
               output_dim->set_dim_value(
@@ -1233,7 +1233,7 @@ Example 4:
         } else {
           // Infer ouput shapes' rank in any case
           auto* output_shape_0 = getOutputShape(ctx, 0);
-          for (size_t i = 0; (int64_t)i < input_rank; ++i) {
+          for (size_t i = 0; static_cast<int64_t>(i) < input_rank; ++i) {
             output_shape_0->add_dim();
           }
         }
