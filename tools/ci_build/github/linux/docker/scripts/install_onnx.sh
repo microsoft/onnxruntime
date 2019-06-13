@@ -1,10 +1,11 @@
 #!/bin/bash
 
-#The script is to generate all supported versions of onnx models which will be tested by onnx_test_runner
-#in the end of ci build pipeline. The purpose is to make sure latest onnxruntime has no regressions. Note 
-#that the sequence of onnx versions must be maintained since we want to keep the tip of master on script exit.
-#One possible improvement here is to keep the models saved to some public storage instead of generating 
-#on the fly every time.
+# The script is to generate all supported versions of onnx models which will be tested by onnx_test_runner
+# in the end of ci build pipeline. The purpose is to make sure latest onnxruntime has no regressions. Note 
+# that the order of installation must be onnx123, onnx130, onnx141, onnx150 and onnxtip since we want 
+# to keep the tip of master on script exit for onnx backend test which is also a part of build pipeline.
+# One possible improvement here is to keep the models saved to some public storage instead of generating 
+# on the fly every time.
 
 set -e
 PYTHON_VER=$1
