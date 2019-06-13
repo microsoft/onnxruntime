@@ -11,6 +11,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
+#include "core/platform/env.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -187,6 +188,18 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   }
 
   ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  const char* save_model_env = getenv("ORT_TENSORRT_SAVE_MODEL");
+  if (save_model_env) {
+    std::cout << "Save partitioned graph: trt_model_proto_partitioner.onnx" << std::endl;
+    ::ONNX_NAMESPACE::ModelProto model_proto;
+    auto graph_proto = graph.ToGraphProto();
+    model_proto.set_allocated_graph(&graph_proto);
+    int fd;
+    Env::Default().FileOpenWr("trt_model_proto_partitioner.onnx", fd);
+    model_proto.SerializeToFileDescriptor(fd);
+    model_proto.release_graph();
+  }
 
   // To see if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
