@@ -51,8 +51,8 @@ jobs:
      mkdir $(Build.BinariesDirectory)/osx-x64
      find $(Build.BinariesDirectory)
      cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
-     cp $(Build.SourcesDirectory)/build/Linux/$(buildConfig)/mklml/src/project_mklml/lib/libmklml.dylib $(Build.BinariesDirectory)/osx-x64/
-     cp $(Build.SourcesDirectory)/build/Linux/$(buildConfig)/mklml/src/project_mklml/lib/libiomp5.dylib $(Build.BinariesDirectory)/osx-x64/
+     cp $(Build.SourcesDirectory)/RelWithDebInfo/mklml/src/project_mklml/lib/libmklml.dylib $(Build.BinariesDirectory)/osx-x64/
+     cp $(Build.SourcesDirectory)/RelWithDebInfo/mklml/src/project_mklml/lib/libiomp5.dylib $(Build.BinariesDirectory)/osx-x64/
      dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
      strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
      find $(Build.BinariesDirectory)/osx-x64 -ls
@@ -83,23 +83,9 @@ jobs:
     continueOnError: true
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Win-x86'
-    inputs:
-      artifactName: 'drop-win-x86-zip'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
-
-  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Linux'
     inputs:
       artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Linux'
-    inputs:
-      artifactName: 'drop-linux-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
     continueOnError: true
 

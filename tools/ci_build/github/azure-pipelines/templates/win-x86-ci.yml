@@ -24,7 +24,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: 'x86'
-        setVcvars: true
+        setVcvars: false
 
     # Build Debug Mode
     - task: CmdLine@1
@@ -124,6 +124,13 @@ jobs:
 
     # Nuget packaging if needed
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - task: BatchScript@1
+        displayName: 'Setup VS2017 env vars'
+        inputs:
+          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: '${{parameters.buildArch}} -vcvars_ver=14.11'
+          modifyEnvironment: true
+
       - script: |
          ${{ parameters.NuPackScript }}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
