@@ -210,6 +210,7 @@ if (onnxruntime_USE_NGRAPH)
     target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
   endif()
 endif()
+
 if (onnxruntime_USE_OPENVINO)
   file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
@@ -219,16 +220,14 @@ if (onnxruntime_USE_OPENVINO)
     "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
   )
 
-# Below variables point to directories within the OpenVINO installation directory
-# whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
+  # Below variables point to directories within the OpenVINO installation directory
+  # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
+  if (onnxruntime_USE_OPENVINO_BINARY)
+    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
+    set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+  endif()
 
-if (onnxruntime_USE_OPENVINO_BINARY)
-  set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
-  set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
-endif()
-
-find_package(PythonLibs REQUIRED)
-
+  find_package(PythonLibs REQUIRED)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   add_library(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
@@ -240,8 +239,6 @@ find_package(PythonLibs REQUIRED)
   link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
   target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
-
-
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

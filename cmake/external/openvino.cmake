@@ -1,7 +1,10 @@
+# Building from source is currently unsupported.
+# Please follow instructions in the documentation to install OpenVINO binaries.
+
 include (ExternalProject)
 
 set(OPENVINO_URL https://github.com/opencv/dldt.git)
-set(OPENVINO_TAG 2018)
+set(OPENVINO_TAG 2018_R5)
 
 set(OPENVINO_SHARED_LIB libinference_engine.so)
 
