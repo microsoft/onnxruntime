@@ -10,12 +10,6 @@ jobs:
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
   steps:
-  - script: |
-     IF EXIST $(buildDirectory)\Debug rmdir /s /q $(buildDirectory)\Debug
-     IF EXIST $(buildDirectory)\Release rmdir /s /q $(buildDirectory)\Release
-     IF EXIST $(buildDirectory)\RelWithDebInfo rmdir /s /q $(buildDirectory)\RelWithDebInfo
-    displayName: 'Clean up stale files if any'
-
   - template: ../../templates/set-test-data-variables-step.yml
   - template: ../../templates/windows-build-tools-setup-steps.yml
     parameters:
@@ -83,7 +77,12 @@ jobs:
     timeoutInMinutes: 30
     continueOnError: true
 
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+    condition: always()
+
+  - template: ../../templates/clean-agent-build-directory-step.yml
+
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-
