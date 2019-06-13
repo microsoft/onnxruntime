@@ -57,7 +57,7 @@ jobs:
     DoNugetPack : 'true'
 
 - job: NuGet_Packaging
-  pool: Win-CPU
+  pool: $(AgentPoolWin)
   dependsOn:
   - Windows_CI_Dev
   - Windows_CI_Dev_x86
@@ -147,5 +147,11 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - template: packagetests/win.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
 - template: packagetests/linux.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
 - template: packagetests/macos.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
