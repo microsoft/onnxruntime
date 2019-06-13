@@ -9,7 +9,7 @@ parameters:
 
 jobs:
 - job: ${{ parameters.JobName }}
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
