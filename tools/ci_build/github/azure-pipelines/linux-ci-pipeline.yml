@@ -1,5 +1,5 @@
 jobs:
-- template: templates/win-ci.yml
+- template: templates/linux-ci.yml
   parameters:
     AgentPool : 'Linux-CPU'
     JobName: 'Linux_CI_Dev'
