@@ -52,6 +52,7 @@ jobs:
 
 - template: ../templates/mac-ci.yml
   parameters:
+    AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
     DoNugetPack : 'true'
 
