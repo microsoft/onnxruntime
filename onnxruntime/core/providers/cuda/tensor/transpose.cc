@@ -92,7 +92,7 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
   CudaAsyncBuffer<size_t> perm(this, device_id, *p_perm);
   CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);
