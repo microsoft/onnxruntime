@@ -28,7 +28,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: 'x64'
-        setVcvars: false
+        setVcvars: true
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'

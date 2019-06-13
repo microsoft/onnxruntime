@@ -24,7 +24,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: 'x86'
-        setVcvars: false
+        setVcvars: true
 
     # Build Debug Mode
     - task: CmdLine@1
