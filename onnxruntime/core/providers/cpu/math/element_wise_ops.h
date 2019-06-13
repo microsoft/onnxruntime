@@ -540,7 +540,8 @@ struct TBroadcastOutput {
 template <typename T>
 struct TensorAllocator {
   TensorAllocator(OpKernelContext& context) {
-    ORT_ENFORCE(context.GetTempSpaceAllocator(&allocator_).IsOK());
+    auto status = context.GetTempSpaceAllocator(&allocator_);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {

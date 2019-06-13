@@ -95,7 +95,8 @@ class OpKernelContext {
       return nullptr;
 
     OrtValue* p_ml_value = nullptr;
-    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    auto status = GetOrCreateOutputMLValue(index, p_ml_value);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 

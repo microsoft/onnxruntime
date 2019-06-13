@@ -104,8 +104,9 @@ Fence_t OpKernelContext::OutputFence(int index) const {
 
 Status OpKernelContext::GetOrCreateOutputMLValue(int index, OrtValue*& p_value) {
   auto output_arg_index = GetOutputArgIndex(index);
-  ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, p_value).IsOK());
-  return Status::OK();
+  auto status = execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, p_value);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  return status;
 }
 
 int OpKernelContext::GetInputArgIndex(int index) const {
