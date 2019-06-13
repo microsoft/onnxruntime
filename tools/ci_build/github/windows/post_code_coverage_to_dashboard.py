@@ -36,12 +36,11 @@ def write_to_db(coverage_data, args):
     # print('secret = '+ os.environ['DASHBOARD_MYSQL_ORT_PASSWORD'])
     print('connecting to the database')
     print('os environment:')
-    #print(os.environ)
+    print(os.environ)
 
     cnx = mysql.connector.connect(
         user='ort@onnxruntimedashboard', 
         password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'), 
-        #password='N8pKntyJ2SKRxBBp',
         host='onnxruntimedashboard.mysql.database.azure.com', 
         database='onnxruntime')
 
