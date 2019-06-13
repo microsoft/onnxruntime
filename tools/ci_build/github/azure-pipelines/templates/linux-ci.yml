@@ -16,14 +16,7 @@ jobs:
       displayName: 'Command Line Script'
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
-         set -e -x
-         mkdir $(Build.BinariesDirectory)/${{ parameters.ZipDir }}
-         cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/${{ parameters.ZipDir }}
          ${{ parameters.NuPackScript }}
-         cd $(Build.BinariesDirectory)
-         zip -r ${{ parameters.ZipDir }}.zip ${{ parameters.ZipDir }}
-         cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
-         ls -al $(Build.ArtifactStagingDirectory)
         displayName: 'Create Artifacts'
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact'
