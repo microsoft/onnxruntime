@@ -8,20 +8,20 @@ parameters:
   ContinueOnError: false
 steps:
 
-# - task: PowerShell@2
-#   displayName: 'Run Test Coverage'
-#   inputs:
-#     filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
-#     arguments: '-OpenCppCoverageExe:"${{parameters.OpenCppCoverageExe}}" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$false'
-#   continueOnError: ${{parameters.ContinueOnError}}  
+- task: PowerShell@2
+  displayName: 'Run Test Coverage'
+  inputs:
+    filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
+    arguments: '-OpenCppCoverageExe:"${{parameters.OpenCppCoverageExe}}" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$false'
+  continueOnError: ${{parameters.ContinueOnError}}  
 
-# - task: PublishCodeCoverageResults@1
-#   inputs:
-#     codeCoverageTool: 'Cobertura'
-#     summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
-#     reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
-#   continueOnError: ${{parameters.ContinueOnError}}
-#   condition: ${{parameters.PublishReport}}
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Build.BinariesDirectory)/**/cobertura.xml'
+    reportDirectory: '$(Build.BinariesDirectory)/**/OpenCppCoverageResults'
+  continueOnError: ${{parameters.ContinueOnError}}
+  condition: ${{parameters.PublishReport}}
 
 - task: BatchScript@1
   displayName: 'Post code coverage data to the Dashboard'

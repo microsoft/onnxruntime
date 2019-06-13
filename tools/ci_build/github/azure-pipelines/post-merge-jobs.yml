@@ -21,18 +21,13 @@ jobs:
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
         setVcvars: false
 
-    # - template: templates/windows-build-and-test-steps.yml
-    #   parameters:
-    #     buildAdditionalParams: ' --use_openmp '
-    #     buildArch: $(buildArch)
-    #     msbuildPlatform: $(buildArch)
-    #     buildConfig: $(buildConfig)
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp '
+        buildArch: $(buildArch)
+        msbuildPlatform: $(buildArch)
+        buildConfig: $(buildConfig)
 
-    # - task: CmdLine@2
-    #   displayName: 'Set environment var for SQL access'  
-    #   inputs:
-    #     script: 'SET DASHBOARD_MYSQL_ORT_PASSWORD = $(dashboard-mysql-ort-password)
-    #     echo $DASHBOARD_MYSQL_ORT_PASSWORD'
     - template: templates/windows-code-coverage-steps.yml
       parameters:
         OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'

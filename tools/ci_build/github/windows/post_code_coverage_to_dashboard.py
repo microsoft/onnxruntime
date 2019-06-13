@@ -33,10 +33,6 @@ def parse_xml_report(report_file):
 
 def write_to_db(coverage_data, args):
     # connect to database
-    # print('secret = '+ os.environ['DASHBOARD_MYSQL_ORT_PASSWORD'])
-    print('connecting to the database')
-    print('os environment:')
-    print(os.environ)
 
     cnx = mysql.connector.connect(
         user='ort@onnxruntimedashboard', 
@@ -44,7 +40,6 @@ def write_to_db(coverage_data, args):
         host='onnxruntimedashboard.mysql.database.azure.com', 
         database='onnxruntime')
 
-    print('database connction successful')
     try:
         cursor = cnx.cursor()
 
@@ -94,8 +89,7 @@ def write_to_db(coverage_data, args):
 if __name__ == "__main__":
     try:
         args = parse_arguments()
-        #coverage_data = parse_xml_report(args.report_file)
-        coverage_data = {}
+        coverage_data = parse_xml_report(args.report_file)
         write_to_db(coverage_data, args)
     except BaseException as e:
         print(str(e))
