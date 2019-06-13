@@ -1,10 +1,9 @@
 # Python Operator 
-## Introduction
 To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
 
 ## Usage
-Step 1, since Python operator is only published via source under onnxruntime/core/language_interop_ops, developers need to compile with “-enable_language_interop_ops” and override existing onnxruntime binary. Meanwhile, please also copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
-Further, it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
+Step 1, build onnxruntime with“--config Release --enable_language_interop_ops --build_shared_lib”and override existing onnxruntime binary with the latest, then copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
+Note that it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
 Step 2, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
@@ -44,7 +43,7 @@ class Multi_2:
         r1, r2 = H + N, N + E
         return r1, r2
 ```
-Step 4, copy mymodule.py into one of the Python sys path, and do referencing with onnxruntime. On windows, please set PYTHONHOME beforehand. It points to path where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+Step 4, copy mymodule.py into one of the Python sys path, and reference with onnxruntime. On windows, please set PYTHONHOME beforehand. It should point to path where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
 * TensorProto.BOOL,
@@ -57,14 +56,13 @@ Step 4, copy mymodule.py into one of the Python sys path, and do referencing wit
 * TensorProto.DOUBLE
 
 ## Limitations
-* On Windows,  "-config Debug" has known issues, so please compile with "-config RelWithDebInfo" if need debug information;
-* Please specify a unique domain for each Python operator referred in the graph;
-* Due to restrictions imposed by python C API, multi-threading is disabled, meaning multiple Python operators will run sequentially.
+* On Windows,  "--config Debug" has known issues,  build with "--config RelWithDebInfo" if need debugging symbols;
+* Due to python C API restrictions, multi-threading is disabled, meaning multiple Python operators will run sequentially.
 
 ## Test
 The operator has been tested on multiple platforms, with or without conda:
 
-Platforms | Python 3.5 | Python 3.6 | Python 3.7
+Platform | Python 3.5 | Python 3.6 | Python 3.7
 ----------- | ------------| -----------  | -----------
 Windows | (conda) passed | (conda) passed | passed
 Linux | (conda) passed | (conda) passed | passed
