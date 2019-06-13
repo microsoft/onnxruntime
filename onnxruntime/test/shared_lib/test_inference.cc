@@ -219,6 +219,11 @@ TEST_F(CApiTest, custom_op_handler) {
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !( defined(_WIN32) && defined(_DEBUG))
+/* UT for python operator disabled for debug build on windows, because
+due to the missing of debug version python library, onnxruntime have to link to release version.
+this will cause memory-allocation-tracking failture since mem allocated from within python library will
+not go through overriden new/delete operators.
+*/
 TEST_F(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");

@@ -2,14 +2,14 @@
 # Licensed under the MIT License.
 
 set(PYTHON_NOT_FOUND false)
-exec_program("${PYTHON_EXECUTABLE}"
-  ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
+exec_program("${PYTHON_EXECUTABLE}" # get python include path
+  ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\"" 
   OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
   RETURN_VALUE PYTHON_NOT_FOUND)
 if(${PYTHON_NOT_FOUND})
   message(FATAL_ERROR "Cannot get Python include directory. Is distutils installed?")
 else()
-  exec_program("${PYTHON_EXECUTABLE}"
+  exec_program("${PYTHON_EXECUTABLE}" # get python library path
     ARGS "-c \"
 import os
 import re
@@ -28,7 +28,7 @@ for r,d,fs in os.walk(pydir):
     OUTPUT_VARIABLE PYTHON_LIBRARIES)
 endif(${PYTHON_NOT_FOUND})
 
-exec_program("${PYTHON_EXECUTABLE}"
+exec_program("${PYTHON_EXECUTABLE}" # get numpy include path
   ARGS "-c \"import numpy; print(numpy.get_include())\""
   OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
   RETURN_VALUE NUMPY_NOT_FOUND)

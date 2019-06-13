@@ -1,15 +1,11 @@
 # Python Operator 
 ## Introduction
 To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
-To use the feature, model designer needs to:
-1. Define Python operator node with all required attributes;
-2. Implement a Python module of all referred operators in required format;
-3. Place the Python module into python sys path, then do referencing with onnxruntime.
 
 ## Usage
-Currently, Python operator is only published via source under onnxruntime/core/language_interop_ops, developers need to compile with“-enable_language_interop_ops”and override existing onnxruntime binary. Meanwhile, please also copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
+Step 1, since Python operator is only published via source under onnxruntime/core/language_interop_ops, developers need to compile with“-enable_language_interop_ops”and override existing onnxruntime binary. Meanwhile, please also copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
 Note that it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
-Now, create an onnx model containing Python operator nodes:
+Step 2, create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
@@ -33,7 +29,7 @@ graph = helper.make_graph([ad1_node,mul_node,py1_node,ad2_node,py2_node,sub_node
 model = helper.make_model(graph, producer_name = 'pyop_model')
 onnx.save(model, './model.onnx')
 ```
-Then, implement mymodule.py:
+Step 3, implement mymodule.py:
 ```python
 class Multi_1:
     def __init__(self, W1, W2, W3):
@@ -48,7 +44,7 @@ class Multi_2:
         r1, r2 = H + N, N + E
         return r1, r2
 ```
-Finally, copy mymodule.py into one of the Python sys path, and do referencing with onnxruntime. On windows, please set PYTHONHOME beforehand. It points to path where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+Step 4, copy mymodule.py into one of the Python sys path, and do referencing with onnxruntime. On windows, please set PYTHONHOME beforehand. It points to path where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
 * TensorProto.BOOL,
