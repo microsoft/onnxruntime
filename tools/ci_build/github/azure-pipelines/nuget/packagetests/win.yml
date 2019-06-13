@@ -21,7 +21,7 @@ jobs:
     parameters:
       EnvSetupScript: 'setup_env.bat'
       buildArch: 'x64'
-      setVcvars: false
+      setVcvars: true
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
