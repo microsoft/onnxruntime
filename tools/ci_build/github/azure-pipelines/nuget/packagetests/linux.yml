@@ -1,0 +1,34 @@
+parameters:
+  AgentPool : 'Linux-CPU'
+
+jobs:
+- job: NuGet_Test_Linux
+  pool: ${{ parameters.AgentPool }}
+  dependsOn:
+  - NuGet_Packaging
+  condition: succeeded()
+  variables:
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+  steps:
+  - template: ../../templates/linux-set-variables-and-download.yml
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Signed NuGet'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - script: |
+     set -e -x
+     $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
+    displayName: 'Run Package Test (x64)'
+    env:
+      OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+    condition: succeeded()
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

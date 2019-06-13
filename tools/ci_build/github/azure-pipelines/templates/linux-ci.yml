@@ -1,0 +1,34 @@
+parameters:
+  AgentPool : 'Linux-CPU'
+  JobName : 'Linux_CI_Dev'
+  BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
+  DoNugetPack: 'false'
+  ZipDir : 'linux-x64'
+  ArtifactName: 'drop-linux'
+
+jobs:
+- job: ${{ parameters.JobName }}
+  pool: ${{ parameters.AgentPool }}
+  steps:
+    - template: linux-set-variables-and-download.yml
+    - script: ${{ parameters.BuildCommand }}
+      displayName: 'Command Line Script'
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - script: |
+         set -e -x
+         mkdir $(Build.BinariesDirectory)/linux-x64
+         cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/${{ parameters.ZipDir }}
+         cd $(Build.BinariesDirectory)
+         zip -r ${{ parameters.ZipDir }}.zip ${{ parameters.ZipDir }}
+         cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
+         ls -al $(Build.ArtifactStagingDirectory)
+        displayName: 'Create Artifacts'
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: clean-agent-build-directory-step.yml

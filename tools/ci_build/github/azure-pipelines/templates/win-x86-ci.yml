@@ -1,5 +1,5 @@
 parameters:
-  AgentPoolWin : 'Win-CPU'
+  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
   DoCompliance: 'false'
   BuildCommand: ''
@@ -8,9 +8,9 @@ parameters:
   NuPackScript : ''
 
 jobs:
-- job: Windows_CI_Dev_x86
+- job: ${{ parameters.JobName }}
   timeoutInMinutes: 90
-  pool: ${{ parameters.AgentPoolWin }}
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
