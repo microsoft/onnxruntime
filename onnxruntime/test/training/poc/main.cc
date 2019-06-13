@@ -27,7 +27,7 @@ using namespace std;
 using namespace onnxruntime;
 
 const static int NUM_OF_EPOCH = 2;
-const static float LEARNING_RATE = 0.1f;
+const static float LEARNING_RATE = .1f;
 const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
 const static int NUM_SAMPLES_FOR_EVALUATION = 100;
@@ -97,7 +97,12 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
-  params.in_graph_optimizer_name_ = params.use_cuda_ ? "SGDOptimizer" : "";
+  params.in_graph_optimizer_name_ = params.use_cuda_ ? "AdamOptimizer" : "";
+
+  params.adam_opt_params_.alpha_ = 0.9f;
+  params.adam_opt_params_.beta_ = 0.999f;
+  params.adam_opt_params_.lambda_ = 0;
+  params.adam_opt_params_.epsilon_ = 0.1f;
 #else
   params.learning_rate_ = LEARNING_RATE;
 #endif

@@ -9,7 +9,7 @@ namespace training {
 using namespace onnxruntime::common;
 
 Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs) {
-  // Add new initializers to the graph.
+  // Add new initializers to the graph. - no op if it already exists
   for (const auto& tensor_proto : graph_element_defs.Initializers()) {
     graph.AddInitializedTensor(tensor_proto);
   }

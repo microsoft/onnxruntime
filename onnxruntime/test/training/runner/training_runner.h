@@ -7,12 +7,21 @@
 #include "core/framework/ml_value.h"
 #include "core/training/training_session.h"
 #include "test/training/runner/training_util.h"
+#include "core/graph/training/in_graph_training_optimizer.h"
 
 namespace onnxruntime {
 namespace training {
 
 class TrainingRunner {
  public:
+
+  struct AdamOptimizerParams {
+    float alpha_;
+    float beta_;
+    float lambda_;
+    float epsilon_;
+  };
+
   struct Parameters {
     std::string model_path_;
     std::string model_with_loss_func_path_;          // To save the model after adding loss func.
@@ -42,7 +51,10 @@ class TrainingRunner {
 
     size_t batch_size_;
     size_t num_of_epoch_;
+
+    // Optimizer Parameter
     float learning_rate_;
+    AdamOptimizerParams adam_opt_params_;
 
     // When doing evaluation, some number of test samples will be selected to run evaluation.
     size_t num_of_samples_for_evaluation_;
@@ -73,6 +85,7 @@ class TrainingRunner {
   Status EndTraining();
   Status Evaluate(InferenceSession& session, bool use_full_set = false);
   Status LoadAndEvaluate(const std::string& model_path);
+  Status SetupOptimizerParams(std::vector<in_graph_optimizer::OptimizerInfo>& infos);
 
   DataSet& training_data_;
   DataSet& test_data_;

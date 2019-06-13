@@ -82,5 +82,53 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+// TODO: Once Schema is checked in to onnx lets fix this to match that
+ONNX_OPERATOR_KERNEL_EX(
+    AdamOptimizer,
+    kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    AdamOptimizer);
+
+Status AdamOptimizer::ComputeInternal(OpKernelContext* ctx) const {
+
+  const Tensor* eta_tensor = ctx->Input<Tensor>(0);
+  ORT_ENFORCE(eta_tensor);
+
+  Tensor* update_count = ctx->MutableInput<Tensor>(1);
+  ORT_ENFORCE(update_count);
+
+  Tensor* weights_tensor = ctx->MutableInput<Tensor>(2);
+  ORT_ENFORCE(weights_tensor);
+
+  const Tensor* gradients_tensor = ctx->Input<Tensor>(3);
+  ORT_ENFORCE(gradients_tensor);
+
+  Tensor* moment_1_tensor = ctx->MutableInput<Tensor>(4);
+  ORT_ENFORCE(moment_1_tensor);
+
+  Tensor* moment_2_tensor = ctx->MutableInput<Tensor>(5);
+  ORT_ENFORCE(moment_2_tensor);
+
+  AdamOptimizerImpl(
+      eta_tensor->template Data<float>(),
+      reinterpret_cast<int64_t*>(update_count->template MutableData<int64_t>()),
+      weights_tensor->template Data<float>(),
+      gradients_tensor->template Data<float>(),
+      moment_1_tensor->template Data<float>(),
+      moment_2_tensor->template Data<float>(),
+      alpha_,
+      beta_,
+      lambda_,
+      epsilon_,
+      weights_tensor->template MutableData<float>(),
+      moment_1_tensor->template MutableData<float>(),
+      moment_2_tensor->template MutableData<float>(),
+      weights_tensor->Shape().Size());
+
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

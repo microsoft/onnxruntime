@@ -30,8 +30,7 @@ TrainingRunner::TrainingRunner(DataSet& trainingData, DataSet& testData, const P
               (params_.weights_to_train_.empty() && !params_.weights_not_to_train_.empty()));
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
-  ORT_ENFORCE(params_.in_graph_optimizer_name_.empty() ||
-              params_.in_graph_optimizer_name_ == SGD_OP_NAME);
+  ORT_ENFORCE(!params_.in_graph_optimizer_name_.empty());
 }
 
 Status TrainingRunner::Initialize() {
@@ -58,16 +57,8 @@ Status TrainingRunner::Initialize() {
     }
   }
 
-  // If in-graph optimizer is used, prepare the weight<->optimizer mapping.
-  // Here all weights use the same SGDOptimizer.
-  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
-  vector<in_graph_optimizer::OptimizerInfo> opt_info;
-  opt_info.reserve(weights_to_train.size());
-  if (use_in_graph_optimizer) {
-    for (size_t i = 0; i < weights_to_train.size(); ++i) {
-      opt_info.push_back({params_.in_graph_optimizer_name_, {SGD_LEARNING_RATE_STRING}});
-    }
-  }
+  vector<in_graph_optimizer::OptimizerInfo> opt_info(weights_to_train.size());
+  SetupOptimizerParams(opt_info);
 
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name_, opt_info));
@@ -109,19 +100,7 @@ Status TrainingRunner::TrainingLoop() {
   // Prepare output names
   auto output_names_include_gradients = session_.GetModelOutputNames();
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
-
-  // If use in-graph optimizer, the learning_rate is a new feed
-  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
   vector<string> feed_names = training_data_.TensorNames();
-  MLValue learning_rate_ml_value;
-  if (use_in_graph_optimizer) {
-    feed_names.insert(feed_names.begin(), SGD_LEARNING_RATE_STRING);
-    TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(),
-                                {1},
-                                vector<float>(1, params_.learning_rate_),
-                                &learning_rate_ml_value);
-  }
-
   for (size_t epoch = 0; epoch < params_.num_of_epoch_; ++epoch) {
     // Shuffle the data for each epoch
     training_data_.RandomShuffle();
@@ -129,10 +108,6 @@ Status TrainingRunner::TrainingLoop() {
     // loop through the data
     for (size_t batch = 0; batch < training_data_.TotalBatch(params_.batch_size_); ++batch) {
       std::vector<MLValue> feeds = training_data_.GetKthBatch(params_.batch_size_, batch);
-      if (use_in_graph_optimizer) {
-        feeds.insert(feeds.begin(), learning_rate_ml_value);
-      }
-
       vector<MLValue> gradient_fetches;
       ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                        feed_names,
@@ -278,5 +253,27 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
   return Evaluate(s, true /*use full test set*/);
 }
 
+Status TrainingRunner::SetupOptimizerParams(vector<in_graph_optimizer::OptimizerInfo>& opt_infos) {
+  // If in-graph optimizer is used, prepare the weight<->optimizer mapping.
+  // Here all weights use the same SGDOptimizer or AdamOptimizer
+  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
+
+  if (use_in_graph_optimizer) {
+    in_graph_optimizer::OptimizerInfo opt_info{params_.in_graph_optimizer_name_, params_.learning_rate_, {}};
+
+    if (params_.in_graph_optimizer_name_ == "AdamOptimizer") {
+      opt_info.attributes_["alpha"] = params_.adam_opt_params_.alpha_;
+      opt_info.attributes_["beta"] = params_.adam_opt_params_.beta_;
+      opt_info.attributes_["lambda"] = params_.adam_opt_params_.lambda_;
+      opt_info.attributes_["epsilon"] = params_.adam_opt_params_.epsilon_;
+    }
+
+    for (unsigned int i = 0; i < opt_infos.size(); ++i) {
+        opt_infos[i] = opt_info;
+    }
+  }
+
+  return Status::OK();
+}
 }  // namespace training
 }  // namespace onnxruntime

@@ -3,7 +3,6 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
-#include "core/graph/onnx_protobuf.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -29,66 +28,6 @@ static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_ty
 }
 
 namespace data_types_internal {
-
-template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType();
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-};
 
 template <typename T>
 struct TensorContainedTypeSetter<T> {

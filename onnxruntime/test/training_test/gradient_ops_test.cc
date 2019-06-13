@@ -813,6 +813,22 @@ TEST(OptimizerTest, SGDTest) {
   test.Run();
 }
 
+TEST(OptimizerTest, AdamOptimizerTest) {
+    OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain, false);
+    test.AddInput<float>("ETA", {}, {0.5f});
+    test.AddInput<int64_t>("Update_Count", {}, {3});
+    test.AddInput<float>("W", {3}, {1, 2, 3});
+    test.AddInput<float>("G", {3}, {0, 0, 0});
+    test.AddInput<float>("Moment_1", {3}, {0, 0, 0});
+    test.AddInput<float>("Moment_2", {3}, {0, 0, 0});
+
+    // dummy values
+    test.AddOutput<float>("W_Out", {3}, {0.79829f, 1.7745964f, 2.634879941f});
+    test.AddOutput<float>("Moment_1_Out", {3}, {4.f, 5.f, 6.f});
+    test.AddOutput<float>("Moment_2_Out", {3}, {4.012f, 5.019f, 6.029f});
+
+    test.Run();
+}
 #endif
 
 }  // namespace test

@@ -201,7 +201,9 @@ Status GradientGraphBuilder::Build() {
     for (size_t i = 0; i < x_node_args_.size(); ++i) {
       auto opt_builder = in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info_[i].name_);
       const string& weight_name = x_node_args_[i]->Name();
+      const TensorShapeProto* weight_shape = x_node_args_[i]->Shape();
       opt_builder->Build({weight_name},
+                         {weight_shape},
                          {GradientBuilderBase::GradientName(weight_name)},
                          opt_info_[i],
                          gradient_graph_defs);
