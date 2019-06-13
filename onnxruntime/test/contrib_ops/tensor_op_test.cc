@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#pragma once
+
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "contrib_ops/cpu/crop.h"
@@ -9,7 +9,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
 namespace onnxruntime {
-namespace contrib_ops {
 namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
@@ -200,5 +199,4 @@ TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
 }
 
 }  // namespace test
-}  // namespace contrib_ops
 }  // namespace onnxruntime

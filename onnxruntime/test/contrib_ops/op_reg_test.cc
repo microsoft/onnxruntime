@@ -10,7 +10,6 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
-namespace contrib_ops {
 namespace test {
 
 TEST(OpRegistrationTest, AffineOp) {
@@ -29,5 +28,4 @@ TEST(OpRegistrationTest, AffineOp) {
   EXPECT_EQ(attr_beta.type, AttrType::AttributeProto_AttributeType_FLOAT);
 }
 }  // namespace test
-}  // namespace contrib_ops
 }  // namespace onnxruntime

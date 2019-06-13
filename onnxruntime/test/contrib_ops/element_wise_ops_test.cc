@@ -10,7 +10,6 @@
 using namespace onnxruntime::test;
 
 namespace onnxruntime {
-namespace contrib_ops {
 namespace test {
 
 TEST(MathOpTest, AffineDefaultAttributes) {
@@ -49,5 +48,4 @@ TEST(MathOpTest, Scale_Default) {
 }
 
 }  // namespace test
-}  // namespace contrib_ops
 }  // namespace onnxruntime

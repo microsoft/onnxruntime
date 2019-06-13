@@ -7,7 +7,6 @@
 using namespace onnxruntime::test;
 
 namespace onnxruntime {
-namespace contrib_ops {
 namespace test {
 
 std::vector<float> input_vals = {
@@ -57,5 +56,4 @@ TEST(ActivationOpTest, ParametricSoftplus) {
 }
 
 }  // namespace test
-}  // namespace contrib_ops
 }  // namespace onnxruntime
