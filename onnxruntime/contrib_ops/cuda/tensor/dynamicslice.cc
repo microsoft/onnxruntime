@@ -4,10 +4,12 @@
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/tensor/slice_impl.h"
 
-using namespace onnxruntime::cuda;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::cuda;
 
 #define REGISTER_TYPED_DYNAMICSLICE(TIND)                                                                                                                                                                                                                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                                                                                                        \
@@ -17,7 +19,7 @@ namespace cuda {
       TIND,                                                                                                                                                                                                                                                             \
       kCudaExecutionProvider,                                                                                                                                                                                                                                           \
       KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).InputMemoryType<OrtMemTypeCPUInput>(2).InputMemoryType<OrtMemTypeCPUInput>(3).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, true>);
+      cuda::Slice<TIND, true>);
 
 REGISTER_TYPED_DYNAMICSLICE(int32_t)
 REGISTER_TYPED_DYNAMICSLICE(int64_t)

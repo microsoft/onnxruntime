@@ -10,7 +10,7 @@
 #include "core/framework/compute_capability.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/cuda_contrib_kernels.h "
+#include "contrib_ops/cuda_contrib_kernels.h"
 #endif
 
 using namespace onnxruntime::common;

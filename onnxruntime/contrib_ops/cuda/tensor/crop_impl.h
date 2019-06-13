@@ -4,11 +4,11 @@
 #pragma once
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
-using namespace onnxruntime::cuda;
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::cuda;
 
 template <typename T>
 void CropImpl(
