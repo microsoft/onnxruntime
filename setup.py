@@ -60,9 +60,7 @@ else:
 data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
 
 #Adding python modules required for openvino ep
-python_modules_list = []
-python_modules_list.append('openvino_mo')
-python_modules_list.append('openvino_emitter')
+python_modules_list = ['openvino_mo', 'openvino_emitter']
 
 # Additional examples
 examples_names = ["mul_1.pb", "logreg_iris.onnx", "sigmoid.onnx"]
