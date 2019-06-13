@@ -21,7 +21,7 @@ namespace openvino_ep {
 class OpenVINOGraph {
  public:
 
-  OpenVINOGraph(const onnxruntime::Node* fused_node, std::string device_info);
+  OpenVINOGraph(const onnxruntime::Node* fused_node);
 
   void Infer(Ort::CustomOpApi ort, OrtKernelContext* context);
 

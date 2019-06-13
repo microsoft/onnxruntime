@@ -518,8 +518,7 @@ common::Status OpenVINOExecutionProvider::Compile(
   for (auto fused_node : fused_nodes) {
     std::shared_ptr<openvino_ep::OpenVINOGraph> openvino_graph;
     try {
-      openvino_graph = std::make_shared<openvino_ep::OpenVINOGraph>(fused_node,
-                                                                    std::string(info_.device));
+      openvino_graph = std::make_shared<openvino_ep::OpenVINOGraph>(fused_node);
 
     } catch (const char* msg) {
       return Status(common::StatusCategory::ONNXRUNTIME,

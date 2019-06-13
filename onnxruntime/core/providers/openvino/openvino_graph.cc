@@ -22,8 +22,7 @@
 namespace onnxruntime{
 namespace openvino_ep {
 
-OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node, std::string /*device_info*/) {
-  // TODO: stop passing the unused device_info
+OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
 
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
