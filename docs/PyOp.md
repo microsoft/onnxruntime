@@ -62,7 +62,7 @@ Step 4, copy mymodule.py into one of the Python sys path, and do referencing wit
 * Due to restrictions imposed by python C API, multi-threading is disabled, meaning multiple Python operators will run sequentially.
 
 ## Test
-We haved tested the operator in multiple environments, with or without conda:
+The operator has been tested on multiple platforms, with or without conda:
 
 Platforms | Python 3.5 | Python 3.6 | Python 3.7
 ----------- | ------------| -----------  | -----------
