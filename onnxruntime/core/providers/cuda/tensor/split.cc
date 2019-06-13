@@ -41,7 +41,7 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   auto& input_dims = input_shape.GetDims();
   std::vector<int64_t> output_dimensions{input_dims};
 
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<void*> output_ptr(this, device_id, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
   for (int i = 0; i < num_outputs; ++i) {

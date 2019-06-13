@@ -143,6 +143,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
+    parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -320,7 +321,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
-                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp else "OFF"),
+                 "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
@@ -337,6 +338,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
+                 "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -576,6 +578,52 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_para
         if enable_parallel_executor_test:
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
+
+# mkldnn temporary function for running onnx tests and model tests separately.
+def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+    for config in configs:
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+           exe = os.path.join(cwd, config, 'onnx_test_runner')
+           model_dir = os.path.join(cwd, "models")
+        else:
+           exe = os.path.join(cwd, 'onnx_test_runner')
+           model_dir = os.path.join(build_dir, "models")
+        cmd_base = ['-e', 'mkldnn', '-c', '1', '-j', '1']
+        if os.path.exists(onnx_test_data_dir):
+          onnxdata_cmd = cmd_base + [onnx_test_data_dir]
+          # /data/onnx
+          run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
+          run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
+
+        # models/opset7, models/opset8, models/opset9
+        if config != 'Debug' and os.path.exists(model_dir):
+          opset7_model_dir = os.path.join(model_dir, 'opset7')
+          opset7_cmd = cmd_base + [opset7_model_dir]
+          opset8_model_dir = os.path.join(model_dir, 'opset8')
+          opset8_cmd = cmd_base + [opset8_model_dir]
+          opset9_model_dir = os.path.join(model_dir, 'opset9')
+          opset9_cmd = cmd_base + [opset9_model_dir]
+          run_subprocess([exe] + opset7_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
+          run_subprocess([exe] + opset8_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
+          run_subprocess([exe] + opset9_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+
+
+def split_server_binary_and_symbol(build_dir, configs):
+    if is_windows():
+        # TODO: Windows support
+        pass
+    else:
+        for config in configs:
+            if config == 'RelWithDebInfo':
+                config_build_dir = get_config_build_dir(build_dir, config)
+                run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
+                run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
+            
 
 def run_server_tests(build_dir, configs):
     pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
@@ -824,13 +872,14 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, True, 0)
 
               if args.use_mkldnn:
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'mkldnn', True, 1)
+                mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
-    if args.build_server and args.enable_server_tests:
-        run_server_tests(build_dir, configs)
-
-    if args.build_server and args.enable_server_model_tests:
-        run_server_model_tests(build_dir, configs)
+    if args.build_server:
+        split_server_binary_and_symbol(build_dir, configs)
+        if args.enable_server_tests:
+            run_server_tests(build_dir, configs)
+        if args.enable_server_model_tests:
+            run_server_model_tests(build_dir, configs)
 
     if args.build:
         if args.build_wheel:

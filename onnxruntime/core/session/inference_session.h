@@ -19,6 +19,9 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+#include "core/language_interop_ops/language_interop_ops.h"
+#endif
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -57,7 +60,7 @@ struct SessionOptions {
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
   // with a big chunk for all the internal memory allocation.
-  // See class 'MLValuePatternPlanner'.
+  // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
   // enable the memory arena on CPU
@@ -68,8 +71,13 @@ struct SessionOptions {
   // the prefix of the profile file. The current time will be appended to the file name.
   std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
 
-  std::string session_logid;                 ///< logger id to use for session output
-  unsigned session_log_verbosity_level = 0;  ///< applies to session load, initialization, etc
+  std::string session_logid;  ///< logger id to use for session output
+
+  /// Log severity for the inference session. Applies to session load, initialization, etc.
+  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+  /// Default = -1 (use default logger severity)
+  int session_log_severity_level = -1;
+  unsigned session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
@@ -158,6 +166,9 @@ class InferenceSession {
     */
   common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
 
+  /**
+    * Add custom ops. This API is not thread safe.
+    */
   common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
 
   /**
@@ -166,6 +177,7 @@ class InferenceSession {
     * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
+	* This API is not thread safe.
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
@@ -198,6 +210,7 @@ class InferenceSession {
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
+	* This API is thread-safe.
     * @return OK if success
     */
   common::Status Initialize();
@@ -420,5 +433,9 @@ class InferenceSession {
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS 
+  InterOpDomains interop_domains_;
+#endif
 };
 }  // namespace onnxruntime

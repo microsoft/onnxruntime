@@ -6,14 +6,13 @@ import sys
 import os
 import platform
 import unittest
-
+import onnx
 import onnx.backend.test
 
 import numpy as np
 import onnxruntime.backend as c2
 
 pytest_plugins = 'onnx.backend.test.report',
-
 
 class OrtBackendTest(onnx.backend.test.BackendTest):
 
@@ -92,18 +91,23 @@ def create_backend_test(testname=None):
         backend_test.include(testname + '.*')
     else:
         # Tests that are failing temporarily and should be fixed
-        current_failing_tests = ('^test_cast_FLOAT_to_STRING_cpu.*',
-                                 '^test_constantofshape_*.*',
+        current_failing_tests = ('^test_cast_STRING_to_FLOAT_cpu.*',
+                                 '^test_cast_FLOAT_to_STRING_cpu.*',
                                  '^test_dequantizelinear_cpu.*',
-                                 '^test_shrink_cpu.*',
                                  '^test_qlinearconv_cpu.*',
-                                 '^test_quantizelinear_cpu.*')
+                                 '^test_quantizelinear_cpu.*',
+                                 '^test_gru_seq_length_cpu.*')
+
+        # Example of how to disable tests for a specific provider.
+        # if c2.supports_device('NGRAPH'):
+        #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
                   unsupported_usages_filters()
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
+        print ('excluded tests:', filters)
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
