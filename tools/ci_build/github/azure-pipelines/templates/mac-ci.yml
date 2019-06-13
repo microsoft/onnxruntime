@@ -5,8 +5,7 @@ parameters:
 
 jobs:
 - job: ${{ parameters.JobName }}
-  pool:
-    vmImage: ${{ parameters.AgentPool }}
+  pool: ${{ parameters.AgentPool }}
   steps:
     - template: mac-set-variables-and-download.yml
     - script: |

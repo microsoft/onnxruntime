@@ -1,5 +1,5 @@
 jobs:
 - template: templates/mac-ci.yml
   parameters:
-    AgentPool : 'macOS-10.13'
+    AgentPool : 'Hosted macOS High Sierra'
     DoNugetPack: 'false'
