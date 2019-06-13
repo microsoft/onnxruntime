@@ -137,4 +137,4 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- template: templates/test_all.yml
+- template: templates/test_all_os.yml
