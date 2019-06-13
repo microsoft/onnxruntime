@@ -19,10 +19,6 @@ jobs:
     DotNetExe: 'dotnet.exe'
 
   steps:
-    - script: |
-       @echo %BuildCommand%
-       @echo %_Buildcommand_Win%
-       @echo %Buildcommand_Win%
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
