@@ -30,9 +30,11 @@ class OpenVINOGraph {
  private:
   std::shared_ptr<InferenceEngine::CNNNetwork> BuildOpenVINONetworkWithMO();
 
+  InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(ONNX_NAMESPACE::DataType onnx_type);
+
   std::vector<InferenceEngine::InferRequest::Ptr> GetExecutableHandle(
       std::shared_ptr<InferenceEngine::CNNNetwork> network,
-      const std::string& device, InferenceEngine::Precision precision);
+      const std::string& device);
 
   size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
                          InferenceEngine::SizeVector graph_dims);

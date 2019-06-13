@@ -95,7 +95,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   openvino_network_ = BuildOpenVINONetworkWithMO();
 
   // Create hardware specific OpenVINO network representation
-  infer_requests_ = GetExecutableHandle(openvino_network_, device_id_, precision_);
+  infer_requests_ = GetExecutableHandle(openvino_network_, device_id_);
 }
 
 std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() const {
@@ -194,12 +194,31 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetwork
   return std::make_shared<InferenceEngine::CNNNetwork>(networkReader.getNetwork());
 }
 
-std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHandle(
-    std::shared_ptr<InferenceEngine::CNNNetwork> network,
-    const std::string& device, InferenceEngine::Precision precision) {
-  // TODO: make this better
+InferenceEngine::Precision OpenVINOGraph::ConvertPrecisionONNXToOpenVINO(
+    ONNX_NAMESPACE::DataType onnx_type) {
 
-  precision = InferenceEngine::Precision::FP32;
+  if(*onnx_type == "float" || *onnx_type == "tensor(float)") {
+    return InferenceEngine::Precision::FP32;
+  } else if ( *onnx_type == "float16" || *onnx_type == "tensor(float16)") {
+    return InferenceEngine::Precision::FP16;
+  } else if ( *onnx_type == "int32" || *onnx_type == "tensor(int32)") {
+    return InferenceEngine::Precision::I32;
+  } else if ( *onnx_type == "int16" || *onnx_type == "tensor(int16)") {
+    return InferenceEngine::Precision::I16;
+  } else if ( *onnx_type == "int8" || *onnx_type == "tensor(int8)") {
+    return InferenceEngine::Precision::I8;
+  } else if ( *onnx_type == "uint16" || *onnx_type == "tensor(uint16)") {
+    return InferenceEngine::Precision::U16;
+  } else if ( *onnx_type == "uint8" || *onnx_type == "tensor(uint8)") {
+    return InferenceEngine::Precision::U8;
+  } else {
+    throw "Unsupported Data type";
+  }
+}
+
+std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHandle(
+    std::shared_ptr<InferenceEngine::CNNNetwork> network, const std::string& device) {
+
 
   // Load Plugin for inference engine
   std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
@@ -213,8 +232,14 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   size_t first_dim = 1;
 
   auto inputInfo = network->getInputsInfo();
-  for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter) {
+  auto onnx_input_defs = fused_node_->InputDefs();
+
+  int input_idx = 0;
+  for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
+
+    auto precision = ConvertPrecisionONNXToOpenVINO(onnx_input_defs[input_idx]->Type());
     iter->second->setPrecision(precision);
+
     auto dims = iter->second->getTensorDesc().getDims();
     if (dims.size() == 2 || dims.size() == 4 || dims.size() == 5) {
       if (first_dim == 1)
@@ -248,7 +273,12 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
-  for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
+  auto onnx_output_defs = fused_node_->OutputDefs();
+
+  int output_idx = 0;
+  for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
+
+    auto precision = ConvertPrecisionONNXToOpenVINO(onnx_output_defs[output_idx]->Type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for output tensor
