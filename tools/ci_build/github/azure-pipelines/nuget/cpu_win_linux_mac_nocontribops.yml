@@ -4,6 +4,9 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
+variables:
+  DisableContribOps: 'ON'
+
 jobs: 
 - template: ../templates/win-ci.yml
   parameters:
