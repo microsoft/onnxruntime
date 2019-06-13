@@ -29,6 +29,8 @@ if [ "$INSTALLED_PYTHON_VERSION" = "3.4" ];then
   echo "Python 3.5 and above is needed for running onnx tests!" 1>&2
 else
   echo "current script path is: "$0
+  next_path=${0/install_deps/install_onnx}
+  echo "next script path is: "$next_path
   source /tmp/scripts/install_onnx.sh $INSTALLED_PYTHON_VERSION
 fi
 
