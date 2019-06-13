@@ -237,7 +237,9 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
 
-    auto precision = ConvertPrecisionONNXToOpenVINO(onnx_input_defs[input_idx]->Type());
+    // Get the onnx index for the corresponding input (ignoring initializers)
+    auto tracked_input_idx = input_indexes_[input_idx];
+    auto precision = ConvertPrecisionONNXToOpenVINO(onnx_input_defs[tracked_input_idx]->Type());
     iter->second->setPrecision(precision);
 
     auto dims = iter->second->getTensorDesc().getDims();
