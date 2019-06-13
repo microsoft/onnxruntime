@@ -146,7 +146,7 @@ jobs:
     AgentPool : $(AgentPoolWin)
 - template: packagetests/linux.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : $(AgentPoolLinux)
 - template: packagetests/macos.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : $(AgentPoolMacOS)

@@ -9,7 +9,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -22,7 +22,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib  --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --x86'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -36,7 +36,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolLinux)
     JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops"'
     DoNugetPack : 'true'
     ArtifactName: 'drop-linux'
     NuPackScript: |
@@ -52,7 +52,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolLinux)
     JobName: 'Linux_CI_Dev_x86'
-    BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86"'
+    BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86 --disable_contrib_ops"'
     DoNugetPack : 'true'
     ArtifactName: 'drop-linux-x86'
     NuPackScript: |
@@ -68,7 +68,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --disable_contrib_ops --use_openmp --enable_onnx_tests --config RelWithDebInfo'
     DoNugetPack : 'true'
     NuPackScript: |
      set -e -x
@@ -116,7 +116,7 @@ jobs:
     continueOnError: true
 
   - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Linux-x86'
+    displayName: 'Download Pipeline Artifact - Linux'
     inputs:
       artifactName: 'drop-linux-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
