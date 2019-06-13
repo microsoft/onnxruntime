@@ -31,3 +31,5 @@ steps:
     workingFolder: "$(Build.BinariesDirectory)"
   continueOnError: ${{parameters.ContinueOnError}}
   condition: ${{parameters.PostToDashBoard}}
+  env: 
+    DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
