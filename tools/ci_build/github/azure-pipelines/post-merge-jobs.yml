@@ -24,6 +24,8 @@ jobs:
     - template: templates/windows-build-and-test-steps.yml
       parameters:
         buildAdditionalParams: ' --use_openmp '
+        # --use_openmp is added, similar to the build config of the C-api package distribution.
+        # MLAS(default) with OpenMP is known to produce better performance (latency) than without OpenMP. 
         buildArch: $(buildArch)
         msbuildPlatform: $(buildArch)
         buildConfig: $(buildConfig)
