@@ -95,6 +95,7 @@ if __name__ == "__main__":
     try:
         args = parse_arguments()
         #coverage_data = parse_xml_report(args.report_file)
+        coverage_data = {}
         write_to_db(coverage_data, args)
     except BaseException as e:
         print(str(e))
