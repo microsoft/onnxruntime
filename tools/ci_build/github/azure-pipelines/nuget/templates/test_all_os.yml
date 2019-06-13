@@ -1,4 +1,6 @@
 # test NuGet package on Win, Linux and MacOS
+parameters:
+steps:
 - template: test_win.yml
   parameters:
     AgentPool : $(AgentPoolWin)
