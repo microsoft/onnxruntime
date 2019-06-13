@@ -437,7 +437,7 @@ and op)DOC";
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(Crop_ver1_doc)
-      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS)
       .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
       .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
