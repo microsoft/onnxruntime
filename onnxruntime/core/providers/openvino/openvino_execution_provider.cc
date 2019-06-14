@@ -87,7 +87,7 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
 
     if(node->OpType().find("Pool") != std::string::npos){
 
-        if(dev_id == "MYRAID" || dev_id == "HDDL"){
+        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
             if(input_dims != 3 || input_dims != 4)
                 return false;
         } else if(input_dims < 4 || input_dims > 5){
@@ -195,7 +195,7 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
 
     if(node->OpType() == "Flatten"){
 
-        if(dev_id == "MYRAID" || dev_id == "HDDL"){
+        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
             if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
                 return false;
         }
