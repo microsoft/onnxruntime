@@ -12,11 +12,11 @@ onnxruntime                          pywrapper                          script
      |                                  |                                 |
      | ------------------------------>  |                                 |
      |       call with tensor(s)        | ------------------------------> |
-     |                                  |         compute the result(s)   | 
-     |                                  |                                 | compute the result(s)
+     |                                  |         call with numpy(s)      | 
+     |                                  |                                 | compute
      |                                  |  <----------------------------- |
-     | <------------------------------  |         return numps(s)         |
-     |      return tensor(s)            |                                 |
+     | <------------------------------  |           return numps(s)       |
+     |         return tensor(s)         |                                 |
 </pre>
 
 ## Usage
