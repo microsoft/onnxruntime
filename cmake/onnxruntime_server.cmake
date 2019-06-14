@@ -23,6 +23,8 @@ endif()
 # Setup dependencies
 include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
+set(SPDLOG_BUILD_EXAMPLES OFF)
+add_subdirectory(${REPO_ROOT}/cmake/external/spdlog)
 
 # Setup source code
 set(onnxruntime_server_lib_srcs
@@ -70,8 +72,7 @@ target_link_libraries(onnxruntime_server_http_core_lib PRIVATE
 add_library(onnxruntime_server_lib ${onnxruntime_server_lib_srcs})
 onnxruntime_add_include_to_target(onnxruntime_server_lib gsl onnx_proto server_proto)
 target_include_directories(onnxruntime_server_lib PRIVATE
-  ${ONNXRUNTIME_ROOT}
-  ${CMAKE_CURRENT_BINARY_DIR}/onnx
+  ${ONNXRUNTIME_INCLUDE_DIR}
   ${ONNXRUNTIME_ROOT}/server
   ${ONNXRUNTIME_ROOT}/server/http
   ${ONNXRUNTIME_ROOT}/server/logging
@@ -94,6 +95,7 @@ target_link_libraries(onnxruntime_server_lib PRIVATE
   onnxruntime_common
   onnxruntime_mlas
   ${onnxruntime_EXTERNAL_LIBRARIES}
+  spdlog::spdlog
 )
 
 if (onnxruntime_USE_SYSLOG)
@@ -124,7 +126,7 @@ message(STATUS "ONNX Runtime Server latest commit id is: ${onnxruntime_LATEST_CO
 onnxruntime_add_include_to_target(${SERVER_APP_NAME} onnxruntime_session onnxruntime_server_lib gsl onnx onnx_proto server_proto)
 
 target_include_directories(${SERVER_APP_NAME} PRIVATE
-    ${ONNXRUNTIME_ROOT}
+    ${ONNXRUNTIME_INCLUDE_DIR}
     ${ONNXRUNTIME_ROOT}/server/http
 )
 
