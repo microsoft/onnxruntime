@@ -19,8 +19,10 @@ onnxruntime                          pywrapper                          script
 </pre>
 
 ## Usage
-Step 1, build onnxruntime with“--config Release --enable_language_interop_ops --build_shared_lib”and override existing onnxruntime binary with the latest, then copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
-Note that it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
+Step 1, build onnxruntime with“--config Release --enable_language_interop_ops --build_shared_lib” and override existing onnxruntime binary with the latest, then copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
+Note:
+* It is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well;
+* If "--numpy_version=..." is specified, Python operator will build with that version.
 
 Step 2, create an onnx model containing Python operator nodes:
 ```python
