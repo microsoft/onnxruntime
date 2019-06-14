@@ -8,4 +8,4 @@ jobs:
     JobName: 'Windows_CI_Dev'
     DoNugetPack:  'false'
     NuPackScript : ''
-    DoTestCoverage: 'true'
+    DoTestCoverage: 'false'
