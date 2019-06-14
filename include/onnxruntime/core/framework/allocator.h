@@ -17,34 +17,35 @@
 
 // Struct to represent a physical device.
 struct OrtDevice {
-  typedef int DEVICEID;
+  typedef int16_t DeviceType;
+  typedef int16_t DeviceId;
 
   // Pre-defined device types.
-  static const int16_t CPU = 0;
-  static const int16_t GPU = 1;
-  static const int16_t FPGA = 2;
+  static const DeviceType CPU = 0;
+  static const DeviceType GPU = 1;
+  static const DeviceType FPGA = 2;
 
-  OrtDevice(int16_t device_type_, int16_t device_index) {
+  OrtDevice(DeviceType device_type_, DeviceId device_id_) {
     device_type = device_type_;
-    device_index = device_index;
-    device_id = static_cast<int>(device_type) << 16 | static_cast<int>(device_index);
+    device_id = device_id_;
   }
 
   OrtDevice() : OrtDevice(CPU, 0) {}
 
-  DEVICEID DeviceId() const {
+  DeviceType Type() const {
+    return device_type;
+  }
+
+  DeviceId Index() const {
     return device_id;
   }
 
  private:
   // Device type.
-  int16_t device_type;
+  DeviceType device_type;
 
   // Device index.
-  int16_t device_index;
-
-  // Device id.
-  DEVICEID device_id;
+  DeviceId device_id;
 };
 
 struct OrtAllocatorInfo {
@@ -53,9 +54,9 @@ struct OrtAllocatorInfo {
   int id;
   OrtMemType mem_type;
   OrtAllocatorType type;
-  OrtDevice::DEVICEID device_id;
+  OrtDevice device;
 
-  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault, OrtDevice::DEVICEID device_id_ = 0)
+  OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault, OrtDevice device_ = OrtDevice())
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
@@ -63,7 +64,7 @@ struct OrtAllocatorInfo {
         id(id_),
         mem_type(mem_type_),
         type(type_),
-        device_id(device_id_) {
+        device(device_) {
   }
 
   // To make OrtAllocatorInfo become a valid key in std map

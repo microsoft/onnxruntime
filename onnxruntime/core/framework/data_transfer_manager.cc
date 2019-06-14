@@ -15,13 +15,22 @@ const DataTransferManager& DataTransferManager::Instance() {
   return data_transfer_mgr;
 }
 
-common::Status DataTransferManager::RegisterDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device, const DataTransfer& data_transfer) {
-  int64_t id_key = static_cast<int64_t>(src_device.DeviceId()) << 32 | static_cast<int64_t>(dst_device.DeviceId());
-  auto iter = deviceids_datatransfer_map_.find(id_key);
-  if (deviceids_datatransfer_map_.end() != iter) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Copy tensor function has already been registered for src (", src_device.DeviceId(), ") to dst (", dst_device.DeviceId(), ")");
+common::Status DataTransferManager::RegisterDataTransfer(
+    OrtDevice::DeviceType src_device_type,
+    OrtDevice::DeviceType dst_device_type,
+    const DataTransfer& data_transfer) {
+  int32_t id_key = (static_cast<int32_t>(src_device_type) << 16) | static_cast<int32_t>(dst_device_type);
+  auto iter = devicetypes_datatransfer_map_.find(id_key);
+  if (devicetypes_datatransfer_map_.end() != iter) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "Copy tensor function has already been registered for src (",
+                           src_device_type,
+                           ") to dst (",
+                           dst_device_type,
+                           ")");
   }
-  deviceids_datatransfer_map_.insert({id_key, data_transfer});
+  devicetypes_datatransfer_map_.insert({id_key, data_transfer});
 
   return Status::OK();
 }
@@ -31,10 +40,16 @@ common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) c
 }
 
 common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
-  int64_t id_key = static_cast<int64_t>(src.Location().device_id) << 32 | static_cast<int64_t>(dst.Location().device_id);
-  auto iter = deviceids_datatransfer_map_.find(id_key);
-  if (deviceids_datatransfer_map_.end() == iter) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Copy tensor failed due to no copy function found for src (", src.Location().device_id, ") to dst (", src.Location().device_id, ")");
+  int32_t id_key = (static_cast<int32_t>(src.Location().device.Type()) << 16) | static_cast<int32_t>(dst.Location().device.Type());
+  auto iter = devicetypes_datatransfer_map_.find(id_key);
+  if (devicetypes_datatransfer_map_.end() == iter) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "Copy tensor failed due to no copy function found for src (",
+                           src.Location().device.Type(),
+                           ") to dst (",
+                           src.Location().device.Type(),
+                           ")");
   }
 
   return iter->second(src, dst, exec_queue_id);
