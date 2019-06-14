@@ -125,6 +125,7 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
 
             if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
                 return false;
+
         }
     }
 
@@ -295,9 +296,15 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     //Reshape should have shape as initializer
     if(node->OpType() == "Reshape"){
 
-        if(GetInputCount(node,initializers) > 1){
+        int input_count = GetInputCount(node,initializers);
+
+        if(input_count > 1)
             return false;
-        }
+
+        //Myriad and HDDL plugins do not support Reshape with two initializers
+        if(dev_id == "MYRIAD" || dev_id == "HDDL")
+            if(input_count == 0)
+                return false;
 
         if(!IsDimensionSupported(node,dev_id)){
             return false;
@@ -309,7 +316,7 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         if(!IsDimensionSupported(node,dev_id))
             return false;
 
-        //Flatten has to have default axis for MYRIAD and HDDL
+        //Only default axis is supported for MYRIAD and HDDL plugins
         auto attributes = node->GetAttributes();
         auto axis = attributes["axis"].i();
         if (dev_id == "MYRIAD" || dev_id == "HDDL") {
@@ -317,14 +324,6 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
             return false;
         }
     }
-
-    //Gemm can't have more than one input
-    if(node->OpType() == "Gemm"){
-
-        if(GetInputCount(node, initializers) > 1)
-            return false;
-    }
-
 
     //MatMul is only supported if it is followed by Add
     if (node->OpType() == "MatMul") {
@@ -354,10 +353,6 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       if(!IsDimensionSupported(node,dev_id))
         return false;
 
-
-      //Matmul not supported on MYRIAD and HDDL
-      if (dev_id == "MYRIAD" || dev_id == "HDDL")
-        return false;
     }
 
     //Dropout , Identity and Concat can't have graph inputs
