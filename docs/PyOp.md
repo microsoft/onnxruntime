@@ -8,15 +8,15 @@ Before calling into Python script, pywrapper will convert onnxruntime tensor(s) 
 Here is a chart illustrating the calling sequence:
 
 <pre>
-onnxruntime                             pywrapper                          script
-         |                                  |                                 |
-         | ------------------------------>  |                                 |
-         |       call with tensor(s)        | ------------------------------> |
-         |                                  |         compute the result(s)   | 
-         |                                  |                                 | compute the result(s)
-         |                                  |  <----------------------------- |
-         | <------------------------------  |         return numps(s)         |
-         |      return tensor(s)            |                                 |
+onnxruntime                          pywrapper                          script
+     |                                  |                                 |
+     | ------------------------------>  |                                 |
+     |       call with tensor(s)        | ------------------------------> |
+     |                                  |         compute the result(s)   | 
+     |                                  |                                 | compute the result(s)
+     |                                  |  <----------------------------- |
+     | <------------------------------  |         return numps(s)         |
+     |      return tensor(s)            |                                 |
 </pre>
 
 ## Usage
