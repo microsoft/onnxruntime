@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 
-using DataTransfer = std::function<common::Status(const Tensor&, Tensor& dst, int exec_queue_id)>;
+using DataTransfer = std::function<common::Status(const void* src_data, void* dst_data, size_t bytes, int exec_queue_id)>;
 
 // Data transfer manager, which has all functions registered to copy tensors with different location.
 // It's not thread-safe.

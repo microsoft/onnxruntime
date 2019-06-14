@@ -52,7 +52,15 @@ common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, i
                            ")");
   }
 
-  return iter->second(src, dst, exec_queue_id);
+  if (src.Shape().Size() != dst.Shape().Size()) {
+    return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
+  }
+
+  size_t bytes = src.Size();
+  const void* src_data = src.DataRaw();
+  void* dst_data = dst.MutableDataRaw();
+
+  return iter->second(src_data, dst_data, bytes, exec_queue_id);
 }
 
 }  // namespace onnxruntime
