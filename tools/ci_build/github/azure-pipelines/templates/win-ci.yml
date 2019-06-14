@@ -30,7 +30,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
+        arguments: '$(BuildCommand) --update --config Debug Release'
         workingDirectory: "$(Build.BinariesDirectory)"
 
     # Build Debug Mode
@@ -78,41 +78,41 @@ jobs:
         parameters:
           OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
 
-    # Build RelWithDebInfo -- this variable required to build C#
+    # Build Release -- this variable required to build C#
     - script: |
-       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+       @echo ##vso[task.setvariable variable=Configuration]Release
 
     - task: VSBuild@1
-      displayName: 'Build RelWithDebInfo'
+      displayName: 'Build Release'
       inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        solution: '$(Build.BinariesDirectory)\Release\onnxruntime.sln'
         platform: 'x64'
-        configuration: 'RelWithDebInfo'
+        configuration: 'Release'
         msbuildArguments: '/m'
         msbuildArchitecture: 'x64'
         logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        workingFolder: '$(Build.BinariesDirectory)\Release'
 
     - task: BatchScript@1
-      displayName: 'Test RelWithDebInfo'
+      displayName: 'Test Release'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(BuildCommand) --test --config RelWithDebInfo'
+        arguments: '$(BuildCommand) --test --config Release'
         workingFolder: "$(Build.BinariesDirectory)"
 
     - task: VSBuild@1
-      displayName: 'Build c# RelWithDebInfo'
+      displayName: 'Build c# Release'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'any cpu'
-        configuration: 'RelWithDebInfo'
+        configuration: 'Release'
         msbuildArchitecture: 'x64'
         restoreNugetPackages: false
         workingFolder: '$(Build.SourcesDirectory)\csharp'
         msbuildArguments: '/m'
 
     - task: CmdLine@2
-      displayName: 'Test C# RelWithDebInfo'
+      displayName: 'Test C# Release'
       inputs:
         script: |
          FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
