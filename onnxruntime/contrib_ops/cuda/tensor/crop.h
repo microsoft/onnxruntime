@@ -10,6 +10,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::cuda;
+
 template <typename T>
 class Crop final : public contrib::CropBase, public CudaKernel {
  public:

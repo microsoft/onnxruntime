@@ -11,6 +11,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::cuda;
+
 template <typename T>
 class ImageScaler final : public CudaKernel {
  public:
