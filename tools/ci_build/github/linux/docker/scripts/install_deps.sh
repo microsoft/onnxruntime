@@ -28,7 +28,7 @@ fi
 if [ "$INSTALLED_PYTHON_VERSION" = "3.4" ];then
   echo "Python 3.5 and above is needed for running onnx tests!" 1>&2
 else
-  source ${0/install_deps\.sh/install_onnx\.sh} $INSTALLED_PYTHON_VERSION
+  source ${0/%install_deps\.sh/install_onnx\.sh} $INSTALLED_PYTHON_VERSION
 fi
 
 #The last onnx version will be kept
