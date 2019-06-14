@@ -33,6 +33,48 @@ jobs:
         arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
         workingDirectory: "$(Build.BinariesDirectory)"
 
+
+
+    # Build RelWithDebInfo -- this variable required to build C#
+    - script: |
+       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+
+    - task: VSBuild@1
+      displayName: 'Build RelWithDebInfo'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: 'x64'
+        configuration: 'RelWithDebInfo'
+        msbuildArguments: '/m'
+        msbuildArchitecture: 'x64'
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+
+    - task: BatchScript@1
+      displayName: 'Test RelWithDebInfo'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(BuildCommand) --test --config RelWithDebInfo'
+        workingFolder: "$(Build.BinariesDirectory)"
+
+    - task: VSBuild@1
+      displayName: 'Build c# RelWithDebInfo'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'any cpu'
+        configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x64'
+        restoreNugetPackages: false
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
+        msbuildArguments: '/m'
+
+    - task: CmdLine@2
+      displayName: 'Test C# RelWithDebInfo'
+      inputs:
+        script: |
+         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
     # Build Debug Mode
     - ${{ if eq(parameters['DoDebugBuild'], 'true') }}:
       - task: VSBuild@1
@@ -77,47 +119,6 @@ jobs:
           script: |
            FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-
-    # Build RelWithDebInfo -- this variable required to build C#
-    - script: |
-       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
-
-    - task: VSBuild@1
-      displayName: 'Build RelWithDebInfo'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: 'x64'
-        configuration: 'RelWithDebInfo'
-        msbuildArguments: '/m'
-        msbuildArchitecture: 'x64'
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-
-    - task: BatchScript@1
-      displayName: 'Test RelWithDebInfo'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(BuildCommand) --test --config RelWithDebInfo'
-        workingFolder: "$(Build.BinariesDirectory)"
-
-    - task: VSBuild@1
-      displayName: 'Build c# RelWithDebInfo'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'RelWithDebInfo'
-        msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArguments: '/m'
-
-    - task: CmdLine@2
-      displayName: 'Test C# RelWithDebInfo'
-      inputs:
-        script: |
-         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
