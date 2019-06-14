@@ -229,7 +229,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
 
   // Configure input & output
   // Prepare input blobs
-  size_t first_dim = 1;
 
   auto inputInfo = network->getInputsInfo();
   auto onnx_input_defs = fused_node_->InputDefs();
@@ -241,12 +240,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
     auto tracked_input_idx = input_indexes_[input_idx];
     auto precision = ConvertPrecisionONNXToOpenVINO(onnx_input_defs[tracked_input_idx]->Type());
     iter->second->setPrecision(precision);
-
-    auto dims = iter->second->getTensorDesc().getDims();
-    if (dims.size() == 2 || dims.size() == 4 || dims.size() == 5) {
-      if (first_dim == 1)
-        first_dim = iter->second->getTensorDesc().getDims()[0];
-    }
 
     // Choose the appropriate OpenVINO layout for input tensor
     // based on dims size
@@ -270,8 +263,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
         throw "Invalid Dims type for input data map for: " + iter->first;
     }
   }
-
-  network->setBatchSize(first_dim);
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();

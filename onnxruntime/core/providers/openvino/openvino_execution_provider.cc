@@ -144,44 +144,6 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
         }
     }
 
-    //Broadcast is not supported in Mul, Add and Sum
-    if(node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Sum"){
-
-        if(input_dims == 0)
-            return false;
-
-        std::vector<std::vector<int>> input_dim_arrays;
-
-
-        for(size_t i = 0; i < node_inputs.size(); i++){
-
-            std::vector<int> temp_arr;
-            if(node_inputs[i]->Shape() != nullptr){
-                int input_dims_size = node_inputs[i]->Shape()->dim_size();
-
-                for(int j = 0; j < input_dims_size; j++){
-                    temp_arr.push_back(node_inputs[i]->Shape()->dim(j).dim_value());
-                }
-            }
-            input_dim_arrays.push_back(temp_arr);
-        }
-
-
-        for(size_t i = 1; i < node_inputs.size(); i++){
-            if(node_inputs[i]->Shape() != nullptr){
-
-                if(input_dims != input_dim_arrays[i].size())
-                    return false;
-
-                for(size_t j = 0; j < input_dims; j++){
-
-                    if(input_dim_arrays[0][j] != input_dim_arrays[i][j])
-                        return false;
-                }
-            }
-        }
-    }
-
     //Only 2D MatMul is supported
     if(node->OpType() == "MatMul"){
         for(size_t i = 0; i < node_inputs.size(); i++){
@@ -276,6 +238,19 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     if (!IsOpSupported(node->OpType())) {
       return false;
     }
+
+    auto node_inputs = node->InputDefs();
+
+    //Zero dimension check
+    for(size_t i = 0; i < node_inputs.size(); i++){
+        if(node_inputs[i]->Shape() != nullptr){
+
+            if(node_inputs[i]->Shape()->dim_size() == 0)
+                return false;
+        }
+    }
+
+
 
     //BatchNormalization cannot take more than 1 input
     if(node->OpType() == "BatchNormalization"){
@@ -433,13 +408,6 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
       if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
         return false;
-    }
-
-    //Broadcasting is not supported for Mul, Add and Sum
-    if (node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Sum") {
-
-        if(!IsDimensionSupported(node,dev_id))
-            return false;
     }
 
     //Only support 2D input and axis 1
