@@ -61,7 +61,7 @@ class Multi_2:
         r1, r2 = H + N, N + E
         return r1, r2
 ```
-Step 4, copy mymodule.py into one of the Python sys path, and reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to path where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+Step 4, copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
 * TensorProto.BOOL,
@@ -75,7 +75,7 @@ Step 4, copy mymodule.py into one of the Python sys path, and reference with onn
 
 ## Limitations
 * On Windows,  "--config Debug" has known issues,  build with "--config RelWithDebInfo" if need debugging symbols;
-* Due to python C API restrictions, multi-threading is disabled, meaning multiple Python operators will run sequentially.
+* Due to python C API restrictions, multi-threading is disabled, meaning Python operators will run sequentially.
 
 ## Test
 The operator has been tested on multiple platforms, with or without conda:
