@@ -20,7 +20,7 @@ if [ $BUILD_OS = "android" ]; then
     cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
     make -j$(nproc)
 else
-    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --enable_language_interop_ops --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
     if [ $BUILD_DEVICE = "gpu" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
