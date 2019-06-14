@@ -6,7 +6,6 @@ The feature is implemented under onnxruntime/core/language_interop_ops.
 All Python C API dependent code are compiled into a dynamic linked library named pywrapper.
 Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which get converted back when done.
 <p>Here is a chart illustrating the calling sequence:
-
 <pre>
 onnxruntime                          pywrapper                          script
      |                                  |                                 |
