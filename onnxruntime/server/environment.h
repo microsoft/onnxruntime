@@ -6,9 +6,8 @@
 #include <memory>
 #include <vector>
 
-#include "core/framework/environment.h"
 #include "core/common/logging/logging.h"
-#include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace server {
@@ -25,7 +24,7 @@ class ServerEnvironment {
   std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
   logging::Severity GetLogSeverity() const;
 
-  onnxruntime::InferenceSession* GetSession() const;
+  const Ort::Session& GetSession() const;
   common::Status InitializeModel(const std::string& model_path);
   const std::vector<std::string>& GetModelOutputNames() const;
 
@@ -35,9 +34,9 @@ class ServerEnvironment {
   const std::string logger_id_;
   logging::LoggingManager default_logging_manager_;
 
-  std::unique_ptr<onnxruntime::Environment> runtime_environment_;
-  onnxruntime::SessionOptions options_;
-  std::unique_ptr<onnxruntime::InferenceSession> session;
+  Ort::Env runtime_environment_;
+  Ort::SessionOptions options_;
+  Ort::Session session;
   std::vector<std::string> model_output_names_;
 };
 

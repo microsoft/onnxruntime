@@ -3,9 +3,8 @@
 
 #include <memory>
 #include "core/common/logging/logging.h"
-
 #include "environment.h"
-#include "log_sink.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 namespace server {
@@ -17,20 +16,13 @@ ServerEnvironment::ServerEnvironment(logging::Severity severity, logging::Loggin
                                                                          severity,
                                                                          /* default_filter_user_data */ false,
                                                                          instance_type,
-                                                                         &logger_id_) {
-  if (env_init) {
-    auto status = onnxruntime::Environment::Create(runtime_environment_);
-  }
-
-  // The session initialization MUST BE AFTER environment creation
-  session = std::make_unique<onnxruntime::InferenceSession>(options_, &default_logging_manager_);
+                                                                         &logger_id_),
+                                                                     runtime_environment_((OrtLoggingLevel) severity ,"ServerApp"), 
+                                                                     session(nullptr) {
 }
 
 common::Status ServerEnvironment::InitializeModel(const std::string& model_path) {
-  auto status = session->Load(model_path);
-  if (!status.IsOK()) {
-    return status;
-  }
+  session = std::make_unique<Ort::Session>(runtime_environment_, )
 
   auto outputs = session->GetModelOutputs();
   if (!outputs.first.IsOK()) {
@@ -64,8 +56,8 @@ std::unique_ptr<logging::Logger> ServerEnvironment::GetLogger(const std::string&
   return default_logging_manager_.CreateLogger(id, severity_, false);
 }
 
-onnxruntime::InferenceSession* ServerEnvironment::GetSession() const {
-  return session.get();
+const Ort::Session& ServerEnvironment::GetSession() const {
+  return session;
 }
 
 }  // namespace server

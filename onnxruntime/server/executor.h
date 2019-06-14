@@ -8,6 +8,9 @@
 #include "environment.h"
 #include "predict.pb.h"
 #include "util.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/framework/ml_value.h"
+#include "core/framework/framework_common.h"
 
 namespace onnxruntime {
 namespace server {

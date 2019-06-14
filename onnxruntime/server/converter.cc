@@ -6,7 +6,6 @@
 #include "core/framework/data_types.h"
 #include "core/framework/environment.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/mem_buffer.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
@@ -15,6 +14,7 @@
 #include "predict.pb.h"
 
 #include "converter.h"
+#include "mem_buffer.h"
 
 namespace onnxruntime {
 namespace server {

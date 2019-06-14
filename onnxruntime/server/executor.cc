@@ -7,10 +7,11 @@
 #include "core/framework/data_types.h"
 #include "core/framework/environment.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/mem_buffer.h"
+#include "serializing/mem_buffer.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
-#include "core/framework/tensorprotoutils.h"
+#include "serializing/tensorprotoutils.h"
+#include "core/common/callback.h"
 
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
@@ -31,7 +32,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
   auto logger = env_->GetLogger(request_id_);
 
   size_t cpu_tensor_length = 0;
-  auto status = onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
+  auto status = onnxruntime::server::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
   if (!status.IsOK()) {
     LOGS(*logger, ERROR) << "GetSizeInBytesFromTensorProto() failed. Error Message: " << status.ToString();
     return GenerateProtobufStatus(status, "GetSizeInBytesFromTensorProto() failed: " + status.ToString());
@@ -39,7 +40,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
 
   OrtCallback deleter;
   auto* buf = buffers.AllocNewBuffer(cpu_tensor_length);
-  status = onnxruntime::utils::TensorProtoToMLValue(onnxruntime::Env::Default(), nullptr, input_tensor,
+  status = onnxruntime::server::TensorProtoToMLValue(input_tensor,
                                                     onnxruntime::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
                                                     ml_value, deleter);
   if (!status.IsOK()) {
