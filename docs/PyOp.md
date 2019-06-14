@@ -36,7 +36,7 @@ py1_node = helper.make_node(op_type = 'PyOp', #required, must be 'PyOp'
                             module = 'mymodule', #required
                             class_name = 'Multi_1', #required
                             compute = 'compute', #optional, 'compute' by default
-                            W1 = '5', W2 = '7', W3 = '9') #optional, must be strings
+                            W1 = '5', W2 = '7', W3 = '9') #optional, must all be strings
 ad2_node = helper.make_node('Add', ['L','M'], ['H'])
 py2_node = helper.make_node('PyOp',['H','N','E'],['O','W'], domain = 'pyopmulti_2',
                             input_types = [TensorProto.FLOAT, TensorProto.FLOAT, TensorProto.FLOAT],
@@ -54,9 +54,9 @@ class Multi_1:
         self.W1 = int(W1)
         self.W2 = int(W2)
         self.W3 = int(W3)
-    def compute(self, S, P): # accept arbitrary number of numpys
+    def compute(self, S, P):
         ret = S + P
-        return ret + self.W1, ret + self.W2, ret + self.W3 # return arbitrary number of numpys
+        return ret + self.W1, ret + self.W2, ret + self.W3
 class Multi_2:
     def compute(self, H, N, E):
         r1, r2 = H + N, N + E
