@@ -1,6 +1,24 @@
 # Python Operator 
 To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
 
+## Implemenation
+The feature is implemented under onnxruntime/core/language_interop_ops.
+All Python C API dependent code are compiled into a dynamic linked library named pywrapper.
+Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which get converted back when done.
+Here is a chart illustrating the calling sequence:
+
+<pre>
+onnxruntime                             pywrapper                                     script
+         |                                                 |                                                |
+         | ------------------------------>  |                                                |
+         |       call with tensor(s)              | ------------------------------> |
+         |                                                 |         compute the result(s)     | 
+         |                                                 |                                                 | compute the result(s)
+         |                                                 |  <------------------------------ |
+         | <------------------------------  |         return numps(s)              |
+         |      return tensor(s)                  |                                                 |
+</pre>
+
 ## Usage
 Step 1, build onnxruntime with“--config Release --enable_language_interop_ops --build_shared_lib”and override existing onnxruntime binary with the latest, then copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
 Note that it is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well.
@@ -36,9 +54,9 @@ class Multi_1:
         self.W1 = int(W1)
         self.W2 = int(W2)
         self.W3 = int(W3)
-    def compute(self, S, P):
+    def compute(self, S, P): # accept arbitrary number of numpys
         ret = S + P
-        return ret + self.W1, ret + self.W2, ret + self.W3
+        return ret + self.W1, ret + self.W2, ret + self.W3 # return arbitrary number of numpys
 class Multi_2:
     def compute(self, H, N, E):
         r1, r2 = H + N, N + E
