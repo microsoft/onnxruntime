@@ -61,18 +61,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   return model_proto;
 }
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
-    int fd;
-    Status status = Env::Default().FileOpenWr(file_path,fd);
-
-    google::protobuf::io::FileOutputStream output(fd);
-    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-    if(result)
-        return Status::OK();
-    else
-        return Status::OK();
-
-}
 
 //Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set){
@@ -257,8 +245,6 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
   auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
-
-  SaveModel(model_proto,"ov_model.onnx");
 
   auto graph_proto = model_proto.mutable_graph();
   int input_dims = 0;
