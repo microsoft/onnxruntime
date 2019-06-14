@@ -16,7 +16,7 @@ import re
 import sys
 major = sys.version_info.major
 minor = sys.version_info.minor
-regex = re.compile('^(libpython|python)'+str(major)+'\.?'+str(minor)+'.*(so|lib)$')
+regex = re.compile('^(libpython|python)'+str(major)+'\.?'+str(minor)+'\.(so|lib|dylib)$')
 pydir = os.path.abspath(os.path.join(os.path.dirname(sys.executable),'..'))
 for r,d,fs in os.walk(pydir):
   for f in fs:
