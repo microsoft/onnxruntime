@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+//#define TENSORRT_REMOVE_MEM_CPY
+
 #include "transformer_memcpy.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
@@ -56,6 +58,15 @@ class TransformerMemcpyImpl {
 // and mainly provides the subgraph recursion functionality
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   for (auto& provider : provider_types_) {
+#ifdef TENSORRT_REMOVE_MEM_CPY
+    if (provider != onnxruntime::kCpuExecutionProvider &&
+        provider != onnxruntime::kMklDnnExecutionProvider &&
+        provider != onnxruntime::kNGraphExecutionProvider &&
+        provider != onnxruntime::kNupharExecutionProvider) {
+      TransformerMemcpyImpl copy_impl(graph, provider);
+      modified = copy_impl.ModifyGraph(registry_manager_);
+    }
+#else
     if (provider != onnxruntime::kCpuExecutionProvider &&
         provider != onnxruntime::kMklDnnExecutionProvider &&
         provider != onnxruntime::kNGraphExecutionProvider &&
@@ -64,6 +75,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
       TransformerMemcpyImpl copy_impl(graph, provider);
       modified = copy_impl.ModifyGraph(registry_manager_);
     }
+#endif
   }
 
   // TODO: We probably need to do the recursion inline when processing the main graph in order to maximize efficiency.
@@ -149,6 +161,63 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   return modified;
 }
 
+#ifdef TENSORRT_REMOVE_MEM_CPY
+void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries) {
+  if ((node.GetExecutionProviderType() == provider_)
+      || (node.GetExecutionProviderType() == kCudaExecutionProvider && provider_ == kTensorrtExecutionProvider)
+      || (node.GetExecutionProviderType() == kTensorrtExecutionProvider && provider_ == kCudaExecutionProvider)) {
+    provider_nodes_.insert(&node);
+    // note KernelCreateInfo might be nullptr for custom kernel
+    const KernelCreateInfo* kci = nullptr;
+    kernel_registries.SearchKernelRegistry(node, &kci);
+
+    ORT_ENFORCE(onnxruntime::Node::ForEachWithIndex(node.InputDefs(), [this, &kci](const onnxruntime::NodeArg& arg,
+                                                                                   size_t index) {
+                  if (kci && kci->kernel_def->IsInputOnCpu(index))
+                    non_provider_input_defs_.insert(&arg);
+                  else
+                    provider_input_defs_.insert(&arg);
+                  return Status::OK();
+                }).IsOK());
+
+    // we don't need to handle implicit input here as provider_ is never kCpuExecutionProvider, all control flow
+    // nodes are CPU based, and only control flow nodes have implicit inputs.
+
+    auto& output_defs = node.MutableOutputDefs();
+    for (size_t i = 0; i < output_defs.size(); ++i) {
+      auto arg = output_defs[i];
+      if (!arg->Exists())
+        continue;
+
+      if (kci && kci->kernel_def->IsOutputOnCpu(i))
+        non_provider_output_defs_.insert(arg);
+      else
+        provider_output_defs_.insert(arg);
+    }
+  } else {
+    // TODO: copy between devices? i.e. multiple GPUs
+    if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider &&
+        node.GetExecutionProviderType() != onnxruntime::kNGraphExecutionProvider && !node.GetExecutionProviderType().empty()) {
+      ORT_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
+    }
+
+    for (const auto* arg : node.InputDefs()) {
+      if (arg->Exists())
+        non_provider_input_defs_.insert(arg);
+    }
+
+    for (const auto* arg : node.ImplicitInputDefs()) {
+      if (arg->Exists())
+        non_provider_input_defs_.insert(arg);
+    }
+
+    for (auto* arg : node.MutableOutputDefs()) {
+      if (arg->Exists())
+        non_provider_output_defs_.insert(arg);
+    }
+  }
+}
+#else
 void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries) {
   if (node.GetExecutionProviderType() == provider_) {
     provider_nodes_.insert(&node);
@@ -202,6 +271,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     }
   }
 }
+#endif
 
 //for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
 void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries) {

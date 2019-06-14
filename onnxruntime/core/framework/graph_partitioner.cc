@@ -189,8 +189,8 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
 
   ORT_RETURN_IF_ERROR(graph.Resolve());
 
-  const char* save_model_env = getenv("ORT_TENSORRT_SAVE_MODEL");
-  if (save_model_env) {
+  const char* save_model_env = getenv("ORT_TENSORRT_SAVE_MODEL_EN");
+  if (save_model_env && atoi(save_model_env) != 0) {
     std::cout << "Save partitioned graph: trt_model_proto_partitioner.onnx" << std::endl;
     ::ONNX_NAMESPACE::ModelProto model_proto;
     auto graph_proto = graph.ToGraphProto();
