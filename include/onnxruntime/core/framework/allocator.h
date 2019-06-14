@@ -15,21 +15,55 @@
 #include "core/framework/fence.h"
 #include "core/session/onnxruntime_c_api.h"
 
+// Struct to represent a physical device.
+struct OrtDevice {
+  typedef int DEVICEID;
+
+  // Pre-defined device types.
+  static const int16_t CPU = 0;
+  static const int16_t GPU = 1;
+  static const int16_t FPGA = 2;
+
+  OrtDevice(int16_t device_type_, int16_t device_index) {
+    device_type = device_type_;
+    device_index = device_index;
+    device_id = static_cast<int>(device_type) << 16 | static_cast<int>(device_index);
+  }
+
+  OrtDevice() : OrtDevice(CPU, 0) {}
+
+  DEVICEID DeviceId() const {
+    return device_id;
+  }
+
+ private:
+  // Device type.
+  int16_t device_type;
+
+  // Device index.
+  int16_t device_index;
+
+  // Device id.
+  DEVICEID device_id;
+};
+
 struct OrtAllocatorInfo {
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
   int id;
   OrtMemType mem_type;
   OrtAllocatorType type;
+  OrtDevice::DEVICEID device_id;
 
-  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault, OrtDevice::DEVICEID device_id_ = 0)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
       : name(name_),
         id(id_),
         mem_type(mem_type_),
-        type(type_) {
+        type(type_),
+        device_id(device_id_) {
   }
 
   // To make OrtAllocatorInfo become a valid key in std map
