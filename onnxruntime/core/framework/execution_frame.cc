@@ -280,7 +280,11 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           return status;
         }
         if (block->size_ != size) {
-          LOGS_DEFAULT(WARNING) << "For ort_value with index: " << ort_value_index
+          // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
+          // fed in, so use VERBOSE as the log level as it's expected.
+          // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
+          // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
+          LOGS_DEFAULT(VERBOSE) << "For ort_value with index: " << ort_value_index
                                 << ", block in memory pattern size is: " << block->size_
                                 << " but the actually size is: " << size
                                 << ", fall back to default allocation behavior";
