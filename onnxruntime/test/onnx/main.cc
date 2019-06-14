@@ -388,10 +388,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_OPENVINO
-  broken_tests.insert({"fp16_shufflenet", "accuracy issues due to fp16 precision"});
-  broken_tests.insert({"fp16_inception_v1", "accuracy issues due to fp16 precision"});
-  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy issues due to fp16 precision"});
-  broken_tests.insert({"tiny_yolov2", "flaky test"});
+  broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+#ifdef OPENVINO_CONFIG_GPU_FP32
+  broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+#endif
 #endif
 
 
