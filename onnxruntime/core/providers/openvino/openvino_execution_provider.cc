@@ -61,6 +61,159 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   return model_proto;
 }
+static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
+    int fd;
+    Status status = Env::Default().FileOpenWr(file_path,fd);
+
+    google::protobuf::io::FileOutputStream output(fd);
+    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+    if(result)
+        return Status::OK();
+    else
+        return Status::OK();
+
+}
+
+//Gets the input count of given node
+int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set){
+
+    int count = 0;
+    for(const auto& input : node->InputDefs()){
+        auto name = input->Name();
+        auto it = initializer_set.find(name);
+        if(it == initializer_set.end()){
+            count++;
+        }
+    }
+    return count;
+}
+
+//Checks whether the dimensions of a given node are supported in OpenVINO
+bool IsDimensionSupported(const Node* node, std::string dev_id){
+
+    auto node_inputs = node->InputDefs();
+    size_t input_dims = 0;
+    if(node_inputs[0]->Shape() != nullptr){
+        input_dims = node_inputs[0]->Shape()->dim_size();
+    }
+
+    if(node->OpType().find("Pool") != std::string::npos){
+
+        if(dev_id == "MYRAID" || dev_id == "HDDL"){
+            if(input_dims != 3 || input_dims != 4)
+                return false;
+        } else if(input_dims < 4 || input_dims > 5){
+            return false;
+        }
+    }
+
+    //Only support 4D and 5D Transposes
+    if(node->OpType() == "Transpose"){
+
+        if(input_dims == 2 || input_dims == 3 || input_dims > 5)
+            return false;
+    }
+
+    if(node->OpType() == "Unsqueeze"){
+
+        auto attributes = node->GetAttributes();
+        auto axes = attributes["axes"].ints();
+        if(input_dims + axes.size() > 5)
+            return false;
+        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
+            if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+                return false;
+        }
+    }
+
+    if(node->OpType() == "Reshape"){
+
+        //Don't support Reshape without output dims
+        auto node_outputs = node->OutputDefs();
+        if(node_outputs[0]->Shape() != nullptr && node_outputs[0]->Shape()->dim_size() == 0)
+            return false;
+
+        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
+
+            if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+                return false;
+        }
+    }
+
+    if(node->OpType() == "Softmax"){
+
+        //First dimension of Softmax input has to be 1
+        if(input_dims != 0 ){
+            if(node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+                return false;
+        }
+
+        //Only 2D input supported on MYRIAD and HDDL
+        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
+            if(input_dims != 2)
+                return false;
+        }
+    }
+
+    //Broadcast is not supported in Mul, Add and Sum
+    if(node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Sum"){
+
+        if(input_dims == 0)
+            return false;
+
+        std::vector<std::vector<int>> input_dim_arrays;
+
+
+        for(size_t i = 0; i < node_inputs.size(); i++){
+
+            std::vector<int> temp_arr;
+            if(node_inputs[i]->Shape() != nullptr){
+                int input_dims_size = node_inputs[i]->Shape()->dim_size();
+
+                for(int j = 0; j < input_dims_size; j++){
+                    temp_arr.push_back(node_inputs[i]->Shape()->dim(j).dim_value());
+                }
+            }
+            input_dim_arrays.push_back(temp_arr);
+        }
+
+
+        for(size_t i = 1; i < node_inputs.size(); i++){
+            if(node_inputs[i]->Shape() != nullptr){
+
+                if(input_dims != input_dim_arrays[i].size())
+                    return false;
+
+                for(size_t j = 0; j < input_dims; j++){
+
+                    if(input_dim_arrays[0][j] != input_dim_arrays[i][j])
+                        return false;
+                }
+            }
+        }
+    }
+
+    //Only 2D MatMul is supported
+    if(node->OpType() == "MatMul"){
+        for(size_t i = 0; i < node_inputs.size(); i++){
+
+            if(node_inputs[i]->Shape() != nullptr){
+                if(node_inputs[i]->Shape()->dim_size() != 2)
+                    return false;
+            }
+        }
+    }
+
+    if(node->OpType() == "Flatten"){
+
+        if(dev_id == "MYRAID" || dev_id == "HDDL"){
+            if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+                return false;
+        }
+    }
+
+    return true;
+}
 
 //Checks whether the node is supported by OpenVINO
 bool IsOpSupported(std::string name){
@@ -99,11 +252,13 @@ bool IsOpSupported(std::string name){
 
 bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id){
 
-  auto initializers = graph_viewer.GetAllInitializedTensors();
+  const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
   auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+
+  SaveModel(model_proto,"ov_model.onnx");
 
   auto graph_proto = model_proto.mutable_graph();
   int input_dims = 0;
@@ -111,27 +266,11 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
   int num_inputs = graph_viewer.GetInputs().size();
   int num_outputs = graph_viewer.GetOutputs().size();
 
-  //input_arrays hold the dimensions of graph inputs
-  std::vector<std::vector<int>> input_arrays;
-
   if (num_inputs != 0)
     input_dims = graph_proto->input(0).type().tensor_type().shape().dim_size();
 
   if (num_outputs != 0)
     output_dims = graph_proto->output(0).type().tensor_type().shape().dim_size();
-
-  //Get input dimensions
-  if (num_inputs != 0) {
-    for (int i = 0; i < num_inputs; i++) {
-      int input_dims_size = graph_proto->input(i).type().tensor_type().shape().dim_size();
-      std::vector<int> temp_arr;
-
-      for (int j = 0; j < input_dims_size; j++) {
-        temp_arr.push_back(graph_proto->input(i).type().tensor_type().shape().dim(j).dim_value());
-      }
-      input_arrays.push_back(temp_arr);
-    }
-  }
 
   //GPU Plugin does not support single dimensional input and 5 dimensional input
   if (dev_id == "GPU") {
@@ -139,11 +278,11 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       return false;
   }
 
-  bool op_sum = false;
-  bool op_gemm = false;
-
   for (auto index : node_indexes) {
-    auto node = graph_viewer.GetNode(index);
+    const auto node = graph_viewer.GetNode(index);
+
+    if(node == nullptr)
+        return false;
 
 
     //Check if the Operation is Supported by OpenVINO
@@ -151,54 +290,57 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       return false;
     }
 
-    if (node->OpType() == "Sum") {
-      op_sum = true;
-    }
+    //BatchNormalization cannot take more than 1 input
+    if(node->OpType() == "BatchNormalization"){
 
-    if (node->OpType() == "Gemm") {
-      op_gemm = true;
-    }
-
-    //BatchNorm, Conv and Reshape cant take more than 1 input
-    if (node->OpType() == "BatchNormalization" || node->OpType() == "Conv" || node->OpType() == "Reshape") {
-      int count = 0;
-      for (const auto& input : node->InputDefs()) {
-        auto name = input->Name();
-        auto it = initializers.find(name);
-        if (it == initializers.end()) {
-          count++;
-        }
-      }
-      if (count > 1) {
-        return false;
-      }
-    }
-
-    if (dev_id == "MYRIAD" || dev_id == "HDDL") {
-      if (node->OpType() == "Reshape" || node->OpType() == "Unsqueeze" || node->OpType() == "Flatten") {
-        if (input_arrays[0][0] != 1) {
-          return false;
-        }
-      }
-
-      //Disable Inception v1 for MYRIAD and HDDL
-      if (node->OpType() == "Gemm") {
-        int count = 0;
-        for (auto input : node->InputDefs()) {
-          auto name = input->Name();
-          auto it = initializers.find(name);
-          if (it == initializers.end()) {
-            count++;
-          }
-        }
-        if (count > 1) {
-          return false;
-        }
-      }
+        if(GetInputCount(node,initializers) > 1)
+            return false;
     }
 
 
-    //MatMul is only supporetd if it is followed by Add
+    //Conv cannot take more than 1 input
+    if(node->OpType() == "Conv"){
+
+        if(GetInputCount(node,initializers) > 1)
+            return false;
+    }
+
+
+    //Reshape should have shape as initializer
+    if(node->OpType() == "Reshape"){
+
+        if(GetInputCount(node,initializers) > 1){
+            return false;
+        }
+
+        if(!IsDimensionSupported(node,dev_id)){
+            return false;
+        }
+    }
+
+    if(node->OpType() == "Flatten"){
+
+        if(!IsDimensionSupported(node,dev_id))
+            return false;
+
+        //Flatten has to have default axis for MYRIAD and HDDL
+        auto attributes = node->GetAttributes();
+        auto axis = attributes["axis"].i();
+        if (dev_id == "MYRIAD" || dev_id == "HDDL") {
+            if (axis != 1)
+            return false;
+        }
+    }
+
+    //Gemm can't have more than one input
+    if(node->OpType() == "Gemm"){
+
+        if(GetInputCount(node, initializers) > 1)
+            return false;
+    }
+
+
+    //MatMul is only supported if it is followed by Add
     if (node->OpType() == "MatMul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
         if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
@@ -213,40 +355,26 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       }
 
       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-        auto out_node = graph_viewer.GetNode((*it).Index());
+        const auto out_node = graph_viewer.GetNode((*it).Index());
+        if(out_node == nullptr)
+            return false;
+
 
         if (out_node->OpType() != "Add") {
           return false;
         }
       }
 
-      bool is_graph_input = false;
+      if(!IsDimensionSupported(node,dev_id))
+        return false;
 
-      auto graph_inputs = graph_viewer.GetInputs();
-      for (const auto& input : node->InputDefs()) {
-        auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-        if (it != graph_inputs.end()) {
-          is_graph_input = true;
-        }
-      }
-      if (is_graph_input) {
-        size_t input_dims_size = input_arrays[0].size();
 
-        //Only support 2D Matmul operations
-        for (int i = 0; i < num_inputs; i++) {
-          if (input_arrays[i].size() > 2)
-            return false;
-
-          if (input_dims_size != input_arrays[i].size())
-            return false;
-        }
-      }
-
-      //Disable MNIST for MYRIAD and HDDL
+      //Matmul not supported on MYRIAD and HDDL
       if (dev_id == "MYRIAD" || dev_id == "HDDL")
         return false;
     }
-    //Dropout or Identity can't have graph inputs
+
+    //Dropout , Identity and Concat can't have graph inputs
     if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (auto input : node->InputDefs()) {
@@ -257,18 +385,18 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       }
     }
 
-    //Attribute auto pad for MaxPool and AveragePool must not be empty or SAME_LOWER
-    if (node->OpType() == "MaxPool" || node->OpType() == "AveragePool") {
+    //Attribute auto pad for MaxPool and Average Pool must not be empty or SAME_LOWER
+    //Only support 4D and 5D blobs for CPU,GPU
+    //Only support 3D and 4D blobs for MYRIAD and HDDL
+    if (node->OpType() == "MaxPool" || node->OpType() == "AveragePool"){
       auto attributes = node->GetAttributes();
       auto auto_pad = attributes["auto_pad"].s();
-      if (auto_pad == "" || auto_pad == "SAME_LOWER"){
+      if (auto_pad == "" || auto_pad == "SAME_LOWER")
         return false;
-      }
 
       auto strides_ints = attributes["strides"].ints();
-      if(auto_pad == "SAME_UPPER" && strides_ints.size() == 0){
+      if(auto_pad == "SAME_UPPER" && strides_ints.size() == 0)
           return false;
-      }
 
       //Dilations have to be 1
       auto dilations_ints = attributes["dilations"].ints();
@@ -283,24 +411,19 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         return false;
 
       //Don't support multiple outputs for Pooling
-      if (node->OutputDefs().size() > 1) {
+      if (node->OutputDefs().size() > 1)
         return false;
-      }
+
+      if(!IsDimensionSupported(node,dev_id))
+        return false;
     }
 
     //Only support 4D and 5D blobs for CPU,GPU
     //Only support 3D and 4D blobs for MYRIAD and HDDL
-    if (node->OpType() == "GlobalMaxPool" || node->OpType() == "MaxPool" || node->OpType() == "AveragePool" || node->OpType() == "GlobalAveragePool") {
-      auto graph_inputs = graph_viewer.GetInputs();
-      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-      if (it != graph_inputs.end()) {
-        if (dev_id == "MYRIAD" || dev_id == "HDDL") {
-          if (input_dims != 3 || input_dims != 4)
+    if(node->OpType() == "GlobalMaxPool" || node->OpType() == "GlobalAveragePool"){
+
+        if(!IsDimensionSupported(node,dev_id))
             return false;
-        } else if (input_dims < 4 || input_dims > 5) {
-          return false;
-        }
-      }
     }
 
     //Transpose with no attr is not supported
@@ -317,91 +440,39 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         return false;
       }
 
-      auto graph_inputs = graph_viewer.GetInputs();
-      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-      if (it != graph_inputs.end()) {
-        if (input_dims == 3 || input_dims == 2 || input_dims > 5) {
-          return false;
-        }
-      }
+      if(!IsDimensionSupported(node,dev_id))
+        return false;
     }
 
+
     if (node->OpType() == "Unsqueeze") {
-      auto graph_inputs = graph_viewer.GetInputs();
-      auto attributes = node->GetAttributes();
-      auto axes = attributes["axes"].ints();
-      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-      if (it != graph_inputs.end()) {
-        if (input_dims + axes.size() > 5) {
-          return false;
-        }
-      }
+
+      if(!IsDimensionSupported(node,dev_id))
+        return false;
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
       if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
         return false;
     }
 
-    //Don't support Reshape without output dims
-    if (node->OpType() == "Reshape") {
-      if (output_dims == 0) {
-        return false;
-      }
-    }
-
     //Broadcasting is not supported for Mul, Add and Sum
     if (node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Sum") {
-      auto graph_inputs = graph_viewer.GetInputs();
-      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
 
-      if (it != graph_inputs.end()) {
-        size_t dims = input_arrays[0].size();
-        if (dims == 0)
-          return false;
-
-        for (int i = 0; i < num_inputs; i++) {
-          if (dims != input_arrays[i].size())
+        if(!IsDimensionSupported(node,dev_id))
             return false;
-        }
-        for (int i = 0; i < num_inputs; i++) {
-          for (size_t j = 0; j < dims; j++) {
-            if (input_arrays[0][j] != input_arrays[i][j]) {
-            //   isGraphSupported = false;
-                return false;
-            //   break;
-            }
-          }
-        }
-      }
     }
 
+    //Only support 2D input and axis 1
     if (node->OpType() == "Softmax") {
-      auto graph_inputs = graph_viewer.GetInputs();
-      auto it = find(graph_inputs.begin(), graph_inputs.end(), node->InputDefs()[0]);
-      if (it != graph_inputs.end()) {
-        if (input_dims != 2) {
-          return false;
-        }
-      }
+
+      if(!IsDimensionSupported(node,dev_id))
+        return false;
+
       auto attributes = node->GetAttributes();
       auto axis = attributes["axis"].i();
       if (axis != 1)
         return false;
     }
 
-    if (node->OpType() == "Flatten") {
-      auto attributes = node->GetAttributes();
-      auto axis = attributes["axis"].i();
-      if (dev_id == "MYRIAD" || dev_id == "HDDL") {
-        if (axis != 1)
-          return false;
-      }
-    }
-  }
-  //Disable Resnet DUC for MYRIAD and HDDL
-  if (op_sum == true && op_gemm == false) {
-    if (dev_id == "MYRIAD" || dev_id == "HDDL") {
-      return false;
-    }
   }
 
   return true;
@@ -459,7 +530,9 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
     for (auto index : node_indexes) {
       sub_graph->nodes.push_back(index);
-      auto* node = graph_viewer.GetNode(index);
+      const auto node = graph_viewer.GetNode(index);
+      if(node == nullptr)
+        return result;
 
       // Track graph inputs and initializers
       for (auto input_def : node->InputDefs()) {

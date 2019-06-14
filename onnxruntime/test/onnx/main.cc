@@ -186,12 +186,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     data_dirs.emplace_back(argv[i]);
   }
   {
-      //when openvino is enabled set threshold to a longer value for GPU_FP16 accuracy tests
-    double per_sample_tolerance = enable_openvino ? 1 : 1e-3;
+    double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
-
-    relative_per_sample_tolerance = enable_openvino ? 1 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -391,24 +388,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_OPENVINO
-  broken_tests.insert({"add_bcast", "disabled temporarily"});
-  broken_tests.insert({"averagepool_1d_default", "disabled temporarily"});
-  broken_tests.insert({"averagepool_2d_ceil", "disabled temporarily"});
-  broken_tests.insert({"averagepool_2d_same_lower", "disabled temporarily"});
-  broken_tests.insert({"convtranspose_1d", "disabled temporarily"});
-  broken_tests.insert({"convtranspose_3d", "disabled temporarily"});
-  broken_tests.insert({"maxpool_1d_default", "disabled temporarily"});
-  broken_tests.insert({"maxpool_2d_ceil", "disabled temporarily"});
-  broken_tests.insert({"maxpool_2d_dilations", "disabled temporarily"});
-  broken_tests.insert({"maxpool_2d_same_lower", "disabled temporarily"});
-  broken_tests.insert({"mul_bcast", "disabled temporarily"});
-  broken_tests.insert({"mul_bcast", "disabled temporarily"});
-  broken_tests.insert({"transpose_all_permutations_0", "disabled temporarily"});
   broken_tests.insert({"fp16_shufflenet", "disabled temporarily"});
   broken_tests.insert({"fp16_inception_v1", "disabled temporarily"});
-  broken_tests.insert({"maxpool_2d_same_upper", "disabled temporarily"});
   broken_tests.insert({"fp16_tiny_yolov2", "disabled temporarily"});
-  broken_tests.insert({"tiny_yolov2", "disabled temporarily"});
+//   broken_tests.insert({"tiny_yolov2", "disabled temporarily"});
 #endif
 
 
