@@ -1,4 +1,5 @@
 jobs:
+<<<<<<< HEAD
 - job: Windows_CI_Dev
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -104,3 +105,15 @@ jobs:
 
     - template: templates/clean-agent-build-directory-step.yml
 
+=======
+- template: templates/win-ci.yml
+  parameters:
+    AgentPool : 'Win-CPU'
+    DoDebugBuild: 'true'
+    DoCompliance: 'false'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_tvm --enable_pybind --use_mkldnn --use_mklml --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --gen_doc'
+    JobName: 'Windows_CI_Dev'
+    DoNugetPack:  'false'
+    NuPackScript : ''
+    DoTestCoverage: 'false'
+>>>>>>> 08731589c901d57180b140748107bebb73486a85
