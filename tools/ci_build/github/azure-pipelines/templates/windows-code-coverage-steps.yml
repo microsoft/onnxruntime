@@ -23,6 +23,13 @@ steps:
   continueOnError: ${{parameters.ContinueOnError}}
   condition: ${{parameters.PublishReport}}
 
+- task: CmdLine@1
+  displayName: 'Install mysql-connector-python conda module'
+  inputs:
+    filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
+    arguments: 'install -q --insecure -y mysql-connector-python'
+  timeoutInMinutes: 10
+
 - task: BatchScript@1
   displayName: 'Post code coverage data to the Dashboard'
   inputs:
