@@ -142,7 +142,7 @@ TEST(GraphTransformationTests, ShapeToInitializer) {
 
   op_to_count = CountOpsInGraph(graph);
   // Two of the Shapes are not eliminated because: 
-  // One contains includes a symbolic dimension.
+  // One includes a symbolic dimension.
   // Another one includes a negative dimension
   ASSERT_TRUE(op_to_count["Shape"] == 2);
 }
