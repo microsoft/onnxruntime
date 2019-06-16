@@ -5,7 +5,6 @@
 
 #include "cuda_pch.h"
 #include "core/framework/data_transfer.h"
-#include "cuda_common.h"
 
 namespace onnxruntime {
 
