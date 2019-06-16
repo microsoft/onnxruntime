@@ -16,7 +16,7 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
   return src_device.Type() == OrtDevice::GPU 
    || (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED)
    || dst_Device.Type() == OrtDevice::GPU 
-   || (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED));
+   || (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED);
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
