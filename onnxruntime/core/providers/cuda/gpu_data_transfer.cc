@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 GPUDataTransfer::GPUDataTransfer() {
