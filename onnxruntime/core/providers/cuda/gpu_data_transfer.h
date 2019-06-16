@@ -4,22 +4,8 @@
 #pragma once
 
 #include "cuda_pch.h"
-#include "core/platform/ort_mutex.h"
-#include "core/graph/constants.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/data_transfer.h"
-#include "core/framework/execution_provider.h"
-#include "shared_inc/cuda_utils.h"
-#include <deque>
-
 #include "cuda_common.h"
-#include "cuda_execution_provider.h"
-#include "core/framework/memcpy.h"
-#include "cuda_fence.h"
-#include "cuda_allocator.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/compute_capability.h"
-#include "contrib_ops/contrib_kernels.h"
 
 namespace onnxruntime {
 
