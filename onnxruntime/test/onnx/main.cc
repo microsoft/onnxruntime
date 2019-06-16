@@ -355,6 +355,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_tiny_yolov2", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});
