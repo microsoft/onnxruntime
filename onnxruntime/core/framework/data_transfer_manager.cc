@@ -10,6 +10,13 @@
 namespace onnxruntime {
 using namespace common;
 
+int32_t BuildKey(OrtDevice::DeviceType src_device_type,
+                 OrtDevice::MemoryType src_memory_type,
+                 OrtDevice::DeviceType dst_device_type,
+                 OrtDevice::MemoryType dst_memory_type) {
+  return (static_cast<int32_t>(src_device_type) << 24) | (static_cast<int32_t>(src_memory_type) << 16) | static_cast<int32_t>(dst_device_type) << 8 | dst_memory_type;
+}
+
 const DataTransferManager& DataTransferManager::Instance() {
   static DataTransferManager data_transfer_mgr;
   return data_transfer_mgr;
@@ -19,7 +26,16 @@ common::Status DataTransferManager::RegisterDataTransfer(
     OrtDevice::DeviceType src_device_type,
     OrtDevice::DeviceType dst_device_type,
     const DataTransfer& data_transfer) {
-  int32_t id_key = (static_cast<int32_t>(src_device_type) << 16) | static_cast<int32_t>(dst_device_type);
+  return RegisterDataTransfer(src_device_type, OrtDevice::Default, dst_device_type, OrtDevice::Default, data_transfer);
+}
+
+common::Status DataTransferManager::RegisterDataTransfer(
+    OrtDevice::DeviceType src_device_type,
+    OrtDevice::MemoryType src_memory_type,
+    OrtDevice::DeviceType dst_device_type,
+    OrtDevice::MemoryType dst_memory_type,
+    const DataTransfer& data_transfer) {
+  int32_t id_key = BuildKey(src_device_type, src_memory_type, dst_device_type, dst_memory_type);
   auto iter = devicetypes_datatransfer_map_.find(id_key);
   if (devicetypes_datatransfer_map_.end() != iter) {
     return ORT_MAKE_STATUS(ONNXRUNTIME,
@@ -40,7 +56,10 @@ common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) c
 }
 
 common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
-  int32_t id_key = (static_cast<int32_t>(src.Location().device.Type()) << 16) | static_cast<int32_t>(dst.Location().device.Type());
+  int32_t id_key = BuildKey(src.Location().device.Type(),
+                            src.Location().device.MemType(),
+                            dst.Location().device.Type(),
+                            dst.Location().device.MemType());
   auto iter = devicetypes_datatransfer_map_.find(id_key);
   if (devicetypes_datatransfer_map_.end() == iter) {
     return ORT_MAKE_STATUS(ONNXRUNTIME,

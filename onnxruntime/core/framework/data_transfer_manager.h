@@ -21,6 +21,14 @@ class DataTransferManager {
       OrtDevice::DeviceType dst_device_type,
       const DataTransfer& data_transfer);
 
+    common::Status RegisterDataTransfer(
+      OrtDevice::DeviceType src_device_type,
+      OrtDevice::MemoryType src_memory_type,
+      OrtDevice::DeviceType dst_device_type,
+	  OrtDevice::MemoryType dst_memory_type,
+      const DataTransfer& data_transfer);
+
+
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
 

@@ -17,7 +17,8 @@
 
 // Struct to represent a physical device.
 struct OrtDevice {
-  typedef int16_t DeviceType;
+  typedef int8_t DeviceType;
+  typedef int8_t MemoryType;
   typedef int16_t DeviceId;
 
   // Pre-defined device types.
@@ -25,24 +26,35 @@ struct OrtDevice {
   static const DeviceType GPU = 1;
   static const DeviceType FPGA = 2;
 
-  OrtDevice(DeviceType device_type_, DeviceId device_id_) {
-    device_type = device_type_;
-    device_id = device_id_;
-  }
+  // Pre-defined memory types.
+  static const MemoryType Default = 0;
+  static const MemoryType CPUPINNED = 1;
 
-  OrtDevice() : OrtDevice(CPU, 0) {}
+  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
+      : device_type(device_type_),
+        memory_type(memory_type_),
+        device_id(device_id_) {}
+
+  constexpr OrtDevice() : OrtDevice(CPU, Default, 0) {}
 
   DeviceType Type() const {
     return device_type;
   }
 
-  DeviceId Index() const {
+  MemoryType MemType() const {
+    return memory_type;
+  }
+
+  DeviceId Id() const {
     return device_id;
   }
 
  private:
   // Device type.
   DeviceType device_type;
+
+  // Memory type.
+  MemoryType memory_type;
 
   // Device index.
   DeviceId device_id;
@@ -56,7 +68,7 @@ struct OrtAllocatorInfo {
   OrtAllocatorType type;
   OrtDevice device;
 
-  OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault, OrtDevice device_ = OrtDevice())
+  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault, OrtDevice device_ = OrtDevice())
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
