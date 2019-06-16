@@ -4,11 +4,10 @@
 #pragma once
 
 #include "core/common/status.h"
+#include "core/framework/data_transfer.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-
-using DataTransfer = std::function<common::Status(const void* src_data, void* dst_data, size_t bytes, int exec_queue_id)>;
 
 // Data transfer manager, which has all functions registered to copy tensors with different location.
 // It's not thread-safe.
@@ -16,18 +15,7 @@ class DataTransferManager {
  public:
   static const DataTransferManager& Instance();
 
-  common::Status RegisterDataTransfer(
-      OrtDevice::DeviceType src_device_type,
-      OrtDevice::DeviceType dst_device_type,
-      const DataTransfer& data_transfer);
-
-    common::Status RegisterDataTransfer(
-      OrtDevice::DeviceType src_device_type,
-      OrtDevice::MemoryType src_memory_type,
-      OrtDevice::DeviceType dst_device_type,
-	  OrtDevice::MemoryType dst_memory_type,
-      const DataTransfer& data_transfer);
-
+  common::Status RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer);
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
@@ -37,6 +25,7 @@ class DataTransferManager {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DataTransferManager);
 
-  std::unordered_map<int32_t, DataTransfer> devicetypes_datatransfer_map_;
+  // It's assumed that data transfers in this array have no overlap in terms of copying functionality.
+  std::vector<std::unique_ptr<IDataTransfer>> datatransfers_;
 };
 }  // namespace onnxruntime

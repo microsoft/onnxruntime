@@ -7,6 +7,7 @@
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
@@ -15,13 +16,6 @@ namespace onnxruntime {
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
-};
-
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
 };
 
 // Logical device representation.
