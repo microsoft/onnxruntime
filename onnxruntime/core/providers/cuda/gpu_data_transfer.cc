@@ -31,7 +31,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
     if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED) {
       // copy from pinned memory to GPU, this is non-blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, streams_[exec_queue_id]));
-    } else if (src_device().Type() == OrtDevice::GPU) {
+    } else if (src_device.Type() == OrtDevice::GPU) {
       // copying between GPU, this is non-blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, streams_[kCudaStreamDefault]));
     } else {
