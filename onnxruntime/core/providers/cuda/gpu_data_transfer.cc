@@ -12,11 +12,11 @@ GPUDataTransfer::GPUDataTransfer() {
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 }
 
-bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const override {
+bool GPUDataTransfer::CanCopy(const OrtDevice& /*src_device*/, const OrtDevice& /*dst_Device*/) const {
   return true;
 }
 
-common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override {
+common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
   if (strcmp(src.Location().name, CUDA) != 0 && strcmp(src.Location().name, CUDA_PINNED) != 0 &&
       strcmp(dst.Location().name, CUDA) != 0 && strcmp(dst.Location().name, CUDA_PINNED) != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: src_location is: ", src.Location().name, " and dst_location is: ", dst.Location().name);
