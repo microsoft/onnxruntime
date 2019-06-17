@@ -783,7 +783,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),  // W[iofc]
               input_size_, beta,
               output_iofc_.begin(), output_iofc_.end(),
-              hidden_size_x4, &ttp_);
+              hidden_size_x4);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -832,7 +832,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                     recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                     hidden_size_, beta,
                     step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                    hidden_size_x4, &ttp_);
+                    hidden_size_x4);
 
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str,
                    &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
@@ -910,7 +910,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                   hidden_size_, beta,
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, &ttp_);
+                  hidden_size_x4);
 
       span_T_iter batched_output;
       span_T_iter batched_output_end;
