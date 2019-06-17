@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/upsample.h"
-#include <math.h>  //for fabs
+#include <cmath>
 
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 using namespace std;
 namespace onnxruntime {
 
@@ -185,8 +185,8 @@ void upsampleBilinear(
     float in_y = std::min(y / height_scale, static_cast<float>(input_height - 1));
     const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
     const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-    dy1[y] = fabs(in_y - in_y1);
-    dy2[y] = fabs(in_y - in_y2);
+    dy1[y] = std::fabs(in_y - in_y1);
+    dy2[y] = std::fabs(in_y - in_y2);
     if (in_y1 == in_y2) {
       dy1[y] = 0.5f;
       dy2[y] = 0.5f;

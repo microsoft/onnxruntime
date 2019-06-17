@@ -26,7 +26,6 @@ class Logger;
 
 namespace utils {
 
-
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
@@ -51,6 +50,13 @@ common::Status ExecuteGraphWithCachedInfo(
     const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
     const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators, bool sequential_execution,
     const bool& terminate_flag, const logging::Logger& logger);
+
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+// to create a build with these enabled run the build script with
+//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
+void DumpNodeInputs(const OpKernelContext& context, const Node& node);
+void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
+#endif
 
 #define DispatchOnTensorType(tensor_type, function, ...)        \
   if (tensor_type == DataTypeImpl::GetType<float>())            \

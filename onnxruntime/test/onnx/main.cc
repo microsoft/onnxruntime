@@ -316,36 +316,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
-      {"AvgPool1d", "disable reason"},
-      {"AvgPool1d_stride", "disable reason"},
-      {"AvgPool2d", "disable reason"},
-      {"AvgPool2d_stride", "disable reason"},
-      {"AvgPool3d", "disable reason"},
-      {"AvgPool3d_stride", "disable reason"},
-      {"AvgPool3d_stride1_pad0_gpu_input", "disable reason"},
-      {"BatchNorm1d_3d_input_eval", "disable reason"},
-      {"BatchNorm2d_eval", "disable reason"},
-      {"BatchNorm2d_momentum_eval", "disable reason"},
-      {"BatchNorm3d_eval", "disable reason"},
-      {"BatchNorm3d_momentum_eval", "disable reason"},
-#if defined(__GNUG__) && !defined(__LP64__)
-      {"constantofshape_float_ones", "test data bug"},
-      {"constantofshape_int_zeros", "test data bug"},
-#else
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-#endif
-      {"GLU", "disable reason"},
-      {"GLU_dim", "disable reason"},
-      {"Linear", "disable reason"},
-      {"PReLU_1d", "disable reason"},
-      {"PReLU_1d_multiparam", "disable reason"},
-      {"PReLU_2d", "disable reason"},
-      {"PReLU_2d_multiparam", "disable reason"},
-      {"PReLU_3d", "disable reason"},
-      {"PReLU_3d_multiparam", "disable reason"},
-      {"PoissonNLLLLoss_no_reduce", "disable reason"},
-      {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
       {"gemm_broadcast", "disable reason"},
@@ -353,17 +325,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"operator_add_broadcast", "disable reason"},
-      {"operator_add_size1_broadcast", "disable reason"},
-      {"operator_add_size1_right_broadcast", "disable reason"},
-      {"operator_add_size1_singleton_broadcast", "disable reason"},
-      {"operator_addconstant", "disable reason"},
-      {"operator_addmm", "disable reason"},
-      {"operator_basic", "disable reason"},
-      {"operator_mm", "disable reason"},
-      {"operator_non_float_params", "disable reason"},
-      {"operator_params", "disable reason"},
-      {"operator_pow", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -422,6 +383,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_tiny_yolov2", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});
@@ -459,7 +421,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() ||
-       (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+       (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }

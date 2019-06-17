@@ -39,14 +39,15 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x [thread_size]: Use parallel executor, default (without -x): sequential executor.\n"
+      "\t-x [thread_size]: Session thread pool size.\n"
+      "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: 0: No transformer optimization, 1:basic optimization, 2: full optimization. \n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:c:o:AMvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:c:o:AMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -109,11 +110,13 @@ namespace perftest {
         test_config.run_config.f_verbose = true;
         break;
       case 'x':
-        test_config.run_config.enable_sequential_execution = false;
         test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.session_thread_pool_size <= 0) {
           return false;
         }
+        break;
+      case 'P':
+        test_config.run_config.enable_sequential_execution = false;
         break;
       case 'c':
         test_config.run_config.concurrent_session_runs =

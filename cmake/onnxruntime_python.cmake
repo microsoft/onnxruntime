@@ -84,6 +84,10 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_mlas
 )
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     pybind11

@@ -783,7 +783,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.cbegin(), input_weights.cend(),  // W[iofc]
               input_size_, beta,
               output_iofc_.begin(), output_iofc_.end(),
-              hidden_size_x4);
+              hidden_size_x4, &ttp_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -832,7 +832,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                     recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                     hidden_size_, beta,
                     step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                    hidden_size_x4);
+                    hidden_size_x4, &ttp_);
 
         DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str,
                    &*step_out_IOFC, local_fused_hidden_rows, hidden_size_x4);
@@ -910,7 +910,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
                   hidden_size_, beta,
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4);
+                  hidden_size_x4, &ttp_);
 
       span_T_iter batched_output;
       span_T_iter batched_output_end;
@@ -968,6 +968,20 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
+    }
+  }
+
+  // zero any values beyond the evaluated steps
+  if (output_sequence && max_sequence_length < seq_length_) {
+    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+      const auto span_to_zero = outputs.subspan(
+          max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
+      std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+    } else {
+      for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
+        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+      }
     }
   }
 
