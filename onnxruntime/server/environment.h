@@ -16,7 +16,7 @@ namespace logging = logging;
 
 class ServerEnvironment {
  public:
-  explicit ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type = logging::LoggingManager::Default, bool env_init = true);
+  explicit ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type = logging::LoggingManager::Default);
   ~ServerEnvironment() = default;
   ServerEnvironment(const ServerEnvironment&) = delete;
 
@@ -24,7 +24,7 @@ class ServerEnvironment {
   std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
   logging::Severity GetLogSeverity() const;
 
-  const Ort::Session& GetSession() const;
+  Ort::Session& GetSession() const;
   common::Status InitializeModel(const std::string& model_path);
   const std::vector<std::string>& GetModelOutputNames() const;
 

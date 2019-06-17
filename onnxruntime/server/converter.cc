@@ -8,7 +8,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
-#include "core/framework/tensorprotoutils.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
@@ -55,7 +55,7 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::Da
   }
 }
 
-common::Status MLValueToTensorProto(const OrtValue& ml_value, bool using_raw_data,
+common::Status MLValueToTensorProto(const Ort::Value& ml_value, bool using_raw_data,
                                     std::unique_ptr<onnxruntime::logging::Logger> logger,
                                     /* out */ onnx::TensorProto& tensor_proto) {
   // Tensor in MLValue

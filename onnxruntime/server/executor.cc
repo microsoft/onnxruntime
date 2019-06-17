@@ -28,7 +28,7 @@ namespace protobufutil = google::protobuf::util;
 protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
                                           MemBufferArray& buffers,
                                           OrtAllocatorInfo* cpu_allocator_info,
-                                          /* out */ MLValue& ml_value) {
+                                          /* out */ Ort::Value& ml_value) {
   auto logger = env_->GetLogger(request_id_);
 
   size_t cpu_tensor_length = 0;
@@ -38,11 +38,10 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
     return GenerateProtobufStatus(status, "GetSizeInBytesFromTensorProto() failed: " + status.ToString());
   }
 
-  OrtCallback deleter;
   auto* buf = buffers.AllocNewBuffer(cpu_tensor_length);
   status = onnxruntime::server::TensorProtoToMLValue(input_tensor,
-                                                    onnxruntime::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
-                                                    ml_value, deleter);
+                                                    onnxruntime::server::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
+                                                    ml_value);
   if (!status.IsOK()) {
     LOGS(*logger, ERROR) << "TensorProtoToMLValue() failed. Message: " << status.ToString();
     return GenerateProtobufStatus(status, "TensorProtoToMLValue() failed:" + status.ToString());
@@ -51,7 +50,8 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
   return protobufutil::Status::OK;
 }
 
-protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map,
+protobufutil::Status Executor::SetNameMLValueMap(std::vector <std::string>& input_names,
+                                                 std::vector <Ort::Value>& input_values,
                                                  const onnxruntime::server::PredictRequest& request,
                                                  MemBufferArray& buffers) {
   auto logger = env_->GetLogger(request_id_);
@@ -68,7 +68,7 @@ protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name
   for (const auto& input : request.inputs()) {
     using_raw_data_ = using_raw_data_ && input.second.has_raw_data();
 
-    MLValue ml_value;
+    Ort::Value ml_value {nullptr};
     auto status = SetMLValue(input.second, buffers, allocator_info, ml_value);
     if (status != protobufutil::Status::OK) {
       OrtReleaseAllocatorInfo(allocator_info);
@@ -76,17 +76,34 @@ protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name
       return status;
     }
 
-    auto insertion_result = name_value_map.insert(std::make_pair(input.first, ml_value));
-    if (!insertion_result.second) {
-      OrtReleaseAllocatorInfo(allocator_info);
-      LOGS(*logger, ERROR) << "SetNameMLValueMap() failed! Input name: " << input.first << " Trying to overwrite existing input value";
-      return protobufutil::Status(protobufutil::error::Code::INVALID_ARGUMENT, "SetNameMLValueMap() failed: Cannot have two inputs with the same name");
+    input_names.push_back(input.first);
+    input_values.push_back(std::move(ml_value));
     }
-  }
 
   OrtReleaseAllocatorInfo(allocator_info);
   return protobufutil::Status::OK;
 }
+
+
+
+
+std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& options, const std::vector <std::string>& input_names, std::vector <Ort::Value>& input_values, const std::vector<std::string>& output_names){
+  size_t input_count = input_names.size();
+  size_t output_count = output_names.size();
+
+  std::vector<const char*> input_ptrs{input_count};
+  for (auto const& input: input_names){
+    input_ptrs.push_back(input.data());
+  }
+  std::vector<const char *> output_ptrs{output_count};
+  for (auto const& output: output_names){
+    output_ptrs.push_back(output.data());
+  }
+
+  return session.Run(options, input_ptrs.data(), input_values.data(), input_count, output_ptrs.data(), output_count); 
+
+}
+
 
 protobufutil::Status Executor::Predict(const std::string& model_name,
                                        const std::string& model_version,
@@ -96,43 +113,47 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
 
   // Convert PredictRequest to NameMLValMap
   MemBufferArray buffer_array;
-  onnxruntime::NameMLValMap name_ml_value_map{};
-  auto conversion_status = SetNameMLValueMap(name_ml_value_map, request, buffer_array);
+  std::vector <std::string> input_names;
+  std::vector <Ort::Value> input_values;
+  auto conversion_status = SetNameMLValueMap(input_names, input_values, request, buffer_array);
   if (conversion_status != protobufutil::Status::OK) {
     return conversion_status;
   }
 
-  // Prepare the output names and vector
+  Ort::RunOptions run_options{};
+  run_options.SetRunLogVerbosityLevel(static_cast<unsigned int>(env_->GetLogSeverity()));
+  run_options.SetRunTag(request_id_.c_str());
+
+
+  // Prepare the output names
   std::vector<std::string> output_names;
 
   if (!request.output_filter().empty()) {
     output_names.reserve(request.output_filter_size());
-    for (const auto& name : request.output_filter()) {
+    for (auto const& name: request.output_filter()){
       output_names.push_back(name);
     }
   } else {
     output_names = env_->GetModelOutputNames();
   }
 
-  std::vector<OrtValue> outputs(output_names.size());
+  
 
-  // Run
-  OrtRunOptions run_options{};
-  run_options.run_log_verbosity_level = static_cast<unsigned int>(env_->GetLogSeverity());
-  run_options.run_tag = request_id_;
+//TODO Add exception handling.
+  auto outputs = Run(env_->GetSession(), run_options, input_names, input_values, output_names);
 
-  auto status = env_->GetSession()->Run(run_options, name_ml_value_map, output_names, &outputs);
-
+/* 
   if (!status.IsOK()) {
     LOGS(*logger, ERROR) << "Run() failed."
                          << ". Error Message: " << status.ToString();
     return GenerateProtobufStatus(status, "Run() failed: " + status.ToString());
   }
+*/
 
   // Build the response
   for (size_t i = 0, sz = outputs.size(); i < sz; ++i) {
     onnx::TensorProto output_tensor{};
-    status = MLValueToTensorProto(outputs[i], using_raw_data_, std::move(logger), output_tensor);
+    auto status = MLValueToTensorProto(outputs[i], using_raw_data_, std::move(logger), output_tensor);
     logger = env_->GetLogger(request_id_);
 
     if (!status.IsOK()) {
