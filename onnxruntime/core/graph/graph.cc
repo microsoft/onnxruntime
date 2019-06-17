@@ -1321,8 +1321,9 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-      subgraph_inputs = &required_subgraph_inputs;
-      num_subgraph_inputs = num_required_subgraph_inputs;
+    
+    subgraph_inputs = &required_subgraph_inputs;
+    num_subgraph_inputs = num_required_subgraph_inputs;
   }
 
   // apply type/shape info to the subgraph's inputs
@@ -2222,7 +2223,7 @@ void Graph::CleanUnusedInitializers() {
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
     if (used_args.find(name) == end) {
-      LOGS_DEFAULT(WARNING) << name << " exists in this graph's initializers but it is not used by any node";
+      LOGS_DEFAULT(INFO) << name << " exists in this graph's initializers but it is not used by any node";
       erase_list.push_back(name);
     }
   }
