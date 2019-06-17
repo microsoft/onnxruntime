@@ -4,9 +4,6 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
-variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime.MKLML'
-
 jobs: 
 - template: templates/cpu-mklml.yml
   parameters:

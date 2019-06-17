@@ -4,9 +4,6 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
-variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-
 jobs: 
 - template: templates/gpu.yml
   parameters:
