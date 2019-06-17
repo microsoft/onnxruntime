@@ -146,7 +146,7 @@ jobs:
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
           DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: $(DoEsrp)
+          DoEsrp: $[DoEsrp]
 
       - template: esrp_dll.yml
         parameters:
