@@ -7,6 +7,9 @@ parameters:
   DoNugetPack:  'false'
   NuPackScript : ''
   DoTestCoverage: 'false'
+  buildArch: 'x64'
+  setVcvars: 'false'
+  msbuildArguments: '/m'
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -23,8 +26,8 @@ jobs:
     - template: windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env.bat'
-        buildArch: 'x64'
-        setVcvars: false
+        buildArch: ${{ parameters.buildArch }}
+        setVcvars: S{{ parameters.setVcvars }}
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
@@ -41,7 +44,7 @@ jobs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'x64'
           configuration: 'Debug'
-          msbuildArguments: '/m'
+          msbuildArguments: ${{ parameters.msbuildArguments }}
           msbuildArchitecture: 'x64'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
@@ -88,7 +91,7 @@ jobs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'x64'
         configuration: 'RelWithDebInfo'
-        msbuildArguments: '/m'
+        msbuildArguments: ${{ parameters.msbuildArguments }}
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
