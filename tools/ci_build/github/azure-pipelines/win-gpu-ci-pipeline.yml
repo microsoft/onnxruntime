@@ -15,3 +15,5 @@ jobs:
     buildArch: 'amd64'
     setVcvars: 'true'
     msbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
+    CUDA_VERSION: '10.0'
+    TESTONGPU: 'true'

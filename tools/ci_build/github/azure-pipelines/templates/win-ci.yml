@@ -10,6 +10,8 @@ parameters:
   buildArch: 'x64'
   setVcvars: 'false'
   msbuildArguments: '/m'
+  CUDA_VERSION: ''
+  TESTONGPU: ''     # for C# cuda tests only
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -20,6 +22,8 @@ jobs:
     BuildCommand: ${{ parameters.BuildCommand }}
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
+    CUDA_VERSION: ${{ parameters.CUDA_VERSION }}
+    TESTONGPU: ${{ parameters.TESTONGPU }}
 
   steps:
     - template: set-test-data-variables-step.yml
