@@ -142,11 +142,11 @@ jobs:
           arguments: 'x64 -vcvars_ver=14.11'
           modifyEnvironment: true
 
-      - template: esrp_dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: $[DoEsrp]
+      - ${{ if eq(parameters['DoEsrp'], 'true') }}:
+        - template: esrp_dll.yml
+          parameters:
+            FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+            DisplayName: 'ESRP - Sign Native dlls'
 
       - template: esrp_dll.yml
         parameters:
