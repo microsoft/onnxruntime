@@ -519,9 +519,13 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_perf_test gsl)
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
+  set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common
           onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime
-          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS} Threads::Threads)
+          ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+  if(onnxruntime_USE_NSYNC)
+    list(APPEND onnxruntime_perf_test_libs nsync_cpp)
+  endif()
+  target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
   if(tensorflow_C_PACKAGE_PATH)
     target_include_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/include)
     target_link_directories(onnxruntime_perf_test PRIVATE ${tensorflow_C_PACKAGE_PATH}/lib)
@@ -647,5 +651,10 @@ endif()
 
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-target_link_libraries(onnxruntime_mlas_test PRIVATE onnxruntime_mlas onnxruntime_common Threads::Threads)
+set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
+if(onnxruntime_USE_NSYNC)
+  list(APPEND onnxruntime_mlas_test_libs nsync_cpp)
+endif()
+list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
+target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")

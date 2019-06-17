@@ -855,14 +855,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
     run_log_id += run_options.run_tag;
 
-    if (run_options.run_log_verbosity_level > 0) {
-      new_run_logger = logging_manager_->CreateLogger(run_log_id,
-                                                      logging::Severity::kVERBOSE,
-                                                      false,
-                                                      run_options.run_log_verbosity_level);
+    logging::Severity severity = logging::Severity::kWARNING;
+
+    if (run_options.run_log_severity_level < 0) {
+      severity = session_logger_->GetSeverity();
     } else {
-      new_run_logger = logging_manager_->CreateLogger(run_log_id);
+      ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
+                      run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  run_options.run_log_severity_level);
+      severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
+
+    new_run_logger = logging_manager_->CreateLogger(run_log_id,
+                                                    severity,
+                                                    false,
+                                                    run_options.run_log_verbosity_level);
 
     run_logger = new_run_logger.get();
     VLOGS(*run_logger, 1) << "Created logger for run with id of " << run_log_id;
@@ -882,14 +890,21 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
                                     ? session_options_.session_logid
                                     : "InferenceSession";  // there's probably a better default...
 
-    if (session_options_.session_log_verbosity_level > 0) {
-      owned_session_logger_ = logging_manager->CreateLogger(session_logid,
-                                                            logging::Severity::kVERBOSE,
-                                                            false,
-                                                            session_options_.session_log_verbosity_level);
+    logging::Severity severity = logging::Severity::kWARNING;
+
+    if (session_options_.session_log_severity_level < 0) {
+      severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
-      owned_session_logger_ = logging_manager->CreateLogger(session_logid);
+      ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
+                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  session_options_.session_log_severity_level);
+      severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
+
+    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+                                                           session_options_.session_log_verbosity_level);
+
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();

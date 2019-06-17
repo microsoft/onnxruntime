@@ -11,6 +11,7 @@ CMake creates a target to this project
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
+    <DotNetExe Condition= " '$(DotNetExe)' == '' ">dotnet</DotNetExe>
   </PropertyGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 
@@ -55,7 +56,7 @@ CMake creates a target to this project
 
   <Target Name="RunTest" AfterTargets="Build">
     <Message Importance="High" Text="Running CSharp tests..." />
-    <Exec Command="dotnet test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
+    <Exec Command="$(DotNetExe) test test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj -c $(Configuration) --no-build" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>
