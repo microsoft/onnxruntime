@@ -7,9 +7,6 @@
 parameters:
   DoEsrp: 'false'
 
-variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime.MKLML'
-
 jobs: 
 - template: ../../templates/win-ci.yml
   parameters:
