@@ -399,10 +399,30 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
       copy_tensor_from_mlvalue_to_output(feeds[i + 2], i);  // skip iter# and cond
     }
 
-    // create empty outputs for loop outputs
-    TensorShape empty;
+    // create empty outputs for loop outputs using the subgraph output shapes for the rank
+    auto& graph_outputs = subgraph_.GetOutputs();
+
     for (int i = num_loop_carried_vars_; i < num_outputs_; ++i) {
-      ORT_IGNORE_RETURN_VALUE(context_.Output(i, empty));
+      std::vector<int64_t> output_dims;
+      output_dims.push_back(0);  // num iterations is first dim
+
+      // get shape from subgraph output if possible to attempt to have the correct rank
+      auto* graph_output = graph_outputs.at(i + 1);  // + 1 as first subgraph output is condition value
+      auto* graph_output_shape = graph_output->Shape();
+
+      if (graph_output_shape) {
+        output_dims.reserve(graph_output_shape->dim_size() + 1);
+
+        // copy the shape. if there are any symbolic dims set them to zero given there's no output data
+        auto dims = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+        std::transform(dims.cbegin(), dims.cend(), std::back_inserter(output_dims),
+                       [](const int64_t src) { return src < 0 ? 0 : src; });
+
+      } else {
+        // TODO: May need to call ExecuteGraph to get output shape so the rank is correct.
+      }
+
+      ORT_IGNORE_RETURN_VALUE(context_.Output(i, TensorShape(output_dims)));
     }
   }
   return status;
