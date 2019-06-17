@@ -27,6 +27,7 @@ struct RunOptions {
   bool init_iter_num_1d_tensor = true;
 };
 }  // namespace
+
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
 
 static const float kOuterNodeAddValue = 3.f;
@@ -536,8 +537,8 @@ TEST(Loop, InfiniteLoopTermination) {
   std::future<void> terminator_result = task.get_future();
   std::thread terminator_thread{std::move(task)};
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {kTensorrtExecutionProvider},
-           &session_run_options);  // Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
+           {kTensorrtExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
   // call get to propagate any exception
   terminator_result.get();

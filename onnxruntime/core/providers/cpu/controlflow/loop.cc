@@ -419,7 +419,10 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
                        [](const int64_t src) { return src < 0 ? 0 : src; });
 
       } else {
-        // TODO: May need to call ExecuteGraph to get output shape so the rank is correct.
+        // TODO: May need to call ExecuteGraph to get output shape from fetches so the rank is correct.
+        // Until we know this is required just output a warning and return the rank 1 empty output.
+        LOGS(context_.Logger(), WARNING) << "Loop had zero iterations and shape for subgraph output " << i + 1
+                                         << " was found. Rank of empty output may be incorrect.";
       }
 
       ORT_IGNORE_RETURN_VALUE(context_.Output(i, TensorShape(output_dims)));
