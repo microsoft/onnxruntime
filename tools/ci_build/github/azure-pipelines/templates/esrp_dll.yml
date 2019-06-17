@@ -3,7 +3,7 @@ parameters:
   DisplayName: ''
 
 steps:
-- ${[ if eq(variables['DoEsrp'], 'true') ]}:
+- ${{ if eq(variables['DoEsrp'], 'true') }}:
   - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
     displayName: ${{ parameters.DisplayName }}
     inputs:
