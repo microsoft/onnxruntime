@@ -133,7 +133,6 @@ jobs:
 
   - template: ../templates/esrp_nuget.yml
     parameters:
-      DoEsrp: $(DoEsrp)
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
 

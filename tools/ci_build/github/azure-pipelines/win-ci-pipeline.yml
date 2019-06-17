@@ -9,4 +9,3 @@ jobs:
     DoNugetPack:  'false'
     NuPackScript : ''
     DoTestCoverage: 'false'
-    DoEsrp: 'false'

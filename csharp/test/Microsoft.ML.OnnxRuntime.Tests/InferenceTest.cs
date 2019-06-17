@@ -779,7 +779,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             public GpuFact()
             {
-                if (System.Environment.GetEnvironmentVariable("TESTONGPU") == null)
+		var testOnGpu = System.Environment.GetEnvironmentVariable("TESTONGPU");
+                if (testOnGpu == null || !testOnGpu.Equals("ON") )
                 {
                     Skip = "GPU testing not enabled";
                 }

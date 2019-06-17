@@ -8,4 +8,3 @@ jobs:
     JobName: 'Windows_CI_Dev_x86'
     DoNugetPack:  'false'
     NuPackScript : ''
-    DoEsrp: 'false'
