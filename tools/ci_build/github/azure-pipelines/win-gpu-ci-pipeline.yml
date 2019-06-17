@@ -1,7 +1,4 @@
 jobs:
-- variables:
-    CUDA_VERSION='10.0'
-    TESTONGPU=1
 - template: templates/win-ci.yml
   parameters:
     AgentPool : 'Win-GPU-CUDA10'
