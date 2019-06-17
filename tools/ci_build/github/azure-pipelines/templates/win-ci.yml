@@ -143,7 +143,7 @@ jobs:
           arguments: 'x64 -vcvars_ver=14.11'
           modifyEnvironment: true
 
-      - ${{ if eq(parameters['DoEsrp'], 'true') }}:
+      - ${{ if eq(parameters['DoEsrp'], 'TRUE') }}:
         - template: esrp_dll.yml
           parameters:
             FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
