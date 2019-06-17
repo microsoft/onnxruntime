@@ -5,7 +5,7 @@
 #   AgentPoolMacOS : 'macOS-10.13'
 
 variables:
-  DoEsrp : ${[$(DoEsrp)]}
+  DoEsrp : $[$(DoEsrp)]
 
 jobs: 
 - template: ../templates/win-ci.yml
