@@ -31,7 +31,7 @@ jobs:
       parameters:
         EnvSetupScript: 'setup_env.bat'
         buildArch: ${{ parameters.buildArch }}
-        setVcvars: S{{ parameters.setVcvars }}
+        setVcvars: ${{ parameters.setVcvars }}
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
