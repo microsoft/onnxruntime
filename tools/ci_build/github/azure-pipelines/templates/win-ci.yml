@@ -12,7 +12,6 @@ parameters:
   SetVcvars: 'false'
   MsbuildArguments: '/m'
   CudaVersion: ''
-  TestOnGpu: ''     # for C# cuda tests only
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -24,7 +23,6 @@ jobs:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
-    TESTONGPU: ${{ parameters.TestOnGpu }}
 
   steps:
     - template: set-test-data-variables-step.yml

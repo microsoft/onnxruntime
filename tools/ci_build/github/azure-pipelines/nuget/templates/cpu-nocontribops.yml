@@ -7,9 +7,6 @@
 parameters:
   DoEsrp: 'false'
 
-variables:
-  DisableContribOps: 'ON'
-
 jobs: 
 - template: ../../templates/win-ci.yml
   parameters:
@@ -47,6 +44,7 @@ jobs:
     BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops"'
     DoNugetPack : 'true'
     ArtifactName: 'drop-linux'
+    DisableContribOps: 'ON'
     NuPackScript: |
      set -e -x
      mkdir $(Build.BinariesDirectory)/linux-x64
@@ -63,6 +61,7 @@ jobs:
     BuildCommand : 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -a x86 -x "--x86 --disable_contrib_ops"'
     DoNugetPack : 'true'
     ArtifactName: 'drop-linux-x86'
+    DisableContribOps: 'ON'
     NuPackScript: |
      set -e -x
      mkdir $(Build.BinariesDirectory)/linux-x86
