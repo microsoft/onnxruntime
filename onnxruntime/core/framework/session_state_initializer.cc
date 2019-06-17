@@ -414,7 +414,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
     if (input_map.find(name) == end_map) {
       // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input OrtValue as is given we don't believe it's used anywhere.
-      LOGS(session_state.Logger(), WARNING) << "Graph input with name " << name << " is not associated with a node. ";
+      LOGS(session_state.Logger(), INFO) << "Graph input with name " << name << " is not associated with a node. ";
       ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(name, empty_node_info));
     }
   }
