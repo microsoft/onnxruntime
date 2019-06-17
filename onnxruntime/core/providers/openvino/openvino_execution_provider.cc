@@ -230,10 +230,6 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
   for (auto index : node_indexes) {
     const auto node = graph_viewer.GetNode(index);
 
-    if(node == nullptr)
-        return false;
-
-
     //Check if the Operation is Supported by OpenVINO
     if (!IsOpSupported(node->OpType())) {
       return false;
@@ -316,9 +312,6 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
 
       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
         const auto out_node = graph_viewer.GetNode((*it).Index());
-        if(out_node == nullptr)
-            return false;
-
 
         if (out_node->OpType() != "Add") {
           return false;
@@ -480,8 +473,6 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     for (auto index : node_indexes) {
       sub_graph->nodes.push_back(index);
       const auto node = graph_viewer.GetNode(index);
-      if(node == nullptr)
-        return result;
 
       // Track graph inputs and initializers
       for (auto input_def : node->InputDefs()) {
