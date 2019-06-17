@@ -160,9 +160,11 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
                       ScanDirection direction = ScanDirection::kForward,
                       bool temporary = false);
 
-Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
-                                 std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                                 std::vector<std::string>& subgraph_output_names,
+void InitializeFeedsNames(const GraphViewer& subgraph, int num_variadic_inputs,
+                          const std::unordered_map<std::string, const OrtValue*>& implicit_inputs, std::vector<std::string>& feed_names);
+
+Status CreateFeedsFetchesManager(const std::vector<std::string>& subgraph_feed_names,
+                                 const std::vector<std::string>& subgraph_output_names,
                                  const OrtValueNameIdxMap& ort_value_name_idx_map,
                                  std::unique_ptr<FeedsFetchesManager>& ffm);
 

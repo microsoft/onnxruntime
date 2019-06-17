@@ -119,13 +119,14 @@ class LoopImpl {
   int num_subgraph_inputs_;
   int num_outputs_;
 
-  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
-
   OrtValue iter_num_mlvalue_;
   OrtValue condition_mlvalue_;
 
   std::vector<std::string> subgraph_input_names_;
   std::vector<std::string> subgraph_output_names_;
+
+  std::vector<std::string> subgraph_feed_names_;
+  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 
   // collection of OrtValue outputs from each loop iteration for the loop outputs.
   // the order from the subgraph matches the order from the loop output
@@ -235,24 +236,19 @@ Status LoopImpl::Initialize() {
     subgraph_output_names_.push_back(output->Name());
   }
 
+  auto num_implicit_inputs = implicit_inputs_.size();
+  subgraph_feed_names_.reserve(num_subgraph_inputs_ + num_implicit_inputs);
+
+  std::copy(subgraph_input_names_.cbegin(), subgraph_input_names_.cend(), std::back_inserter(subgraph_feed_names_));
+  for (auto& entry : implicit_inputs_) {
+    subgraph_feed_names_.push_back(entry.first);
+  }
+
   return status;
 }
 
 Status LoopImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
-  auto num_implicit_inputs = implicit_inputs_.size();
-  std::vector<std::string> feed_names;
-  feed_names.reserve(num_subgraph_inputs_ + num_implicit_inputs);
-
-  std::copy(subgraph_input_names_.cbegin(), subgraph_input_names_.cend(), std::back_inserter(feed_names));
-  for (auto& entry : implicit_inputs_) {
-    feed_names.push_back(entry.first);
-  }
-
-  FeedsFetchesInfo ffi(feed_names, subgraph_output_names_);
-  auto status =
-      FeedsFetchesManager::Create(feed_names, subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
-
-  return status;
+  return FeedsFetchesManager::Create(subgraph_feed_names_, subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
 }
 
 void LoopImpl::CreateInitialFeeds(std::vector<OrtValue>& feeds) {

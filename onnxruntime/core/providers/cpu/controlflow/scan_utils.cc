@@ -96,11 +96,8 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   return Status::OK();
 }
 
-Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
-                                 std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                                 std::vector<std::string>& subgraph_output_names,
-                                 const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                 std::unique_ptr<FeedsFetchesManager>& ffm) {
+void InitializeFeedsNames(const GraphViewer& subgraph, int num_variadic_inputs,
+                          const std::unordered_map<std::string, const OrtValue*>& implicit_inputs, std::vector<std::string>& feed_names) {
   auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
   if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
     // fallback to just the required inputs.
@@ -113,7 +110,6 @@ Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_i
   auto num_implicit_inputs = implicit_inputs.size();
   auto num_inputs = num_variadic_inputs + num_implicit_inputs;
 
-  std::vector<std::string> feed_names;
   feed_names.reserve(num_inputs);
 
   // pass explicit graph inputs first. order doesn't actually matter though
@@ -124,11 +120,13 @@ Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_i
   for (auto& entry : implicit_inputs) {
     feed_names.push_back(entry.first);
   }
+}
 
-  FeedsFetchesInfo ffi(feed_names, subgraph_output_names);
-  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, ort_value_name_idx_map, ffm);
-
-  return status;
+Status CreateFeedsFetchesManager(const std::vector<std::string>& subgraph_feed_names,
+                                 const std::vector<std::string>& subgraph_output_names,
+                                 const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                 std::unique_ptr<FeedsFetchesManager>& ffm) {
+  return FeedsFetchesManager::Create(subgraph_feed_names, subgraph_output_names, ort_value_name_idx_map, ffm);
 }
 
 Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,

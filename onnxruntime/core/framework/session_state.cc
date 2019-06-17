@@ -72,8 +72,9 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes
 }
 
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const {
-  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
+
+  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) return nullptr;
 

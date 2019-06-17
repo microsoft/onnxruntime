@@ -79,6 +79,9 @@ class IfImpl {
 
   int num_outputs_;
   std::vector<std::string> subgraph_output_names_;
+  
+  std::vector<std::string> subgraph_feed_names_;
+  std::vector<int> subgraph_feeds_mlvalue_idxs_;
   std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 
   enum class AllocationType {
@@ -139,6 +142,24 @@ Status IfImpl::Initialize() {
     subgraph_output_names_.push_back(output->Name());
   }
 
+  auto num_implicit_inputs = implicit_inputs_.size();
+  subgraph_feed_names_.reserve(num_implicit_inputs);
+  subgraph_feeds_mlvalue_idxs_.reserve(num_implicit_inputs);
+
+  auto& ort_value_name_idx_map = session_state_.GetOrtValueNameIdxMap();
+
+  // pass in implicit inputs as feeds.
+  for (auto& entry : implicit_inputs_) {
+    // prune to values that are in this subgraph as the implicit inputs cover both 'then' and 'else' subgraphs.
+    // alternatively we could track implicit inputs on a per-attribute basis in the node, but that
+    // would make that tracking a bit more complicated.
+    int idx;
+    if (ort_value_name_idx_map.GetIdx(entry.first, idx).IsOK()) {
+      subgraph_feed_names_.push_back(entry.first);
+      subgraph_feeds_mlvalue_idxs_.push_back(idx);
+    }
+  }
+
   auto status = AllocateOutputTensors();
   ORT_RETURN_IF_ERROR(status);
 
@@ -179,29 +200,10 @@ Status IfImpl::AllocateOutputTensors() {
 
 Status IfImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
   // we setup the FeedsFetchesInfo manually here as we need to skip implicit inputs that aren't in this subgraph
-  FeedsFetchesInfo ffi;
-
-  auto num_inputs = implicit_inputs_.size();
-  ffi.feed_names.reserve(num_inputs);
-  ffi.feeds_mlvalue_idxs.reserve(num_inputs);
-
-  auto& ort_value_name_idx_map = session_state_.GetOrtValueNameIdxMap();
-
-  // pass in implicit inputs as feeds.
-  for (auto& entry : implicit_inputs_) {
-    // prune to values that are in this subgraph as the implicit inputs cover both 'then' and 'else' subgraphs.
-    // alternatively we could track implicit inputs on a per-attribute basis in the node, but that
-    // would make that tracking a bit more complicated.
-    int idx;
-    if (ort_value_name_idx_map.GetIdx(entry.first, idx).IsOK()) {
-      ffi.feed_names.push_back(entry.first);
-      ffi.feeds_mlvalue_idxs.push_back(idx);
-    }
-  }
-
-  ffi.output_names = subgraph_output_names_;
+  FeedsFetchesInfo ffi(subgraph_feed_names_, subgraph_output_names_);
+  ffi.feeds_mlvalue_idxs = subgraph_feeds_mlvalue_idxs_;
   ORT_RETURN_IF_ERROR(
-      FeedsFetchesInfo::MapNamesToMLValueIdxs(ffi.output_names, ort_value_name_idx_map, ffi.fetches_mlvalue_idxs));
+      FeedsFetchesInfo::MapNamesToMLValueIdxs(ffi.output_names, session_state_.GetOrtValueNameIdxMap(), ffi.fetches_mlvalue_idxs));
 
   ffm = std::make_unique<FeedsFetchesManager>(std::move(ffi));
 

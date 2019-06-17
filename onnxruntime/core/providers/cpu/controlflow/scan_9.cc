@@ -157,6 +157,7 @@ class ScanImpl {
   std::vector<std::string> subgraph_output_names_;
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
 
+  std::vector<std::string> subgraph_feed_names_;
   std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 };
 
@@ -252,6 +253,8 @@ Status ScanImpl::Initialize() {
   for (auto& output : subgraph_outputs) {
     subgraph_output_names_.push_back(output->Name());
   }
+
+  scan::detail::InitializeFeedsNames(subgraph_, num_variadic_inputs_, implicit_inputs_, subgraph_feed_names_);
 
   status = AllocateOutputTensors();
   ORT_RETURN_IF_ERROR(status);
@@ -421,8 +424,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
 }
 
 Status ScanImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
-  return scan::detail::CreateFeedsFetchesManager(subgraph_, num_variadic_inputs_, implicit_inputs_,
-                                                 subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
+  return scan::detail::CreateFeedsFetchesManager(subgraph_feed_names_, subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
 }
 
 Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {

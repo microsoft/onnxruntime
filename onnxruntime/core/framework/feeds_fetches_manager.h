@@ -38,11 +38,17 @@ struct FeedsFetchesInfo {
   // set the ort_value_idxs for the current values in feed_names and output_names
   Status SetMLValueIdxs(const OrtValueNameIdxMap& ort_value_name_idx_map);
 
-  std::vector<std::string> feed_names;
-  std::vector<std::string> output_names;
+  FeedsFetchesInfo(FeedsFetchesInfo&& other) = default;
+  FeedsFetchesInfo& operator=(FeedsFetchesInfo&&) = default;
+
+  const std::vector<std::string>& feed_names;
+  const std::vector<std::string>& output_names;
 
   std::vector<int> feeds_mlvalue_idxs;
   std::vector<int> fetches_mlvalue_idxs;
+
+ private:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(FeedsFetchesInfo);
 };
 
 class FeedsFetchesManager {
@@ -57,7 +63,7 @@ class FeedsFetchesManager {
                        const OrtValueNameIdxMap& ort_value_name_idx_map,
                        std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
-  FeedsFetchesManager(FeedsFetchesInfo&& info) : feeds_fetches_info_{info} {}
+  FeedsFetchesManager(FeedsFetchesInfo&& info) : feeds_fetches_info_{std::move(info)} {}
 
   const FeedsFetchesInfo& GetFeedsFetchesInfo() const { return feeds_fetches_info_; }
 

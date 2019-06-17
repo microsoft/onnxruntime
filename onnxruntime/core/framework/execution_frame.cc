@@ -24,9 +24,9 @@ IExecutionFrame::IExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, cons
                                  const OrtValueNameIdxMap& ort_value_idx_map, const NodeIndexInfo& node_index_info)
     : node_index_info_{node_index_info}, fetch_mlvalue_idxs_{fetch_mlvalue_idxs} {
   ORT_ENFORCE(feeds.size() == feed_mlvalue_idxs.size());
-  ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs.size());
+  ORT_ENFORCE(fetches.empty() || fetches.size() == fetch_mlvalue_idxs_.size());
 
-  Init(feed_mlvalue_idxs, feeds, initializers, fetch_mlvalue_idxs, fetches, ort_value_idx_map);
+  Init(feed_mlvalue_idxs, feeds, initializers, fetches, ort_value_idx_map);
 }
 
 IExecutionFrame::~IExecutionFrame() = default;
@@ -104,17 +104,17 @@ int IExecutionFrame::GetNodeIdxToMLValueIdx(int index) const {
 
 void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                            const std::unordered_map<int, OrtValue>& initializers,
-                           const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
+                           const std::vector<OrtValue>& fetches,
                            const OrtValueNameIdxMap& ort_value_idx_map) {
   // 1. resize the all_value_ vector
   all_values_.resize(ort_value_idx_map.MaxIdx() + 1);
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
-    auto num_fetches = fetch_mlvalue_idxs.size();
+    auto num_fetches = fetch_mlvalue_idxs_.size();
 
     for (size_t idx = 0; idx < num_fetches; ++idx) {
-      int ort_value_idx = fetch_mlvalue_idxs[idx];
+      int ort_value_idx = fetch_mlvalue_idxs_[idx];
       all_values_[ort_value_idx] = fetches[idx];
     }
   }
