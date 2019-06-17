@@ -16,6 +16,7 @@ jobs:
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
+    DoEsrp: 'true'
     BuildArch: 'amd64'
     SetVcvars: 'true'
     MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
@@ -91,6 +92,7 @@ jobs:
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      DoEsrp: 'true'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'

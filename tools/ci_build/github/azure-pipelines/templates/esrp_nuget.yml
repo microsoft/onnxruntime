@@ -1,30 +1,31 @@
 parameters:
   FolderPath: ''
   DisplayName: ''
+  DoEsrp: 'false'
 
 steps:
-- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-  displayName: ${{ parameters.DisplayName }}
-  condition: eq(variables['DoEsrp'], 'true')
-  inputs:
-    ConnectedServiceName: 'OnnxRuntime CodeSign 20171127'
-    FolderPath: ${{ parameters.FolderPath }}
-    Pattern: '*.nupkg'
-    signConfigType: inlineSignParams
-    inlineOperation: |
-     [ 
-         {
-             "keyCode": "CP-401405",
-             "operationSetCode": "NuGetSign",
-             "parameters": [ ],
-             "toolName": "sign",
-             "toolVersion": "1.0"
-         },
-         {
-             "keyCode": "CP-401405",
-             "operationSetCode": "NuGetVerify",
-             "parameters": [ ],
-             "toolName": "sign",
-             "toolVersion": "1.0"
-         }
-     ]
+- ${{ if eq(parameters['DoEsrp'], 'true') }}:
+  - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+    displayName: ${{ parameters.DisplayName }}
+    inputs:
+      ConnectedServiceName: 'OnnxRuntime CodeSign 20171127'
+      FolderPath: ${{ parameters.FolderPath }}
+      Pattern: '*.nupkg'
+      signConfigType: inlineSignParams
+      inlineOperation: |
+       [ 
+           {
+               "keyCode": "CP-401405",
+               "operationSetCode": "NuGetSign",
+               "parameters": [ ],
+               "toolName": "sign",
+               "toolVersion": "1.0"
+           },
+           {
+               "keyCode": "CP-401405",
+               "operationSetCode": "NuGetVerify",
+               "parameters": [ ],
+               "toolName": "sign",
+               "toolVersion": "1.0"
+           }
+       ]
