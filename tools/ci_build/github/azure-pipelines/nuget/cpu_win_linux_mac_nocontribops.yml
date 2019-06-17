@@ -141,3 +141,5 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - template: templates/test_all_os.yml
+  parameters:
+    DisableContribOps: 'ON'
