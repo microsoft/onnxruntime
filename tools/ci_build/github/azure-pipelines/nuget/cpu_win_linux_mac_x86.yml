@@ -4,9 +4,6 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
-variables:
-  DoEsrp : $[variables['DoEsrp']]
-
 jobs: 
 - template: ../templates/win-ci.yml
   parameters:
@@ -15,7 +12,6 @@ jobs:
     BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
-    DoEsrp: $(DoEsrp)
     DoCompliance: 'false'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
@@ -30,7 +26,6 @@ jobs:
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
-    DoEsrp: $(DoEsrp)
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
      cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
