@@ -64,8 +64,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
   void SetMaxBatchSize(const int batch_size) {
     max_batch_size_ = batch_size;
   }
