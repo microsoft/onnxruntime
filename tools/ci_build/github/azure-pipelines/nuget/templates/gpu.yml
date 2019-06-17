@@ -1,14 +1,17 @@
 # Defined as pipeline variables
 # variables:
-#   AgentPoolWin : 'Win-CPU'
+#   AgentPoolWin : 'Win-CPU-CUDA10'
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
+parameters:
+  DoEsrp: 'false'
+
 variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime.MKLML'
+  PackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
 
 jobs: 
-- template: ../templates/win-ci.yml
+- template: ../../templates/win-ci.yml
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_GPU_Dev'
@@ -16,7 +19,7 @@ jobs:
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
-    DoEsrp: 'true'
+    DoEsrp: ${{ parameters.DoEsrp }}
     BuildArch: 'amd64'
     SetVcvars: 'true'
     MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
@@ -27,7 +30,7 @@ jobs:
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 
-- template: ../templates/linux-ci.yml
+- template: ../../templates/linux-ci.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
     JobName: 'Linux_CI_GPU_Dev'
@@ -88,11 +91,11 @@ jobs:
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
     displayName: 'Bundle NuGet and other binaries'
 
-  - template: ../templates/esrp_nuget.yml
+  - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      DoEsrp: 'true'
+      DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
@@ -100,4 +103,4 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- template: templates/test_all_os.yml
+- template: test_all_os.yml

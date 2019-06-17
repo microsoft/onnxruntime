@@ -4,7 +4,6 @@ parameters:
   BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
   DoNugetPack: 'false'
   NuPackScript: ''
-  ZipDir : 'linux-x64'
   ArtifactName: 'drop-linux'
 
 jobs:
@@ -12,6 +11,7 @@ jobs:
   pool: ${{ parameters.AgentPool }}
   steps:
     - template: linux-set-variables-and-download.yml
+    - script: 'set'
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:

@@ -1,0 +1,14 @@
+# Defined as pipeline variables
+# variables:
+#   AgentPoolWin : 'Win-CPU-CUDA10'
+#   AgentPoolLinux : 'Linux-CPU'
+#   AgentPoolMacOS : 'macOS-10.13'
+
+variables:
+  PackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+
+jobs: 
+- template: templates/gpu.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
+    DoEsrp: 'false'

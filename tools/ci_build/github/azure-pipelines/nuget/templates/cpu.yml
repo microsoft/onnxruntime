@@ -4,8 +4,11 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
+parameters:
+  DoEsrp: 'false'
+
 jobs: 
-- template: ../templates/win-ci.yml
+- template: ../../templates/win-ci.yml
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
@@ -13,13 +16,13 @@ jobs:
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
-    DoEsrp: 'true'
+    DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 
-- template: ../templates/win-x86-ci.yml
+- template: ../../templates/win-x86-ci.yml
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
@@ -27,14 +30,14 @@ jobs:
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
-    DoEsrp: 'true'
+    DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
      cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
      ren *.nupkg win-x86.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
-- template: ../templates/linux-ci.yml
+- template: ../../templates/linux-ci.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
     JobName: 'Linux_CI_Dev'
@@ -50,7 +53,7 @@ jobs:
      cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
      ls -al $(Build.ArtifactStagingDirectory)
 
-- template: ../templates/linux-ci.yml
+- template: ../../templates/linux-ci.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
     JobName: 'Linux_CI_Dev_x86'
@@ -66,7 +69,7 @@ jobs:
      cp $(Build.BinariesDirectory)/*.zip $(Build.ArtifactStagingDirectory)
      ls -al $(Build.ArtifactStagingDirectory)
 
-- template: ../templates/mac-ci.yml
+- template: ../../templates/mac-ci.yml
   parameters:
     AgentPool : $(AgentPoolMacOS)
     JobName: 'MacOS_CI_Dev'
@@ -131,13 +134,13 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
     continueOnError: true
 
-  - template: templates/bundle_dlls.yml
+  - template: bundle_dlls.yml
 
-  - template: ../templates/esrp_nuget.yml
+  - template: ../../templates/esrp_nuget.yml
     parameters:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      DoEsrp: 'true'
+      DoEsrp: ${{ parameters.DoEsrp }}
 
 
   - task: PublishPipelineArtifact@0
@@ -146,4 +149,4 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- template: templates/test_all_os.yml
+- template: test_all_os.yml
