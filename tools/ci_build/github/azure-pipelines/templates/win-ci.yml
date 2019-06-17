@@ -6,7 +6,6 @@ parameters:
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
   NuPackScript : ''
-  DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64'
   SetVcvars: 'false'
