@@ -7,11 +7,11 @@ parameters:
   DoNugetPack:  'false'
   NuPackScript : ''
   DoTestCoverage: 'false'
-  buildArch: 'x64'
-  setVcvars: 'false'
-  msbuildArguments: '/m'
-  CUDA_VERSION: ''
-  TESTONGPU: ''     # for C# cuda tests only
+  BuildArch: 'x64'
+  SetVcvars: 'false'
+  MsbuildArguments: '/m'
+  CudaVersion: ''
+  TestOnGpu: ''     # for C# cuda tests only
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -22,16 +22,16 @@ jobs:
     BuildCommand: ${{ parameters.BuildCommand }}
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
-    CUDA_VERSION: ${{ parameters.CUDA_VERSION }}
-    TESTONGPU: ${{ parameters.TESTONGPU }}
+    CUDA_VERSION: ${{ parameters.CudaVersion }}
+    TESTONGPU: ${{ parameters.TestOnGpu }}
 
   steps:
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: 'setup_env.bat'
-        buildArch: ${{ parameters.buildArch }}
-        setVcvars: ${{ parameters.setVcvars }}
+        buildArch: ${{ parameters.BuildArch }}
+        setVcvars: ${{ parameters.SetVcvars }}
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
@@ -48,7 +48,7 @@ jobs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'x64'
           configuration: 'Debug'
-          msbuildArguments: ${{ parameters.msbuildArguments }}
+          msbuildArguments: ${{ parameters.MsbuildArguments }}
           msbuildArchitecture: 'x64'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
@@ -95,7 +95,7 @@ jobs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'x64'
         configuration: 'RelWithDebInfo'
-        msbuildArguments: ${{ parameters.msbuildArguments }}
+        msbuildArguments: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
