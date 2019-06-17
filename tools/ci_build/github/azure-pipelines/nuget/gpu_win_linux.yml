@@ -21,6 +21,7 @@ jobs:
     MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
     CudaVersion: '10.0'
     TestOnGpu: 'true'
+    DoEsrp: $(DoEsrp)
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.Gpu
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
@@ -86,6 +87,12 @@ jobs:
      popd
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
     displayName: 'Bundle NuGet and other binaries'
+
+  - template: ../templates/esrp_nuget.yml
+    parameters:
+      DoEsrp: $(DoEsrp)
+      DisplayName: 'ESRP - sign NuGet package'
+      FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
