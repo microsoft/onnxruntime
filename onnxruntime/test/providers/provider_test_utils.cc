@@ -49,10 +49,6 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
   threshold = 0.005f;
 #endif
 
-#ifdef USE_OPENVINO
-  threshold = 0.75f;
-#endif
-
   for (int i = 0; i < size; ++i) {
     if (std::isinf(expected[i])) {  // Test infinity for equality
       EXPECT_EQ(expected[i], output[i]);
