@@ -120,6 +120,18 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, Y_dims);
+  T* y_data = Y->template MutableData<T>();
+
+  // Check for the optional Conv/Sum fusion.
+  if (Sum != nullptr) {
+    const auto& sum_shape = Sum->Shape();
+    ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
+    // If the output was not allocated inplace with the sum tensor, then copy here.
+    const float* sum_data = Sum->template Data<T>();
+    if (y_data != sum_data) {
+      memcpy(y_data, sum_data, sum_shape.Size() * sizeof(T));
+    }
+  }
 
   MLAS_ACTIVATION Activation;
   if (ConvBase::activation_.empty()) {
@@ -148,7 +160,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
                 X->template Data<float>(),
                 W->template Data<float>(),
                 B != nullptr ? B->template Data<float>() : nullptr,
-                Y->template MutableData<float>(),
+                y_data,
                 &Activation,
                 Sum == nullptr,
                 const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
