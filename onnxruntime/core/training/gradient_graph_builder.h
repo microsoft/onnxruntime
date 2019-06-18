@@ -26,6 +26,14 @@ namespace training {
 
 typedef std::unordered_set<const Node*> NodeSet;
 
+static std::unordered_map<std::string, std::unordered_set<size_t>>
+    STOP_GRADIENT_EDGES = {
+        {"Pow", {1}},
+        {"Gather", {1}},
+        {"Reshape", {1}},
+        {"Expand", {1}},
+        {"Slice", {1, 2, 3, 4}}};
+
 class GradientGraphBuilder {
  public:
   /**

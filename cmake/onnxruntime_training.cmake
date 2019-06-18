@@ -70,5 +70,26 @@ add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
 onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_squeezenet PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
+if (onnxruntime_USE_HOROVOD)
+target_include_directories(onnxruntime_training_squeezenet PUBLIC ${HOROVOD_INCLUDE_DIRS})
+endif()
+
 target_link_libraries(onnxruntime_training_squeezenet PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_squeezenet PROPERTIES FOLDER "ONNXRuntimeTest")
+
+
+# BERT
+file(GLOB_RECURSE training_bert_src
+    "${ONNXRUNTIME_ROOT}/test/training/bert/*.h"
+    "${ONNXRUNTIME_ROOT}/test/training/bert/*.cc"
+)
+add_executable(onnxruntime_training_bert ${training_bert_src})
+onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
+target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
+
+if (onnxruntime_USE_HOROVOD)
+target_include_directories(onnxruntime_training_bert PUBLIC ${HOROVOD_INCLUDE_DIRS})
+endif()
+
+target_link_libraries(onnxruntime_training_bert PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
+set_target_properties(onnxruntime_training_bert PROPERTIES FOLDER "ONNXRuntimeTest")

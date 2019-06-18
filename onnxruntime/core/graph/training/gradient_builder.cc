@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace training {
 
 #define IMPLEMENT_GRADIENT_BUILDER(name) \
-  std::vector<NodeDef> name::GetGradientDefs() const
+  std::vector<NodeDef> name::GetGradientDefsImpl() const
 
 IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
   // TODO: handle invalid conversion cases
@@ -95,9 +95,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
-  ArgDef A = I(0), B = I(1);
-  std::vector<int64_t> A_shape = GetShape(A);
-  std::vector<int64_t> B_shape = GetShape(B);
+  ArgDef A = I(0), B = I(1), Y = O(0);
+  std::vector<Dimension> A_shape = GetShape(A);
+  std::vector<Dimension> B_shape = GetShape(B);
+  std::vector<Dimension> Y_shape = GetShape(Y);
 
   if (A_shape.size() == 2 && B_shape.size() == 2) {
     NodeDef zero_constant_node = ZeroConstantNode();
@@ -123,50 +124,112 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                   {GI(1)},
                   {MakeAttribute("transA", int64_t(1))}));
     }
-  } else if (A_shape.size() > 2 && A_shape.size() == B_shape.size()) {
-    int64_t rank = A_shape.size();
-    std::vector<int64_t> perm(rank);
-    std::iota(perm.begin(), perm.end(), 0);
-    std::swap(perm[rank - 1], perm[rank - 2]);
-
+  } else if (A_shape.size() > 2 || B_shape.size() > 2) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
+      int64_t B_rank = B_shape.size();
+      std::vector<int64_t> B_perm(B_rank);
+      std::iota(B_perm.begin(), B_perm.end(), 0);
+      std::swap(B_perm[B_rank - 1], B_perm[B_rank - 2]);
+
+      std::vector<Dimension> output_shape;
+      for (size_t i = 0; i < Y_shape.size() - 1; i++) {
+        output_shape.push_back(Y_shape[i]);
+      }
+      output_shape.push_back(B_shape[B_shape.size() - 2]);
+
+      std::vector<int64_t> A_axes;
+      ComputeBroadcastBackwardAxes(A_shape, output_shape, &A_axes, nullptr);
+
       result.push_back(
           NodeDef("Transpose",
                   {B},
                   {IA("B_t")},
-                  {MakeAttribute("perm", perm)}));
+                  {MakeAttribute("perm", B_perm)}));
+
+      ArgDef matmul_out = A_axes.size() > 0 ? IA("PreReduceGrad0") : GI(0);
+
       result.push_back(
           NodeDef("MatMul",
                   {GO(0), IA("B_t")},
-                  {GI(0)}));
+                  {matmul_out}));
+
+      if (A_axes.size() > 0) {
+        result.push_back(
+            NodeDef("ReduceSum",
+                    {IA("PreReduceGrad0")},
+                    {IA("ReduceGrad0")},
+                    {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
+                     {"axes", MakeAttribute("axes", A_axes)}}));
+
+        result.push_back(
+            NodeDef("Shape",
+                    {A},
+                    {IA("A_shape")}));
+
+        result.push_back(
+            NodeDef("Reshape",
+                    {IA("ReduceGrad0"), IA("A_shape")},
+                    {GI(0)}));
+      }
     }
     if (IsGradientRequiredForSrcNodeInput(1)) {
+      int64_t A_rank = A_shape.size();
+      std::vector<int64_t> A_perm(A_rank);
+      std::iota(A_perm.begin(), A_perm.end(), 0);
+      std::swap(A_perm[A_rank - 1], A_perm[A_rank - 2]);
+
+      std::vector<Dimension> output_shape;
+      for (size_t i = 0; i < Y_shape.size() - 2; i++) {
+        output_shape.push_back(Y_shape[i]);
+      }
+      output_shape.push_back(A_shape[A_shape.size() - 1]);
+      output_shape.push_back(Y_shape[Y_shape.size() - 1]);
+
+      std::vector<int64_t> B_axes;
+      ComputeBroadcastBackwardAxes(B_shape, output_shape, &B_axes, nullptr);
+
       result.push_back(
           NodeDef("Transpose",
                   {A},
                   {IA("A_t")},
-                  {MakeAttribute("perm", perm)}));
+                  {MakeAttribute("perm", A_perm)}));
+
+      ArgDef matmul_out = B_axes.size() > 0 ? IA("PreReduceGrad1") : GI(1);
+
       result.push_back(
           NodeDef("MatMul",
                   {IA("A_t"), GO(0)},
-                  {GI(1)}));
+                  {matmul_out}));
+
+      if (B_axes.size() > 0) {
+        result.push_back(
+            NodeDef("ReduceSum",
+                    {IA("PreReduceGrad1")},
+                    {IA("ReduceGrad1")},
+                    {{"keepdims", MakeAttribute("keepdims", int64_t(0))},
+                     {"axes", MakeAttribute("axes", B_axes)}}));
+        result.push_back(
+            NodeDef("Shape",
+                    {B},
+                    {IA("B_shape")}));
+        result.push_back(
+            NodeDef("Reshape",
+                    {IA("ReduceGrad1"), IA("B_shape")},
+                    {GI(1)}));
+      }
     }
   } else {
-    ORT_THROW("GradientBuilder not implemented for MatMul with input ranks of ",
-              A_shape.size(), " and ", B_shape.size());
+    ORT_THROW("Matmul Gradient Builder shouldn't reach here. ");
   }
+
   return result;
 };
 
-std::vector<int64_t> GetShape(const ArgDef& arg_def) {
+std::vector<Dimension> GetShape(const ArgDef& arg_def) {
+  std::vector<Dimension> shape;
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
-  std::vector<int64_t> shape;
   for (auto dim = dims.begin(); dim < dims.end(); dim++) {
-    if (dim->has_dim_value()) {
-      shape.push_back(dim->dim_value());
-    } else {
-      ORT_ENFORCE(false, "Dimension missing");
-    }
+    shape.push_back(*dim);
   }
   return shape;
 }
@@ -264,8 +327,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
     float beta = attributes.at("beta").f();
     ORT_ENFORCE(beta != 0.0f);
 
-    std::vector<int64_t> C_shape = GetShape(C);
-    std::vector<int64_t> dY_shape = GetShape(dY);
+    std::vector<Dimension> C_shape = GetShape(C);
+    std::vector<Dimension> dY_shape = GetShape(dY);
 
     std::vector<int64_t> C_axes, dY_axes;
     ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
@@ -486,12 +549,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
 }
 
 void ComputeBroadcastBackwardAxes(
-    const std::vector<int64_t>& A_dims,
-    const std::vector<int64_t>& B_dims,
+    const std::vector<Dimension>& A_dims,
+    const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
     std::vector<int64_t>* B_axes) {
-  A_axes->clear();
-  B_axes->clear();
+  if (A_axes) A_axes->clear();
+  if (B_axes) B_axes->clear();
 
   int ndim = int(std::max(A_dims.size(), B_dims.size()));
   int i = int(A_dims.size() - 1);
@@ -499,28 +562,37 @@ void ComputeBroadcastBackwardAxes(
   int k = ndim - 1;
 
   for (; i >= 0 && j >= 0; --k) {
-    ORT_ENFORCE(A_dims[i] == B_dims[j] || A_dims[i] == 1 || B_dims[j] == 1);
+    if (A_dims[i].has_dim_value() && B_dims[j].has_dim_value()) {
+      auto A_dim = A_dims[i].dim_value(),
+           B_dim = B_dims[j].dim_value();
 
-    if (A_dims[i] != B_dims[j]) {
-      if (A_dims[i] == 1) {
-        A_axes->push_back(gsl::narrow_cast<int64_t>(k));
+      if (A_dim != B_dim) {
+        if (A_axes && A_dim == 1) {
+          A_axes->push_back(gsl::narrow_cast<int64_t>(k));
+        }
+        if (B_axes && B_dim == 1) {
+          B_axes->push_back(gsl::narrow_cast<int64_t>(k));
+        }
       }
-
-      if (B_dims[j] == 1) {
-        B_axes->push_back(gsl::narrow_cast<int64_t>(k));
+    } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_param()) {
+      auto A_dim = A_dims[i].dim_param(),
+           B_dim = B_dims[j].dim_param();
+      if (A_dim != B_dim) {
+        ORT_THROW("Error");
       }
     }
+    // TODO : complete othere cases
 
     --i;
     --j;
   }
 
-  if (i < 0) {
+  if (A_axes && i < 0) {
     for (; k >= 0; --k) {
       A_axes->push_back(gsl::narrow_cast<int64_t>(k));
     }
 
-  } else {
+  } else if (B_axes) {
     for (; k >= 0; --k) {
       B_axes->push_back(gsl::narrow_cast<int64_t>(k));
     }
@@ -532,8 +604,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   const ArgDef &a = I(0), b = I(1);
 
-  std::vector<int64_t> a_shape = GetShape(a);
-  std::vector<int64_t> b_shape = GetShape(b);
+  std::vector<Dimension> a_shape = GetShape(a);
+  std::vector<Dimension> b_shape = GetShape(b);
 
   std::vector<int64_t> a_axes, b_axes;
   ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
@@ -614,8 +686,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
 
   const ArgDef &a = I(0), b = I(1);
 
-  std::vector<int64_t> a_shape = GetShape(a);
-  std::vector<int64_t> b_shape = GetShape(b);
+  std::vector<Dimension> a_shape = GetShape(a);
+  std::vector<Dimension> b_shape = GetShape(b);
   std::vector<int64_t> a_axes, b_axes;
   ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
 
@@ -715,7 +787,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
-  std::vector<int64_t> data_shape = GetShape(I(0));
+  std::vector<Dimension> data_shape = GetShape(I(0));
+  std::vector<NodeDef> result;
 
   auto attributes = SrcNodeAttributes();
   std::vector<int64_t> axes_values(data_shape.size());
@@ -731,8 +804,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
     keepdims = static_cast<bool>(attributes.at("keepdims").i());
   }
 
-  std::vector<NodeDef> result;
-
   ArgDef unsqueezed_Grad = GO(0);
   if (!keepdims) {
     unsqueezed_Grad = IA("Unqueezed_Grad");
@@ -746,8 +817,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   std::vector<int64_t> repeats(data_shape.size(), 1);
   int64_t scale = 1;
   for (int64_t axis : axes_values) {
-    repeats[axis] = data_shape[axis];
-    scale *= data_shape[axis];
+    if (axis < 0) {
+      axis = data_shape.size() + axis;
+    }
+
+    if (data_shape[axis].has_dim_value()) {
+      auto dim_value = data_shape[axis].dim_value();
+      repeats[axis] = dim_value;
+      scale *= dim_value;
+    } else {
+      ORT_THROW("Error: can't infer scale for ReduceMeanGrad");
+    }
   }
 
   NodeDef repeats_node = ConstantValueNode(repeats, Name("repeats"));

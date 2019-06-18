@@ -763,10 +763,10 @@ class Graph {
   std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
     std::vector<const Node*> results;
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
-
-    for (; iter != node_arg_to_consumer_nodes_.end() && iter->first == node_arg_name; iter++) {
-      auto node_index = iter->second;
-      results.push_back(GetNode(node_index));
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      for (auto node_index : iter->second) {
+        results.push_back(GetNode(node_index));
+      }
     }
     return results;
   }
@@ -982,7 +982,7 @@ class Graph {
   std::unordered_map<std::string, NodeIndex> node_arg_to_producer_node_;
 
   // node arg to its consumer nodes
-  std::unordered_multimap<std::string, NodeIndex> node_arg_to_consumer_nodes_;
+  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
 
   const std::unordered_map<std::string, int> domain_to_version_;
 

@@ -31,10 +31,20 @@ class GradientBuilderBase {
     return true;
   }
 
-  // TODO: make this protected? Currently, compiler failure prevents it
-  virtual GradientDef GetGradientDefs() const = 0;
+  GradientDef GetGradientDefs() const {
+    GradientDef node_defs = GetGradientDefsImpl();
+    for (size_t i = 0; i < node_defs.size(); ++i) {
+      NodeDef& node_def = node_defs[i];
+      if (node_def.name.empty()) {
+        node_def.name = Name(node_def.op_type + "_" + std::to_string(i));
+      }
+    }
+    return node_defs;
+  }
 
  protected:
+  virtual GradientDef GetGradientDefsImpl() const = 0;
+
   ArgDef I(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
@@ -140,12 +150,12 @@ class GradientBuilderBase {
     ORT_ENFORCE(node_ != nullptr);
     auto name = node_->Name();
     std::stringstream unique_prefix;
+
     if (!name.empty()) {
-      unique_prefix << name << "_";
+      unique_prefix << name << "_Grad/";
     } else {
-      unique_prefix << node_->OpType() << "_";
+      unique_prefix << node_->OpType() << "_" << node_->Index() << "_Grad/";
     }
-    unique_prefix << node_->Index() << "_";
     return unique_prefix.str();
   }
 
@@ -161,14 +171,14 @@ class GradientBuilderBase {
 
 class EmptyGradientBuilder : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
-  GradientDef GetGradientDefs() const override {
+  GradientDef GetGradientDefsImpl() const override {
     return GradientDef();
   }
 };
 
 class UnSupportedGradientBuilder : public GradientBuilderBase {
   using GradientBuilderBase::GradientBuilderBase;
-  GradientDef GetGradientDefs() const override {
+  GradientDef GetGradientDefsImpl() const override {
     ORT_ENFORCE(false, "Gradient should not be requested for this operator");
   }
 };

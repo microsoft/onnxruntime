@@ -14,7 +14,6 @@ namespace training {
 
 class TrainingRunner {
  public:
-
   struct AdamOptimizerParams {
     float alpha_;
     float beta_;
@@ -48,6 +47,8 @@ class TrainingRunner {
     // The weights not to train. If not empty, all the initializers not in the vector will be trained.
     // exclusive with weights_not_to_train_.
     std::vector<std::string> weights_not_to_train_;
+
+    TrainingSession::ImmutableWeights immutable_weigths_;
 
     size_t batch_size_;
     size_t num_of_epoch_;

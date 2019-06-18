@@ -6,16 +6,16 @@
 namespace onnxruntime {
 namespace training {
 // TODO: maybe group the gradient builders and split them into different files.
-#define DECLARE_GRADIENT_BUILDER(name)                     \
-  class name : public GradientBuilderBase {                \
-    using GradientBuilderBase::GradientBuilderBase;        \
-    std::vector<NodeDef> GetGradientDefs() const override; \
+#define DECLARE_GRADIENT_BUILDER(name)                         \
+  class name : public GradientBuilderBase {                    \
+    using GradientBuilderBase::GradientBuilderBase;            \
+    std::vector<NodeDef> GetGradientDefsImpl() const override; \
   };
 
 #define DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(name) \
   class name : public GradientBuilderBase {                    \
     using GradientBuilderBase::GradientBuilderBase;            \
-    std::vector<NodeDef> GetGradientDefs() const override;     \
+    std::vector<NodeDef> GetGradientDefsImpl() const override; \
     bool CopyAttributes() const override {                     \
       return false;                                            \
     }                                                          \
@@ -49,13 +49,15 @@ DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGemmGradient)
 
+using Dimension = onnx::TensorShapeProto_Dimension;
+
 void ComputeBroadcastBackwardAxes(
-    const std::vector<int64_t>& A_dims,
-    const std::vector<int64_t>& B_dims,
+    const std::vector<Dimension>& A_dims,
+    const std::vector<Dimension>& B_dims,
     std::vector<int64_t>* A_axes,
     std::vector<int64_t>* B_axes);
 
-std::vector<int64_t> GetShape(const ArgDef& arg_def);
+std::vector<Dimension> GetShape(const ArgDef& arg_def);
 
 }  // namespace training
 }  // namespace onnxruntime

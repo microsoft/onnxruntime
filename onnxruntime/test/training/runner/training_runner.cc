@@ -47,14 +47,16 @@ Status TrainingRunner::Initialize() {
   // Otherweise, generate the list by removing not-to-train ones from all initializers.
   auto weights_to_train = params_.weights_to_train_;
   if (weights_to_train.empty()) {
-    auto all_weights = session_.GetModelInitializers();
+    auto all_weights = session_.GetTrainableModelInitializers(params_.immutable_weigths_);
     for (const auto& not_to_train : params_.weights_not_to_train_) {
       all_weights.erase(not_to_train);
     }
     weights_to_train.reserve(all_weights.size());
-    for (const auto& w : all_weights) {
-      weights_to_train.push_back(w);
-    }
+    weights_to_train.insert(weights_to_train.end(), all_weights.begin(), all_weights.end());
+  }
+
+  for (auto weight : weights_to_train) {
+    std::cout << "Training weight " << weight << std::endl;
   }
 
   vector<in_graph_optimizer::OptimizerInfo> opt_info(weights_to_train.size());
@@ -269,7 +271,7 @@ Status TrainingRunner::SetupOptimizerParams(vector<in_graph_optimizer::Optimizer
     }
 
     for (unsigned int i = 0; i < opt_infos.size(); ++i) {
-        opt_infos[i] = opt_info;
+      opt_infos[i] = opt_info;
     }
   }
 

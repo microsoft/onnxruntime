@@ -69,8 +69,14 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
     const Node* n = queue.front();
     queue.pop_front();
 
-    for (auto node_it = n->InputNodesBegin(); node_it != n->InputNodesEnd(); ++node_it) {
-      const Node& node = *node_it;
+    for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
+      auto it = STOP_GRADIENT_EDGES.find(n->OpType());
+      if (it != STOP_GRADIENT_EDGES.end() && it->second.count(edge_it->GetDstArgIndex())) {
+        std::cout << "Skip building gradient for node: " << edge_it->GetNode().Name() << std::endl;
+        continue;
+      }
+
+      const Node& node = edge_it->GetNode();
       if (visited.find(&node) == visited.end()) {
         queue.push_back(&node);
         visited.insert(&node);

@@ -967,7 +967,7 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
           continue;
         }
 
-        node_arg_to_consumer_nodes_.insert({input_arg->Name(), node.Index()});
+        node_arg_to_consumer_nodes_[input_arg->Name()].insert(node.Index());
 
         auto output_arg_iter = resolve_context_.output_args.find(input_arg->Name());
         if (resolve_context_.output_args.end() == output_arg_iter) {

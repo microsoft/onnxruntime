@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/data_types.h"
 #include "test/training/runner/training_util.h"
 
 using namespace std;
@@ -24,11 +25,11 @@ common::Status DataSet::AddData(DataSet::SampleType&& single_sample) {
 }
 
 size_t DataSet::TotalBatch(size_t batch_size) const {
-  batch_size = min(batch_size, data_.size());
-  return data_.size() / batch_size + ((data_.size() % batch_size > 0) ? 1 : 0);
+  batch_size = min(batch_size, NumSamples());
+  return NumSamples() / batch_size + ((NumSamples() % batch_size > 0) ? 1 : 0);
 }
 
-std::vector<MLValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const {
+std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const {
   if (batch_size == 1) {
     return *data_[k_th];
   }
@@ -37,7 +38,7 @@ std::vector<MLValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const 
   AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
   auto location = alloc->Info();
 
-  std::vector<MLValue> result;
+  std::vector<OrtValue> result;
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
@@ -73,6 +74,46 @@ std::vector<MLValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const 
 
 void DataSet::RandomShuffle() {
   random_shuffle(data_.begin(), data_.end());
+}
+
+std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /*k_th*/) const {
+  AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
+  auto location = alloc->Info();
+  std::vector<OrtValue> result;
+
+  for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
+    MLDataType element_type;
+    TensorShape shape = tensor_shapes_[input_index];
+
+    void* buffer;
+
+    if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT64) {
+      element_type = NonOnnxType<int64_t>::Type();
+      size_t buffer_size = sizeof(int64_t) * shape.Size();
+      buffer = alloc->Alloc(buffer_size);
+
+      std::vector<int64_t> temp(shape.Size(), 0);
+      memcpy(buffer, temp.data(), buffer_size);
+    } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_FLOAT) {
+      element_type = NonOnnxType<float>::Type();
+      size_t buffer_size = sizeof(float) * shape.Size();
+      buffer = alloc->Alloc(buffer_size);
+
+      std::vector<float> temp(shape.Size(), 0.1f);
+      memcpy(buffer, temp.data(), buffer_size);
+    }
+
+    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
+                                                                shape,
+                                                                buffer,
+                                                                location);
+
+    result.emplace_back(p_tensor.release(),
+                        DataTypeImpl::GetType<Tensor>(),
+                        DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  }
+
+  return result;
 }
 
 AllocatorPtr TrainingUtil::GetCpuAllocator() {

@@ -41,7 +41,8 @@ Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element
   vector<const NodeArg*> new_output_args = graph.GetOutputs();  // Make a copy of existing output args.
   for (const auto& output_name : graph_element_defs.GraphOutputs()) {
     const auto* output_arg = graph.GetNodeArg(output_name);
-    ORT_RETURN_IF_NOT(output_arg != nullptr, "Failed to set graph output ", output_name);
+
+    ORT_RETURN_IF(output_arg == nullptr, "Failed to set graph output ", output_name);
     if (std::find(new_output_args.begin(), new_output_args.end(), output_arg) == new_output_args.end()) {
       new_output_args.emplace_back(output_arg);
     }

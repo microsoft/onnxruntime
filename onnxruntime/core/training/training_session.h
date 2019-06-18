@@ -83,7 +83,21 @@ class TrainingSession : public InferenceSession {
   common::Status UpdateWeightsInSessionState(const NameMLValMap& new_weights);
   std::unordered_set<std::string> GetModelInputNames() const;
   std::unordered_set<std::string> GetModelOutputNames() const;
-  std::unordered_set<std::string> GetModelInitializers() const;
+
+  typedef std::unordered_map<std::string /*OpType*/,
+                             std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
+      ImmutableWeights;
+
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+
+  static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
+                                const Node* node,
+                                const TensorProto* weight_tensor,
+                                const logging::Logger* logger = nullptr);
+
+  static bool IsUntrainable(const Node* node,
+                            const std::string& initializer_name,
+                            const logging::Logger* logger = nullptr);
 
  private:
   std::vector<std::string> weights_to_train_;

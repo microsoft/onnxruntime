@@ -155,15 +155,82 @@ std::unordered_set<std::string> TrainingSession::GetModelOutputNames() const {
   return model_output_names_;
 }
 
-std::unordered_set<std::string> TrainingSession::GetModelInitializers() const {
-  const auto& initialized_tensors = model_->MainGraph().GetAllInitializedTensors();
+bool TrainingSession::IsUntrainable(const Node* node, const std::string& initializer_name,
+                                    const logging::Logger* logger) {
+  auto it = STOP_GRADIENT_EDGES.find(node->OpType());
+  if (it != STOP_GRADIENT_EDGES.end()) {
+    for (auto input_idx : it->second) {
+      if (input_idx < node->InputDefs().size() &&
+          node->InputDefs()[input_idx]->Name() == initializer_name) {
+        if (logger) {
+          VLOGS(*logger, 1) << "Excluding " << node->Name() << "'s input " << input_idx
+                            << " initializer: " << initializer_name;
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weights,
+                                        const Node* node, const TensorProto* tensor,
+                                        const logging::Logger* logger) {
+  auto it = immutable_weights.find(node->OpType());
+  if (it == immutable_weights.end()) {
+    return false;
+  }
+
+  for (auto pair : it->second) {
+    size_t& input_idx = pair.first;
+    float& value = pair.second;
+
+    if (input_idx < node->InputDefs().size() &&
+        node->InputDefs()[input_idx]->Name() == tensor->name()) {
+      if (tensor->data_type() == TensorProto_DataType_FLOAT && tensor->dims_size() == 0) {
+        float tensor_value;
+        if (tensor->has_raw_data()) {
+          memcpy(&tensor_value, tensor->raw_data().data(), sizeof(float));
+        } else {
+          tensor_value = *(tensor->float_data().data());
+        }
+        if (tensor_value == value) {
+          if (logger) {
+            VLOGS(*logger, 1) << "Excluding " << node->Name() << "'s input " << input_idx
+                              << " initializer: " << tensor->name() << " with value " << tensor_value;
+          }
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
+    const ImmutableWeights& immutable_weights) const {
+  const Graph& graph = model_->MainGraph();
+  const auto& initialized_tensors = graph.GetAllInitializedTensors();
   std::unordered_set<std::string> model_initializers;
   std::transform(initialized_tensors.begin(),
                  initialized_tensors.end(),
                  std::inserter(model_initializers, model_initializers.end()),
                  [](const auto& pair) { return pair.first; });
 
-  return model_initializers;
+  std::unordered_set<std::string> trainable_initializers(model_initializers);
+  for (const string& initializer_name : model_initializers) {
+    const auto& nodes = graph.GetConsumerNodes(initializer_name);
+    for (const Node* node : nodes) {
+      if (IsUntrainable(node, initializer_name, session_logger_) ||
+          IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_)) {
+        trainable_initializers.erase(initializer_name);
+      }
+    }
+  }
+
+  return trainable_initializers;
 }
+
 }  // namespace training
 }  // namespace onnxruntime

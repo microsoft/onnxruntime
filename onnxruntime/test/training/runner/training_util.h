@@ -3,6 +3,7 @@
 
 #pragma once
 #include <vector>
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/framework_common.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -29,14 +30,16 @@ class DataSet {
 
   typedef typename std::vector<SampleType>::const_iterator IteratorType;
 
-  explicit DataSet(const std::vector<std::string>& tensor_names);
+  DataSet(const std::vector<std::string>& tensor_names);
+
+  virtual ~DataSet() {}
 
   // Get all tensor names
   const std::vector<std::string> TensorNames() const;
 
   size_t NumInputs() const { return tensor_names_.size(); }
 
-  size_t NumSamples() const { return data_.size(); }
+  virtual size_t NumSamples() const { return data_.size(); }
 
   // Add a data sample
   common::Status AddData(SampleType&& single_sample);
@@ -44,7 +47,7 @@ class DataSet {
   // Given a batch_size, get the total num of batches.
   size_t TotalBatch(size_t batch_size) const;
 
-  std::vector<MLValue> GetKthBatch(size_t batch_size, size_t k_th) const;
+  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th) const;
 
   void RandomShuffle();
 
@@ -55,6 +58,29 @@ class DataSet {
   // The data of multiple training samples.
   // data_[i] points to a vector of MLValues, whose order matches the above names_.
   std::vector<SampleType> data_;
+};
+
+class RandomDataSet : public DataSet {
+ public:
+  explicit RandomDataSet(int num_samples,
+                         const std::vector<std::string>& tensor_names,
+                         const std::vector<TensorShape> tensor_shapes,
+                         const std::vector<onnx::TensorProto_DataType> tensor_types)
+      : DataSet(tensor_names),
+        num_samples_(num_samples),
+        tensor_shapes_(tensor_shapes),
+        tensor_types_(tensor_types){};
+
+  virtual ~RandomDataSet() {}
+
+  virtual size_t NumSamples() const override { return num_samples_; }
+
+  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th) const override;
+
+ private:
+  int num_samples_;
+  const std::vector<TensorShape> tensor_shapes_;
+  const std::vector<onnx::TensorProto_DataType> tensor_types_;
 };
 
 class TrainingUtil {

@@ -66,12 +66,11 @@ SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
 
-
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       SoftmaxGrad,                                                              \
       kOnnxDomain,                                                              \
-      1,                                                                        \
+      9,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -103,24 +102,24 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   CUDNN_RETURN_IF_ERROR(
-    cudnnSoftmaxBackward(
-      CudnnHandle(),
-      CUDNN_SOFTMAX_ACCURATE,
-      CUDNN_SOFTMAX_MODE_INSTANCE,
-      &alpha,
-      input_tensor,
-      Y_data,
-      input_tensor,
-      dY_data,
-      &beta,
-      output_tensor,
-      dX_data));
+      cudnnSoftmaxBackward(
+          CudnnHandle(),
+          CUDNN_SOFTMAX_ACCURATE,
+          CUDNN_SOFTMAX_MODE_INSTANCE,
+          &alpha,
+          input_tensor,
+          Y_data,
+          input_tensor,
+          dY_data,
+          &beta,
+          output_tensor,
+          dX_data));
 
   return Status::OK();
 }
 
-#define SPECIALIZED_GRADIENT(T) \
-  REGISTER_GRADIENT_KERNEL_TYPED(T)     \
+#define SPECIALIZED_GRADIENT(T)     \
+  REGISTER_GRADIENT_KERNEL_TYPED(T) \
   template Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_GRADIENT(float)
