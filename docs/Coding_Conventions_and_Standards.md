@@ -24,7 +24,7 @@ Other
   * Use ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE initially
   * See the other ORT_DISALLOW_* macros in https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h
 * Don't use else after return. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
-* Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated.
+* Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the 'long' type, which could be either 32 bits or 64 bits.
 
 #### Clang-format
