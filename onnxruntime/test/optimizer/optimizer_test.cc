@@ -76,7 +76,8 @@ TEST(OptimizerTest, Basic) {
 
     OpKernelContext op_kernel_context(&frame, kernel, logger);
 
-    kernel->Compute(&op_kernel_context);
+    auto st = kernel->Compute(&op_kernel_context);
+    ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
     std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);

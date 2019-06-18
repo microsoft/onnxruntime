@@ -57,10 +57,6 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   }
 }
 
-std::shared_ptr<KernelRegistry> NGRAPHExecutionProvider::GetKernelRegistry() const {
-  return std::make_shared<KernelRegistry>();
-}
-
 /**
  * Checks if a tensor represented by srcLocation can be copied into the dstLocation tensor
  * @param src_location result of Location().name call on the source tensor
