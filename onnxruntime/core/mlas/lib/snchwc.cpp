@@ -23,6 +23,7 @@ Abstract:
 
 struct MLAS_NCHWC_WORK_BLOCK
 {
+    int32_t tids;
     size_t BatchCount;
     size_t InputChannels;
     size_t InputShape[3];
@@ -51,7 +52,6 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     const MLAS_ACTIVATION* Activation;
     float* Output;
     size_t GroupCount;
-    int32_t tids;
     bool ZeroMode;
 };
 
@@ -64,7 +64,6 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     const float* Input;
     float* Output;
     MLAS_POOLING_KIND PoolingKind;
-    int32_t tids;
 };
 
 size_t
@@ -214,7 +213,7 @@ struct MLAS_NCHWC_NN_ALGORITHM
     static constexpr size_t HeightShapeIndex = 0;
     static constexpr size_t WidthShapeIndex = 1;
 
-    const size_t NCHWC = MlasNchwcGetBlockSize();
+    const size_t BlockSize = MlasNchwcGetBlockSize();
 
     //
     // Capture these values from the work block for use as local constants.
@@ -270,6 +269,28 @@ struct MLAS_NCHWC_NN_ALGORITHM
         OutputCountRightPadX(WorkBlock->OutputCountRightPad[WidthShapeIndex])
     {
     }
+
+    static
+    void
+    PartitionWork(
+        int32_t Index,
+        const MLAS_NCHWC_WORK_BLOCK* WorkBlock,
+        size_t TotalWork,
+        size_t* WorkIndex,
+        size_t* WorkRemaining
+        )
+    {
+        const size_t WorkPerThread = TotalWork / WorkBlock->tids;
+        const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
+
+        if (uint32_t(Index) < WorkPerThreadExtra) {
+            *WorkIndex = (WorkPerThread + 1) * Index;
+            *WorkRemaining = WorkPerThread + 1;
+        } else {
+            *WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
+            *WorkRemaining = WorkPerThread;
+        }
+    }
 };
 
 template<typename AlgorithmType>
@@ -295,6 +316,7 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock;
     const size_t GroupCount;
     const MLAS_ACTIVATION* Activation;
+    const MLAS_ACTIVATION_KIND ActivationKind;
     const bool ZeroMode;
 
     //
@@ -314,6 +336,7 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         WorkBlock(WorkBlock),
         GroupCount(WorkBlock->GroupCount),
         Activation(WorkBlock->Activation),
+        ActivationKind(Activation->ActivationKind),
         ZeroMode(WorkBlock->ZeroMode)
     {
         Input = WorkBlock->Input;
@@ -360,6 +383,29 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
             }
         }
     }
+
+    void
+    DoActivation(
+        float* output,
+        size_t FilterCount,
+        size_t BlockedOutputWidth
+        )
+    {
+        //
+        // Invoke activation doing an inplace update.
+        //
+        // The width of the output matrix is the number of written output
+        // elements. Pointwise convolution may write multiple logical rows
+        // at once, so this output count may be greater than OutputWidth.
+        //
+        // The convolution kernels write to one or more output positions
+        // across NCHWc output planes, so the stride is set to the blocked
+        // output size instead of the output width as done in NCHW convolution.
+        //
+
+        MlasActivation(Activation, output, nullptr, FilterCount, output,
+            BlockedOutputWidth, BlockSize * OutputSize);
+    }
 };
 
 //
@@ -390,31 +436,22 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
         MLAS_NCHWC_CONV_ALGORITHM(WorkBlock),
-        FilterSetCount((OutputChannels + (NCHWC * FilterSetSize) - 1) / (NCHWC * FilterSetSize))
+        FilterSetCount((OutputChannels + (BlockSize * FilterSetSize) - 1) / (BlockSize * FilterSetSize))
     {
     }
 
     void ComputeFilterCount(void)
     {
-        FilterCount = (std::min)(FilterSetSize, (OutputChannels / NCHWC) - FilterSet * FilterSetSize);
+        FilterCount = (std::min)(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
     }
 
     void PrepareWork(int32_t Index)
     {
         const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * OutputHeight;
 
-        const size_t WorkPerThread = TotalWork / WorkBlock->tids;
-        const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
-
         size_t WorkIndex;
 
-        if (uint32_t(Index) < WorkPerThreadExtra) {
-            WorkIndex = (WorkPerThread + 1) * Index;
-            WorkRemaining = WorkPerThread + 1;
-        } else {
-            WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
-            WorkRemaining = WorkPerThread;
-        }
+        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
 
         //
         // Extract the current batch, group, filter cluster, and output line
@@ -437,14 +474,14 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         Input += BatchGroup * InputChannels * InputSize;
 
         Output += BatchGroup * OutputChannels * OutputSize;
-        Output += NCHWC * FilterSet * FilterSetSize * OutputSize;
+        Output += BlockSize * FilterSet * FilterSetSize * OutputSize;
 
         Filter += Group * OutputChannels * InputChannels * KernelSize;
-        Filter += NCHWC * FilterSet * FilterSetSize * InputChannels * KernelSize;
+        Filter += BlockSize * FilterSet * FilterSetSize * InputChannels * KernelSize;
 
         if (Bias != nullptr) {
             Bias += Group * OutputChannels;
-            Bias += NCHWC * FilterSet * FilterSetSize;
+            Bias += BlockSize * FilterSet * FilterSetSize;
         }
 
         //
@@ -465,7 +502,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
         if ((ph += WorkThisIteration) == OutputHeight) {
 
-            size_t BlockedFilterCount = NCHWC * FilterCount;
+            size_t BlockedFilterCount = BlockSize * FilterCount;
 
             Output += BlockedFilterCount * OutputSize;
             Filter += BlockedFilterCount * InputChannels * KernelSize;
@@ -528,15 +565,15 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         // Loop until all of the work has been completed.
         //
 
-        const size_t StrideWidthBytes = NCHWC * StrideWidth * sizeof(float);
-        const size_t DilationWidthBytes = NCHWC * DilationWidth * sizeof(float);
-        const size_t FilterStrideBytes = NCHWC * InputChannels * KernelSize * sizeof(float);
-        const size_t OutputStrideBytes = NCHWC * OutputSize * sizeof(float);
-        const size_t InputWidthBytes = NCHWC * InputWidth * sizeof(float);
-        const size_t DilatedInputWidthBytes = NCHWC * DilationHeight * InputWidth * sizeof(float);
+        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
+        const size_t DilationWidthBytes = BlockSize * DilationWidth * sizeof(float);
+        const size_t FilterStrideBytes = BlockSize * InputChannels * KernelSize * sizeof(float);
+        const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
+        const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
+        const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
-        const size_t BlockedOutputWidth = NCHWC * OutputWidth;
+        const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvNchwcFloatKernel();
 
@@ -552,26 +589,28 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             // Walk over each input image organized as a set of NCHWc blocks.
             //
 
-            for (size_t ic = 0; ic < InputChannels; ic += NCHWC) {
+            for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
 
                 //
                 //
                 //
 
-                unsigned Flags = 0;
+                unsigned KernelFlags = 0;
 
                 if (ic != 0 || !ZeroMode) {
-                    Flags |= 1;
+                    KernelFlags |= 1;
                 }
 
-                if (ic + NCHWC == InputChannels) {
+                if (ic + BlockSize == InputChannels) {
 
                     if (Bias != nullptr) {
-                        Flags |= 2;
+                        KernelFlags |= 2;
                     }
 
-                    if (Activation->ActivationKind == MlasReluActivation) {
-                        Flags |= 4;
+                    if (ActivationKind == MlasReluActivation) {
+                        KernelFlags |= 4;
+                    } else if (ActivationKind != MlasIdentityActivation) {
+                        KernelFlags |= 8;
                     }
                 }
 
@@ -589,20 +628,32 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     // uses one or more input padding rows.
                     //
 
-                    const float* filter = Filter + NCHWC * ic * KernelSize;
+                    const float* filter = Filter + BlockSize * ic * KernelSize;
                     size_t ih;
                     size_t EffectiveKernelHeight;
 
-                    ComputeEffectiveKernel(ph + work, NCHWC * NCHWC * KernelWidth,
+                    ComputeEffectiveKernel(ph + work, BlockSize * BlockSize * KernelWidth,
                         &filter, &ih, &EffectiveKernelHeight);
 
-                    Kernel(input + NCHWC * (ih * InputWidth - PaddingLeftX),
+                    //
+                    // Invoke the convolution kernel.
+                    //
+
+                    Kernel(input + BlockSize * (ih * InputWidth - PaddingLeftX),
                         filter, output, StrideWidthBytes, DilationWidthBytes,
                         FilterCount, InputStrideBytes, FilterStrideBytes,
                         OutputStrideBytes, EffectiveKernelHeight, KernelWidth,
-                        input + NCHWC * (ih * InputWidth), InputWidthBytes,
+                        input + BlockSize * (ih * InputWidth), InputWidthBytes,
                         DilatedInputWidthBytes, OutputCountLeftPadX, OutputCountX,
-                        OutputCountRightPadX, Bias, Flags);
+                        OutputCountRightPadX, Bias, KernelFlags);
+
+                    //
+                    // Test for fused non-ReLU activation.
+                    //
+
+                    if ((KernelFlags & 8) != 0) {
+                        DoActivation(output, FilterCount, BlockedOutputWidth);
+                    }
 
                     output += BlockedOutputWidth;
                 }
@@ -643,11 +694,13 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
         const size_t StrideWidthBytes = StrideWidth * sizeof(float);
         const size_t DilationWidthBytes = DilationWidth * sizeof(float);
-        const size_t FilterStrideBytes = NCHWC * InputChannels * KernelSize * sizeof(float);
-        const size_t OutputStrideBytes = NCHWC * OutputSize * sizeof(float);
+        const size_t FilterStrideBytes = BlockSize * InputChannels * KernelSize * sizeof(float);
+        const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
         const size_t InputWidthBytes = InputWidth * sizeof(float);
         const size_t DilatedInputWidthBytes = DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
+
+        const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvNchwFloatKernel();
 
@@ -662,7 +715,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             size_t ih;
             size_t EffectiveKernelHeight;
 
-            ComputeEffectiveKernel(ph, NCHWC * KernelWidth, &filter, &ih,
+            ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih,
                 &EffectiveKernelHeight);
 
             //
@@ -670,36 +723,50 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             //
 
             const float* input = Input;
-            float* output = Output + NCHWC * ph * OutputWidth;
+            float* output = Output + BlockSize * ph * OutputWidth;
 
             for (size_t icc = 0; icc < InputChannels; icc += 1) {
 
-                unsigned Flags = 0;
+                unsigned KernelFlags = 0;
 
                 if (icc != 0 || !ZeroMode) {
-                    Flags |= 1;
+                    KernelFlags |= 1;
                 }
 
                 if (icc + 1 == InputChannels) {
 
                     if (Bias != nullptr) {
-                        Flags |= 2;
+                        KernelFlags |= 2;
                     }
 
-                    if (Activation->ActivationKind == MlasReluActivation) {
-                        Flags |= 4;
+                    if (ActivationKind == MlasReluActivation) {
+                        KernelFlags |= 4;
+                    } else if (ActivationKind != MlasIdentityActivation) {
+                        KernelFlags |= 8;
                     }
                 }
+
+                //
+                // Invoke the convolution kernel.
+                //
 
                 Kernel(input + (ih * InputWidth - PaddingLeftX), filter, output,
                     StrideWidthBytes, DilationWidthBytes, FilterCount, InputStrideBytes,
                     FilterStrideBytes, OutputStrideBytes, EffectiveKernelHeight,
                     KernelWidth, input + (ih * InputWidth), InputWidthBytes,
                     DilatedInputWidthBytes, OutputCountLeftPadX, OutputCountX,
-                    OutputCountRightPadX, Bias, Flags);
+                    OutputCountRightPadX, Bias, KernelFlags);
+
+                //
+                // Test for fused non-ReLU activation.
+                //
+
+                if ((KernelFlags & 8) != 0) {
+                    DoActivation(output, FilterCount, BlockedOutputWidth);
+                }
 
                 input += InputSize;
-                filter += NCHWC * KernelSize;
+                filter += BlockSize * KernelSize;
             }
 
             //
@@ -738,10 +805,10 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         // Loop until all of the work has been completed.
         //
 
-        const size_t StrideWidthBytes = NCHWC * StrideWidth * sizeof(float);
-        const size_t InputStrideBytes = NCHWC * InputSize * sizeof(float);
-        const size_t FilterStrideBytes = NCHWC * InputChannels * sizeof(float);
-        const size_t OutputStrideBytes = NCHWC * OutputSize * sizeof(float);
+        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
+        const size_t InputStrideBytes = BlockSize * InputSize * sizeof(float);
+        const size_t FilterStrideBytes = BlockSize * InputChannels * sizeof(float);
+        const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
 
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvPointwiseFloatKernel();
 
@@ -773,9 +840,9 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             // the batc sizes causes a slowdown from processor cache thrashing.
             //
 
-            const float* input = Input + NCHWC * (ph * StrideHeight * InputWidth);
+            const float* input = Input + BlockSize * (ph * StrideHeight * InputWidth);
             const float* filter = Filter;
-            float* output = Output + NCHWC * ph * OutputWidth;
+            float* output = Output + BlockSize * ph * OutputWidth;
 
             size_t InputChannelBatch;
 
@@ -785,29 +852,43 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 InputChannelBatch = (std::min)(InputChannels - ic, MaximumInputChannelBatch);
 
-                unsigned Flags = 0;
+                unsigned KernelFlags = 0;
 
                 if (ic != 0 || !ZeroMode) {
-                    Flags |= 1;
+                    KernelFlags |= 1;
                 }
 
                 if (ic + InputChannelBatch == InputChannels) {
 
                     if (Bias != nullptr) {
-                        Flags |= 2;
+                        KernelFlags |= 2;
                     }
 
-                    if (Activation->ActivationKind == MlasReluActivation) {
-                        Flags |= 4;
+                    if (ActivationKind == MlasReluActivation) {
+                        KernelFlags |= 4;
+                    } else if (ActivationKind != MlasIdentityActivation) {
+                        KernelFlags |= 8;
                     }
                 }
 
+                //
+                // Invoke the convolution kernel.
+                //
+
                 Kernel(input, filter, output, StrideWidthBytes, InputChannelBatch /
-                    NCHWC, FilterCount, InputStrideBytes, FilterStrideBytes,
-                    OutputStrideBytes, OutputThisIteration, Bias, Flags);
+                    BlockSize, FilterCount, InputStrideBytes, FilterStrideBytes,
+                    OutputStrideBytes, OutputThisIteration, Bias, KernelFlags);
+
+                //
+                // Test for fused non-ReLU activation.
+                //
+
+                if ((KernelFlags & 8) != 0) {
+                    DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
+                }
 
                 input += MaximumInputChannelBatch * InputSize;
-                filter += NCHWC * MaximumInputChannelBatch;
+                filter += BlockSize * MaximumInputChannelBatch;
             }
 
             //
@@ -835,23 +916,14 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     void Execute(int32_t Index)
     {
-        const size_t GroupBlockCount = ((GroupCount + NCHWC - 1) / NCHWC);
+        const size_t GroupBlockCount = ((GroupCount + BlockSize - 1) / BlockSize);
 
         const size_t TotalWork = BatchCount * GroupBlockCount * OutputHeight;
-
-        const size_t WorkPerThread = TotalWork / WorkBlock->tids;
-        const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
 
         size_t WorkIndex;
         size_t WorkRemaining;
 
-        if (uint32_t(Index) < WorkPerThreadExtra) {
-            WorkIndex = (WorkPerThread + 1) * Index;
-            WorkRemaining = WorkPerThread + 1;
-        } else {
-            WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
-            WorkRemaining = WorkPerThread;
-        }
+        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
 
         //
         // Extract the current batch, group block, and output line from the
@@ -868,23 +940,25 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         // computed above.
         //
 
-        Input += BatchGroup * NCHWC * InputSize;
-        Output += WorkIndex * NCHWC * OutputWidth;
-        Filter += Group * NCHWC * KernelSize;
+        Input += BatchGroup * BlockSize * InputSize;
+        Output += WorkIndex * BlockSize * OutputWidth;
+        Filter += Group * BlockSize * KernelSize;
 
         if (Bias != nullptr) {
-            Bias += NCHWC * Group;
+            Bias += BlockSize * Group;
         }
 
         //
         // Loop until all of the work has been completed.
         //
 
-        const size_t StrideWidthBytes = NCHWC * StrideWidth * sizeof(float);
-        const size_t DilationWidthBytes = NCHWC * DilationWidth * sizeof(float);
-        const size_t InputWidthBytes = NCHWC * InputWidth * sizeof(float);
-        const size_t DilatedInputWidthBytes = NCHWC * DilationHeight * InputWidth * sizeof(float);
+        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
+        const size_t DilationWidthBytes = BlockSize * DilationWidth * sizeof(float);
+        const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
+        const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
+
+        const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvDepthwiseFloatKernel();
 
@@ -899,44 +973,58 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             size_t ih;
             size_t EffectiveKernelHeight;
 
-            ComputeEffectiveKernel(ph, NCHWC * KernelWidth, &filter, &ih, &EffectiveKernelHeight);
+            ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih, &EffectiveKernelHeight);
 
-            unsigned Flags = 0;
+            unsigned KernelFlags = 0;
 
             if (!ZeroMode) {
-                Flags |= 1;
+                KernelFlags |= 1;
             }
 
             if (Bias != nullptr) {
-                Flags |= 2;
+                KernelFlags |= 2;
             }
 
-            if (Activation->ActivationKind == MlasReluActivation) {
-                Flags |= 4;
+            if (ActivationKind == MlasReluActivation) {
+                KernelFlags |= 4;
+            } else if (ActivationKind != MlasIdentityActivation) {
+                KernelFlags |= 8;
             }
-
-            Kernel(Input + NCHWC * (ih * InputWidth - PaddingLeftX), filter,
-                Output, StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
-                EffectiveKernelHeight, KernelWidth, Input + NCHWC * (ih * InputWidth),
-                InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX,
-                OutputCountX, OutputCountRightPadX, Bias, Flags);
-
-            Output += NCHWC * OutputWidth;
 
             //
-            // Adjust the amount of work remaining and check if the end of an output
-            // image has been reached.
+            // Invoke the convolution kernel.
+            //
+
+            Kernel(Input + BlockSize * (ih * InputWidth - PaddingLeftX), filter,
+                Output, StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
+                EffectiveKernelHeight, KernelWidth, Input + BlockSize * (ih * InputWidth),
+                InputWidthBytes, DilatedInputWidthBytes, OutputCountLeftPadX,
+                OutputCountX, OutputCountRightPadX, Bias, KernelFlags);
+
+            //
+            // Test for fused non-ReLU activation.
+            //
+
+            if ((KernelFlags & 8) != 0) {
+                DoActivation(Output, 1, BlockedOutputWidth);
+            }
+
+            Output += BlockedOutputWidth;
+
+            //
+            // Adjust the amount of work remaining and check if the end of an
+            // output image has been reached.
             //
 
             WorkRemaining -= 1;
 
             if (++ph == OutputHeight) {
 
-                Input += NCHWC * InputSize;
-                Filter += NCHWC * KernelSize;
+                Input += BlockSize * InputSize;
+                Filter += BlockSize * KernelSize;
 
                 if (Bias != nullptr) {
-                    Bias += NCHWC;
+                    Bias += BlockSize;
                 }
 
                 if (++Group == GroupBlockCount) {
@@ -969,35 +1057,28 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 
     void Execute(int32_t Index)
     {
-        const size_t TotalWork = ((BatchCount * InputChannels + NCHWC - 1) / NCHWC) * OutputHeight;
-        const size_t WorkPerThread = TotalWork / WorkBlock->tids;
-        const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
+        const size_t TotalWork =
+            ((BatchCount * InputChannels + BlockSize - 1) / BlockSize) * OutputHeight;
 
         size_t WorkIndex;
         size_t WorkRemaining;
 
-        if (uint32_t(Index) < WorkPerThreadExtra) {
-            WorkIndex = (WorkPerThread + 1) * Index;
-            WorkRemaining = WorkPerThread + 1;
-        } else {
-            WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
-            WorkRemaining = WorkPerThread;
-        }
+        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
 
         size_t ph = WorkIndex % OutputHeight;
         const size_t BatchChannel = WorkIndex / OutputHeight;
 
-        const float* Input = WorkBlock->Input + BatchChannel * NCHWC * InputSize;
-        float* Output = WorkBlock->Output + WorkIndex * NCHWC * OutputWidth;
+        const float* Input = WorkBlock->Input + BatchChannel * BlockSize * InputSize;
+        float* Output = WorkBlock->Output + WorkIndex * BlockSize * OutputWidth;
 
         //
         // Loop until all of the work has been completed.
         //
 
-        const size_t StrideWidthBytes = NCHWC * StrideWidth * sizeof(float);
-        const size_t DilationWidthBytes = NCHWC * DilationWidth * sizeof(float);
-        const size_t InputWidthBytes = NCHWC * InputWidth * sizeof(float);
-        const size_t DilatedInputWidthBytes = NCHWC * DilationHeight * InputWidth * sizeof(float);
+        const size_t StrideWidthBytes = BlockSize * StrideWidth * sizeof(float);
+        const size_t DilationWidthBytes = BlockSize * DilationWidth * sizeof(float);
+        const size_t InputWidthBytes = BlockSize * InputWidth * sizeof(float);
+        const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
         MLAS_POOL_FLOAT_KERNEL* Kernel = MlasPlatform.PoolFloatKernel[WorkBlock->PoolingKind];
@@ -1036,14 +1117,14 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
             // Invoke the pooling kernel.
             //
 
-            Kernel(Input + NCHWC * (ih * InputWidth - PaddingLeftX), Output,
+            Kernel(Input + BlockSize * (ih * InputWidth - PaddingLeftX), Output,
                 StrideWidthBytes, DilationWidthBytes, InputStrideBytes,
                 KernelSize, EffectiveKernelHeight, KernelWidth,
-                Input + NCHWC * (ih * InputWidth), InputWidthBytes,
+                Input + BlockSize * (ih * InputWidth), InputWidthBytes,
                 DilatedInputWidthBytes, OutputCountLeftPadX, OutputCountX,
                 OutputCountRightPadX);
 
-            Output += NCHWC * OutputWidth;
+            Output += BlockSize * OutputWidth;
 
             //
             // Adjust the amount of work remaining and check if the end of an output
@@ -1054,7 +1135,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 
             if (++ph == OutputHeight) {
 
-                Input += NCHWC * InputSize;
+                Input += BlockSize * InputSize;
 
                 ph = 0;
             }
@@ -1081,11 +1162,59 @@ MlasNchwcConv(
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool
     )
+/*++
+
+Routine Description:
+
+    This routine implements the NCHWc convolution operation.
+
+Arguments:
+
+    Dimensions - Supplies the number of dimensions.
+
+    InputShape - Supplies the shape of the input tensor.
+
+    KernelShape - Supplies the shape of the kernel transform.
+
+    DilationShape - Supplies the shape of the dilation.
+
+    Padding - Supplies the number of padding elements at the edge of the input
+        tensor.
+
+    StrideShape - Supplies the shape of the stride.
+
+    OutputShape - Supplies the shape of the output tensor.
+
+    GroupCount - Supplies the number of channel groups.
+
+    Input - Supplies the input tensor.
+
+    Filter - Supplies the filter tensor.
+
+    Bias - Optionally supplies the bias vector.
+
+    Output - Supplies the output tensor.
+
+    Activation - Supplies the parameters for the activation to apply to the
+        convolution output.
+
+    ZeroMode - Supplies true if the output tensor must be zero initialized
+        first, else false if the output tensor is accumulated into. This flag is
+        used to implement Conv/Sum fusion.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
 {
     MLAS_NCHWC_CONV_WORK_BLOCK WorkBlock;
 
     //
-    //
+    // Capture the convolution specific parameters to the work block.
     //
 
     WorkBlock.Input = Input;
@@ -1097,7 +1226,7 @@ MlasNchwcConv(
     WorkBlock.ZeroMode = ZeroMode;
 
     //
-    //
+    // Capture the generic shape parameters to the work block.
     //
 
     MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
@@ -1107,32 +1236,36 @@ MlasNchwcConv(
     WorkBlock.OutputChannels /= GroupCount;
 
     //
+    // Determine the type of convolution to perform based on the shape
+    // parameters.
     //
+    // N.B. The caller must be aware of the selection algorithm in order to
+    // reorder the filter tensor in the expected format for the given algorithm.
+    //
+
+    PMLAS_THREADED_ROUTINE ThreadedRoutine;
+
+    if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
+        if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&
+            WorkBlock.Padding[0] == 0 && WorkBlock.Padding[1] == 0 &&
+            WorkBlock.Padding[2] == 0 && WorkBlock.Padding[3] == 0) {
+            ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_POINTWISE_ALGORITHM>;
+        } else {
+            ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_NCHWC_ALGORITHM>;
+        }
+    } else if (WorkBlock.InputChannels == 1 && WorkBlock.OutputChannels == 1) {
+        ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM>;
+    } else {
+        ThreadedRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_NCHW_ALGORITHM>;
+    }
+
+    //
+    // Schedule the operation across a set of worker threads.
     //
 
     WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
 
-    PMLAS_THREADED_ROUTINE ConvolverRoutine;
-
-    if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
-        if (WorkBlock.KernelShape[0] == 1 &&
-            WorkBlock.KernelShape[1] == 1 &&
-            WorkBlock.Padding[0] == 0 &&
-            WorkBlock.Padding[1] == 0 &&
-            WorkBlock.Padding[2] == 0 &&
-            WorkBlock.Padding[3] == 0 &&
-            MlasPlatform.ConvPointwiseFloatKernel != nullptr) {
-            ConvolverRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_POINTWISE_ALGORITHM>;
-        } else {
-            ConvolverRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_NCHWC_ALGORITHM>;
-        }
-    } else if (WorkBlock.InputChannels == 1 && WorkBlock.OutputChannels == 1) {
-        ConvolverRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM>;
-    } else {
-        ConvolverRoutine = MlasNchwcThreaded<MLAS_NCHWC_CONV_NCHW_ALGORITHM>;
-    }
-
-    MlasExecuteThreaded(ConvolverRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
+    MlasExecuteThreaded(ThreadedRoutine, &WorkBlock, WorkBlock.tids, ThreadPool);
 }
 
 void
@@ -1150,11 +1283,48 @@ MlasNchwcPool(
     float* Output,
     MLAS_THREADPOOL* ThreadPool
     )
+/*++
+
+Routine Description:
+
+    This routine implements the NCHWc pooling operation.
+
+Arguments:
+
+    PoolingKind - Supplies the kind of pooling operation to perform.
+
+    Dimensions - Supplies the number of dimensions.
+
+    InputShape - Supplies the shape of the input tensor.
+
+    KernelShape - Supplies the shape of the kernel transform.
+
+    DilationShape - Supplies the shape of the dilation.
+
+    Padding - Supplies the number of padding elements at the edge of the input
+        tensor.
+
+    StrideShape - Supplies the shape of the stride.
+
+    OutputShape - Supplies the shape of the output tensor.
+
+    Input - Supplies the input tensor.
+
+    Output - Supplies the output tensor.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
 {
     MLAS_NCHWC_POOL_WORK_BLOCK WorkBlock;
 
     //
-    //
+    // Capture the pooling specific parameters to the work block.
     //
 
     WorkBlock.Input = Input;
@@ -1162,14 +1332,14 @@ MlasNchwcPool(
     WorkBlock.PoolingKind = PoolingKind;
 
     //
-    //
+    // Capture the generic shape parameters to the work block.
     //
 
     MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
         DilationShape, Padding, StrideShape, OutputShape);
 
     //
-    //
+    // Schedule the operation across a set of worker threads.
     //
 
     WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
