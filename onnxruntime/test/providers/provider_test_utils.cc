@@ -416,6 +416,7 @@ void OpTester::Run(ExpectResult expect_result,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
+        kOpenVINOExecutionProvider,
     };
 
     bool has_run = false;
@@ -458,6 +459,8 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultBrainSliceExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
+        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+          execution_provider = DefaultOpenVINOExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -471,7 +474,7 @@ void OpTester::Run(ExpectResult expect_result,
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
-          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider)
+          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider || provider_type == onnxruntime::kOpenVINOExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
