@@ -11,6 +11,7 @@ parameters:
   BuildArch: 'x64'
   SetVcvars: 'false'
   MsbuildArguments: '/m'
+  EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
 
 jobs:
@@ -28,7 +29,7 @@ jobs:
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
-        EnvSetupScript: 'setup_env.bat'
+        EnvSetupScript: ${{ parameters.EnvSetupScript }}
         buildArch: ${{ parameters.BuildArch }}
         setVcvars: ${{ parameters.SetVcvars }}
 

@@ -21,6 +21,7 @@ jobs:
     BuildArch: 'amd64'
     SetVcvars: 'true'
     MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
+    EnvSetupScript: 'setup_env_cuda.bat'
     CudaVersion: '10.0'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.Gpu
