@@ -49,7 +49,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     auto* kernel = info.GetKernel(node->Index());
     OpKernelContext op_kernel_context(&frame, kernel, ::onnxruntime::logging::LoggingManager::DefaultLogger());
 
-    kernel->Compute(&op_kernel_context);
+    ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
     std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);
