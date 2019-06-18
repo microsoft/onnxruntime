@@ -446,7 +446,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
             if (status != nullptr) {
               OrtReleaseStatus(status);
-              return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "initialize preallocated buffer failed");
+              return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
 
             deleter.f = UnInitTensor;
