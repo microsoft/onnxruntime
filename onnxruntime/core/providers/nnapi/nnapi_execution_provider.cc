@@ -8,6 +8,7 @@
 #include "core/graph/model.h"
 #include "dnnlibrary/ModelBuilder.h"
 #include "dnnlibrary/OnnxReader.h"
+#include "tools/onnx2daq/OnnxConverter.h"
 
 namespace onnxruntime {
 
@@ -49,19 +50,8 @@ std::shared_ptr<KernelRegistry> NnapiExecutionProvider::GetKernelRegistry() cons
 }
 
 std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
-  // TODO: Get supported nodes rather than a whole model
-  std::vector<std::vector<int>> supported_nodes_vector;
-
-  try {
-    dnn::OnnxReader onnx_reader;
-    dnn::ModelBuilder model_builder;
-    onnx_reader.ReadOnnx(model_proto, model_builder);
-    std::vector<int> temp(model_proto.graph().node_size());
-    std::iota(temp.begin(), temp.end(), 0);
-    supported_nodes_vector.push_back(temp);
-  } catch (const std::invalid_argument&) {
-  }
-  return supported_nodes_vector;
+  dnn::OnnxConverter converter;
+  return converter.GetSupportedNodes(model_proto);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
