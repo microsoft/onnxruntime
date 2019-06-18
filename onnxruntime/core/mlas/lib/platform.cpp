@@ -91,6 +91,7 @@ Return Value:
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelSse;
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;

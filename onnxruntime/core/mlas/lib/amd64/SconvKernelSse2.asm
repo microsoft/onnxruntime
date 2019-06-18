@@ -175,12 +175,52 @@ ProcessNextOutputCount:
         ENDM
 
 ;
+; Macro Description:
+;
+;   This macro generates code to compute the convolution for a specified number
+;   of filter rows for a pointwise convolution.
+;
+; Arguments:
+;
+;   FilterCount - Supplies the number of rows from the filter to process.
+;
+; Implicit Arguments:
+;
+;   rdi - Supplies the address of the input buffer.
+;
+;   rsi - Supplies the FilterStride parameter (see function description).
+;
+;   rbp - Supplies the InputStride parameter (see function description).
+;
+;   r8 - Supplies the address of the output buffer.
+;
+;   r9 - Supplies the StrideWidth parameter (see function description).
+;
+;   r10 - Supplies the OutputCount parameter (see function description).
+;
+;   r12 - Supplies the address of the filter buffer.
+;
+
+ProcessPointwiseFilterCountN MACRO FilterCount
+
+        LOCAL   ProcessNextOutputCount
+
+ProcessNextOutputCount:
+        ProcessPointwiseOutputCountN Sse, 8, FilterCount, 1
+        add     rdi,r9                      ; advance input by 1 element
+        dec     r10
+        jnz     ProcessNextOutputCount
+
+        ENDM
+
+;
 ; Generate the convolution kernels.
 ;
 
 SconvKernelFunction Nchw, 8, Sse
 SconvKernelFunction Nchwc, 8, Sse, BiasFilter
 SconvKernelDepthwiseFunction 8, Sse
+SconvKernelPointwiseFunction Sse, BiasFilter
 
 ;
 ; Macro Description:

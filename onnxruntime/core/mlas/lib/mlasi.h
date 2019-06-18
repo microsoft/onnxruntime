@@ -307,6 +307,7 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelSse;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx;
