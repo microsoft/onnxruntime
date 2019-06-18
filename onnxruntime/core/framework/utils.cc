@@ -15,8 +15,89 @@
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 
+#include <io.h>
+#include <direct.h>
+
 namespace onnxruntime {
 namespace utils {
+
+const std::string BaseDumpDirectory("D:\\dev\\data\\nasnet_debug\\");
+const std::string seq_const("seq_dump");
+const std::string par_const("par_dump");
+const std::string input_const("inputs");
+const std::string output_const("outputs");
+const char* const ort_debug_enabled = "ORT_EXECUTOR_DEBUG";
+
+bool IsOrtDebugDumpEnabled() {
+  size_t size = 0;
+  char buf[2];
+  getenv_s(&size, buf, sizeof(buf), ort_debug_enabled);
+  return (size > 0 && buf[0] == '1');
+}
+
+void MakeDir(const std::string& dir) {
+  if (_access(dir.c_str(), 0) != 0) {
+    if (0 != _mkdir(dir.c_str())) {
+      assert(false);
+    }
+  }
+}
+
+void DumpDebugConv(const std::string& file_path, const float* Y_data, size_t size) {
+  std::fstream out(file_path, std::ios_base::out | std::ios_base::binary);
+  assert(out.is_open());
+  out.write(reinterpret_cast<const char*>(Y_data), size);
+  out.flush();
+  assert(!out.fail());
+}
+
+void DumpOrtValues(bool seq, bool input, NodeIndex index, const NodeDebugData& values) {
+  if (!IsOrtDebugDumpEnabled()) {
+    return;
+  }
+
+  MakeDir(BaseDumpDirectory);
+
+  std::string folder(BaseDumpDirectory);
+  folder.append(seq ? seq_const : par_const).append("\\");
+  MakeDir(folder);
+  folder.append(std::to_string(index)).append("_").append(input ? input_const : output_const);
+  MakeDir(folder);
+
+  for (const auto& v : values) {
+    std::string file_path(folder);
+    file_path.append("\\").append(std::to_string(v.first)).append(".bin");
+    std::fstream out(file_path, std::ios_base::out | std::ios_base::binary);
+    assert(out.is_open());
+    assert(v.second.IsTensor());
+    const auto& t = v.second.Get<Tensor>();
+    if (t.Size() > 0) {
+      out.write(reinterpret_cast<const char*>(t.DataRaw()), t.Size());
+    }
+    out.flush();
+    assert(!out.fail());
+  }
+}
+
+void DumpNodeInputs(bool seq, const NodeIndexToData& Inputs) {
+  if (!IsOrtDebugDumpEnabled()) {
+    return;
+  }
+  for (const auto& e : Inputs) {
+    DumpOrtValues(seq, true, e.first, e.second);
+  }
+}
+
+void DumpNodeOutputs(bool seq, const NodeIndexToData& Outputs) {
+  if (!IsOrtDebugDumpEnabled()) {
+    return;
+  }
+  for (const auto& e : Outputs) {
+    DumpOrtValues(seq, false, e.first, e.second);
+  }
+}
+
+
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info) {
   return session_state.GetExecutionProviders().GetAllocator(allocator_info);
 }

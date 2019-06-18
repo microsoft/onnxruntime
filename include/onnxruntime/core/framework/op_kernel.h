@@ -59,6 +59,7 @@ class OpKernel {
 };
 
 class OpKernelContext {
+  bool dump_debug_ = false;
  public:
   using ArgMap = std::unordered_map<std::string, size_t>;
 
@@ -67,6 +68,10 @@ class OpKernelContext {
                            const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
+
+  void SetDumpDebug(bool v) { dump_debug_ = v; }
+
+  bool GetDumpDebug() const { return dump_debug_; }
 
   /**
   Return the number of inputs for a variadic argument.

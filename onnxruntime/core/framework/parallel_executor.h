@@ -15,6 +15,8 @@
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
 
+#include "core/framework/utils.h"
+
 namespace onnxruntime {
 
 class ExecutionFrame;

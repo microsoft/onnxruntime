@@ -64,12 +64,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(), terminate_flag_);
+
     // TODO: log kernel outputs?
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
 
+    LOGS(logger, INFO) << "#Start index: " << node_index;
+
     // sync before compute
+    utils::NodeDebugData node_inputs;
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.InputFence(input_index);
@@ -80,7 +84,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
         fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
+      const auto* val = op_kernel_context.GetInputMLValue(input_index);
+      if (val != nullptr && val->IsAllocated()) {
+        node_inputs.push_back({input_index, *val});
+      }
     }
+
+    utils::DumpOrtValues(true, true, node_index, node_inputs);
+    node_inputs.clear();
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
@@ -107,7 +118,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
       // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+      // VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
 
       kernel_begin_time = session_state.Profiler().StartTime();
     }
@@ -148,10 +159,15 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
+    utils::NodeDebugData node_outputs;
     for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
       Fence_t fence = op_kernel_context.OutputFence(output_index);
       if (fence) {
         fence->AfterUsedAsOutput(queue_id);
+      }
+      const auto* val = op_kernel_context.GetOutputMLValue(output_index);
+      if (val != nullptr && val->IsAllocated()) {
+        node_outputs.push_back({output_index, *val});
       }
     }
 
@@ -162,9 +178,20 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
+    utils::DumpOrtValues(true, false, node_index, node_outputs);
+    node_outputs.clear();
+
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
+
+    const auto begin = p_op_kernel->Node().OutputEdgesBegin();
+    const auto end = p_op_kernel->Node().OutputEdgesEnd();
+    for (auto it = begin; it != end; ++it) {
+      LOGS(logger, INFO) << "#Output current index: "
+                  << node_index << ", output name: " << (*it).GetNode().Name() << ", output index: "
+                  << (*it).GetNode().Index();
+    }
   }
 
   VLOGS(logger, 1) << "Fetching output.";

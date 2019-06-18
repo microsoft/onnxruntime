@@ -109,7 +109,8 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
   auto graph_viewer = session_state.GetGraphViewer();
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  //bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  bool f_profiler_enabled = true;
   // Avoid context switching if possible.
   while (keep_running) {
     // TODO: Convert RunNodeAsync return Status.
@@ -131,10 +132,16 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
                                               p_op_kernel->Node().ImplicitInputDefs(),
                                               terminate_flag_);
 
+
+    LOGS(logger, INFO) << "Start index: " << node_index;
+
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
+
     // sync before compute
+    utils::NodeDebugData node_inputs;
+
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
 
     for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
@@ -146,7 +153,14 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
         }
         fence->BeforeUsingAsInput(execution_provider_type, queue_id);
       }
+      const auto* val = op_kernel_context.GetInputMLValue(input_index);
+      if (val != nullptr && val->IsAllocated()) {
+        node_inputs.push_back({input_index, *val});
+      }
     }
+
+    utils::DumpOrtValues(false, true, node_index, node_inputs);
+    node_inputs.clear();
 
     for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
       Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
@@ -206,10 +220,15 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
       }
     }
 
+    utils::NodeDebugData node_outputs;
     for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
       Fence_t fence = op_kernel_context.OutputFence(output_index);
       if (fence) {
         fence->AfterUsedAsOutput(queue_id);
+      }
+      const auto* val = op_kernel_context.GetOutputMLValue(output_index);
+      if (val != nullptr && val->IsAllocated()) {
+        node_outputs.push_back({output_index, *val});
       }
     }
     if (f_profiler_enabled) {
@@ -218,14 +237,22 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
-    //std::cout << "Run async node finish: " << p_node_index << std::endl;
+
+    utils::DumpOrtValues(false, false, node_index, node_outputs);
+    node_outputs.clear();
 
     keep_running = false;
 
     // Checking which output nodes ready for running.
     {
-      auto begin = p_op_kernel->Node().OutputEdgesBegin();
-      auto end = p_op_kernel->Node().OutputEdgesEnd();
+      const auto begin = p_op_kernel->Node().OutputEdgesBegin();
+      const auto end = p_op_kernel->Node().OutputEdgesEnd();
+
+      for (auto it = begin; it != end; ++it) {
+        LOGS(logger, INFO) << "Output for current index: "
+                           << node_index << ", output name: " << (*it).GetNode().Name() << ", output index: "
+                           << (*it).GetNode().Index();
+      }
 
       std::lock_guard<OrtMutex> lock(ref_mutex_);
       for (auto it = begin; it != end; it++) {
@@ -238,10 +265,6 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
             EnqueueNode(idx, session_state, logger);
           }
         }
-
-        // std::cout << "handle output, current name: " << p_op_kernel->Node().Name() << ", current index: "
-        // << p_node_index << ", output name: " << (*it)->GetNode().Name() << ", output index: "
-        // << (*it)->GetNode().Index() << ", after -- output ref: " << node_refs_[idx] << std::endl;
       }
     }
   }
@@ -259,7 +282,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
     try {
       ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
     } catch (...) {
-      // catch node processing failure exceptions here to prevent app crash.
+      std::cout << "Exception in parallel executor" << std::endl;
     }
   });
 }

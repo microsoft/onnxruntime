@@ -26,7 +26,6 @@ class Logger;
 
 namespace utils {
 
-
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
@@ -115,6 +114,19 @@ common::Status ExecuteGraphWithCachedInfo(
     retval = function<std::string>(__VA_ARGS__);                           \
   else                                                                     \
     ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
+
+extern const std::string BaseDumpDirectory;
+
+using NodeDebugData = std::vector<std::pair<size_t, OrtValue>>;
+using NodeIndexToData = std::unordered_map<NodeIndex, NodeDebugData>;
+
+void DumpNodeInputs(bool seq, const NodeIndexToData& Inputs);
+
+void DumpNodeOutputs(bool seq, const NodeIndexToData& Outputs);
+
+void DumpDebugConv(const std::string& file_path, const float* Y_data, size_t size);
+
+void DumpOrtValues(bool seq, bool input, NodeIndex index, const NodeDebugData& values);
 
 }  // namespace utils
 }  // namespace onnxruntime
