@@ -57,8 +57,8 @@ std::unique_ptr<logging::Logger> ServerEnvironment::GetLogger(const std::string&
   return default_logging_manager_.CreateLogger(id, severity_, false);
 }
 
-Ort::Session& ServerEnvironment::GetSession() const {
-  return &session;
+const Ort::Session& ServerEnvironment::GetSession() const {
+  return session;
 }
 
 }  // namespace server

@@ -39,7 +39,7 @@ namespace onnxruntime{
 void LogSink::SendImpl(const logging::Timestamp& timestamp, const std::string& logger_id, const logging::Capture& message){
     if(sink_->should_log((spdlog::level::level_enum)message.Severity())){
        auto loc = message.Location();
-    sink_->set_formatter(std::make_unique<spdlog::formatter>(timestamp, message.SeverityPrefix(), logger_id));
+    sink_->set_formatter(std::make_unique<ORTFormatter>(timestamp, message.SeverityPrefix(), logger_id));
     sink_->log(spdlog::details::log_msg{spdlog::source_loc{loc.file_and_path.c_str(), loc.line_num, loc.function.c_str()}, message.Category(), (spdlog::level::level_enum)message.Severity(), message.Message()});
     }
 }

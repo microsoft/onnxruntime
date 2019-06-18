@@ -65,13 +65,6 @@ int main(int argc, char* argv[]) {
     LOGS(logger, VERBOSE) << "Initialize Model Successfully!";
   }
 
-  status = env->GetSession()->Initialize();
-  if (!status.IsOK()) {
-    LOGS(logger, FATAL) << "Session Initialization Failed:" << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
-    exit(EXIT_FAILURE);
-  } else {
-    LOGS(logger, VERBOSE) << "Initialize Session Successfully!";
-  }
 
   auto const boost_address = boost::asio::ip::make_address(config.address);
   server::App app{};

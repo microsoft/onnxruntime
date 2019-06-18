@@ -24,7 +24,7 @@ class ServerEnvironment {
   std::unique_ptr<logging::Logger> GetLogger(const std::string& id);
   logging::Severity GetLogSeverity() const;
 
-  Ort::Session& GetSession() const;
+  const Ort::Session& GetSession() const;
   common::Status InitializeModel(const std::string& model_path);
   const std::vector<std::string>& GetModelOutputNames() const;
 

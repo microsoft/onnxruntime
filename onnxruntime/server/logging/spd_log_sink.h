@@ -17,9 +17,9 @@ namespace server {
 class ORTFormatter : public spdlog::formatter{
   
  private:
+    const logging::Timestamp timestamp_;
     const char severityPrefix_;
     const std::string logger_id_;
-    const logging::Timestamp timestamp_;
 
   public:
   ORTFormatter(const logging::Timestamp& timestamp, const char severityPrefix, const std::string& logger_id);

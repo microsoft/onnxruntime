@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
+#include "tensorprotoutils.h"
 
 #include <memory>
 #include <algorithm>
 #include <limits>
 #include <gsl/pointers>
 
+#include "onnx-ml.pb.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/allocator.h"
 #include "core/common/callback.h"
 #include "core/framework/data_types.h"
@@ -74,12 +74,7 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
     }
     return Status::OK();
   }
-}
-}  // namespace
-
-
-namespace onnxruntime {
-namespace utils {
+  }
 
 // This macro doesn't work for Float16/bool/string tensors
 #define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                 \
@@ -303,11 +298,6 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
 
-static void ORT_API_CALL UnInitTensor(void* param) noexcept {
-  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
-  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
-  delete p;
-}
 
 ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
                     enum ONNXTensorElementDataType type) {
@@ -337,7 +327,7 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 #define CASE_PROTO(X, Y)                                                                                             \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                               \
     ORT_RETURN_IF_ERROR(                                                                                             \
-        ::onnxruntime::utils::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size)); \
+        ::onnxruntime::server::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size)); \
     break;
 
 class AutoDelete {
@@ -352,25 +342,47 @@ class AutoDelete {
   }
 };
 
-static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
-  to.f = from.f;
-  to.param = from.param;
-  from.f = nullptr;
-  from.param = nullptr;
+#define CASE_TYPE(X)                             \
+  case ONNX_NAMESPACE::TensorProto_DataType_##X: \
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;
+
+ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
+  switch (type) {
+    CASE_TYPE(FLOAT)
+    CASE_TYPE(UINT8)
+    CASE_TYPE(INT8)
+    CASE_TYPE(UINT16)
+    CASE_TYPE(INT16)
+    CASE_TYPE(INT32)
+    CASE_TYPE(INT64)
+    CASE_TYPE(STRING)
+    CASE_TYPE(BOOL)
+    CASE_TYPE(FLOAT16)
+    CASE_TYPE(DOUBLE)
+    CASE_TYPE(UINT32)
+    CASE_TYPE(UINT64)
+    CASE_TYPE(COMPLEX64)
+    CASE_TYPE(COMPLEX128)
+    CASE_TYPE(BFLOAT16)
+    default:
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  }
 }
+
+ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  return CApiElementTypeFromProtoType(tensor_proto.data_type());
+}
+
 
 Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, Ort::Value& value) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
-  ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
-  deleter.f = nullptr;
-  deleter.param = nullptr;
+  ONNXTensorElementDataType ele_type = server::GetTensorElementType(tensor_proto);
   const void* raw_data = nullptr;
   size_t raw_data_len = 0;
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  AutoDelete deleter_for_file_data;
   void* tensor_data;
   {
-    if (tensor_proto.data_location() == TensorProto_DataLocation_EXTERNAL) {
+    if (tensor_proto.data_location() == onnx::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL) {
         return Status(common::ONNXRUNTIME, common::FAIL, "Server does not support external data.");
     } else if (tensor_proto.has_raw_data()) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
@@ -378,10 +390,7 @@ Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
       raw_data = tensor_proto.raw_data().data();
       raw_data_len = tensor_proto.raw_data().size();
     }
-    if (IsLittleEndianOrder() && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
-      tensor_data = const_cast<void*>(raw_data);
-      MoveOrtCallback(deleter_for_file_data.d, deleter);
-    } else {
+    {
       void* preallocated = m.GetBuffer();
       size_t preallocated_size = m.GetLen();
       int64_t tensor_size = 1;
@@ -426,11 +435,8 @@ Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
               OrtReleaseStatus(status);
               return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
-
-            deleter.f = UnInitTensor;
-            deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
           }
-          ORT_RETURN_IF_ERROR(::onnxruntime::utils::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
+          ORT_RETURN_IF_ERROR(::onnxruntime::server::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
                                                                               (std::string*)preallocated, tensor_size));
           break;
         default: {
@@ -445,8 +451,11 @@ Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   TensorShape tensor_shape{tensor_shape_vec};
-  value = Ort::Value::CreateTensor(allocator, tensor_data , m.GetLen() ,tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType) tensor_proto.data_type());
+  value = Ort::Value::CreateTensor(&allocator, tensor_data , m.GetLen() , tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType) tensor_proto.data_type());
   return Status::OK();
 }
+template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                           size_t* out);
+template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 }
 }

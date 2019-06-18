@@ -87,7 +87,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector <std::string>& inpu
 
 
 
-std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& options, const std::vector <std::string>& input_names, std::vector <Ort::Value>& input_values, const std::vector<std::string>& output_names){
+std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& options, const std::vector <std::string>& input_names, const std::vector <Ort::Value>& input_values, const std::vector<std::string>& output_names){
   size_t input_count = input_names.size();
   size_t output_count = output_names.size();
 

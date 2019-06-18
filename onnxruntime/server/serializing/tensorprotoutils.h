@@ -35,5 +35,12 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
  * This implementation does not support external data so as to reduce dependency surface.
  */
 common::Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& input, const server::MemBuffer& m, /* out */ Ort::Value& value);
+
+template <typename T>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ T* p_data, int64_t expected_size);
+
+ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
+ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 }
 }

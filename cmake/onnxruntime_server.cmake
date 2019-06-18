@@ -35,6 +35,8 @@ set(onnxruntime_server_lib_srcs
   "${ONNXRUNTIME_ROOT}/server/executor.cc"
   "${ONNXRUNTIME_ROOT}/server/converter.cc"
   "${ONNXRUNTIME_ROOT}/server/util.cc"
+  "${ONNXRUNTIME_ROOT}/server/logging/spd_log_sink.cc"
+  "${ONNXRUNTIME_ROOT}/server/serializing/tensorprotoutils.cc"
   )
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
@@ -43,6 +45,7 @@ if(NOT WIN32)
     set_source_files_properties(${ONNXRUNTIME_ROOT}/server/executor.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties(${ONNXRUNTIME_ROOT}/server/converter.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties(${ONNXRUNTIME_ROOT}/server/util.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties(${ONNXRUNTIME_ROOT}/server/serializing/tensorprotoutils.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
 
