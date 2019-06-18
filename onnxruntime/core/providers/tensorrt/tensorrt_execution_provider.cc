@@ -23,12 +23,12 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 
-#define CHECK_CUDA(call)         \
-  do {                           \
-    cudaError_t status = call;   \
-    if (status != cudaSuccess) { \
-      return -1;                 \
-    }                            \
+#define CHECK_CUDA(call)                                        \
+  do {                                                          \
+    cudaError_t status = call;                                  \
+    if (status != cudaSuccess) {                                \
+      return common::Status(common::ONNXRUNTIME, common::FAIL); \
+    }                                                           \
   } while (0)
 
 TensorrtExecutionProvider::TensorrtExecutionProvider()
@@ -57,7 +57,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
   // Find inputs and outputs of the subgraph
-  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -114,7 +114,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
-  std::multimap<int, const NodeArg *> inputs, outputs;
+  std::multimap<int, const NodeArg*> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
     inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
@@ -168,7 +168,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         //Add node and node args
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::NodeArg *> inputs, outputs;
+          std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
@@ -223,7 +223,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph.Nodes()) {
-    std::vector<onnxruntime::NodeArg *> inputs, outputs;
+    std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
@@ -277,11 +277,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   return result;
-}
-
-std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  return kernel_registry;
 }
 
 common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -485,7 +480,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           CHECK_CUDA(cudaMalloc(&buffers[i], input_size * sizeof(int32_t)));
           CHECK_CUDA(cudaMemcpy(buffers[i], input, input_size * sizeof(int32_t), cudaMemcpyHostToDevice));
         } else {
-          return static_cast<int>(common::StatusCode::NOT_IMPLEMENTED);
+          return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
       }
 
@@ -498,7 +493,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32 || output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           CHECK_CUDA(cudaMalloc(&buffers[i + num_binding_inputs], batch_size * output_dim_sizes[i] * sizeof(int32_t)));
         } else {
-          return static_cast<int>(common::StatusCode::NOT_IMPLEMENTED);
+          return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
       }
 
@@ -528,7 +523,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           }
           delete[] output;
         } else {
-          return static_cast<int>(common::StatusCode::NOT_IMPLEMENTED);
+          return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
         }
       }
 
@@ -542,7 +537,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         CHECK_CUDA(cudaFree(buffers[i]));
       }
 
-      return 0;
+      return Status::OK();
     };
 
     node_compute_funcs.push_back(compute_info);

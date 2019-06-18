@@ -46,6 +46,7 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
+option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
@@ -62,25 +63,40 @@ option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_LLVM "Build tvm with LLVM" OFF)
+option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" ON)
-
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
+option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
+option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
+if(onnxruntime_USE_OPENMP AND UNIX)
+  #if you enabled both of them, the code can still be built and run, but you may see
+  # 10x performance degradation, because one process should only have one openmp implementation
+  # mkl(or mklml) depends on Intel OpenMP
+  # GCC does not support linking against the Intel OpenMP runtime library
+  # Clang should be ok, but it's not in our consideration right now.
+  if(onnxruntime_USE_MKLML)
+    message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
+  endif()
+  if(onnxruntime_USE_NGRAPH)
+    message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+  endif()
+endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
   if(onnxruntime_USE_NSYNC)
@@ -100,6 +116,15 @@ endif()
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" VERSION_NUMBER)
+
+if(onnxruntime_USE_OPENMP)
+  find_package(OpenMP)
+  if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    add_definitions(-DUSE_OPENMP)
+  endif()
+endif()
 
 # Guarantee that the Eigen code that you are #including is licensed
 # under the MPL2 and possibly more permissive licenses (like BSD).
@@ -414,6 +439,7 @@ else()
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
   check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
+  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -465,6 +491,9 @@ if (onnxruntime_USE_MKLDNN)
 endif()
 
 if (onnxruntime_USE_NGRAPH)
+  #if (onnxruntime_USE_OPENMP)
+  #  message(FATAL_ERROR "Please set onnxruntime_USE_OPENMP=OFF for nGraph execution provider.")
+  #endif()
   if (NOT onnxruntime_USE_FULL_PROTOBUF)
     message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
   endif()
@@ -473,6 +502,48 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ngraph)
 endif()
+
+if(onnxruntime_USE_OPENVINO)
+
+    if(WIN32)
+        message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
+    endif()
+
+    add_definitions(-DUSE_OPENVINO=1)
+
+	if (onnxruntime_USE_OPENVINO_SOURCE)
+	  include(openvino)
+	  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
+	  link_directories(${OPENVINO_LIB_DIR})
+	  #TODO: set plugin path var
+	endif()
+
+	if (onnxruntime_USE_OPENVINO_BINARY)
+	    #TODO: set plugin path var
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_MYRIAD)
+		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_GPU_FP32)
+		add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_GPU_FP16)
+		add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_CPU_FP32)
+		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+	endif()
+
+	if(onnxruntime_USE_OPENVINO_VAD_R)
+		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+	endif()
+
+endif()
+
 
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)
@@ -611,6 +682,10 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
   set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
   set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
+  if(UNIX)
+    target_compile_options(gmock PRIVATE "-w")
+    target_compile_options(gtest PRIVATE "-w")
+  endif()
   include(onnxruntime_unittests.cmake)
 endif()
 
@@ -619,4 +694,3 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
-

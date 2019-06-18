@@ -7,26 +7,26 @@
 namespace onnxruntime {
 
 template <typename T>
-MLValueTensorSlicer<T> MLValueTensorSlicer<T>::Create(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) {
+OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) {
   static_assert(std::is_same<std::remove_const_t<T>, OrtValue>::value,
-                "MLValueTensorSlicer can only be used with 'OrtValue' or 'const OrtValue'");
+                "OrtValueTensorSlicer can only be used with 'OrtValue' or 'const OrtValue'");
 
   ORT_ENFORCE(ort_value.IsTensor(), "Can't slice a non-tensor OrtValue. Type was ", ort_value.Type());
   ORT_ENFORCE(ort_value.IsAllocated(), "OrtValue has not been allocated so can't be sliced.");
 
   auto& tensor_shape{ort_value.template Get<Tensor>().Shape()};
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
-                      "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
+              "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
   auto dim0_size = tensor_shape[0];
   ORT_ENFORCE(dim0_offset < dim0_size, "Invalid dim0_offset of ", dim0_offset, ". Dimension 0 is ", dim0_size);
 
-  return MLValueTensorSlicer{ort_value, slice_dimension, dim0_offset};
+  return OrtValueTensorSlicer{ort_value, slice_dimension, dim0_offset};
 };
 
 template <typename T>
-MLValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
-                                           Direction direction)
+OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
+                                            Direction direction)
     : ort_value_{&ort_value},
       position_{position},
       increment_by_{direction == Direction::kForward ? 1 : -1},
@@ -40,34 +40,32 @@ MLValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension,
   per_iteration_shape_ = shape.Slice(slice_dimension + 1);
   const int64_t per_iteration_shape_size = per_iteration_shape_.Size();
   assert(per_iteration_shape_size >= 0);
-  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(per_iteration_shape_size), tensor.DataType()->Size(), &per_iteration_offset_))
+  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(per_iteration_shape_size), tensor.DataType()->Size(),
+                                       &per_iteration_offset_))
     throw std::runtime_error("size overflow");
   const int64_t slice_dimension_size = shape.Slice(slice_dimension).Size();
   assert(slice_dimension_size >= 0);
 
   size_t total_len;
-  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(slice_dimension_size), tensor.DataType()->Size(), &total_len))
+  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(slice_dimension_size), tensor.DataType()->Size(),
+                                       &total_len))
     throw std::runtime_error("size overflow");
-  if (!IAllocator::CalcMemSizeForArray(dim0_offset, total_len, &total_len))
-    throw std::runtime_error("size overflow");
+  if (!IAllocator::CalcMemSizeForArray(dim0_offset, total_len, &total_len)) throw std::runtime_error("size overflow");
   // move tensor_data_raw_ to the start of the section to slice
   tensor_data_raw_ = static_cast<const char*>(tensor.DataRaw()) + total_len;
 
   // constrain position_ to valid bounds of 0 to sequence_length_ if forward, or -1 to sequence_length_ - 1 if reverse
   if (direction == Direction::kForward) {
-    if (position_ > sequence_length_)
-      position_ = sequence_length_;  // end()
+    if (position_ > sequence_length_) position_ = sequence_length_;  // end()
   } else {
-    if (position_ >= sequence_length_)
-      position_ = sequence_length_ - 1;  // begin() at first valid position_
+    if (position_ >= sequence_length_) position_ = sequence_length_ - 1;  // begin() at first valid position_
 
-    if (position_ < -1)
-      position_ = -1;  // end()
+    if (position_ < -1) position_ = -1;  // end()
   }
 }
 
 template <typename T>
-void MLValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
+void OrtValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
   position_materialized_ = position_;
   const void* tensor_slice_data_raw = static_cast<const char*>(tensor_data_raw_) + (position_ * per_iteration_offset_);
 
@@ -75,23 +73,21 @@ void MLValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
   //
   // We need the non-const data pointer from the Tensor in order to create the sub-Tensors as we iterate,
   // so a const_cast is required.
-  // However we will only return a non-const OrtValue from operator* if MLValueTensorSlicer was created with
+  // However we will only return a non-const OrtValue from operator* if OrtValueTensorSlicer was created with
   // a non-const OrtValue, so externally we maintain constness as expected.
   //
   // TODO: Ideally we could avoid the overhead of creating a new Tensor but that would require
   // a lot more complexity (re-consider how ExecutionFrame and OpKernelContext work and whether
   // they need to be OrtValue based, or whether they could be Tensor based).
   // Potential future performance enhancement.
-  auto sub_tensor = std::make_unique<Tensor>(tensor_data_type_,
-                                             per_iteration_shape_,
-                                             const_cast<void*>(tensor_slice_data_raw),
-                                             *tensor_location_);
+  auto sub_tensor = std::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
+                                             const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
 
   current_ =
       OrtValue{sub_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 }
 
-template class MLValueTensorSlicer<OrtValue>;
-template class MLValueTensorSlicer<const OrtValue>;
+template class OrtValueTensorSlicer<OrtValue>;
+template class OrtValueTensorSlicer<const OrtValue>;
 
 }  // namespace onnxruntime

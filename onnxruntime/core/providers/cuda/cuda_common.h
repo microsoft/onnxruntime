@@ -140,6 +140,8 @@ class CudaKernel : public OpKernel {
     return provider_->CopyTensor(src, dst);
   }
 
+  inline int GetDeviceId() const { return provider_->GetDeviceId(); }
+
  private:
   CUDAExecutionProvider* provider_;
 };

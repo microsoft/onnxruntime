@@ -34,7 +34,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-h: help\n");
@@ -87,6 +87,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
+  bool enable_openvino = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
@@ -140,6 +141,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+            enable_openvino = true;
           } else {
             usage();
             return -1;
@@ -186,7 +189,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    relative_per_sample_tolerance = enable_openvino ? 0.009 : 1e-3;
+
     Ort::SessionOptions sf;
+
+
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -206,6 +214,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
+#endif
+    }
+
+    if(enable_openvino){
+#ifdef USE_OPENVINO
+        ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+#else
+    fprintf(stderr, "OpenVINO is not supported in this build");
+    return -1;
 #endif
     }
     if (enable_cuda) {
@@ -299,36 +316,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
-      {"AvgPool1d", "disable reason"},
-      {"AvgPool1d_stride", "disable reason"},
-      {"AvgPool2d", "disable reason"},
-      {"AvgPool2d_stride", "disable reason"},
-      {"AvgPool3d", "disable reason"},
-      {"AvgPool3d_stride", "disable reason"},
-      {"AvgPool3d_stride1_pad0_gpu_input", "disable reason"},
-      {"BatchNorm1d_3d_input_eval", "disable reason"},
-      {"BatchNorm2d_eval", "disable reason"},
-      {"BatchNorm2d_momentum_eval", "disable reason"},
-      {"BatchNorm3d_eval", "disable reason"},
-      {"BatchNorm3d_momentum_eval", "disable reason"},
-#if defined(__GNUG__) && !defined(__LP64__)
-      {"constantofshape_float_ones", "test data bug"},
-      {"constantofshape_int_zeros", "test data bug"},
-#else
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-#endif
-      {"GLU", "disable reason"},
-      {"GLU_dim", "disable reason"},
-      {"Linear", "disable reason"},
-      {"PReLU_1d", "disable reason"},
-      {"PReLU_1d_multiparam", "disable reason"},
-      {"PReLU_2d", "disable reason"},
-      {"PReLU_2d_multiparam", "disable reason"},
-      {"PReLU_3d", "disable reason"},
-      {"PReLU_3d_multiparam", "disable reason"},
-      {"PoissonNLLLLoss_no_reduce", "disable reason"},
-      {"Softsign", "disable reason"},
       {"convtranspose_1d", "disable reason"},
       {"convtranspose_3d", "disable reason"},
       {"gemm_broadcast", "disable reason"},
@@ -336,17 +325,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"matmul_2d", "disable reason"},
       {"matmul_3d", "disable reason"},
       {"matmul_4d", "disable reason"},
-      {"operator_add_broadcast", "disable reason"},
-      {"operator_add_size1_broadcast", "disable reason"},
-      {"operator_add_size1_right_broadcast", "disable reason"},
-      {"operator_add_size1_singleton_broadcast", "disable reason"},
-      {"operator_addconstant", "disable reason"},
-      {"operator_addmm", "disable reason"},
-      {"operator_basic", "disable reason"},
-      {"operator_mm", "disable reason"},
-      {"operator_non_float_params", "disable reason"},
-      {"operator_params", "disable reason"},
-      {"operator_pow", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -370,9 +348,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"tiny_yolov2", "temporarily disable due to graph resolve failure."});
-  broken_tests.insert({"operator_repeat_dim_overflow", "temporarily disable due to graph resolve failure."});
 #endif
+
+#ifdef USE_OPENVINO
+  broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+#ifdef OPENVINO_CONFIG_GPU_FP32
+  broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+#endif
+#endif
+
+
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
@@ -396,6 +383,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_tiny_yolov2", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});
@@ -433,7 +421,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() ||
-       (p.second != "" && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+       (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }
