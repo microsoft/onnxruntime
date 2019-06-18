@@ -12,8 +12,6 @@ jobs:
   steps:
   - template: ../../templates/linux-set-variables-and-download.yml
 
-  - script: 'set'
-
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Signed NuGet'
     inputs:
