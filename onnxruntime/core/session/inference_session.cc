@@ -22,7 +22,7 @@
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"

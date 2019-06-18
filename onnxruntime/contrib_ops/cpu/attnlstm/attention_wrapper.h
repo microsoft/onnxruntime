@@ -10,9 +10,6 @@
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
-namespace concurrency {
-class ThreadPool;
-}
 namespace contrib {
 
 template <typename T>
@@ -30,7 +27,7 @@ class AttentionWrapper {
   virtual ~AttentionWrapper() = default;
 
   // Calculation based on output of the inner wrapped rnn_cell.
-  void ProcessOutput(const gsl::span<const T>& rnn_cell_state, onnxruntime::concurrency::ThreadPool* tp);
+  void ProcessOutput(const gsl::span<const T>& rnn_cell_state);
 
   gsl::span<const T> GetAttnStates() const;
 
