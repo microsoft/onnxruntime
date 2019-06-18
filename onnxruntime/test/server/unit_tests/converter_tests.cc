@@ -5,10 +5,12 @@
 #include "gmock/gmock.h"
 
 #include "core/framework/tensor.h"
+#include "core/graph/basic_types.h"
 #include "core/framework/allocatormgr.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
 #include "server/converter.h"
+#include "server/serializing/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace server {
@@ -297,12 +299,65 @@ TEST(MLValueToTensorProtoTests, UInt8ToInt32Data) {
 
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
-  auto count = tp.int32_data().size() * (sizeof(int32_t) / sizeof(uint8_t));
-  EXPECT_EQ(count, 8);
-  auto data = tp.int32_data().data();
-  const auto* data8 = reinterpret_cast<const uint8_t*>(data);
+  auto count = tp.int32_data().size();
+  EXPECT_EQ(count, 6);
   for (int x = 0; x < 6; ++x) {
-    EXPECT_EQ(data8[x], values_mul_x[x]);
+    EXPECT_EQ(tp.int32_data()[x], values_mul_x[x]);
+  }
+}
+
+TEST(MLValueToTensorProtoTests, UInt8ProtoRoundTrip) {
+  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+
+  std::vector<int64_t> dims_mul_x = {3, 2};
+  std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+  
+
+  onnx::TensorProto tp;
+  for(auto const& val: values_mul_x){
+    tp.add_int32_data(val);
+  }
+  for(auto const& dim: dims_mul_x){
+    tp.add_dims(dim);
+  }
+  tp.set_data_type(onnx::TensorProto_DataType_UINT8);
+  Ort::Value ml_value{nullptr};
+  char buf[1000];
+  auto allocator = Ort::Allocator::CreateDefault();
+  auto info = allocator.GetInfo();
+  MemBuffer buffer((void *)&buf, tp.ByteSizeLong(), *info);
+  onnxruntime::server::TensorProtoToMLValue(tp, buffer , ml_value);
+
+
+
+  onnx::TensorProto tp_out;
+
+  common::Status status = onnxruntime::server::MLValueToTensorProto(ml_value, /* using_raw_data */ false, std::move(logger), tp_out);
+  EXPECT_TRUE(status.IsOK());
+
+  // Verify data type
+  EXPECT_TRUE(tp_out.has_data_type());
+  EXPECT_EQ(tp_out.data_type(), onnx::TensorProto_DataType_UINT8);
+
+  // Verify data location
+  EXPECT_FALSE(tp_out.has_data_location());
+
+  // Verify dimensions
+  const auto& dims = tp_out.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    EXPECT_EQ(dims[i], dims_mul_x[i]);
+  }
+
+  // Verify data
+  EXPECT_FALSE(tp_out.has_raw_data());
+  
+  EXPECT_EQ(tp_out.int32_data_size(), tp.int32_data_size());
+  auto in_data = tp.int32_data();
+  auto out_data = tp_out.int32_data();
+  for (auto x = 0; x < tp_out.int32_data_size(); ++x) {
+    EXPECT_EQ(values_mul_x[x], in_data[x]);
+    EXPECT_EQ(static_cast<uint8_t>(out_data[x]), in_data[x]);
   }
 }
 
@@ -374,11 +429,10 @@ TEST(MLValueToTensorProtoTests, Int8ToInt32Data) {
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
   auto count = tp.int32_data().size();
-  EXPECT_EQ(count, 2);
-  auto data = tp.int32_data().data();
-  const auto* data8 = reinterpret_cast<const int8_t*>(data);
+  EXPECT_EQ(count, 6);
+  auto data = tp.int32_data();
   for (int x = 0; x < 6; ++x) {
-    EXPECT_EQ(data8[x], values_mul_x[x]);
+    EXPECT_EQ(tp.int32_data()[x], values_mul_x[x]);
   }
 }
 
@@ -450,11 +504,10 @@ TEST(MLValueToTensorProtoTests, UInt16ToInt32Data) {
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
   auto count = tp.int32_data().size();
-  EXPECT_EQ(count, 5);
-  auto data = tp.int32_data().data();
-  const auto* data16 = reinterpret_cast<const uint16_t*>(data);
+  EXPECT_EQ(count, 9);
+  auto data = tp.int32_data();
   for (int x = 0; x < 9; ++x) {
-    EXPECT_EQ(data16[x], values_mul_x[x]);
+    EXPECT_EQ(tp.int32_data()[x], values_mul_x[x]);
   }
 }
 
@@ -525,12 +578,11 @@ TEST(MLValueToTensorProtoTests, Int16ToInt32Data) {
 
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
-  auto count = tp.int32_data().size() * (sizeof(int32_t) / sizeof(int16_t));
+  auto count = tp.int32_data().size();
   EXPECT_EQ(count, 6);
-  auto data = tp.int32_data().data();
-  const auto* data16 = reinterpret_cast<const int16_t*>(data);
+  auto data = tp.int32_data();
   for (int x = 0; x < 6; ++x) {
-    EXPECT_EQ(data16[x], values_mul_x[x]);
+    EXPECT_EQ(tp.int32_data()[x], values_mul_x[x]);
   }
 }
 
@@ -602,11 +654,10 @@ TEST(MLValueToTensorProtoTests, BoolToInt32Data) {
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
   auto count = tp.int32_data().size();
-  EXPECT_EQ(count, 2);
-  auto data = tp.int32_data().data();
-  const auto* data16 = reinterpret_cast<const bool*>(data);
+  EXPECT_EQ(count, 6);
+  auto data = tp.int32_data();
   for (int x = 0; x < 6; ++x) {
-    EXPECT_EQ(data16[x], values_mul_x[x]);
+    EXPECT_EQ(tp.int32_data()[x], values_mul_x[x]);
   }
 }
 
@@ -690,11 +741,12 @@ TEST(MLValueToTensorProtoTests, FloatToInt32Data) {
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
   auto count = tp.int32_data().size();
-  EXPECT_EQ(count, 3);
+  EXPECT_EQ(count, 6);
   auto data = tp.int32_data().data();
-  const auto* data16 = reinterpret_cast<const onnxruntime::MLFloat16*>(data);
   for (int x = 0; x < 6; ++x) {
-    EXPECT_EQ(data16[x], values_mul_x[x]);
+    const u_int16_t data16 = data[x];
+    const auto data_float_16 = static_cast<onnxruntime::MLFloat16>(data16);
+    EXPECT_EQ(data_float_16, values_mul_x[x]);
   }
 }
 
@@ -778,11 +830,12 @@ TEST(MLValueToTensorProtoTests, BFloatToInt32Data) {
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
   auto count = tp.int32_data().size();
-  EXPECT_EQ(count, 3);
+  EXPECT_EQ(count, 6);
   auto data = tp.int32_data().data();
-  const auto* data16 = reinterpret_cast<const uint16_t*>(data);
   for (int x = 0; x < 6; ++x) {
-    EXPECT_EQ(data16[x], values_mul_x[x].val);
+    const u_int16_t data16 = data[x];
+    const auto data_float_16 = static_cast<onnxruntime::BFloat16>(data16);
+    EXPECT_EQ(data_float_16, values_mul_x[x]);
   }
 }
 
@@ -793,8 +846,6 @@ TEST(MLValueToTensorProtoTests, StringToStringData) {
   std::vector<std::string> values_mul_x{"A", "BC", "DEF", "123", "45", "6"};
   OrtValue* p_mlValue = new OrtValue{};
   onnxruntime::test::AllocateMLValue<std::string>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, p_mlValue);
-
-  
 
   Tensor* mutable_tensor = p_mlValue->GetMutable<Tensor>();
   std::string* mutable_data = mutable_tensor->MutableData<std::string>();
@@ -971,13 +1022,12 @@ TEST(MLValueToTensorProtoTests, UInt32ToUint64Data) {
 
   // Verify data
   EXPECT_FALSE(tp.has_raw_data());
-  auto count = tp.uint64_data().size() * (sizeof(uint64_t) / sizeof(uint32_t));
+  auto count = tp.uint64_data().size();
   EXPECT_EQ(count, 6);
 
   auto data = tp.uint64_data().data();
-  const auto* data32 = reinterpret_cast<const uint32_t*>(data);
   for (size_t x = 0; x < count; ++x) {
-    EXPECT_EQ(data32[x], values_mul_x[x]);
+    EXPECT_EQ(data[x], values_mul_x[x]);
   }
 }
 

@@ -115,9 +115,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(uint8_t) * elem_count);
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(data[i]);
         }
       }
       break;
@@ -127,9 +126,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(int8_t) * elem_count);
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(data[i]);
         }
       }
       break;
@@ -139,9 +137,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(uint16_t) * elem_count);
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(data[i]);
         }
       }
       break;
@@ -151,9 +148,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(int16_t) * elem_count);
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(data[i]);
         }
       }
       break;
@@ -163,9 +159,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(bool) * elem_count);
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(data[i]);
         }
       }
       break;
@@ -175,9 +170,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(onnxruntime::MLFloat16) * elem_count);
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(reinterpret_cast<const uint16_t *>(data)[i]);
         }
       }
       break;
@@ -194,9 +188,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(raw_data.data(), raw_data.size() * sizeof(uint16_t));
       } else {
-        auto i32data = reinterpret_cast<const int32_t*>(raw_data.data());
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(i32data[i]);
+          tensor_proto.add_int32_data(raw_data[i]);
         }
       }
       break;
@@ -206,15 +199,16 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       auto length = ml_value.GetStringTensorDataLength();
       std::vector<char> buffer;
       std::vector<size_t> offsets;
-      buffer.reserve(length);
-      offsets.reserve(elem_count);
+      buffer.resize(length);
+      offsets.resize(elem_count);
       ml_value.GetStringTensorContent(buffer.data(), length, offsets.data(), elem_count);
-      size_t loc = 0;
-      for (size_t i = 0, count = elem_count; i < count; ++i) {
-        auto offset = offsets[i];
-        tensor_proto.add_string_data(&buffer[loc], offset - loc);
-        loc += offset;
+      size_t start = 0;
+      for (size_t i = 1; i < elem_count; ++i) {
+        auto end = offsets[i];
+        tensor_proto.add_string_data(&buffer[start], end - start);
+        start = end;
       }
+      tensor_proto.add_string_data(&buffer[start], length - start);
       break;
     }
     case onnx::TensorProto_DataType_INT64: {  // Target: raw_data or int64_data
@@ -233,9 +227,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       if (using_raw_data) {
         tensor_proto.set_raw_data(data, sizeof(u_int32_t) * elem_count);
       } else {
-        auto u64data = reinterpret_cast<const uint64_t*>(data);
         for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_uint64_data(u64data[i]);
+          tensor_proto.add_uint64_data(data[i]);
         }
       }
       break;
