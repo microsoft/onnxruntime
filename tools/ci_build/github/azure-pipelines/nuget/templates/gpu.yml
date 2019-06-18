@@ -107,4 +107,3 @@ jobs:
 - template: test_linux.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
-    DisableContribOps: ${{ parameters.DisableContribOps }}

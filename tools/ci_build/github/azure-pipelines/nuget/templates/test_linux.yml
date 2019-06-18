@@ -1,6 +1,5 @@
 parameters:
   AgentPool: 'Linux-CPU'
-  DisableContribOps: ''
 
 jobs:
 - job: NuGet_Test_Linux
@@ -10,7 +9,6 @@ jobs:
   condition: succeeded()
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DisableContribOps: ${{ parameters.DisableContribOps }}
   steps:
   - template: ../../templates/linux-set-variables-and-download.yml
 
