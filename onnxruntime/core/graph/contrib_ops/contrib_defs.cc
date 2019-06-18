@@ -19,8 +19,8 @@ void convPoolShapeInference(
     bool use_dilation, bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
+void globalPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
 }
-void gloablPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
 
 namespace onnxruntime {
 namespace contrib {
@@ -55,7 +55,7 @@ void NchwcGlobalPoolOpSchemaGenerator(OpSchema& schema) {
   schema.Output(0, "Y", "", "T");
   schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
   schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-    gloablPoolTypeShapeInference(ctx);
+    ONNX_NAMESPACE::globalPoolTypeShapeInference(ctx);
   });
 }
 
