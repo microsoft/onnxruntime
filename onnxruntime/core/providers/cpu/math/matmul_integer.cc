@@ -9,6 +9,10 @@
 #include "core/providers/cpu/math/matmul_integer.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/gemmlowp_common_wrapper.h"
+#include "core/nblas/nblas_igemv_mkl.h"
+#include "core/nblas/nblas_igemv_avx2.h"
+#include "core/common/cpuid_info.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 
@@ -20,9 +24,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
-    MatMulInteger<uint8_t, uint8_t, int32_t>);
+    MatMulInteger<uint8_t, int8_t, int32_t>);
 
 Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
                         int32_t* result_data, const int lhs_offset, const int rhs_offset,
@@ -42,6 +46,69 @@ Status GemmlowpMultiply(const uint8_t* lhs_data, const uint8_t* rhs_data,
   return Status::OK();
 }
 
+template <>
+
+Status MatMulInteger<uint8_t, int8_t, int32_t>::Compute(OpKernelContext* ctx) const {
+  auto a = ctx->Input<Tensor>(0);
+  auto b = ctx->Input<Tensor>(1);
+
+  ORT_ENFORCE(a != nullptr && b != nullptr);
+  ORT_ENFORCE(a->Shape().NumDimensions() == 2);
+  ORT_ENFORCE(b->Shape().NumDimensions() == 2);
+  ORT_ENFORCE(a->Shape()[1] == b->Shape()[0]);
+
+  MatMulComputeHelper helper;
+
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+  auto a_data = const_cast<uint8_t*>(a->Data<uint8_t>());
+  auto b_data = const_cast<int8_t*>(b->Data<int8_t>());
+
+  auto q_y = y->MutableData<int32_t>();
+
+  auto batch = a->Shape()[0];
+  auto input_dim = a->Shape()[1];
+  auto embed_dim = b->Shape()[1];
+
+  // NOTE that NBLAS assumes weights to be transposed. Just store in a map here
+  //std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+  static thread_local std::unordered_map<int8_t*, IAllocatorUniquePtr<int8_t>> transposed_weights;
+
+  if (transposed_weights.count(b_data) == 0) {
+    AllocatorPtr alloc;
+    auto status = ctx->GetTempSpaceAllocator(&alloc);
+    ORT_RETURN_IF_ERROR(status);
+    auto transposed = IAllocator::MakeUniquePtr<int8_t>(alloc, b->Shape().Size());
+
+    for (int i = 0; i < input_dim; ++i)
+      for (int e = 0; e < embed_dim; ++e)
+        transposed.get()[e * input_dim + i] = b_data[i * embed_dim + e];
+    transposed_weights.emplace(b_data, std::move(transposed));
+  }
+
+  b_data = transposed_weights.at(b_data).get();
+  /*auto end_time = std::chrono::high_resolution_clock::now();
+  /auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+  if (dur > 0) {
+    transposetime += dur;
+    std::cout << "imatmul transpose time: " << transposetime << "This iteration time: " << dur << std::endl;
+  }*/
+  
+  bool use_AVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
+
+  if (batch == 1 && use_AVX2) {
+    if (input_dim % 32 == 0)
+      AVX2IntGemvS8U8S32R(b_data, a_data, input_dim, input_dim, embed_dim, q_y);
+    else
+      AVX2IntGemvS8U8S32REx(b_data, a_data, input_dim, embed_dim, q_y);
+  } else {
+    //MKLIntGemvS8U8S32R(b_data, a_data, embed_dim, batch, input_dim, q_y);
+    ORT_ENFORCE(false, "Uexpected code path. MKL called for matmulinteger");
+  }
+
+  return Status::OK();
+}
 template<>
 Status MatMulInteger<uint8_t, uint8_t, int32_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);

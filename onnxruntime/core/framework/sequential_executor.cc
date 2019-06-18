@@ -112,6 +112,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
+    /*if (p_op_kernel->Node().Name() == "OptimizedRNNStack114560MatMul_18") {
+      std::cout << "This is your node \n"; 
+    }*/
+
     const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
     if (!compute_status.IsOK()) {
       std::ostringstream ss;

@@ -13,6 +13,11 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
 )
 
+set(nblas_avx2_srcs
+  ${ONNXRUNTIME_ROOT}/core/nblas/nblas_igemv_avx2.cc
+  ${ONNXRUNTIME_ROOT}/core/nblas/nblas_igemv_avx2.h
+)
+
 if(MSVC)
 
   if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM")
@@ -57,6 +62,9 @@ if(MSVC)
 
     enable_language(ASM_MASM)
 
+    #  string(APPEND CMAKE_CXX_FLAGS " /arch:AVX2")
+    set_source_files_properties(${nblas_avx2_srcs} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/SgemmKernelSse2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/SgemmKernelAvx.asm
@@ -67,6 +75,7 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
+      ${nblas_avx2_srcs}
     )
 
   endif()

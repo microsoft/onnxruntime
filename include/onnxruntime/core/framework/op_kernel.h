@@ -112,6 +112,10 @@ class OpKernelContext {
     return static_cast<int>(kernel_->Node().InputDefs().size());
   }
 
+  const std::string  GetNodeName() {
+    return kernel_->Node().Name();
+  }
+
   // always >= 0
   int ImplicitInputCount() const {
     return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());

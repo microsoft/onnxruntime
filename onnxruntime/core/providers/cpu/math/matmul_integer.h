@@ -8,6 +8,7 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
+long long transposetime = 0;
 
 template <typename T1, typename T2, typename T3>
 class MatMulInteger final : public OpKernel {

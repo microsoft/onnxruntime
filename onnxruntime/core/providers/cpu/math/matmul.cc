@@ -53,6 +53,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
+  //std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
 
@@ -78,6 +79,10 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
         &CPUMathUtil::Instance());
   }
 
+  /*auto end_time = std::chrono::high_resolution_clock::now();
+  auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+  std::cout << "matmul op M= " << helper.M() << " N= " << helper.N() << " K=" << helper.K() << " Time= " << dur << std::endl;
+  */
   return Status::OK();
 }
 

@@ -282,6 +282,8 @@ class UniDirectionalLstm {
 
 Status
 DeepCpuLstmOp::Compute(OpKernelContext* context) const {
+  //std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+
   const Tensor& X = *context->Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
 
   Status status;
@@ -297,6 +299,10 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   } else
     ORT_THROW("Invalid data type for LSTM operator of ", data_type);
 
+  /*auto end_time = std::chrono::high_resolution_clock::now();
+  auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+  std::cout << "Node " << context->GetNodeName() << " Time:" << dur << std::endl;
+  */
   return status;
 }
 
@@ -770,6 +776,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const int hidden_size_x4 = 4 * hidden_size_;
   const int total_rows = max_sequence_length * batch_size_;
 
+  //std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+
   // apply the weights to all the inputs and save to output_IOFC
   ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha,
               inputs.cbegin(), inputs.cend(),
@@ -778,6 +786,11 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_size_, beta,
               output_iofc_.begin(), output_iofc_.end(),
               hidden_size_x4);
+
+  /*auto end_time = std::chrono::high_resolution_clock::now();
+  auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+  std::cout << "Input_Proj_Matmul M:" << total_rows << " N:" << hidden_size_x4 << " K:" << input_size_ << " Time:" << dur << std::endl;
+  */
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -897,6 +910,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_) * hidden_size_x4;
 
+      //std::chrono::high_resolution_clock::time_point start_time1 = std::chrono::high_resolution_clock::now();
+
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, alpha,
                   previous_state, previous_state_end,  // Ht-1
@@ -906,6 +921,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4);
 
+      /*auto end_time1 = std::chrono::high_resolution_clock::now();
+      auto dur1 = std::chrono::duration_cast<std::chrono::microseconds>(end_time1 - start_time1).count();
+      std::cout << "Same_As_Matmul_Inside_Scan M:" << batch_size_ << " N:" << hidden_size_x4 << " K:" << hidden_size_ << " Time=" << dur1 << std::endl;
+      */
       span_T_iter batched_output;
       span_T_iter batched_output_end;
       if (output_sequence) {
