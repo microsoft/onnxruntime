@@ -324,7 +324,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_mobilenet_v2_1.4_224", "result mismatch"},
       {"tf_mobilenet_v1_1.0_224", "result mismatch"},
       {"mobilenetv2-1.0", "result mismatch"},
-      {"mxnet_arcface", "result mismatch"}
+      {"mxnet_arcface", "result mismatch"},
+      {"bitshift_left_uint16", "Op bitshift not implemented yet"},
+      {"bitshift_left_uint32", "Op bitshift not implemented yet"},
+      {"bitshift_left_uint64", "Op bitshift not implemented yet"},
+      {"bitshift_left_uint8", "Op bitshift not implemented yet"},
+      {"bitshift_right_uint8", "Op bitshift not implemented yet"},
+      {"bitshift_right_uint16", "Op bitshift not implemented yet"},
+      {"bitshift_right_uint32", "Op bitshift not implemented yet"},
+      {"bitshift_right_uint64", "Op bitshift not implemented yet"},
+      {"round", "Op round not implemented yet"}
   };
 
 #ifdef USE_NGRAPH
