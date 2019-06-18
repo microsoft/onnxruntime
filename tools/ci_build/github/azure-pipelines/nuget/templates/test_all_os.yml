@@ -1,6 +1,4 @@
 # test NuGet package on Win, Linux and MacOS
-parameters:
-  DisableContribOps: ''
 jobs:
 - template: test_win.yml
   parameters:
@@ -8,7 +6,6 @@ jobs:
 - template: test_linux.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
-    DisableContribOps: ${{ parameters.DisableContribOps }}
 - template: test_macos.yml
   parameters:
     AgentPool : $(AgentPoolMacOS)

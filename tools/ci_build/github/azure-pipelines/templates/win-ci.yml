@@ -32,10 +32,6 @@ jobs:
         buildArch: ${{ parameters.BuildArch }}
         setVcvars: ${{ parameters.SetVcvars }}
 
-    # Display env settings
-    - script: |
-       set
-
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
       inputs:

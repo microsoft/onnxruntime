@@ -5,16 +5,12 @@ parameters:
   DoNugetPack: 'false'
   NuPackScript: ''
   ArtifactName: 'drop-linux'
-  DisableContribOps: ''
 
 jobs:
 - job: ${{ parameters.JobName }}
   pool: ${{ parameters.AgentPool }}
-  variables:
-    DisableContribOps: ${{ parameters.DisableContribOps }}
   steps:
     - template: linux-set-variables-and-download.yml
-    - script: 'set'
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
