@@ -5,7 +5,7 @@ SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.0-cudnn7.3
 
-while getopts c:o:d:r:p:x:a: parameter_Option
+while getopts c:o:d:r:p:x:a:v: parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04
@@ -21,11 +21,13 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
+# openvino version tag: 2018_R5, 2019_R1 (Default is 2018_R5)
+v) OPENVINO_VERSION=${OPTARG};; 
 esac
 done
 
 EXIT_CODE=1
-
+PYTHON_VER=${PYTHON_VER:=3.5}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 cd $SCRIPT_DIR/docker
@@ -45,6 +47,10 @@ else
         IMAGE="ubuntu16.04-cuda10.0-cudnn7.4-tensorrt5.0"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+    elif [ $BUILD_DEVICE = "openvino" ]; then
+        IMAGE="ubuntu16.04"
+        DOCKER_FILE=Dockerfile.ubuntu_openvino
+        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f Dockerfile.ubuntu_openvino .
     else
         IMAGE="ubuntu16.04"
         if [ $BUILD_ARCH = "x86" ]; then
@@ -64,7 +70,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
 set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ]; then
     docker rm -f "onnxruntime-$BUILD_DEVICE" || true
     docker run -h $HOSTNAME \
         --name "onnxruntime-$BUILD_DEVICE" \

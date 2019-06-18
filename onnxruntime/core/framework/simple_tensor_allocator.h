@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include "tensor_allocator.h"
 #include "mem_pattern.h"
-#include "ml_value_patterns_planner.h"
+#include "ort_value_pattern_planner.h"
 #include "utils.h"
 
 namespace onnxruntime {

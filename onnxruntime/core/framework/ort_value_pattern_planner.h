@@ -16,13 +16,13 @@ class ExecutionPlanBase;
 // Thread-safe
 // As it doesn't always work, the usage of it must be guarded by
 // SessionOptions.enable_mem_pattern
-class MLValuePatternPlanner {
+class OrtValuePatternPlanner {
  public:
-  explicit MLValuePatternPlanner(const ExecutionPlanBase& execution_plan);
-  common::Status TraceAllocation(int ml_value_idx, size_t size);
-  common::Status TraceFree(int ml_value_index);
+  explicit OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan);
+  common::Status TraceAllocation(int ort_value_idx, size_t size);
+  common::Status TraceFree(int ort_value_index);
   common::Status GeneratePatterns(MemoryPatternGroup* out);
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MLValuePatternPlanner);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValuePatternPlanner);
 
  private:
   // This map itself is const after the construction
