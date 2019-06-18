@@ -203,9 +203,6 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
     }
   }
 
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  auto tp = const_cast<concurrency::ThreadPool*>(ctx_internal->GetOperatorThreadPool());
-
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
     gsl::span<const T> input_weights_2 = input_weights.subspan(input_weights_size_per_direction,
