@@ -259,7 +259,8 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  // Create ng_required_initializers attribute of NGraphCustomOp
+// Create ng_required_initializers attribute of NGraphCustomOp
+#if false
   ONNX_NAMESPACE::AttributeProto initializers;
   initializers.set_name("initializers");
   initializers.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS);
@@ -267,9 +268,10 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
     auto tensor = initializers.add_tensors();
     *tensor = *(graph_viewer.GetAllInitializedTensors().at(init));
   }
+#endif
 
   auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->attributes["initializers"] = initializers;
+  //meta_def->attributes["initializers"] = initializers;
   meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
@@ -494,6 +496,17 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
+  const auto* func_body = fused_node->GetFunctionBody();
+  const Graph& graph_body = func_body->Body();
+  onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
+  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
+  auto opset = model_proto.add_opset_import();
+  opset->set_domain(kOnnxDomain);
+  opset->set_version(graph_body.DomainToVersionMap().at(kOnnxDomain));
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+#ifdef false
   const auto& attributes = fused_node->GetAttributes();
   const auto& initializers = attributes.at("initializers").tensors();
 
@@ -523,6 +536,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   opset->set_domain(kOnnxDomain);
   opset->set_version(fused_graph.DomainToVersionMap().at(kOnnxDomain));
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+#endif
 
   return model_proto;
 }
