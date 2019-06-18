@@ -34,15 +34,6 @@ class NchwcTransformerImpl {
     // Stores the NodeArg that represents the NCHWc output.
     NodeArg* nchwc_arg_;
 
-    // Stores the logical number of channels for this NCHWc output. The NCHWc
-    // NodeArg is zero padded to the NCHWc block size. If the output needs to
-    // be reordered back to a standard tensor format, this channel count is
-    // used to generate the expected number of channels.
-    const int64_t channels_;
-
-    // Stores the proto shape for the NCHWc output.
-    NchwcArgument::Shape shape_;
-
     // Stores the original number of uses for the original NodeArg. Edges are
     // removed from the graph as nodes are converted to NCHWc form.
     const size_t starting_original_uses_;
@@ -52,11 +43,20 @@ class NchwcTransformerImpl {
     // to reorder the output if this count is non-zero.
     size_t remaining_original_uses_;
 
+    // Stores the logical number of channels for this NCHWc output. The NCHWc
+    // NodeArg is zero padded to the NCHWc block size. If the output needs to
+    // be reordered back to a standard tensor format, this channel count is
+    // used to generate the expected number of channels.
+    const int64_t channels_;
+
+    // Stores the proto shape for the NCHWc output.
+    NchwcArgument::Shape shape_;
+
     NchwcArgument(Node& output_node, NodeArg* output_nchwc_arg, size_t original_uses, size_t channels, const NchwcArgument::Shape& shape)
         : output_node_(output_node),
           nchwc_arg_(output_nchwc_arg),
-          remaining_original_uses_(original_uses),
           starting_original_uses_(original_uses),
+          remaining_original_uses_(original_uses),
           channels_(channels),
           shape_(shape) {
     }
@@ -356,20 +356,19 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
   auto* nchwc_input_0_shape = input_defs[0]->Shape();
   for (size_t n = 1; n < input_defs_count; n++) {
     auto* nchwc_input_n = nchwc_inputs[n];
-    for (int i = 0; i < kNchwcDims; i++) {
+    for (size_t i = 0; i < kNchwcDims; i++) {
       // Test if this dimension is derived from the same NodeArg.
       if (nchwc_input_0->shape_.dims_[i] != nchwc_input_n->shape_.dims_[i]) {
         // Check if ONNX shape inferencing has computed a precise dimension value.
-        // Avoid dimension values (<= 1) that could indicate broadcasting.
         auto* nchwc_input_n_shape = input_defs[n]->Shape();
         if ((nchwc_input_0_shape == nullptr) || (nchwc_input_n_shape == nullptr)) {
           return;
         }
-        auto& nchwc_input_0_dim = nchwc_input_0_shape->dim(i);
-        auto& nchwc_input_n_dim = nchwc_input_n_shape->dim(i);
+        auto& nchwc_input_0_dim = nchwc_input_0_shape->dim(static_cast<int>(i));
+        auto& nchwc_input_n_dim = nchwc_input_n_shape->dim(static_cast<int>(i));
         if (!nchwc_input_0_dim.has_dim_value() ||
             !nchwc_input_n_dim.has_dim_value() ||
-            (nchwc_input_0_dim.dim_value() <= 1) ||
+            (nchwc_input_0_dim.dim_value() <= 0) ||
             (nchwc_input_0_dim.dim_value() != nchwc_input_n_dim.dim_value())) {
           return;
         }
