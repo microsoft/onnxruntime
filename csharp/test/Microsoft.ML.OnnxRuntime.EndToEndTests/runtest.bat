@@ -31,7 +31,7 @@ IF NOT DEFINED IsReleaseBuild (
 SET CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
 
 REM Update if CUDA lib paths if set
-SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%;%PATH%
+SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%\bin;%PATH%
 
 @echo %CurrentOnnxRuntimeVersion%
 %dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
