@@ -413,21 +413,19 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
       if (graph_output_shape) {
         output_dims.reserve(graph_output_shape->dim_size() + 1);
 
-        // copy the shape. if there are any symbolic dims set them to zero given there's no output data
         auto dims = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-        std::transform(dims.cbegin(), dims.cend(), std::back_inserter(output_dims),
-                       [](const int64_t src) { return src < 0 ? 0 : src; });
-
+        std::copy(dims.cbegin(), dims.cend(), std::back_inserter(output_dims));
       } else {
-        // TODO: May need to call ExecuteGraph to get output shape from fetches so the rank is correct.
+        // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,
+        // however that could still fail as we would potentially be passing in invalid data.
         // Until we know this is required just output a warning and return the rank 1 empty output.
-        LOGS(context_.Logger(), WARNING) << "Loop had zero iterations and shape for subgraph output " << i + 1
-                                         << " was found. Rank of empty output may be incorrect.";
+        LOGS(context_.Logger(), WARNING) << "Loop had zero iterations and the shape of subgraph output " << i + 1
+                                         << " was not found. Defaulting to a rank 1 shape of {0}.";
       }
 
       ORT_IGNORE_RETURN_VALUE(context_.Output(i, TensorShape(output_dims)));
     }
   }
   return status;
-}
+}  // namespace onnxruntime
 }  // namespace onnxruntime
