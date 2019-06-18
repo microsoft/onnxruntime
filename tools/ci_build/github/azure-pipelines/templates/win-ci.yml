@@ -58,7 +58,7 @@ jobs:
         inputs:
           filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
           arguments: '$(BuildCommand) --test --config Debug'
-          workingFolde::: '$(Build.BinariesDirectory)'
+          workingFolder: '$(Build.BinariesDirectory)'
 
       - task: VSBuild@1
         displayName: 'Build C# Debug'
