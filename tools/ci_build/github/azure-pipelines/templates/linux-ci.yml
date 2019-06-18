@@ -11,7 +11,7 @@ jobs:
   pool: ${{ parameters.AgentPool }}
   steps:
     - template: linux-set-variables-and-download.yml
-    = script: 'set'
+    - script: 'set'
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
