@@ -8,9 +8,10 @@
 
 namespace onnxruntime {
 namespace contrib {
-void RegisterContribKernels(KernelRegistry& kernel_registry);
 namespace cuda {
+
 void RegisterCudaContribKernels(KernelRegistry& kernel_registry);
-}
+
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -8,7 +8,7 @@
 #include "cuda_allocator.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
-#include "contrib_ops/contrib_kernels.h"
+#include "contrib_ops/cuda_contrib_kernels.h"
 
 using namespace onnxruntime::common;
 

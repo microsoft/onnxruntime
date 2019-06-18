@@ -21,5 +21,19 @@ Status Affine<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+ONNX_CPU_OPERATOR_KERNEL(
+    Scale,
+    1,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Scale<float>);
+
+template <>
+Status Scale<float>::Compute(OpKernelContext* ctx) const {
+  auto& X = *ctx->Input<Tensor>(0);
+  auto& Y = *ctx->Output(0, X.Shape());
+  EigenMap<float>(Y) = scale_ * EigenMap<float>(X);
+  return Status::OK();
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime

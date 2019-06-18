@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/contrib_kernels.h"
+#include "contrib_ops/cuda_contrib_kernels.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
