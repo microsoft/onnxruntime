@@ -372,6 +372,16 @@
              "type": "git"
          }
      },
+     {  
+       "component":{  
+          "type":"other",
+          "Other":{  
+             "Name":"Go",
+             "Version":"1.12.6",
+             "DownloadUrl":"https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
+          }
+   }
+}
    ],
    "Version":1
 }
