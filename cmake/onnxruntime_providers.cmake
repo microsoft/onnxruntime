@@ -36,6 +36,10 @@ if(onnxruntime_USE_TENSORRT)
   set(PROVIDERS_TENSORRT onnxruntime_providers_tensorrt)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
 endif()
+if(onnxruntime_USE_OPENVINO)
+  set(PROVIDERS_OPENVINO onnxruntime_providers_openvino)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
 source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_contrib_ops_srcs})
@@ -205,6 +209,36 @@ if (onnxruntime_USE_NGRAPH)
     target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
     target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
   endif()
+endif()
+
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
+  )
+  file(GLOB_RECURSE onnxruntime_providers_openvino_py_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
+  )
+
+  # Below variables point to directories within the OpenVINO installation directory
+  # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
+  if (onnxruntime_USE_OPENVINO_BINARY)
+    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
+    set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+  endif()
+
+  find_package(PythonLibs REQUIRED)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
+  add_library(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_openvino gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_openvino ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_openvino PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
+  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
+  target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
+  file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
