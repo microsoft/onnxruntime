@@ -100,7 +100,7 @@ std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& 
     output_ptrs.push_back(output.data());
   }
 
-  return session.Run(options, input_ptrs.data(), input_values.data(), input_count, output_ptrs.data(), output_count); 
+  return const_cast<Ort::Session&>(session).Run(options, input_ptrs.data(), const_cast<Ort::Value*>(input_values.data()), input_count, output_ptrs.data(), output_count); 
 
 }
 
