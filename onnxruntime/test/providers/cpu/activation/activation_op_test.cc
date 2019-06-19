@@ -20,6 +20,7 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
+
   std::vector<float> expected_vals;
   for (const auto& iv : input_vals)
     expected_vals.push_back(expected_func(iv));
@@ -32,6 +33,16 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
+
+//Disabled because of accuracy issues for MYRIAD FP16 and VAD_R
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+    int relu = strcmp(szOp, "Relu");
+    int leaky = strcmp(szOp, "LeakyRelu");
+    if(relu == 0 || leaky == 0){
+        excluded_providers.insert(kOpenVINOExecutionProvider);
+    }
+#endif
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 

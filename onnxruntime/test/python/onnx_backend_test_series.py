@@ -96,7 +96,17 @@ def create_backend_test(testname=None):
                                  '^test_dequantizelinear_cpu.*',
                                  '^test_qlinearconv_cpu.*',
                                  '^test_quantizelinear_cpu.*',
-                                 '^test_gru_seq_length_cpu.*')
+                                 '^test_gru_seq_length_cpu.*',
+                                 '^test_bitshift_right_uint16_cpu.*',
+                                 '^test_bitshift_right_uint32_cpu.*',
+                                 '^test_bitshift_right_uint64_cpu.*',
+                                 '^test_bitshift_right_uint8_cpu.*',
+                                 '^test_bitshift_left_uint16_cpu.*',
+                                 '^test_bitshift_left_uint32_cpu.*',
+                                 '^test_bitshift_left_uint64_cpu.*',
+                                 '^test_bitshift_left_uint8_cpu.*',
+                                 '^test_round_cpu.*'
+                                 )
 
         # Example of how to disable tests for a specific provider.
         # if c2.supports_device('NGRAPH'):

@@ -2,11 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/matmul.h"
-#include "core/platform/threadpool.h"
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/framework/op_kernel_context_internal.h"
-
 #include "matmul_helper.h"
 
 namespace onnxruntime {
@@ -55,9 +53,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  auto thread_pool = ctx_internal->GetOperatorThreadPool();
-
   const auto* left_X = ctx->Input<Tensor>(0);
   const auto* right_X = ctx->Input<Tensor>(1);
 
@@ -69,7 +64,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
-    math::Gemm<T, concurrency::ThreadPool>(
+    math::Gemm<T, CPUMathUtil>(
         CblasNoTrans,
         CblasNoTrans,
         static_cast<int>(helper.M()),
@@ -80,7 +75,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
         right_X->template Data<T>() + helper.RightOffsets()[i],
         /* beta */ 0.0f,
         Y->template MutableData<T>() + helper.OutputOffsets()[i],
-        thread_pool);
+        &CPUMathUtil::Instance());
   }
 
   return Status::OK();
