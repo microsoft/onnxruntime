@@ -10,6 +10,12 @@
 namespace onnxruntime {
 namespace server {
 
+void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
+    const char* message){
+      
+      return;
+    }
+
 ServerEnvironment::ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type) : severity_(severity),
                                                                      logger_id_("ServerApp"),
                                                                      default_logging_manager_(
@@ -18,7 +24,7 @@ ServerEnvironment::ServerEnvironment(logging::Severity severity, logging::Loggin
                                                                          /* default_filter_user_data */ false,
                                                                          instance_type,
                                                                          &logger_id_),
-                                                                     runtime_environment_((OrtLoggingLevel) severity ,"ServerApp"), 
+                                                                     runtime_environment_((OrtLoggingLevel) severity, Log, "ServerApp", nullptr), 
                                                                      session(nullptr) {
 }
 
