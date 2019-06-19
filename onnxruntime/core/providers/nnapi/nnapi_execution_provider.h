@@ -24,8 +24,6 @@ class NnapiExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
  private:
   std::unordered_map<std::string, std::unique_ptr<dnn::Model>> dnn_models_;
   std::vector<std::vector<int>> GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const;

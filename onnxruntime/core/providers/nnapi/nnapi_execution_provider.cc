@@ -44,11 +44,6 @@ Status NnapiExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const 
   return Status::OK();
 }
 
-std::shared_ptr<KernelRegistry> NnapiExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  return kernel_registry;
-}
-
 std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   dnn::OnnxConverter converter;
   return converter.GetSupportedNodes(model_proto);
