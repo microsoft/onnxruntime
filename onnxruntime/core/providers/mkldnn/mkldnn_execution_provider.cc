@@ -62,23 +62,6 @@ MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderIn
 MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
 }
 
-Status MKLDNNExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  // Support CPU <-> MKLDNN for now
-  if (!(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
-      !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, MKLDNN) == 0) &&
-      !(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, MKLDNN_CPU) == 0)) {
-    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
-  }
-
-  // Todo: Copy for now. May optimize later to avoid copy.
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
-  const void* src_data = src.DataRaw();
-  void* dst_data = dst.MutableDataRaw();
-  memcpy(dst_data, src_data, bytes);
-
-  return Status::OK();
-}
-
 namespace mkl_dnn {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 1, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMklDnnExecutionProvider, kOnnxDomain, 7, Gemm);

@@ -32,10 +32,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd() override;
 
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }

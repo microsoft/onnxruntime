@@ -76,24 +76,6 @@ bool TensorCopyPossible(const std::string& src_location, const std::string& dst_
                      });
 }
 
-Status NGRAPHExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  const size_t src_bytes = src.DataType()->Size() * src.Shape().Size();
-  const size_t dst_bytes = dst.DataType()->Size() * dst.Shape().Size();
-  if (src_bytes != dst_bytes) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "nGraph: Source and Destination data sizes are not equal - cannot copy tensors");
-  }
-
-  if (!TensorCopyPossible(src.Location().name, dst.Location().name)) {
-    ORT_NOT_IMPLEMENTED("Copying tensors between '", src.Location().name, "' and '", dst.Location().name,
-                        "' is not implemented in NGRAPHExecutionProvider");
-  }
-
-  MEMCPY_S(dst.MutableDataRaw(), src.DataRaw(), dst_bytes, src_bytes);
-
-  return Status::OK();
-}
-
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
