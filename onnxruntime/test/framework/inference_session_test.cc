@@ -1371,6 +1371,16 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
   }
 }
 
+TEST(InferenceSessionTests, TestTest) {
+  string model_uri = "C:\\Users\\kezhan\\Downloads\\model.onnx";
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+  so.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+}
+
 // This test validates session initialize is successful when all the pre-defined
 // L1 and L2 transformers are enabled.
 TEST(InferenceSessionTests, TestL1AndL2Transformers) {

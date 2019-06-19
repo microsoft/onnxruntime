@@ -6,7 +6,7 @@
 namespace onnxruntime {
 using namespace common;
 
-const DataTransferManager& DataTransferManager::Instance() {
+DataTransferManager& DataTransferManager::Instance() {
   static DataTransferManager data_transfer_mgr;
   return data_transfer_mgr;
 }

@@ -12,6 +12,7 @@
 #include "core/common/logging/logging.h"
 
 #include "core/graph/graph_viewer.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -217,7 +218,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
                                       m.GetAllocInfo());
   // TODO: does this function work for string tensor?
-  Status copy_status = provider->CopyTensor(p_deserialize_tensor, *p_tensor);
+  Status copy_status = DataTransferManager::Instance().CopyTensor(p_deserialize_tensor, *p_tensor);
   if (d.f) d.f(d.param);
   if (!copy_status.IsOK()) {
     if (copy_status.ErrorMessage().empty()) {

@@ -6,7 +6,7 @@
 #include <iomanip>
 
 #include "core/graph/graph_viewer.h"
-
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -72,7 +72,7 @@ static Status CopyMLValue(const FeedsFetchesManager::MLValueCopyInfo& copy_info,
 
     Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
-    ORT_RETURN_IF_ERROR(copy_info.copy_provider->CopyTensor(source_tensor, *p_output_tensor));
+    ORT_RETURN_IF_ERROR(DataTransferManager::Instance().CopyTensor(source_tensor, *p_output_tensor));
   }
 
   return Status::OK();

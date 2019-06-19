@@ -13,7 +13,7 @@ namespace onnxruntime {
 // It's not thread-safe.
 class DataTransferManager {
  public:
-  static const DataTransferManager& Instance();
+  static DataTransferManager& Instance();
 
   common::Status RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer);
 

@@ -16,9 +16,14 @@ class IDataTransfer {
 
   virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const = 0;
 
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const{
-      return CopyTensor(src, dst, 0);
-  }
+  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const = 0;
+};
+
+class CPUDataTransfer : public IDataTransfer {
+ public:
+  CPUDataTransfer() = default;
+  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const override;
+  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 };
 }  // namespace onnxruntime
