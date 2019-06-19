@@ -62,13 +62,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  std::vector<NodeArg*> all_node_inputs;
+  std::set<NodeArg*> all_node_inputs;
   for (const auto& node : graph.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
-      all_node_inputs.push_back(&n_input);
+      all_node_inputs.insert(&n_input);
     }
     for (auto output : node.OutputDefs()) {
       auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
@@ -175,7 +175,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 
       for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-        if (std::find(all_node_inputs.begin(), all_node_inputs.end(), it->first) != all_node_inputs.end() || std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
+        for (const auto& x : all_node_inputs) {
+          if (x->Name() == it->first->Name()) {
+            outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+            break;
+          }
+        }
+        if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
           outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
         }
       }
