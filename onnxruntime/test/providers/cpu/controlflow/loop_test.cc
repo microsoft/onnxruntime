@@ -26,7 +26,8 @@ struct RunOptions {
   bool init_cond_1d_tensor = true;
   bool init_iter_num_1d_tensor = true;
 };
-}
+}  // namespace
+
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
 
 static const float kOuterNodeAddValue = 3.f;
@@ -103,7 +104,6 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
      Concats the iter_num to loop_var_1_in (test loop var that changes shape) so each iteration appends the iter_num
      to loop_var_1
      Loop output is the iter_num and sum for that iteration, so each iteration adds a pair to the overall output
-     Inputs require Identity nodes to fix their order.
 
     Inputs: iter_num, cond_in, loop_var_in
 
@@ -342,7 +342,7 @@ void RunTest(int64_t max_iterations,
   }
 
   test.AddInput<float>("loop_var_0_orig", {1}, {0.f});
-  test.AddInput<float>("loop_var_0_orig", {1}, {0.f});
+  test.AddInput<float>("loop_var_1_orig", {1}, {0.f});
 
   test.AddOutput<float>("loop_var_0_final", {1}, {loop_var_0_final});
   test.AddOutput<float>("loop_var_1_final", loop_var_1_final_shape, loop_var_1_final);
@@ -357,7 +357,7 @@ void RunTest(int64_t max_iterations,
 
     test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because of unsupported data type INT64
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});  // Disable TensorRT because of unsupported data type INT64
   }
 }
 
@@ -384,17 +384,17 @@ void ExitDueToCond(const RunOptions& options) {
           options);
 }
 
-#define TEST_EXIT_DUE_TO_COND(name, dim_in_main_graph, iter_num_1d, cond_1d)   \
-  TEST(Loop, name) {                                                           \
-    RunOptions options{};                                                      \
-    options.include_dim_values_in_main_graph = dim_in_main_graph;              \
-    options.include_dim_values_in_subgraph = !dim_in_main_graph;               \
-    options.include_types_in_subgraph = false;                                 \
-                                                                               \
-    options.init_iter_num_1d_tensor = iter_num_1d;                             \
-    options.init_cond_1d_tensor = cond_1d;                                     \
-                                                                               \
-    ExitDueToCond(options);                                                    \
+#define TEST_EXIT_DUE_TO_COND(name, dim_in_main_graph, iter_num_1d, cond_1d) \
+  TEST(Loop, name) {                                                         \
+    RunOptions options{};                                                    \
+    options.include_dim_values_in_main_graph = dim_in_main_graph;            \
+    options.include_dim_values_in_subgraph = !dim_in_main_graph;             \
+    options.include_types_in_subgraph = false;                               \
+                                                                             \
+    options.init_iter_num_1d_tensor = iter_num_1d;                           \
+    options.init_cond_1d_tensor = cond_1d;                                   \
+                                                                             \
+    ExitDueToCond(options);                                                  \
   }
 
 TEST_EXIT_DUE_TO_COND(ExitDueToCond_DimsInMainGraph, true, true, true);
@@ -418,6 +418,25 @@ TEST(Loop, ExitDueToMaxIterations) {
   std::vector<int64_t> loop_out_0_final_shape{expected_num_iterations, 2};
   std::vector<float> loop_out_0_final{0.f, 3.f,  // iter #, sum for each iteration
                                       1.f, 6.f};
+
+  RunTest(max_iterations,
+          loop_var_0_final,
+          loop_var_1_final_shape, loop_var_1_final,
+          loop_out_0_final_shape, loop_out_0_final,
+          {});
+}
+
+TEST(Loop, ZeroIterations) {
+  int64_t max_iterations = 0;
+
+  float loop_var_0_final = 0.f;
+
+  std::vector<int64_t> loop_var_1_final_shape{1};
+  std::vector<float> loop_var_1_final{0.f};
+
+  // zero iterations so first dim value is 0. also checking rank is correct.
+  std::vector<int64_t> loop_out_0_final_shape{0, 0};
+  std::vector<float> loop_out_0_final{};
 
   RunTest(max_iterations,
           loop_var_0_final,
@@ -518,8 +537,8 @@ TEST(Loop, InfiniteLoopTermination) {
   std::future<void> terminator_result = task.get_future();
   std::thread terminator_thread{std::move(task)};
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true", {kTensorrtExecutionProvider},
-           &session_run_options);// Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Exiting due to terminate flag being set to true",
+           {kTensorrtExecutionProvider}, &session_run_options);  // Disable TensorRT on unsupported data type BOOL
 
   // call get to propagate any exception
   terminator_result.get();
