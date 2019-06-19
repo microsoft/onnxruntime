@@ -92,6 +92,10 @@ class NchwcTransformerImpl {
   // multiple nodes can share the NCHWc filter.
   std::unordered_map<NodeArg*, NodeArg*> filters_OIHWBo_;
   std::unordered_map<NodeArg*, NodeArg*> filters_OIHWBiBo_;
+
+  // Stores a mapping of NodeArg biases that have already been aligned to the
+  // NCHWc block size, so multiple nodes can share the NCHWc biases.
+  std::unordered_map<NodeArg*, NodeArg*> aligned_biases_;
 };
 
 const ONNX_NAMESPACE::AttributeProto* NchwcTransformerImpl::GetAttribute(const Node& node, const char* attribute_name) {
@@ -226,6 +230,17 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     }
   }
 
+  // Also require that the optional bias tensor be static.
+  const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
+  if (input_defs.size() >= 3) {
+    if (!graph_.GetInitializedTensor(input_defs[2]->Name(), conv_B_tensor_proto) ||
+        (conv_B_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
+        (conv_B_tensor_proto->dims_size() != 1) ||
+        (conv_B_tensor_proto->dims(0) != output_channels)) {
+      return;
+    }
+  }
+
   // Check if the filter has already been converted to the target format.
   std::unordered_map<NodeArg*, NodeArg*>* filters_map;
   if (reorder_filter_OIHWBo) {
@@ -237,13 +252,12 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   NodeArg* nchwc_conv_W_arg;
   auto filters_it = filters_map->find(input_defs[1]);
   if (filters_it != filters_map->end()) {
-    // Reuse the existing filter NodeArg.
+    // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
     auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
 
-    std::vector<float> reordered_filter;
-    reordered_filter.resize(conv_W->size() / output_channels * nchwc_output_channels);
+    std::vector<float> reordered_filter(conv_W->size() / output_channels * nchwc_output_channels);
 
     // Reorder the weights tensor statically.
     if (reorder_filter_OIHWBo) {
@@ -269,6 +283,34 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     filters_map->emplace(input_defs[1], nchwc_conv_W_arg);
   }
 
+  // Align the optional bias tensor up to the number of NCHWc output channels.
+  NodeArg* nchwc_conv_B_arg = nullptr;
+  if ((conv_B_tensor_proto != nullptr) && (output_channels != nchwc_output_channels)) {
+    auto biases_it = aligned_biases_.find(input_defs[2]);
+    if (biases_it != aligned_biases_.end()) {
+      // Reuse the existing NodeArg.
+      nchwc_conv_B_arg = biases_it->second;
+    } else {
+      auto conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
+
+      std::vector<float> aligned_bias(nchwc_output_channels);
+      std::copy_n(conv_B->data<float>(), output_channels, aligned_bias.data());
+
+      ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
+
+      nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
+      nchwc_conv_B_tensor_proto.set_raw_data(aligned_bias.data(), aligned_bias.size() * sizeof(float));
+
+      nchwc_conv_B_tensor_proto.add_dims(nchwc_output_channels);
+
+      graph_.AddInitializedTensor(nchwc_conv_B_tensor_proto);
+
+      nchwc_conv_B_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_B_tensor_proto.name(), nullptr);
+      aligned_biases_.emplace(input_defs[2], nchwc_conv_B_arg);
+    }
+  }
+
   // Create the replacement node.
   std::string nchwc_node_name = graph_.GenerateNodeName("Nchwc");
   Node& nchwc_node = graph_.AddNode(output_defs[0]->Name() + "_nchwc",
@@ -281,6 +323,10 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
   nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
+
+  if (nchwc_conv_B_arg != nullptr) {
+    nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
+  }
 
   NchwcArgument::Shape output_shape;
   std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
