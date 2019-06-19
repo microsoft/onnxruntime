@@ -258,8 +258,11 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
   executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
     try {
       ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
-    } catch (...) {
+    } catch (::onnxruntime::OnnxRuntimeException & ex) {
       // catch node processing failure exceptions here to prevent app crash.
+      LOGS(logger, WARNING) << "Node processing failure: " << ex.what();
+    } catch (...) {
+      LOGS(logger, WARNING) << "Unknown node processing failure";
     }
   });
 }
