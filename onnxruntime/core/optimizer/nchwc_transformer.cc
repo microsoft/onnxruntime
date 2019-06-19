@@ -87,6 +87,11 @@ class NchwcTransformerImpl {
   // Stores a mapping of NodeArg inputs that have already been reordered, so
   // multiple nodes can share the NCHWc input.
   std::unordered_map<NodeArg*, NodeArg*> reorder_inputs_;
+
+  // Stores a mapping of NodeArg filters that have already been reordered, so
+  // multiple nodes can share the NCHWc filter.
+  std::unordered_map<NodeArg*, NodeArg*> filters_OIHWBo_;
+  std::unordered_map<NodeArg*, NodeArg*> filters_OIHWBiBo_;
 };
 
 const ONNX_NAMESPACE::AttributeProto* NchwcTransformerImpl::GetAttribute(const Node& node, const char* attribute_name) {
@@ -221,29 +226,48 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     }
   }
 
-  auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
-
-  std::vector<float> reordered_filter;
-  reordered_filter.resize(conv_W->size() / output_channels * nchwc_output_channels);
-
-  // Reorder the weights tensor statically.
+  // Check if the filter has already been converted to the target format.
+  std::unordered_map<NodeArg*, NodeArg*>* filters_map;
   if (reorder_filter_OIHWBo) {
-    MlasReorderFilterOIHWBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+    filters_map = &filters_OIHWBo_;
   } else {
-    MlasReorderFilterOIHWBiBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+    filters_map = &filters_OIHWBiBo_;
   }
 
-  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
+  NodeArg* nchwc_conv_W_arg;
+  auto filters_it = filters_map->find(input_defs[1]);
+  if (filters_it != filters_map->end()) {
+    // Reuse the existing filter NodeArg.
+    nchwc_conv_W_arg = filters_it->second;
+  } else {
+    auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
 
-  if (output_channels != nchwc_output_channels) {
-    new_conv_W_tensor_proto.set_dims(0, nchwc_output_channels);
-    new_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
+    std::vector<float> reordered_filter;
+    reordered_filter.resize(conv_W->size() / output_channels * nchwc_output_channels);
+
+    // Reorder the weights tensor statically.
+    if (reorder_filter_OIHWBo) {
+      MlasReorderFilterOIHWBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+    } else {
+      MlasReorderFilterOIHWBiBo(conv_W->dims().data(), conv_W->data<float>(), reordered_filter.data());
+    }
+
+    ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
+
+    nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
+    nchwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
+
+    nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
+    for (size_t i = 1; i < 4; i++) {
+      nchwc_conv_W_tensor_proto.add_dims(conv_W->dims()[i]);
+    }
+
+    graph_.AddInitializedTensor(nchwc_conv_W_tensor_proto);
+
+    nchwc_conv_W_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_W_tensor_proto.name(), nullptr);
+    filters_map->emplace(input_defs[1], nchwc_conv_W_arg);
   }
-
-  new_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
-
-  graph_.RemoveInitializedTensor(input_defs[1]->Name());
-  graph_.AddInitializedTensor(new_conv_W_tensor_proto);
 
   // Create the replacement node.
   std::string nchwc_node_name = graph_.GenerateNodeName("Nchwc");
@@ -256,9 +280,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  if (output_channels != nchwc_output_channels) {
-    nchwc_node.MutableInputDefs()[1] = &graph_.GetOrCreateNodeArg(new_conv_W_tensor_proto.name(), nullptr);
-  }
+  nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
 
   NchwcArgument::Shape output_shape;
   std::fill_n(output_shape.dims_, kNchwcDims, output_defs[0]);
