@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
-# Official user quickstart docker container for ONNX Runtime CPU
+# Official docker container for ONNX Runtime Server
 # Ubuntu 16.04, CPU version, Python 3.
 #--------------------------------------------------------------------------
 
@@ -24,7 +24,7 @@ RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p
 
 WORKDIR /
 RUN mkdir -p /onnxruntime/build && \
-    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server
+    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 
 FROM minimal AS final
 WORKDIR /onnxruntime/server/
