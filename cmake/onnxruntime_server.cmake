@@ -115,7 +115,7 @@ set(onnxruntime_server_lib_srcs
   "${ONNXRUNTIME_ROOT}/server/executor.cc"
   "${ONNXRUNTIME_ROOT}/server/converter.cc"
   "${ONNXRUNTIME_ROOT}/server/util.cc"
-  "${ONNXRUNTIME_ROOT}/server/request_id.cc"
+  "${ONNXRUNTIME_ROOT}/server/core/request_id.cc"
   "${ONNXRUNTIME_ROOT}/server/grpc/prediction_service_impl.cc"
   "${ONNXRUNTIME_ROOT}/server/grpc/grpc_app.cc"
   )
@@ -139,6 +139,7 @@ add_library(onnxruntime_server_http_core_lib STATIC
 target_include_directories(onnxruntime_server_http_core_lib
   PUBLIC
   ${ONNXRUNTIME_ROOT}/server/http/core
+  ${ONNXRUNTIME_ROOT}/server/core
   ${Boost_INCLUDE_DIR}
   ${re2_src}
 )
@@ -155,6 +156,7 @@ target_include_directories(onnxruntime_server_lib PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/onnx
   ${ONNXRUNTIME_ROOT}/server/http
   ${ONNXRUNTIME_ROOT}/server/logging
+  ${ONNXRUNTIME_ROOT}/server/core
   PUBLIC
   ${ONNXRUNTIME_ROOT}/server
   ${Boost_INCLUDE_DIR}

@@ -74,6 +74,3 @@ done
 
 chmod 0777 /data/onnx
 rm -rf /tmp/src
-
-#install go for building boringSSL
-snap install go 
