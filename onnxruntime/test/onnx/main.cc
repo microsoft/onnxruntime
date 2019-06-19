@@ -44,7 +44,7 @@ void usage() {
 int GetNumCpuCores() {
   SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
   DWORD returnLength = sizeof(buffer);
-  if (GetLogicalProcessorInformation(buffer, &returnLength) == false) {
+  if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
     // try GetSystemInfo
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
