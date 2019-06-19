@@ -13,7 +13,7 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
-TEST(TensorOpTest, CropBorderOnly) {
+TEST(CropContribOpTest, CropBorderOnly) {
   const int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
                           2.0f, 3.0f, 4.0f, 5.0f,
@@ -36,7 +36,7 @@ TEST(TensorOpTest, CropBorderOnly) {
   test.Run();
 }
 
-TEST(TensorOpTest, CropBorderAndScale) {
+TEST(CropContribOpTest, CropBorderAndScale) {
   const int N = 2, C = 1, H = 3, W = 4;
   std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f,
                           2.0f, 3.0f, 4.0f, 5.0f,
@@ -64,7 +64,7 @@ TEST(TensorOpTest, CropBorderAndScale) {
   test.Run();
 }
 
-TEST(TensorOpTest, ImageScalerTest) {
+TEST(ImageScalerContribOpTest, ImageScalerTest) {
   const int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {
       1.0f, 3.0f,
@@ -184,7 +184,7 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.Run();
 }
 
-TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
+TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   // across_channels: true, normalize_variance: true
   MeanVarianceNormalizationAcrossChannels(true, true);
 
