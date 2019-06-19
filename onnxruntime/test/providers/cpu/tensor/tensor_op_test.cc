@@ -41,22 +41,6 @@ TEST(TensorOpTest, ReshapeWithInitializer) {
   test.Run();
 }
 
-TEST(TensorOpTest, Identity) {
-  OpTester test("Identity");
-  std::vector<float> X{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  test.AddInput<float>("input", {2, 3}, X);
-  test.AddOutput<float>("output", {2, 3}, X);
-  test.Run();
-}
-
-TEST(TensorOpTest, IdentityString) {
-  OpTester test("Identity");
-  std::vector<std::string> X{"this", "is", "a", "test", "for", "identity"};
-  test.AddInput<std::string>("input", {2, 3}, X);
-  test.AddOutput<std::string>("output", {2, 3}, X);
-  test.Run();
-}
-
 TEST(TensorOpTest, ShapeTest2D) {
   OpTester test("Shape");
 
