@@ -41,7 +41,12 @@ TEST(MathOpTest, Add) {
                         {0.0f, 6.4f, 431.3f,
                          0.0f, 5.0f, -36.0f,
                          -10.8f, 18.6f, 0.0f});
+
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#else
   test.Run();
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_Axis) {
@@ -134,7 +139,14 @@ TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
                          211.0f, 212.0f, 213.0f, 214.0f,
                          221.0f, 222.0f, 223.0f, 224.0f,
                          231.0f, 232.0f, 233.0f, 234.0f});
+
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+  //OpenVINO: Disabled due to software limitation for VPU Plugin.
+  //This test runs fine on CPU and GPU Plugins
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
@@ -154,7 +166,13 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
                          211.0f, 212.0f, 213.0f, 214.0f,
                          221.0f, 222.0f, 223.0f, 224.0f,
                          231.0f, 232.0f, 233.0f, 234.0f});
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+  //OpenVINO: Disabled due to software limitation for VPU Plugin.
+  //This test runs fine on CPU and GPU Plugins
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+#endif
 }
 
 TEST(MathOpTest, Sub_int32) {
@@ -457,7 +475,12 @@ TEST(MathOpTest, Sum_6) {
                         {3.0f, 0.0f, 6.0f,
                          -6.0f, 6.6f, 28.0f,
                          -1.0f, 0.06f, 0.25f});
+
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#else
   test.Run();
+#endif
 }
 
 TEST(MathOpTest, Sum_8_Test1) {
@@ -477,7 +500,13 @@ TEST(MathOpTest, Sum_8_Test1) {
                          311.0f, 312.0f, 313.0f,
                          321.0f, 322.0f, 323.0f,
                          331.0f, 332.0f, 333.0f});
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+  //OpenVINO: Disabled due to software limitation for VPU Plugin.
+  //This test runs fine on CPU and GPU Plugins
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+#endif
 }
 
 TEST(MathOpTest, Sum_8_Test2) {
@@ -506,7 +535,13 @@ TEST(MathOpTest, Sum_8_Test2) {
                          3.3f, 4.4f, -94.7f,
                          59.6f, 64.01f, -8.0f});
 
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
+  //OpenVINO: Disabled due to software limitation for VPU Plugin.
+  //This test runs fine on CPU and GPU Plugins
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "Sum is not correct", {kTensorrtExecutionProvider}); //TensorRT: result differs
+#endif
 }
 
 TEST(MathOpTest, Min_6) {
