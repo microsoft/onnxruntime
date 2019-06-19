@@ -60,7 +60,8 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kMklDnnExecutionProvider &&
         provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
-        provider != onnxruntime::kTensorrtExecutionProvider) {
+        provider != onnxruntime::kTensorrtExecutionProvider &&
+        provider != onnxruntime::kOpenVINOExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
       modified = copy_impl.ModifyGraph(registry_manager_);
     }
@@ -85,7 +86,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
 Overview: The transformer transforms the input graph as follows:
 
-(1) For every initializer W that is referenced by both provider and non-provider nodes,
+(1) For every initializer W that is referenced by both provider and non-provider nodes, 
 we create a duplicate initializer W2 and change all provider nodes to reference this
 duplicate copy.
 

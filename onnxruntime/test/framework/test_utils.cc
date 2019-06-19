@@ -25,6 +25,14 @@ IExecutionProvider* TestTensorrtExecutionProvider() {
 }
 #endif
 
+#ifdef USE_OPENVINO
+IExecutionProvider* TestOpenVINOExecutionProvider() {
+    static OpenVINOExecutionProviderInfo info;
+    static OpenVINOExecutionProvider openvino_provider(info);
+    return &openvino_provider;
+}
+#endif
+
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {
   static NnapiExecutionProvider nnapi_provider;

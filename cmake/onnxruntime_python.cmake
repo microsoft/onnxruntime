@@ -72,6 +72,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -83,6 +84,10 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_common
     onnxruntime_mlas
 )
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}

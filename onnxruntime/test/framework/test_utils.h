@@ -12,6 +12,9 @@
 #ifdef USE_TENSORRT 
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #endif
+#ifdef USE_OPENVINO
+#include "core/providers/openvino/openvino_execution_provider.h"
+#endif
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_execution_provider.h"
 #endif
@@ -31,8 +34,11 @@ IExecutionProvider* TestCudaExecutionProvider();
 IExecutionProvider* TestTensorrtExecutionProvider();
 #endif
 
+#ifdef USE_OPENVINO
+IExecutionProvider* TestOpenVINOExecutionProvider();
+#endif
+
 #ifdef USE_NNAPI
-// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestNnapiExecutionProvider();
 #endif
 

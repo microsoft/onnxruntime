@@ -76,6 +76,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
+  int GetDeviceId() const { return device_id_; }
+
  private:
   cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;

@@ -82,7 +82,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
    * Copy tensor between execution providers.  It's always a deep copy
