@@ -11,7 +11,7 @@ namespace test {
 
 using ExpectResult = OpTester::ExpectResult;
 
-TEST(TensorOpTest, ImageScalerTest) {
+TEST(ImageScalerOpTest, ImageScalerTest) {
   const int64_t N = 1, C = 2, H = 2, W = 2;
   std::vector<float> X = {
       1.0f, 3.0f,
@@ -131,7 +131,7 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.Run();
 }
 
-TEST(TensorOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
+TEST(MVNOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   // across_channels: true, normalize_variance: true
   MeanVarianceNormalizationAcrossChannels(true, true);
 
