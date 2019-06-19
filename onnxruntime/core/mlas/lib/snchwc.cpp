@@ -293,6 +293,9 @@ struct MLAS_NCHWC_NN_ALGORITHM
     }
 };
 
+constexpr size_t MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex;
+constexpr size_t MLAS_NCHWC_NN_ALGORITHM::WidthShapeIndex;
+
 template<typename AlgorithmType>
 void
 MlasNchwcThreaded(
@@ -540,6 +543,8 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         }
     }
 };
+
+constexpr size_t MLAS_NCHWC_GROUPED_CONV_ALGORITHM::FilterSetSize;
 
 //
 // Implementation of the direct convolution algorithm where the input buffer is
