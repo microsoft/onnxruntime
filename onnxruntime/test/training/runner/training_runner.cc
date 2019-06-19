@@ -30,7 +30,11 @@ TrainingRunner::TrainingRunner(DataSet& trainingData, DataSet& testData, const P
               (params_.weights_to_train_.empty() && !params_.weights_not_to_train_.empty()));
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
-  ORT_ENFORCE(!params_.in_graph_optimizer_name_.empty());
+#ifdef USE_CUDA
+  ORT_ENFORCE(!params_.use_cuda_ || !params_.in_graph_optimizer_name_.empty());
+#else
+  ORT_ENFORCE(params_.in_graph_optimizer_name_.empty());
+#endif
 }
 
 Status TrainingRunner::Initialize() {
@@ -59,8 +63,13 @@ Status TrainingRunner::Initialize() {
     std::cout << "Training weight " << weight << std::endl;
   }
 
-  vector<in_graph_optimizer::OptimizerInfo> opt_info(weights_to_train.size());
-  SetupOptimizerParams(opt_info);
+  vector<in_graph_optimizer::OptimizerInfo> opt_info;
+#ifdef USE_CUDA
+  if (params_.use_cuda_) {
+    opt_info.resize(weights_to_train.size());
+    SetupOptimizerParams(opt_info);
+  }
+#endif
 
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name_, opt_info));
