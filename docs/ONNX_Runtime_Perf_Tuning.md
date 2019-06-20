@@ -3,7 +3,7 @@
 ## Why do we need to tune performance?
 ONNX Runtime is designed to be open and scalable, it created the concept of "Execution Provider" to represents different execution kernels. 
 
-ONNX Runtime right now supports 4 CPU execution providers, which are, default(MLAS), MKL-ML, MKLDNN and nGraph. For nVidia GPU, we support CUDA and TensorRT execution providers.
+ONNX Runtime right now supports 4 CPU execution providers, which are, default(MLAS), MKL-ML, MKLDNN and nGraph. For nVidia GPU, we support CUDA and TensorRT execution providers. (Technically, MKL-ML is not an formal execution provider since it can only enabled by using build options and does not support GetCapability interface.)
 For different models and different hardware, there is no silver bullet which can always perform the best. And even for a single execution provider, many times you have several knobs to tune, like thread number, wait policy etc.
 
 This document will document some basic tools and knobs you could leverage to find the best performace for your model and your hardware.
