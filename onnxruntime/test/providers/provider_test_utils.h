@@ -221,7 +221,6 @@ class OpTester {
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
     // need to do some static casting so we can easily use this later
-    //UTScustom_schema_registries_.push_back(std::static_pointer_cast<IOnnxRuntimeOpSchemaCollection>(registry->GetOpschemaRegistry()));
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
     custom_session_registries_.push_back(std::static_pointer_cast<CustomRegistry>(registry));
   }
@@ -244,7 +243,8 @@ class OpTester {
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
-           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+           bool sequential_execution = true);
 
   struct Data {
     onnxruntime::NodeArg def_;
