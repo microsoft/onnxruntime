@@ -21,6 +21,58 @@
 #endif
 #else
 #include "task_thread_pool.h"
+
+#ifndef USE_OPENMP
+namespace Eigen {
+
+// TODO: This is temporarily taken from Eigen as the task based threadpool lacks support.
+// Barrier is an object that allows one or more threads to wait until
+// Notify has been called a specified number of times.
+class Barrier {
+ public:
+  Barrier(unsigned int count) : state_(count << 1), notified_(false) {
+    assert(((count << 1) >> 1) == count);
+  }
+
+  ~Barrier() {
+    assert((state_ >> 1) == 0);
+  }
+
+  void Notify() {
+    unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
+
+    if (v != 1) {
+      assert(((v + 2) & ~1) != 0);
+      return;  // either count has not dropped to 0, or waiter is not waiting
+    }
+
+    std::unique_lock<std::mutex> l(mu_);
+    assert(!notified_);
+    notified_ = true;
+    cv_.notify_all();
+  }
+
+  void Wait() {
+    unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
+
+    if ((v >> 1) == 0) return;
+
+    std::unique_lock<std::mutex> l(mu_);
+
+    while (!notified_) {
+      cv_.wait(l);
+    }
+  }
+
+ private:
+  std::mutex mu_;
+  std::condition_variable cv_;
+  std::atomic<unsigned int> state_;  // low bit is waiter flag
+  bool notified_;
+};
+
+}
+#endif
 #endif
 
 namespace onnxruntime {
@@ -56,16 +108,17 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
     int64_t remainder = total - unit_size * NumThreads();
-    int64_t spawnedThreads = (total / unit_size) - 1;
+    int64_t spawnedThreads = (unit_size == 1 ? total : NumThreads()) - 1;
     Eigen::Barrier barrier(static_cast<unsigned int>(spawnedThreads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
 
+    int64_t last = unit_size;
     for (int64_t iteration = 1; iteration <= spawnedThreads; iteration++) {
-      int64_t first = iteration * unit_size;
-      int64_t last = first + unit_size + (remainder-- > 0 ? 1 : 0);
+      int64_t first = last;
+      last = first + unit_size + (remainder-- > 0 ? 1 : 0);
       Schedule([=, &handle_iteration]() { handle_iteration(first, last); });
     }
 
@@ -116,17 +169,17 @@ class ThreadPool::Impl : public TaskThreadPool {
     }
 #else
     int64_t remainder = total - unit_size * NumThreads();
-    int64_t spawnedThreads = (total / unit_size) - 1;
+    int64_t spawnedThreads = (unit_size == 1 ? total : NumThreads()) - 1;
     Eigen::Barrier barrier(static_cast<unsigned int>(spawnedThreads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
+    int64_t last = unit_size;
     for (int64_t iteration = 1; iteration <= spawnedThreads; iteration++) {
-      int64_t first = iteration * unit_size;
-      int64_t last = first + unit_size + (remainder-- > 0 ? 1 : 0);
-      std::packaged_task<void()> task(std::bind(handle_iteration, first, last));
-      RunTask(std::move(task));
+      int64_t first = last;
+      last = first + unit_size + (remainder-- > 0 ? 1 : 0);
+      Schedule([=, &handle_iteration]() { handle_iteration(first, last); });
     }
     fn(0, unit_size);
     barrier.Wait();
