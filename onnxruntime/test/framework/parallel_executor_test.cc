@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnx/defs/schema.h"
-
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 #include "test/providers/provider_test_utils.h"
@@ -18,8 +16,8 @@ namespace test {
 
 // Test kernel that will return success, or failure, or throw based on the input
 struct TestOp {
-  static constexpr char* OpName = "TestOp";
-  static constexpr char* OpDomain = "testing";
+  static constexpr const char* OpName = "TestOp";
+  static constexpr const char* OpDomain = "testing";
 
   static ONNX_NAMESPACE::OpSchema OpSchema() {
     ONNX_NAMESPACE::OpSchema schema;
