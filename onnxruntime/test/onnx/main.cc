@@ -344,12 +344,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"mxnet_arcface", "result mismatch"}
   };
 
-#ifdef USE_NGRAPH
-  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
-#endif
-
 #ifdef USE_OPENVINO
   broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
   broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
