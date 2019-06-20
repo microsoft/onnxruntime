@@ -46,7 +46,7 @@ A variety of tools can be used to create ONNX models. Unless otherwise noted, pl
 |---|---|---|
 |[Pytorch](https://pytorch.org/)|[Latest stable](https://pytorch.org/get-started/locally/)|1.2-1.5*<br>*may require [ONNX version converter](https://github.com/onnx/onnx/blob/master/docs/VersionConverter.md) to convert to desired opset #*|
 |[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CoreML, LightGBM, XGBoost, LibSVM|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.2-1.5|
-|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.2-1.4-1.5|
+|[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.4-1.5|
 |[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/skl2onnx/releases)|1.2-1.5|
 |[Keras-ONNX](https://pypi.org/project/keras2onnx/)|[Latest stable](https://github.com/onnx/keras2onnx/releases)|1.2-1.5|
 |[Tensorflow-ONNX](https://pypi.org/project/tf2onnx/)|[Latest stable](https://github.com/onnx/tf2onnx/releases)|1.2-1.5|
