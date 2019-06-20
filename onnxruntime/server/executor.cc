@@ -91,11 +91,11 @@ std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& 
   size_t input_count = input_names.size();
   size_t output_count = output_names.size();
 
-  std::vector<const char*> input_ptrs{input_count};
+  std::vector<const char*> input_ptrs{};
   for (auto const& input: input_names){
     input_ptrs.push_back(input.data());
   }
-  std::vector<const char *> output_ptrs{output_count};
+  std::vector<const char *> output_ptrs{};
   for (auto const& output: output_names){
     output_ptrs.push_back(output.data());
   }
@@ -138,17 +138,12 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   }
 
   
-
-//TODO Add exception handling.
-  auto outputs = Run(env_->GetSession(), run_options, input_names, input_values, output_names);
-
-/* 
-  if (!status.IsOK()) {
-    LOGS(*logger, ERROR) << "Run() failed."
-                         << ". Error Message: " << status.ToString();
-    return GenerateProtobufStatus(status, "Run() failed: " + status.ToString());
-  }
-*/
+std::vector<Ort::Value> outputs;
+try{
+  outputs = Run(env_->GetSession(), run_options, input_names, input_values, output_names);
+} catch (Ort::Exception& e){
+  return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
+} 
 
   // Build the response
   for (size_t i = 0, sz = outputs.size(); i < sz; ++i) {

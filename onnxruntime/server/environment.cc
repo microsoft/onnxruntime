@@ -23,6 +23,7 @@ ServerEnvironment::ServerEnvironment(logging::Severity severity, spdlog::sink_pt
                                                                      default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink_)),
                                                                      runtime_environment_((OrtLoggingLevel) severity, logger_id_.c_str(), Log, default_logger_.get()), 
                                                                      session(nullptr) {
+  spdlog::set_automatic_registration(false);
   spdlog::set_level((spdlog::level::level_enum) severity_);
   spdlog::initialize_logger(default_logger_);
 }

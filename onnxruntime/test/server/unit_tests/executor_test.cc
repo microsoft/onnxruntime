@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
+#include "test_server_environment.h"
 
 namespace onnxruntime {
 namespace server {
@@ -20,13 +21,11 @@ TEST(ExecutorTests, TestMul_1) {
   const static auto input_json = R"({"inputs":{"X":{"dims":[3,2],"dataType":1,"floatData":[1,2,3,4,5,6]}},"outputFilter":["Y"]})";
   const static auto expected = R"({"outputs":{"Y":{"dims":["3","2"],"dataType":1,"floatData":[1,4,9,16,25,36]}}})";
 
-  spdlog::sink_ptr ptr = std::make_shared<spdlog::sinks::stdout_sink_st>();
-  onnxruntime::server::ServerEnvironment env(logging::Severity::kWARNING, ptr);
-
-  auto status = env.InitializeModel(model_file);
+  onnxruntime::server::ServerEnvironment * env = ServerEnv();
+  auto status = env->InitializeModel(model_file);
   EXPECT_TRUE(status.IsOK());
 
-  onnxruntime::server::Executor executor(&env, "RequestId");
+  onnxruntime::server::Executor executor(env, "RequestId");
   onnxruntime::server::PredictRequest request{};
   onnxruntime::server::PredictResponse response{};
 

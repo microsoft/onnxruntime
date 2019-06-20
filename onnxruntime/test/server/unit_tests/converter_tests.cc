@@ -12,6 +12,8 @@
 #include "server/converter.h"
 #include "server/serializing/tensorprotoutils.h"
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/sink.h>
+#include <spdlog/sinks/null_sink.h>
 
 namespace onnxruntime {
 namespace server {
@@ -34,7 +36,6 @@ IExecutionProvider* TestCPUExecutionProvider() {
 }
 
 TEST(MLDataTypeToTensorProtoDataTypeTests, MLDataTypeToTensorProtoDataTypeTests) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   onnx::TensorProto_DataType result = onnxruntime::server::MLDataTypeToTensorProtoDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
   EXPECT_EQ(result, onnx::TensorProto_DataType_FLOAT);
@@ -86,7 +87,6 @@ TEST(MLDataTypeToTensorProtoDataTypeTests, MLDataTypeToTensorProtoDataTypeTests)
 }
 
 TEST(MLValueToTensorProtoTests, FloatToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -125,7 +125,6 @@ TEST(MLValueToTensorProtoTests, FloatToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, FloatToFloatData) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -160,7 +159,6 @@ TEST(MLValueToTensorProtoTests, FloatToFloatData) {
 }
 
 TEST(MLValueToTensorProtoTests, Int32ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -199,7 +197,6 @@ TEST(MLValueToTensorProtoTests, Int32ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, Int32ToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -234,7 +231,6 @@ TEST(MLValueToTensorProtoTests, Int32ToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt8ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -273,7 +269,6 @@ TEST(MLValueToTensorProtoTests, UInt8ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt8ToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -308,7 +303,6 @@ TEST(MLValueToTensorProtoTests, UInt8ToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt8ProtoRoundTrip) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -363,7 +357,6 @@ TEST(MLValueToTensorProtoTests, UInt8ProtoRoundTrip) {
 }
 
 TEST(MLValueToTensorProtoTests, Int8ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -402,7 +395,6 @@ TEST(MLValueToTensorProtoTests, Int8ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, Int8ToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int8_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -438,7 +430,6 @@ TEST(MLValueToTensorProtoTests, Int8ToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt16ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -477,7 +468,6 @@ TEST(MLValueToTensorProtoTests, UInt16ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt16ToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 3};
   std::vector<uint16_t> values_mul_x = {1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -513,7 +503,6 @@ TEST(MLValueToTensorProtoTests, UInt16ToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, Int16ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -552,7 +541,6 @@ TEST(MLValueToTensorProtoTests, Int16ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, Int16ToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int16_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -588,7 +576,6 @@ TEST(MLValueToTensorProtoTests, Int16ToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, BoolToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
@@ -627,7 +614,6 @@ TEST(MLValueToTensorProtoTests, BoolToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, BoolToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   bool values_mul_x[] = {true, false, false, true, true, false};
@@ -663,7 +649,6 @@ TEST(MLValueToTensorProtoTests, BoolToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, Float16ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::MLFloat16> values_mul_x{
@@ -708,7 +693,6 @@ TEST(MLValueToTensorProtoTests, Float16ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, FloatToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::MLFloat16> values_mul_x{
@@ -752,7 +736,6 @@ TEST(MLValueToTensorProtoTests, FloatToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, BFloat16ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::BFloat16> values_mul_x{
@@ -797,7 +780,6 @@ TEST(MLValueToTensorProtoTests, BFloat16ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, BFloatToInt32Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<onnxruntime::BFloat16> values_mul_x{
@@ -841,7 +823,6 @@ TEST(MLValueToTensorProtoTests, BFloatToInt32Data) {
 }
 
 TEST(MLValueToTensorProtoTests, StringToStringData) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<std::string> values_mul_x{"A", "BC", "DEF", "123", "45", "6"};
@@ -883,7 +864,6 @@ TEST(MLValueToTensorProtoTests, StringToStringData) {
 }
 
 TEST(MLValueToTensorProtoTests, Int64ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -922,7 +902,6 @@ TEST(MLValueToTensorProtoTests, Int64ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, Int64ToInt64Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -957,7 +936,6 @@ TEST(MLValueToTensorProtoTests, Int64ToInt64Data) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt32ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -996,7 +974,6 @@ TEST(MLValueToTensorProtoTests, UInt32ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt32ToUint64Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint32_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -1033,7 +1010,6 @@ TEST(MLValueToTensorProtoTests, UInt32ToUint64Data) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt64ToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -1072,7 +1048,6 @@ TEST(MLValueToTensorProtoTests, UInt64ToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, UInt64ToInt64Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<uint64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
@@ -1107,7 +1082,6 @@ TEST(MLValueToTensorProtoTests, UInt64ToInt64Data) {
 }
 
 TEST(MLValueToTensorProtoTests, DoubleToRaw) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
@@ -1146,7 +1120,6 @@ TEST(MLValueToTensorProtoTests, DoubleToRaw) {
 }
 
 TEST(MLValueToTensorProtoTests, DoubleToInt64Data) {
-  auto logger = std::make_unique<onnxruntime::logging::Logger>(::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<double> values_mul_x = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};

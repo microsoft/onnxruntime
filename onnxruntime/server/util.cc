@@ -12,9 +12,9 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
-  protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
-  switch (onnx_status.Code()) {
+protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::string& message){
+protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
+  switch (onnx_status) {
     case onnxruntime::common::StatusCode::OK:
     case onnxruntime::common::StatusCode::MODEL_LOADED:
       code = protobufutil::error::Code::OK;
@@ -40,8 +40,12 @@ protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& o
   }
 
   std::ostringstream oss;
-  oss << "ONNX Runtime Status Code: " << onnx_status.Code() << ". " << message;
+  oss << "ONNX Runtime Status Code: " << onnx_status << ". " << message;
   return protobufutil::Status(code, oss.str());
+}
+
+protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
+  return GenerateProtobufStatus(onnx_status.Code(), message);
 }
 
 }  // namespace server
