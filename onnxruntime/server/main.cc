@@ -5,6 +5,10 @@
 #include "http_server.h"
 #include "predict_request_handler.h"
 #include "server_configuration.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/sink.h>
+#include <spdlog/sinks/stdout_sinks.h>
+#include <spdlog/fmt/ostr.h>
 
 #define VALUE_TO_STRING(x) #x
 #define VALUE(x) VALUE_TO_STRING(x)
@@ -52,17 +56,16 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level);
+  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level, std::make_shared<spdlog::sinks::stdout_sink_st>());
   auto logger = env->GetAppLogger();
-  LOGS(logger, VERBOSE) << "Logging manager initialized.";
-  LOGS(logger, INFO) << "Model path: " << config.model_path;
+  logger->info("Model path: {}", config.model_path);
 
   auto status = env->InitializeModel(config.model_path);
   if (!status.IsOK()) {
-    LOGS(logger, FATAL) << "Initialize Model Failed: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
+    logger->critical("Initialize Model Failed: {} ---- Error: [{}]", status.Code(), status.ErrorMessage());
     exit(EXIT_FAILURE);
   } else {
-    LOGS(logger, VERBOSE) << "Initialize Model Successfully!";
+    logger->debug("Initialize Model Successfully!");
   }
 
 
@@ -72,15 +75,14 @@ int main(int argc, char* argv[]) {
   app.RegisterStartup(
       [&env](const auto& details) -> void {
         auto logger = env->GetAppLogger();
-        LOGS(logger, INFO) << "Listening at: "
-                           << "http://" << details.address << ":" << details.port;
+        logger->info("Listening at: http://{}:{}", details.address.to_string(), details.port);
       });
 
   app.RegisterError(
       [&env](auto& context) -> void {
         auto logger = env->GetLogger(context.request_id);
-        LOGS(*logger, VERBOSE) << "Error code: " << context.error_code;
-        LOGS(*logger, VERBOSE) << "Error message: " << context.error_message;
+        logger->debug("Error code: {}", context.error_code);
+        logger->debug("Error message: {}", context.error_message);
 
         context.response.result(context.error_code);
         context.response.insert("Content-Type", "application/json");

@@ -5,27 +5,26 @@
 #include "core/common/logging/logging.h"
 #include "environment.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "logging/syslog_sink.h"
 
 namespace onnxruntime {
 namespace server {
 
 void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
     const char* message){
-      
+
+      spdlog::logger * logger = (spdlog::logger *)param;
+      logger->log((spdlog::level::level_enum) severity, "[{} {} {}]: {}", logid, category, code_location, message);
       return;
     }
 
-ServerEnvironment::ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type) : severity_(severity),
+ServerEnvironment::ServerEnvironment(logging::Severity severity, spdlog::sink_ptr sink) : severity_(severity),
                                                                      logger_id_("ServerApp"),
-                                                                     default_logging_manager_(
-                                                                         std::unique_ptr<logging::ISink>{new SysLogSink{}},
-                                                                         severity,
-                                                                         /* default_filter_user_data */ false,
-                                                                         instance_type,
-                                                                         &logger_id_),
-                                                                     runtime_environment_((OrtLoggingLevel) severity, Log, "ServerApp", nullptr), 
+                                                                     sink_(sink),
+                                                                     default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink_)),
+                                                                     runtime_environment_((OrtLoggingLevel) severity, logger_id_.c_str(), Log, default_logger_.get()), 
                                                                      session(nullptr) {
+  spdlog::set_level((spdlog::level::level_enum) severity_);
+  spdlog::initialize_logger(default_logger_);
 }
 
 common::Status ServerEnvironment::InitializeModel(const std::string& model_path) {
@@ -47,24 +46,24 @@ const std::vector<std::string>& ServerEnvironment::GetModelOutputNames() const {
   return model_output_names_;
 }
 
-const logging::Logger& ServerEnvironment::GetAppLogger() const {
-  return default_logging_manager_.DefaultLogger();
-}
 
 logging::Severity ServerEnvironment::GetLogSeverity() const {
   return severity_;
 }
 
-std::unique_ptr<logging::Logger> ServerEnvironment::GetLogger(const std::string& id) {
-  if (id.empty()) {
-    LOGS(GetAppLogger(), WARNING) << "Request id is null or empty string";
-  }
-
-  return default_logging_manager_.CreateLogger(id, severity_, false);
-}
 
 const Ort::Session& ServerEnvironment::GetSession() const {
   return session;
+}
+
+std::shared_ptr<spdlog::logger> ServerEnvironment::GetLogger(const std::string& request_id) const{
+  auto logger = std::make_shared<spdlog::logger>(request_id, sink_);
+  spdlog::initialize_logger(logger);
+  return logger;
+}
+
+std::shared_ptr<spdlog::logger> ServerEnvironment::GetAppLogger() const {
+  return default_logger_;
 }
 
 }  // namespace server

@@ -35,7 +35,6 @@ set(onnxruntime_server_lib_srcs
   "${ONNXRUNTIME_ROOT}/server/executor.cc"
   "${ONNXRUNTIME_ROOT}/server/converter.cc"
   "${ONNXRUNTIME_ROOT}/server/util.cc"
-  "${ONNXRUNTIME_ROOT}/server/logging/spd_log_sink.cc"
   "${ONNXRUNTIME_ROOT}/server/serializing/tensorprotoutils.cc"
   )
 if(NOT WIN32)
@@ -98,6 +97,7 @@ target_link_libraries(onnxruntime_server_lib PRIVATE
   onnxruntime_common
   onnxruntime_mlas
   ${onnxruntime_EXTERNAL_LIBRARIES}
+  PUBLIC
   spdlog::spdlog
 )
 

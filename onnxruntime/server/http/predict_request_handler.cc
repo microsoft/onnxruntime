@@ -22,7 +22,7 @@ namespace protobufutil = google::protobuf::util;
       (context).response.insert("x-ms-client-request-id", (context).client_request_id); \
     }                                                                                   \
     auto json_error_message = CreateJsonError(http_error_code, (message));              \
-    LOGS((*logger), VERBOSE) << json_error_message;                                     \
+    logger->debug(json_error_message);                                     \
     (context).response.result(http_error_code);                                         \
     (context).response.body() = json_error_message;                                     \
     (context).response.set(http::field::content_type, "application/json");              \
@@ -37,10 +37,10 @@ void Predict(const std::string& name,
              /* in, out */ HttpContext& context,
              const std::shared_ptr<ServerEnvironment>& env) {
   auto logger = env->GetLogger(context.request_id);
-  LOGS(*logger, INFO) << "Model Name: " << name << ", Version: " << version << ", Action: " << action;
+  logger->info("Model Name: {}, Version: {}, Action: {}", name, version, action);
 
   if (!context.client_request_id.empty()) {
-    LOGS(*logger, INFO) << "x-ms-client-request-id: [" << context.client_request_id << "]";
+    logger->info("x-ms-client-request-id: [{}]", context.client_request_id);
   }
 
   // Request and Response content type information
