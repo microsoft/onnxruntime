@@ -91,7 +91,8 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*success*/ 0});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, nullptr, false);
+    // TensorRT doesn't handle a custom op. Possibly it should, but that would be a separate PR
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr, false);
   }
 
   {  // test failure
@@ -100,7 +101,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*failure*/ 1});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {}, nullptr, nullptr, false);
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider}, nullptr, nullptr, false);
   }
 
   {  // test exception
@@ -109,7 +110,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*exception*/ 2});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {}, nullptr, nullptr, false);
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {kTensorrtExecutionProvider}, nullptr, nullptr, false);
   }
 }
 }  // namespace test
