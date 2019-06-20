@@ -113,15 +113,19 @@ class TensorflowTestSession : public TestSession {
     ORT_THROW_ON_ERROR(OrtGetTensorMutableData(const_cast<OrtValue*>(value), &input_buffer));
     assert(input_buffer != nullptr);
     OrtTensorTypeAndShapeInfo* shape = nullptr;
-    ORT_THROW_ON_ERROR(OrtGetTensorShapeAndType(value, &shape));
+    ORT_THROW_ON_ERROR(OrtGetTensorTypeAndShape(value, &shape));
     size_t buffer_length = 0;
     std::vector<int64_t> dims;
-    size_t dim_count = OrtGetDimensionsCount(shape);
+    size_t dim_count;
+    ORT_THROW_ON_ERROR(OrtGetDimensionsCount(shape, &dim_count));
     dims.resize(dim_count);
-    OrtGetDimensions(shape, dims.data(), dim_count);
-    int64_t ele_count = OrtGetTensorShapeElementCount(shape);
+    ORT_THROW_ON_ERROR(OrtGetDimensions(shape, dims.data(), dim_count));
+    size_t ele_count;
+    ORT_THROW_ON_ERROR(OrtGetTensorShapeElementCount(shape, &ele_count));
     TF_DataType tf_datatype;
-    switch (OrtGetTensorElementType(shape)) {
+    ONNXTensorElementDataType element_type;
+    ORT_THROW_ON_ERROR(OrtGetTensorElementType(shape, &element_type));
+    switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
         buffer_length = ele_count * sizeof(float);
         tf_datatype = TF_FLOAT;

@@ -42,8 +42,8 @@ OrtGetStringTensorDataLength
 OrtGetTensorElementType
 OrtGetTensorMemSizeInBytesFromTensorProto
 OrtGetTensorMutableData
-OrtGetTensorShapeAndType
 OrtGetTensorShapeElementCount
+OrtGetTensorTypeAndShape
 OrtGetTypeInfo
 OrtGetValue
 OrtGetValueCount

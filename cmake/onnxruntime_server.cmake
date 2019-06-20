@@ -74,6 +74,7 @@ target_include_directories(onnxruntime_server_lib PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/onnx
   ${ONNXRUNTIME_ROOT}/server
   ${ONNXRUNTIME_ROOT}/server/http
+  ${ONNXRUNTIME_ROOT}/server/logging
   PUBLIC
   ${Boost_INCLUDE_DIR}
   ${re2_src}
@@ -95,6 +96,10 @@ target_link_libraries(onnxruntime_server_lib PRIVATE
   ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 
+if (onnxruntime_USE_SYSLOG)
+  target_compile_definitions(onnxruntime_server_lib PUBLIC USE_SYSLOG="1")
+endif()
+
 # For IDE only
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_server_srcs} ${onnxruntime_server_lib_srcs} ${onnxruntime_server_lib})
 
@@ -107,6 +112,14 @@ if(NOT WIN32)
     set_source_files_properties("${ONNXRUNTIME_ROOT}/server/main.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
+
+set(onnxruntime_SERVER_VERSION "local-build" CACHE STRING "Sever version")
+target_compile_definitions(${SERVER_APP_NAME} PUBLIC SRV_VERSION="${onnxruntime_SERVER_VERSION}")
+message(STATUS "ONNX Runtime Server version set to: ${onnxruntime_SERVER_VERSION}")
+
+set(onnxruntime_LATEST_COMMIT_ID "default" CACHE STRING "The latest commit id")
+target_compile_definitions(${SERVER_APP_NAME} PUBLIC LATEST_COMMIT_ID="${onnxruntime_LATEST_COMMIT_ID}")
+message(STATUS "ONNX Runtime Server latest commit id is: ${onnxruntime_LATEST_COMMIT_ID}")
 
 onnxruntime_add_include_to_target(${SERVER_APP_NAME} onnxruntime_session onnxruntime_server_lib gsl onnx onnx_proto server_proto)
 

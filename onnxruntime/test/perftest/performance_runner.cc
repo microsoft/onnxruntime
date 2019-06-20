@@ -168,7 +168,7 @@ static TestModelInfo* CreateModelInfo(const PerformanceTestConfig& performance_t
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
 
-static TestSession* CreateSession(OrtEnv* env, std::random_device& rd,
+static TestSession* CreateSession(Ort::Env& env, std::random_device& rd,
                                   const PerformanceTestConfig& performance_test_config_,
                                   TestModelInfo* test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
@@ -181,7 +181,7 @@ static TestSession* CreateSession(OrtEnv* env, std::random_device& rd,
 #endif
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
-PerformanceRunner::PerformanceRunner(OrtEnv* env, const PerformanceTestConfig& test_config, std::random_device& rd)
+PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)),
       session_(CreateSession(env, rd, test_config, test_model_info_)) {}

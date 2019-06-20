@@ -102,11 +102,11 @@ class LoopImpl {
   Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
 
  private:
-  void CreateInitialFeeds(std::vector<MLValue>& feeds);
-  void SaveOutputsAndUpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs);
+  void CreateInitialFeeds(std::vector<OrtValue>& feeds);
+  void SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outputs, std::vector<OrtValue>& next_inputs);
 
   // create the single Loop output from a collection of per-iteration outputs
-  Status ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_output, int output_index);
+  Status ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_output, int output_index);
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
@@ -119,17 +119,17 @@ class LoopImpl {
   int num_subgraph_inputs_;
   int num_outputs_;
 
-  std::unordered_map<std::string, const MLValue*> implicit_inputs_;
+  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
 
-  MLValue iter_num_mlvalue_;
-  MLValue condition_mlvalue_;
+  OrtValue iter_num_mlvalue_;
+  OrtValue condition_mlvalue_;
 
   std::vector<std::string> subgraph_input_names_;
   std::vector<std::string> subgraph_output_names_;
 
-  // collection of MLValue outputs from each loop iteration for the loop outputs.
+  // collection of OrtValue outputs from each loop iteration for the loop outputs.
   // the order from the subgraph matches the order from the loop output
-  std::vector<std::vector<MLValue>> loop_output_tensors_;
+  std::vector<std::vector<OrtValue>> loop_output_tensors_;
 };
 
 Status Loop::Compute(OpKernelContext* ctx) const {
@@ -166,17 +166,16 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
 }
 
 template <typename T>
-static MLValue MakeScalarMLValue(AllocatorPtr& allocator, T value) {
+static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
-                                                              TensorShape({1}),
+                                                              is_1d ? TensorShape({1}) : TensorShape({}),
                                                               allocator);
 
   *p_tensor->MutableData<T>() = value;
 
-  return MLValue{p_tensor.release(),
-                 DataTypeImpl::GetType<Tensor>(),
-                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  return OrtValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 }
 
 Status LoopImpl::Initialize() {
@@ -203,12 +202,23 @@ Status LoopImpl::Initialize() {
                            " but has ", num_subgraph_outputs);
   }
 
+  auto* max_trip_count_tensor = context_.Input<Tensor>(0);
+  auto iter_num_rank = max_trip_count_tensor ? max_trip_count_tensor->Shape().NumDimensions() : 0;
+  auto* cond_tensor = context_.Input<Tensor>(1);
+  auto condition_rank = cond_tensor ? cond_tensor->Shape().NumDimensions() : 0;
+
+  if (condition_rank >= 2 || iter_num_rank >= 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "'Loop' input 'M' and 'cond' should be a scalar tensor, but have ranks of ",
+                           condition_rank, " and ", iter_num_rank);
+  }
+
   AllocatorPtr allocator;
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_);
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, condition_rank);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, iter_num_rank);
 
   subgraph_input_names_.reserve(num_subgraph_inputs_);
   for (int i = 0; i < num_subgraph_inputs_; ++i) {
@@ -239,13 +249,13 @@ Status LoopImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>&
   }
 
   FeedsFetchesInfo ffi(feed_names, subgraph_output_names_);
-  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
-                                            ffm);
+  auto status =
+      FeedsFetchesManager::Create(feed_names, subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
 
   return status;
 }
 
-void LoopImpl::CreateInitialFeeds(std::vector<MLValue>& feeds) {
+void LoopImpl::CreateInitialFeeds(std::vector<OrtValue>& feeds) {
   auto num_implicit_inputs = implicit_inputs_.size();
   feeds.reserve(num_subgraph_inputs_ + num_implicit_inputs);
 
@@ -260,13 +270,13 @@ void LoopImpl::CreateInitialFeeds(std::vector<MLValue>& feeds) {
 
   // pass in implicit inputs as feeds.
   for (auto& entry : implicit_inputs_) {
-    ORT_ENFORCE(entry.second, "All implicit inputs should have MLValue instances by now. ",
-                entry.first, " did not.");
+    ORT_ENFORCE(entry.second, "All implicit inputs should have OrtValue instances by now. ", entry.first, " did not.");
     feeds.push_back(*entry.second);
   }
 }
 
-void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<MLValue>& last_outputs, std::vector<MLValue>& next_inputs) {
+void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outputs,
+                                         std::vector<OrtValue>& next_inputs) {
   // last_output: cond, loop vars..., loop output...
   // next_input: iter_num, cond, loop_vars. iter_num is re-used
 
@@ -281,14 +291,14 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<MLValue>& last_output
   }
 }
 
-Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_output, int output_index) {
+Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_output, int output_index) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   size_t bytes_per_iteration = first_output.Size();
   const auto& per_iteration_shape = first_output.Shape();
   const auto& per_iteration_dims = per_iteration_shape.GetDims();
 
   // prepend number of iterations to the dimensions
-  int64_t num_iterations = gsl::narrow_cast<int64_t>(per_iteration_output.size());
+  auto num_iterations = gsl::narrow_cast<int64_t>(per_iteration_output.size());
   std::vector<int64_t> dims{num_iterations};
   std::copy(per_iteration_dims.cbegin(), per_iteration_dims.cend(), std::back_inserter(dims));
   TensorShape output_shape{dims};
@@ -301,8 +311,8 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
                                                                output->Size());
 
   for (int64_t i = 0; i < num_iterations; ++i) {
-    auto& mlvalue = per_iteration_output[i];
-    auto& iteration_data = mlvalue.Get<Tensor>();
+    auto& ort_value = per_iteration_output[i];
+    auto& iteration_data = ort_value.Get<Tensor>();
 
     // sanity check
     if (bytes_per_iteration != iteration_data.Size()) {
@@ -322,8 +332,8 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<MLValue>& per_iteration_outpu
 Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
   auto status = Status::OK();
 
-  std::vector<MLValue> feeds;
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
 
   CreateInitialFeeds(feeds);
 
@@ -360,7 +370,7 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
 
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
-  auto copy_tensor_from_mlvalue_to_output = [this](const MLValue& input, int output_idx) {
+  auto copy_tensor_from_mlvalue_to_output = [this](const OrtValue& input, int output_idx) {
     auto& data = input.Get<Tensor>();
     Tensor* output = context_.Output(output_idx, data.Shape());
     auto src = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(data.DataRaw()), data.Size());
@@ -371,7 +381,7 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   // copy to Loop output
   if (iter_num_value != 0) {
     for (int i = 0; i < num_loop_carried_vars_; ++i) {
-      // need to allocate Loop output and copy MLValue from fetches
+      // need to allocate Loop output and copy OrtValue from fetches
       copy_tensor_from_mlvalue_to_output(fetches[i + 1], i);  // skip cond
     }
 
@@ -389,12 +399,33 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
       copy_tensor_from_mlvalue_to_output(feeds[i + 2], i);  // skip iter# and cond
     }
 
-    // create empty outputs for loop outputs
-    TensorShape empty;
+    // create empty outputs for loop outputs using the subgraph output shapes for the rank
+    auto& graph_outputs = subgraph_.GetOutputs();
+
     for (int i = num_loop_carried_vars_; i < num_outputs_; ++i) {
-      ORT_IGNORE_RETURN_VALUE(context_.Output(i, empty));
+      std::vector<int64_t> output_dims;
+      output_dims.push_back(0);  // num iterations is first dim
+
+      // get shape from subgraph output if possible to attempt to have the correct rank
+      auto* graph_output = graph_outputs.at(i + 1);  // + 1 as first subgraph output is condition value
+      auto* graph_output_shape = graph_output->Shape();
+
+      if (graph_output_shape) {
+        output_dims.reserve(graph_output_shape->dim_size() + 1);
+
+        auto dims = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+        std::copy(dims.cbegin(), dims.cend(), std::back_inserter(output_dims));
+      } else {
+        // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,
+        // however that could still fail as we would potentially be passing in invalid data.
+        // Until we know this is required just output a warning and return the rank 1 empty output.
+        LOGS(context_.Logger(), WARNING) << "Loop had zero iterations and the shape of subgraph output " << i + 1
+                                         << " was not found. Defaulting to a rank 1 shape of {0}.";
+      }
+
+      ORT_IGNORE_RETURN_VALUE(context_.Output(i, TensorShape(output_dims)));
     }
   }
   return status;
-}
+}  // namespace onnxruntime
 }  // namespace onnxruntime

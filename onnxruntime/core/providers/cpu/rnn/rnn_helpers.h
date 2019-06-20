@@ -40,14 +40,15 @@ enum Direction {
 inline Direction MakeDirection(const std::string& direction) {
   if (direction == "forward") {
     return kForward;
-  } else if (direction == "reverse") {
+  }
+  if (direction == "reverse") {
     return kReverse;
-  } else if (direction == "bidirectional") {
+  }
+  if (direction == "bidirectional") {
     return kBidirectional;
-  } else {
+  }
     ORT_THROW("Invalid 'direction' argument of '", direction,
               "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
-  }
 }
 
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe
@@ -237,7 +238,7 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     });
   }
 
-  int totalTasks = (int)max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
+  int totalTasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
   while (done != totalTasks)
     ;
 #endif
@@ -275,52 +276,53 @@ class ActivationFuncs {
 namespace deepcpu {
 
 using AddBiasIntoFuncPtr = void (*)(const float*, float*, const int);
-using ClipWithBiasFuncPtr = void (*)(const float, const float*, float*, const int);
-using ActivationFuncPtr = void (*)(float*, const int, const float, const float);
-using ActivationFuncBPtr = void (*)(const float*, float*, const int, const float, const float);
-using LstmMergeGatesFuncPtr = void (*)(const float*, float*, const float*, float*, const int, const float, const float);
-using GruResetGateFuncPtr = void (*)(const float*, float*, float*, const int, const float, const float);
-using GruOutputGateFuncPtr = void (*)(float*, const float*, const float*, float*, const int, const float, const float);
+using ClipWithBiasFuncPtr = void (*)(float, const float*, float*, const int);
+using ActivationFuncPtr = void (*)(float*, int, float, float);
+using ActivationFuncBPtr = void (*)(const float*, float*, int, float, float);
+using LstmMergeGatesFuncPtr = void (*)(const float*, float*, const float*, float*, int, float, float);
+using GruResetGateFuncPtr = void (*)(const float*, float*, float*, int, float, float);
+using GruOutputGateFuncPtr = void (*)(float*, const float*, const float*, float*, int, float, float);
 
 ActivationFuncPtr ActivationFuncByName(const std::string& func);
 LstmMergeGatesFuncPtr LstmMergeGatesFuncByName(const std::string& func);
 GruResetGateFuncPtr GruResetGateFuncByName(const std::string& func);
 GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func);
 
-void add_bias_into_ignore(const float* ignored, float* pd, const int c);
-void add_bias_into(const float* ps, float* pd, const int c);
-void clip(const float b, float* pd, const int c);
-void clip_add_bias(const float b, const float* pb, float* pd, const int c);
-void clip_ignore_bias(const float b, const float* pb, float* pd, const int c);
-void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void sigmoid_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void tanh_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void sigmoid(float* pd, int c, const float alpha, const float beta);
-void tanh(float* pd, int c, const float alpha, const float beta);
-void relu(float* pd, int c, const float alpha, const float beta);
-void sigmoid_exact(float* pd, int c, const float alpha, const float beta);
-void tanh_exact(float* pd, int c, const float alpha, const float beta);
-void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr, const int c);
-void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, const int c, const float alpha, const float beta);
-void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, const int c, const float alpha, const float beta);
-void gru_reset_gate_relu(const float* ps1, float* ps2, float* pd, const int c, const float alpha, const float beta);
-void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po, const int c, const float alpha, const float beta);
-void gru_output_gate_sigmoid(float* ph, const float* pz, const float* ps, float* po, const int c, const float alpha, const float beta);
-void gru_output_gate_relu(float* ph, const float* pz, const float* ps, float* po, const int c, const float alpha, const float beta);
+void add_bias_into_ignore(const float* ignored, const float* pd, int c);
+void add_bias_into(const float* ps, float* pd, int c);
+void clip(float b, float* pd, int c);
+void clip_add_bias(float b, const float* pb, float* pd, int c);
+void clip_ignore_bias(float b, const float* pb, float* pd, int c);
+void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void relu_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void sigmoid_exact_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void tanh_exact_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void sigmoid(float* pd, int c, float alpha, float beta);
+void tanh(float* pd, int c, float alpha, float beta);
+void relu(float* pd, int c, float alpha, float beta);
+void sigmoid_exact(float* pd, int c, float alpha, float beta);
+void tanh_exact(float* pd, int c, float alpha, float beta);
+void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
+                                int c);
+void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, int c, float alpha, float beta);
+void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, int c, float alpha, float beta);
+void gru_reset_gate_relu(const float* ps1, const float* ps2, float* pd, int c, float alpha, float beta);
+void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po, int c, float alpha, float beta);
+void gru_output_gate_sigmoid(float* ph, const float* pz, const float* ps, float* po, int c, float alpha, float beta);
+void gru_output_gate_relu(const float* ph, const float* pz, const float* ps, float* po, int c, float alpha, float beta);
 
-inline void elementwise_product(const float* op1, const float* op2, float* dest, const int size) {
+inline void elementwise_product(const float* op1, const float* op2, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] += op1[i] * op2[i];
 }
 
-inline void elementwise_sum1(const float* src, float* dest, const int size) {
+inline void elementwise_sum1(const float* src, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] += src[i];
 }
 
-inline void elementwise_sum2(const float* src1, const float* src2, float* dest, const int size) {
+inline void elementwise_sum2(const float* src1, const float* src2, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] += src1[i] + src2[i];
 }

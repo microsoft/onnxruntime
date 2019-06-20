@@ -5,7 +5,7 @@
 #include <onnx/onnx_pb.h>
 #include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/ml_value.h"
@@ -113,7 +113,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
     output_names = env_->GetModelOutputNames();
   }
 
-  std::vector<onnxruntime::MLValue> outputs(output_names.size());
+  std::vector<OrtValue> outputs(output_names.size());
 
   // Run
   OrtRunOptions run_options{};

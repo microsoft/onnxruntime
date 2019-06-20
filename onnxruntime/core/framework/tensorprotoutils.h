@@ -32,10 +32,22 @@ std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::Te
  *                        relative path or an absolute path.
  */
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, MLValue& value,
+                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value,
                                     OrtCallback& deleter);
 // This function doesn't support string tensors
 ONNX_NAMESPACE::TensorProto::DataType GetTensorProtoType(const Tensor& tensor);
+
+/** Creates a TensorProto from a Tensor.
+    @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
+    @param[in] tensor_proto_name the name of the TensorProto.
+    @param[in] tensor_proto_type the type of the TensorProto.
+    @return the TensorProto. 
+    
+    Note: Method currently requires that data is in little-endian format.
+    TODO Once the GetTensorProtoType supports all data types, we can remove the tensor_proto_type parameter and 
+    instead get the type from the tensor. */
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
+                                                const onnx::TypeProto& tensor_proto_type);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);

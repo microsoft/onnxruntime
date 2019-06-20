@@ -4,7 +4,7 @@
 #include <onnx/onnx_pb.h>
 #include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/ml_value.h"
@@ -55,7 +55,7 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(const onnxruntime::Da
   }
 }
 
-common::Status MLValueToTensorProto(const onnxruntime::MLValue& ml_value, bool using_raw_data,
+common::Status MLValueToTensorProto(const OrtValue& ml_value, bool using_raw_data,
                                     std::unique_ptr<onnxruntime::logging::Logger> logger,
                                     /* out */ onnx::TensorProto& tensor_proto) {
   // Tensor in MLValue

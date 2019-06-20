@@ -12,24 +12,32 @@
 #ifdef USE_TENSORRT 
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #endif
+#ifdef USE_OPENVINO
+#include "core/providers/openvino/openvino_execution_provider.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
 
 #ifdef USE_CUDA
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCudaExecutionProvider();
 #endif
 
 #ifdef USE_TENSORRT
+// Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestTensorrtExecutionProvider();
 #endif
 
+#ifdef USE_OPENVINO
+IExecutionProvider* TestOpenVINOExecutionProvider();
+#endif
+
 template <typename T>
-void CreateMLValue(AllocatorPtr alloc,
-                   const std::vector<int64_t>& dims,
-                   const std::vector<T>& value,
-                   MLValue* p_mlvalue) {
+void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const std::vector<T>& value,
+                   OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
@@ -44,9 +52,7 @@ void CreateMLValue(AllocatorPtr alloc,
 }
 
 template <typename T>
-void AllocateMLValue(AllocatorPtr alloc,
-                     const std::vector<int64_t>& dims,
-                     MLValue* p_mlvalue) {
+void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,

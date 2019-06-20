@@ -29,11 +29,11 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 
 template <>
 Status BatchNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
-  const Tensor* scale = p_op_kernel_context->Input<Tensor>(1);
-  const Tensor* B = p_op_kernel_context->Input<Tensor>(2);
-  const Tensor* mean = p_op_kernel_context->Input<Tensor>(3);
-  const Tensor* var = p_op_kernel_context->Input<Tensor>(4);
+  const auto* X = p_op_kernel_context->Input<Tensor>(0);
+  const auto* scale = p_op_kernel_context->Input<Tensor>(1);
+  const auto* B = p_op_kernel_context->Input<Tensor>(2);
+  const auto* mean = p_op_kernel_context->Input<Tensor>(3);
+  const auto* var = p_op_kernel_context->Input<Tensor>(4);
 
   ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var));
 

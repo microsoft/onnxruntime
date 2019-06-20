@@ -72,7 +72,7 @@ class AllocationPlanTestUtility {
     }
   }
 
-  static void CheckToBeFreed(const SequentialExecutionPlan& plan, const std::vector<MLValueIndex>& expected) {
+  static void CheckToBeFreed(const SequentialExecutionPlan& plan, const std::vector<OrtValueIndex>& expected) {
     ASSERT_EQ(plan.to_be_freed.size(), expected.size()) << "Allocation plan's to_be_freed of wrong size";
     for (size_t i = 0; i < expected.size(); ++i) {
       EXPECT_EQ(plan.to_be_freed[i], expected[i]) << "Error in to_be_freed at position " << i;
@@ -97,13 +97,13 @@ class AllocationPlanTestUtility {
 
   static void BasicIntegrityCheck(const SequentialExecutionPlan& plan, size_t num_ml_values) {
     // Sanity checks for plan.to_be_freed
-    std::unordered_set<MLValueIndex> freed;
-    for (MLValueIndex index : plan.to_be_freed) {
+    std::unordered_set<OrtValueIndex> freed;
+    for (OrtValueIndex index : plan.to_be_freed) {
       // Every index should be in the valid range [0, num_ml_values-1]
       EXPECT_GE(index, 0);
       EXPECT_LT(index, num_ml_values);
       // An index should not be freed more than once
-      EXPECT_EQ(freed.count(index), 0) << "MLValue " << index << " freed multiple times";
+      EXPECT_EQ(freed.count(index), 0) << "OrtValue " << index << " freed multiple times";
       freed.insert(index);
     }
     // Check the free-index information for every execution step: they should cover the
@@ -126,7 +126,7 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
  public:
   SequentialPlannerTestContext(ShapeMap* shape_map) : shape_map_(shape_map) {}
 
-  virtual TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
+  TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
     auto iter = shape_map_->find(&arg);
     return (shape_map_->end() != iter) ? iter->second : nullptr;
   }
@@ -138,7 +138,7 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
 class PlannerTest : public ::testing::Test {
  private:
   void index(const std::string& name, int& out) {
-    ASSERT_TRUE(state_.GetMLValueNameIdxMap().GetIdx(name, out).IsOK());
+    ASSERT_TRUE(state_.GetOrtValueNameIdxMap().GetIdx(name, out).IsOK());
   }
 
   onnxruntime::Model model_;
@@ -160,7 +160,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SequentialExecutionPlan> plan_;
 
  public:
-  PlannerTest() : model_("test"), graph_{model_.MainGraph()}, state_{execution_providers_} {
+  PlannerTest() : model_("test"), graph_{model_.MainGraph()}, state_{execution_providers_, false} {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Build();
     in_place_kernel_ = KernelDefBuilder().SetName("Clip").MayInplace(0, 0).Build();
     CPUExecutionProviderInfo epi;
@@ -194,11 +194,8 @@ class PlannerTest : public ::testing::Test {
   }
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def) {
-    auto info = std::make_unique<OpKernelInfo>(*p_node,
-                                               kernel_def,
-                                               *execution_providers_.Get(*p_node),
-                                               state_.GetInitializedTensors(),
-                                               state_.GetMLValueNameIdxMap(),
+    auto info = std::make_unique<OpKernelInfo>(*p_node, kernel_def, *execution_providers_.Get(*p_node),
+                                               state_.GetInitializedTensors(), state_.GetOrtValueNameIdxMap(),
                                                state_.GetFuncMgr());
     auto dummy = std::make_unique<DummyOpKernel>(*info);
     op_kernel_infos_.push_back(std::move(info));
@@ -219,7 +216,7 @@ class PlannerTest : public ::testing::Test {
     EXPECT_EQ(graph_.Resolve(), Status::OK());
     state_.SetGraphViewer(std::make_unique<GraphViewer>(graph_));
 
-    MLValueNameIdxMap& mlvalue_name_idx_map{state_.GetMLValueNameIdxMap()};
+    OrtValueNameIdxMap& mlvalue_name_idx_map{state_.GetOrtValueNameIdxMap()};
 
     int count = 0;
     for (auto& pair : name_to_arg_) {

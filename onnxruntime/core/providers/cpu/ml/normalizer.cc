@@ -43,7 +43,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
     Normalizer);
 
 Status Normalizer::Compute(OpKernelContext* context) const {
-  const Tensor* input_tensor_ptr = context->Input<Tensor>(0);
+  const auto* input_tensor_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   MLDataType input_type = input_tensor_ptr->DataType();
 
