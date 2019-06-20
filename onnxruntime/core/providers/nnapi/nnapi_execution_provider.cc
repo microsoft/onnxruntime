@@ -21,9 +21,13 @@ NnapiExecutionProvider::NnapiExecutionProvider()
                                                             std::make_unique<OrtAllocatorInfo>(NNAPI,
                                                                                                OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
                                               std::numeric_limits<size_t>::max()};
-  InsertAllocator(
-      std::shared_ptr<IArenaAllocator>(
-          std::make_unique<DummyArena>(device_info.factory(0))));
+  InsertAllocator(CreateAllocator(device_info));
+
+  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); },
+                                                      std::numeric_limits<size_t>::max()});
+
+  InsertAllocator(CreateAllocator(cpu_allocator_info));
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
