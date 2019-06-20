@@ -66,7 +66,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     else {
       std::stringstream ss;
       ss << "Multiple errors were found.";
-      for (auto s : errors_) {
+      for (const auto& s : errors_) {
         ss << '\n'
            << s;
       }

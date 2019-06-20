@@ -220,9 +220,8 @@ class OpTester {
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
-    // need to do some static casting so we can easily use this later
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
-    custom_session_registries_.push_back(std::static_pointer_cast<CustomRegistry>(registry));
+    custom_session_registries_.push_back(registry);
   }
 
   void SetOutputAbsErr(const char* name, float v);

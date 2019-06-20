@@ -87,8 +87,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
   auto kernel_def = TestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 
-  {
-    std::cout << "Test success\n";
+  {  // test success
     OpTester tester{"TestOp", 10, TestOp::OpDomain};
     tester.AddCustomOpRegistry(registry);
 
@@ -97,8 +96,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {}, nullptr, nullptr, false);
   }
 
-  {
-    std::cout << "Test failure\n";
+  {  // test failure
     OpTester tester{"TestOp", 10, TestOp::OpDomain};
     tester.AddCustomOpRegistry(registry);
 
@@ -107,8 +105,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
     tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {}, nullptr, nullptr, false);
   }
 
-  {
-    std::cout << "Test exception\n";
+  {  // test exception
     OpTester tester{"TestOp", 10, TestOp::OpDomain};
     tester.AddCustomOpRegistry(registry);
 
