@@ -225,6 +225,8 @@ void ThreadPool::ParallelFor(int64_t total, int64_t unit_size, std::function<voi
 }
 
 int64_t ThreadPool::CalculateShardSize(int64_t total, float complexity) {
+  ORT_UNUSED_PARAMETER(complexity);
+
   // TODO: Simplified calculation, ignores complexity.
   if (total <= NumThreads()) {
     return 1;
