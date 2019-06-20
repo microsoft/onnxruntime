@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 #include "google/protobuf/stubs/common.h"
 
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {

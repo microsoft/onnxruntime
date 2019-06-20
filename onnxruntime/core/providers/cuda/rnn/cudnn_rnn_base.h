@@ -11,6 +11,16 @@
 namespace onnxruntime {
 namespace cuda {
 
+enum RNN_Input_Index {
+  X = 0,
+  W = 1,
+  R = 2,
+  B = 3,
+  sequence_lens = 4,
+  initial_h = 5,
+  initial_c = 6
+};
+
 class CudnnDropout {
  public:
   CudnnDropout() : dropout_desc_(nullptr) {
@@ -158,15 +168,6 @@ class CudnnRnnBase : public CudaKernel {
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
 
-  enum Input_Index {
-    X = 0,
-    W = 1,
-    R = 2,
-    B = 3,
-    sequence_lens = 4,
-    initial_h = 5,
-    initial_c = 6
-  };
   enum Output_Index {
     Y = 0,
     Y_h = 1,
