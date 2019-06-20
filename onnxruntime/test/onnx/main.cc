@@ -353,6 +353,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 #endif
 
+#ifdef USE_NGRAPH
+  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onx150"}});
+#endif
+
 
 
 #ifdef USE_CUDA
