@@ -22,7 +22,7 @@
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -228,9 +228,9 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   model_location_ = ToWideString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_location_, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
-    for(const auto& domain: interop_domains_) {
-        AddCustomOpDomains({domain.get()});
+    LoadInterOp(model_location_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
     }
 #endif
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
@@ -258,9 +258,9 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
-    for(const auto& domain: interop_domains_) {
-        AddCustomOpDomains({domain.get()});
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
     }
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
@@ -272,9 +272,9 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(*p_model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
-    for(const auto& domain: interop_domains_) {
-        AddCustomOpDomains({domain.get()});
+    LoadInterOp(*p_model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
     }
 #endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
@@ -295,9 +295,9 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
-    for(const auto& domain: interop_domains_) {
-        AddCustomOpDomains({domain.get()});
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
     }
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
@@ -316,9 +316,9 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg){LOGS(*session_logger_, WARNING) << msg;});
-    for(const auto& domain: interop_domains_) {
-        AddCustomOpDomains({domain.get()});
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
     }
 #endif
 
@@ -399,6 +399,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
       subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
+
+      // Pass fused function manager to subgraph
+      subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
       // recurse
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
@@ -858,14 +861,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
     run_log_id += run_options.run_tag;
 
-    if (run_options.run_log_verbosity_level > 0) {
-      new_run_logger = logging_manager_->CreateLogger(run_log_id,
-                                                      logging::Severity::kVERBOSE,
-                                                      false,
-                                                      run_options.run_log_verbosity_level);
+    logging::Severity severity = logging::Severity::kWARNING;
+
+    if (run_options.run_log_severity_level < 0) {
+      severity = session_logger_->GetSeverity();
     } else {
-      new_run_logger = logging_manager_->CreateLogger(run_log_id);
+      ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
+                      run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  run_options.run_log_severity_level);
+      severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
+
+    new_run_logger = logging_manager_->CreateLogger(run_log_id,
+                                                    severity,
+                                                    false,
+                                                    run_options.run_log_verbosity_level);
 
     run_logger = new_run_logger.get();
     VLOGS(*run_logger, 1) << "Created logger for run with id of " << run_log_id;
@@ -885,14 +896,21 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
                                     ? session_options_.session_logid
                                     : "InferenceSession";  // there's probably a better default...
 
-    if (session_options_.session_log_verbosity_level > 0) {
-      owned_session_logger_ = logging_manager->CreateLogger(session_logid,
-                                                            logging::Severity::kVERBOSE,
-                                                            false,
-                                                            session_options_.session_log_verbosity_level);
+    logging::Severity severity = logging::Severity::kWARNING;
+
+    if (session_options_.session_log_severity_level < 0) {
+      severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
-      owned_session_logger_ = logging_manager->CreateLogger(session_logid);
+      ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
+                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  session_options_.session_log_severity_level);
+      severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
+
+    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+                                                           session_options_.session_log_verbosity_level);
+
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
