@@ -18,8 +18,8 @@
 #include "core/framework/data_types.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-namespace onnxruntime{
-    namespace server{
+namespace onnxruntime {
+namespace server {
 #ifdef __GNUC__
 constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
 #else
@@ -74,7 +74,7 @@ static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_leng
     }
     return Status::OK();
   }
-  }
+}
 
 // This macro doesn't work for Float16/bool/string tensors
 #define DEFINE_UNPACK_TENSOR(T, Type, field_name, field_size)                                                 \
@@ -277,7 +277,6 @@ std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::Te
   return tensor_shape_vec;
 }
 
-
 struct UnInitializeParam {
   void* preallocated;
   size_t preallocated_size;
@@ -297,7 +296,6 @@ ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_
  *
  */
 ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
-
 
 ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
                     enum ONNXTensorElementDataType type) {
@@ -324,9 +322,9 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
-#define CASE_PROTO(X, Y)                                                                                             \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                               \
-    ORT_RETURN_IF_ERROR(                                                                                             \
+#define CASE_PROTO(X, Y)                                                                                              \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                                \
+    ORT_RETURN_IF_ERROR(                                                                                              \
         ::onnxruntime::server::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size)); \
     break;
 
@@ -373,7 +371,6 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
-
 Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, Ort::Value& value) {
   const OrtAllocatorInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = server::GetTensorElementType(tensor_proto);
@@ -383,7 +380,7 @@ Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
   void* tensor_data;
   {
     if (tensor_proto.data_location() == onnx::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL) {
-        return Status(common::ONNXRUNTIME, common::FAIL, "Server does not support external data.");
+      return Status(common::ONNXRUNTIME, common::FAIL, "Server does not support external data.");
     } else if (tensor_proto.has_raw_data()) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::FAIL, "string tensor can not have raw data");
@@ -437,7 +434,7 @@ Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
             }
           }
           ORT_RETURN_IF_ERROR(::onnxruntime::server::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
-                                                                              (std::string*)preallocated, tensor_size));
+                                                                               (std::string*)preallocated, tensor_size));
           break;
         default: {
           std::ostringstream ostr;
@@ -451,11 +448,11 @@ Status TensorProtoToMLValue(const ONNX_NAMESPACE::TensorProto& tensor_proto, con
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   TensorShape tensor_shape{tensor_shape_vec};
-  value = Ort::Value::CreateTensor(&allocator, tensor_data , m.GetLen() , tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType) tensor_proto.data_type());
+  value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType)tensor_proto.data_type());
   return Status::OK();
 }
 template common::Status GetSizeInBytesFromTensorProto<256>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                            size_t* out);
 template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
-}
-}
+}  // namespace server
+}  // namespace onnxruntime

@@ -22,7 +22,7 @@ namespace protobufutil = google::protobuf::util;
       (context).response.insert("x-ms-client-request-id", (context).client_request_id); \
     }                                                                                   \
     auto json_error_message = CreateJsonError(http_error_code, (message));              \
-    logger->debug(json_error_message);                                     \
+    logger->debug(json_error_message);                                                  \
     (context).response.result(http_error_code);                                         \
     (context).response.body() = json_error_message;                                     \
     (context).response.set(http::field::content_type, "application/json");              \

@@ -42,5 +42,5 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-}
-}
+}  // namespace server
+}  // namespace onnxruntime

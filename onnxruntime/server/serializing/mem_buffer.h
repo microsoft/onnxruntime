@@ -1,8 +1,8 @@
 #pragma once
 #include "core/common/common.h"
 
-namespace  onnxruntime{
-namespace server{
+namespace onnxruntime {
+namespace server {
 class MemBuffer {
  public:
   MemBuffer(void* buffer, size_t len, const OrtAllocatorInfo& alloc_info)
@@ -17,5 +17,5 @@ class MemBuffer {
   const size_t len_;
   const OrtAllocatorInfo& alloc_info_;
 };
-}
-}
+}  // namespace server
+}  // namespace onnxruntime

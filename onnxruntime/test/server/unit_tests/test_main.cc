@@ -5,8 +5,6 @@
 #include "server/environment.h"
 #include "test_server_environment.h"
 
-
-
 GTEST_API_ int main(int argc, char** argv) {
   int status = 0;
 
