@@ -23,7 +23,7 @@ struct OrtDevice {
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;
+  static const DeviceType GPU = 1; //CUDA
   static const DeviceType FPGA = 2;
 
   // Pre-defined memory types.
@@ -78,7 +78,7 @@ struct OrtAllocatorInfo {
   OrtAllocatorType type;
   OrtDevice device;
 
-  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault, OrtDevice device_ = OrtDevice())
+  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif

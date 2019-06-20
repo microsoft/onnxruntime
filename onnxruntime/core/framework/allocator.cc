@@ -51,7 +51,12 @@ std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) {
 
 ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
                     OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out) {
-  *out = new OrtAllocatorInfo(name1, type, id1, mem_type1);
+  if (strcmp(name1, onnxruntime::CPU) == 0) {
+    *out = new OrtAllocatorInfo(name1, type, OrtDevice(), id1, mem_type1);
+  }
+  // Other cases not handled as,
+  // 1. there should be no one calling this function to create non-cpu allocation information.
+  // 2. this function should/will be deprecated.
   return nullptr;
 }
 
