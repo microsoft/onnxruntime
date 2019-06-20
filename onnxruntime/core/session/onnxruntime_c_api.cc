@@ -521,7 +521,7 @@ ORT_API_STATUS_IMPL(OrtTensorProtoToOrtValue, _In_ const void* input, int input_
                     _Out_ OrtValue** out, _Out_ OrtCallback** deleter) {
   API_IMPL_BEGIN
   OrtAllocatorInfo* cpuAllocatorInfo;
-  auto st = OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo);
+  auto st = OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpuAllocatorInfo);
   if (st != nullptr) return st;
   ::ONNX_NAMESPACE::TensorProto proto;
   if (!proto.ParseFromArray(input, input_len)) {

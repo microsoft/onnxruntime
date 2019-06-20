@@ -59,8 +59,8 @@ protobufutil::Status Executor::SetNameMLValueMap(onnxruntime::NameMLValMap& name
   auto ort_status = OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info);
 
   if (ort_status != nullptr || allocator_info == nullptr) {
-    LOGS(*logger, ERROR) << "OrtCreateAllocatorInfo failed";
-    return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateAllocatorInfo() failed");
+    LOGS(*logger, ERROR) << "OrtCreateCpuAllocatorInfo failed";
+    return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateCpuAllocatorInfo() failed");
   }
 
   // Prepare the MLValue object
