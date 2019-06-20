@@ -37,7 +37,10 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-h: help\n");
+      "\t-h: help\n"
+      "\n"
+      "onnxruntime version: %s\n",
+      OrtGetVersionString());
 }
 
 #ifdef _WIN32
