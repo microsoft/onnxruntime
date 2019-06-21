@@ -157,14 +157,16 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     const KernelCreateInfo* kci = nullptr;
     kernel_registries.SearchKernelRegistry(node, &kci);
 
-    ORT_ENFORCE(onnxruntime::Node::ForEachWithIndex(node.InputDefs(), [this, &kci](const onnxruntime::NodeArg& arg,
-                                                                                   size_t index) {
-                  if (kci && kci->kernel_def->IsInputOnCpu(index))
-                    non_provider_input_defs_.insert(&arg);
-                  else
-                    provider_input_defs_.insert(&arg);
-                  return Status::OK();
-                }).IsOK());
+    auto status = onnxruntime::Node::ForEachWithIndex(node.InputDefs(),
+                                                      [this, &kci](const onnxruntime::NodeArg& arg, size_t index) {
+                                                        if (kci && kci->kernel_def->IsInputOnCpu(index))
+                                                          non_provider_input_defs_.insert(&arg);
+                                                        else
+                                                          provider_input_defs_.insert(&arg);
+                                                        return Status::OK();
+                                                      });
+
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
     // we don't need to handle implicit input here as provider_ is never kCpuExecutionProvider, all control flow
     // nodes are CPU based, and only control flow nodes have implicit inputs.
