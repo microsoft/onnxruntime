@@ -1076,6 +1076,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // cast is not compute heavy, and may be placed outside
     }
 
+    //Below rule only works for inference, for training, we can't do constant folding.
+    //We need find a better solution.
+    //Temporary disable the check here, the cost is all the cast will be on GPU now.
+#ifndef ENABLE_TRAINING
     if (!not_supported && !force_inside) {
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
@@ -1092,7 +1096,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         force_outside = true;
       }
     }
-
+#endif
     if (!force_inside && (not_supported || force_outside)) {
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
       if (not_supported)
