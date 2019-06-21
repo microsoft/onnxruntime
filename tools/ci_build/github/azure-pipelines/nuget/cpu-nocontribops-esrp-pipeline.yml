@@ -4,6 +4,14 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
+schedules:
+- cron: "0 12 * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
 variables:
   DisableContribOps: 'ON'
 

@@ -5,7 +5,7 @@
 #   AgentPoolMacOS : 'macOS-10.13'
 
 schedules:
-- cron: "40 21 * * *"
+- cron: "0 8 * * *"
   displayName: Daily Build
   branches:
     include:
@@ -17,3 +17,4 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     DoEsrp: 'true'
+    DoCompliance: 'true'
