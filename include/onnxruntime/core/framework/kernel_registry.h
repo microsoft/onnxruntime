@@ -36,6 +36,11 @@ class KernelRegistry {
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
+  const KernelCreateMap& GetKernelCreateMap() const
+  {
+    return kernel_creator_fn_map_;
+  }
+
  private:
   // Check whether the types of inputs/outputs of the given node match the extra
   // type-constraints of the given kernel. This serves two purposes: first, to
