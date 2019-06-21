@@ -5,7 +5,7 @@
 #   AgentPoolMacOS : 'macOS-10.13'
 
 schedules:
-- cron: "20 21 * * *"
+- cron: "30 21 * * *"
   displayName: Daily Build
   branches:
     include:
