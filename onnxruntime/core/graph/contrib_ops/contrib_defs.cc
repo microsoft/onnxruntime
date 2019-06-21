@@ -1323,6 +1323,109 @@ Example 4:
                 output_counts = [1, 2, 2, 1]
               )DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CropAndResize)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr(
+          "crop_height",
+          "default 1; Pooled output Y's height.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "crop_width",
+          "default 1; Pooled output Y's width.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "mode",
+          "The pooling method. Two modes are supported: 'bilinear' and 'nearest'. "
+          "Default is 'bilinear'.",
+          AttributeProto::STRING,
+          std::string("bilinear"))
+      .Attr(
+          "extrapolation_value",
+          "Value used for extrapolation, when applicable. "
+          "Default is 0.0f. ",
+          AttributeProto::FLOAT,
+          0.f)
+      .Input(
+          0,
+          "X",
+          "Input data tensor from the previous operator; "
+          "4-D feature map of shape (N, C, H, W), "
+          "where N is the batch size, C is the number of channels, "
+          "and H and W are the height and the width of the data.",
+          "T1")
+      .Input(
+          1,
+          "rois",
+          "RoIs (Regions of Interest) to pool over; rois is "
+          "2-D input of shape (num_rois, 4) given as "
+          "[[y1, x1, y2, x2], ...]. "
+          "The RoIs' coordinates are normalized in the coordinate system of the input image. "
+          "Each coordinate set has a 1:1 correspondence with the 'batch_indices' input.",
+          "T1")
+      .Input(
+          2,
+          "batch_indices",
+          "1-D tensor of shape (num_rois,) with each element denoting "
+          "the index of the corresponding image in the batch.",
+          "T2")
+      .Output(
+          0,
+          "Y",
+          "RoI pooled output, 4-D tensor of shape "
+          "(num_rois, C, output_height, output_width). The r-th batch element Y[r-1] "
+          "is a pooled feature map corresponding to the r-th RoI X[r-1].",
+          "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain types to int tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (!hasNInputShapes(ctx, 3)) {
+          return;
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        auto& input_shape = getInputShape(ctx, 0);
+        auto& rois_shape = getInputShape(ctx, 1);
+        auto& batch_index_shape = getInputShape(ctx, 2);
+        auto* output_shape = getOutputShape(ctx, 0);
+
+        if (input_shape.dim_size() != 4) {
+          fail_shape_inference("first input tensor has wrong dimension");
+        }
+        if (rois_shape.dim_size() != 2) {
+          fail_shape_inference("rois input tensor has wrong dimension");
+        }
+        if (batch_index_shape.dim_size() != 1) {
+          fail_shape_inference("batch_indices shape input tensor has wrong dimension");
+        }
+
+        output_shape->clear_dim();
+        output_shape->add_dim()->set_dim_value(static_cast<int64_t>(
+          rois_shape.dim(0).dim_value()));
+        output_shape->add_dim()->set_dim_value(static_cast<int64_t>(
+          input_shape.dim(1).dim_value()));
+        output_shape->add_dim()->set_dim_value(
+          ctx.getAttribute("crop_height")->i());
+        output_shape->add_dim()->set_dim_value(
+          ctx.getAttribute("crop_width")->i());
+      })
+      .SetDoc(R"DOC(
+        Extracts crops from the input image tensor and resizes them using bilinear sampling or nearest neighbor sampling
+        (possibly with aspect ratio change) to a common output size specified by crop_height and crop_width.
+        Returns a tensor with crops from the input image at positions defined at the bounding box locations in boxes.
+        The cropped boxes are all resized (with bilinear or nearest neighbor interpolation) to
+        a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
+        The resizing is corner aligned.
+        )DOC");
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
