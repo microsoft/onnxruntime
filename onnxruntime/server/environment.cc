@@ -13,7 +13,7 @@ void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* categor
     const char* message){
 
       spdlog::logger * logger = (spdlog::logger *)param;
-      logger->log((spdlog::level::level_enum) severity, "[{} {} {}]: {}", logid, category, code_location, message);
+      logger->log((spdlog::level::level_enum) (severity - 1), "[{} {} {}]: {}", logid, category, code_location, message);
       return;
     }
 
