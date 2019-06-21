@@ -27,6 +27,8 @@ class OpenVINOGraph {
 
   static void ConvertONNXModelToOpenVINOIR(const std::string& onnx_model, std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32);
 
+  static const std::string log_tag;
+
  private:
   std::shared_ptr<InferenceEngine::CNNNetwork> BuildOpenVINONetworkWithMO();
 
