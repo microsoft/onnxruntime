@@ -93,7 +93,7 @@ class OpKernelContext {
     if (index < 0 || index >= OutputCount())
       return nullptr;
 
-    OrtValue* p_ml_value = GetOrCreateOutputMLValue(index, p_ml_value);
+    OrtValue* p_ml_value = GetOrCreateOutputMLValue(index);
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
