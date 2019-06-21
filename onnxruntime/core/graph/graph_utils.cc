@@ -399,6 +399,12 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
+bool IsNodeInputConstant(const Graph& graph, const Node& node, int index) {
+  const onnx::TensorProto* initializer = nullptr;
+  const auto& input_def = node.InputDefs()[index];
+  return graph.GetInitializedTensor(input_def->Name(), initializer) && !IsGraphInput(graph, input_def);
+}
+
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;

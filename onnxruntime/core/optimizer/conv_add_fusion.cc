@@ -120,9 +120,20 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-           next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node));
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
+      next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
+      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    return false;
+  }
+
+  // if (!graph_utils::IsNodeInputConstant(graph, node, 1) /* ||
+  //     (node.InputDefs().size() == 3 && !graph_utils::IsNodeInputConstant(graph, node, 2)) ||
+  //     !graph_utils::IsNodeInputConstant(graph, next_node, 1)*/
+  // ) {
+  //   return false;
+  // }
+
+  return true;
 }
 
 }  // namespace onnxruntime
