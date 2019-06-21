@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/common/logging/logging.h"
 #include "core/session/inference_session.h"
 

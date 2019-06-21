@@ -78,4 +78,8 @@ common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
 }
 
+std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
+  return nullptr;
+}
+
 }  // namespace onnxruntime

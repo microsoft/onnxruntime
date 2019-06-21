@@ -72,7 +72,9 @@ RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.
 
 # Lotus unit tests
 # need to copy the tvm.dll, since it is not in the buildDir path
-Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir
+if (Test-Path -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -PathType Leaf) {
+    Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir
+}
 
 $onnxruntime_test_all = Join-Path $buildDir "onnxruntime_test_all.exe"
 RunTest $onnxruntime_test_all @() ("cobertura:$outputXml","html:$outputDir") ("onnxruntime_shared_lib_test.cov","onnx_test_runner.cov","onnxruntime_mlas_test.cov")

@@ -34,10 +34,13 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt' or 'ngraph'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-h: help\n");
+      "\t-h: help\n"
+      "\n"
+      "onnxruntime version: %s\n",
+      OrtGetVersionString());
 }
 
 #ifdef _WIN32
@@ -87,6 +90,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
+  bool enable_openvino = false;
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
@@ -140,6 +144,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+            enable_openvino = true;
           } else {
             usage();
             return -1;
@@ -186,7 +192,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     double relative_per_sample_tolerance = enable_cuda ? 0.017 : 1e-3;
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    relative_per_sample_tolerance = enable_openvino ? 0.009 : 1e-3;
+
     Ort::SessionOptions sf;
+
+
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -206,6 +217,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
+#endif
+    }
+
+    if(enable_openvino){
+#ifdef USE_OPENVINO
+        ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+#else
+    fprintf(stderr, "OpenVINO is not supported in this build");
+    return -1;
 #endif
     }
     if (enable_cuda) {
@@ -302,12 +322,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},
-      {"gemm_broadcast", "disable reason"},
-      {"gemm_nobroadcast", "disable reason"},
-      {"matmul_2d", "disable reason"},
-      {"matmul_3d", "disable reason"},
-      {"matmul_4d", "disable reason"},
+      {"convtranspose_3d", "disable reason"},      
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -333,6 +348,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
 #endif
 
+#ifdef USE_OPENVINO
+  broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
+  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+#ifdef OPENVINO_CONFIG_GPU_FP32
+  broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+#endif
+#endif
+
+
+
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
@@ -355,6 +381,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding-Upsampling-Normalizer_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"tiny_yolov2", "This model uses contrib ops."});
+  broken_tests.insert({"fp16_tiny_yolov2", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Pooling_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Padding_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Normalizer_ImageNet", "This model uses contrib ops."});

@@ -35,8 +35,9 @@ else
             --use_tensorrt --tensorrt_home /workspace/tensorrt \
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
-    else #cpu and ngraph
+    else #cpu, ngraph and openvino
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
 fi
+

@@ -59,15 +59,16 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
     return false;
   }
 
-  // The shape of the input has to be statically known. Moreover, each dimension should have a specific value
-  // (the rule cannot be applied if one of the dimension is a symbolic variable).
+  // The shape of the input has to be statically known. Moreover, each dimension should have a meaningful value
+  // (the rule cannot be applied if one of the dimensions has a negative value or if it is a symbolic variable).
   const auto* input_shape = node.InputDefs()[0]->Shape();
   if (!input_shape) {
     return false;
   }
 
   for (int i = 0, num_dims = input_shape->dim_size(); i < num_dims; i++) {
-    if (!input_shape->dim(i).has_dim_value()) {
+    const auto& input_dim = input_shape->dim(i);
+    if (!input_dim.has_dim_value() || input_dim.dim_value() < 0) {
       return false;
     }
   }

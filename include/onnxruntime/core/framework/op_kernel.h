@@ -40,10 +40,9 @@ class OpKernel {
     return op_kernel_info_.GetKernelDef();
   }
 
-  virtual Status Compute(OpKernelContext* context) const = 0;
+  virtual Status Compute(OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
-  virtual Status ComputeAsync(OpKernelContext*,
-                              DoneCallback) const {
+  virtual Status ComputeAsync(OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
