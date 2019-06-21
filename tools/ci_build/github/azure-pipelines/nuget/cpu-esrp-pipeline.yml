@@ -4,6 +4,14 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
+schedules:
+- cron: "20 21 * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
 jobs: 
 - template: templates/cpu.yml
   parameters:
