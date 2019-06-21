@@ -294,13 +294,32 @@ void addGlobalMethods(py::module& m) {
   m.def(
     "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
       std::vector<onnxruntime::KernelDef> result;
-      auto& kernelCreateMap_CPU = onnxruntime::CreateExecutionProviderFactory_CPU(0)
-                                  ->CreateProvider()
-                                  ->GetKernelRegistry()
-                                  ->GetKernelCreateMap();
-      for (auto& kv: kernelCreateMap_CPU){
-         result.emplace_back(*(kv.second.kernel_def)); 
+      std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
+        // onnxruntime::CreateExecutionProviderFactory_CPU(0),
+        // onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+        onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
+        // onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
+        // onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
+        // onnxruntime::CreateExecutionProviderFactory_Tensorrt()
+      };
+
+      for (auto& f: factories){
+        for (auto& m: f->CreateProvider()
+                       ->GetKernelRegistry()
+                       ->GetKernelCreateMap()){
+          result.emplace_back(*(m.second.kernel_def)); 
+        }
       }
+
+
+      // auto& kernelCreateMap_CPU = onnxruntime::CreateExecutionProviderFactory_CPU(0)
+      //                             ->CreateProvider()
+      //                             ->GetKernelRegistry()
+      //                             ->GetKernelCreateMap();
+      // for (auto& kv: kernelCreateMap_CPU){
+      //    result.emplace_back(*(kv.second.kernel_def)); 
+      // }
+
       return result;
     },
     "Return a vector of KernelDef for all registered OpKernels"
@@ -658,32 +677,32 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 
-  auto providerFactory = onnxruntime::CreateExecutionProviderFactory_CPU(0);
-  auto provider = providerFactory->CreateProvider();
-  auto kernelRegistry = provider->GetKernelRegistry();
-  auto& kernelCreateMap = kernelRegistry->GetKernelCreateMap();
+  // auto providerFactory = onnxruntime::CreateExecutionProviderFactory_CPU(0);
+  // auto provider = providerFactory->CreateProvider();
+  // auto kernelRegistry = provider->GetKernelRegistry();
+  // auto& kernelCreateMap = kernelRegistry->GetKernelCreateMap();
 
-  for (const auto& kv: kernelCreateMap)
-  {
-    std::cout << kv.first << std::endl;
-    int ver1, ver2;
-    kv.second.kernel_def->SinceVersion(&ver1, &ver2);
-    std::cout << "\t" << kv.second.kernel_def->OpName() << ", "
-              << kv.second.kernel_def->Domain() << ", "
-              << kv.second.kernel_def->Provider() << ", "
-              << "(" << ver1 << ", " << ver2 << ")" 
-              << std::endl;
-    auto& tc = kv.second.kernel_def->TypeConstraints();
-    for (auto& tckv: tc)
-    {
-      std::cout << tckv.first << "(";
-      for (auto& tckvv: tckv.second)
-      {
-        std::cout << onnxruntime::DataTypeImpl::ToString(tckvv) << ", ";
-      }
-      std::cout << ")" << std::endl;
-    }        
-  } 
+  // for (const auto& kv: kernelCreateMap)
+  // {
+  //   std::cout << kv.first << std::endl;
+  //   int ver1, ver2;
+  //   kv.second.kernel_def->SinceVersion(&ver1, &ver2);
+  //   std::cout << "\t" << kv.second.kernel_def->OpName() << ", "
+  //             << kv.second.kernel_def->Domain() << ", "
+  //             << kv.second.kernel_def->Provider() << ", "
+  //             << "(" << ver1 << ", " << ver2 << ")" 
+  //             << std::endl;
+  //   auto& tc = kv.second.kernel_def->TypeConstraints();
+  //   for (auto& tckv: tc)
+  //   {
+  //     std::cout << tckv.first << "(";
+  //     for (auto& tckvv: tckv.second)
+  //     {
+  //       std::cout << onnxruntime::DataTypeImpl::ToString(tckvv) << ", ";
+  //     }
+  //     std::cout << ")" << std::endl;
+  //   }        
+  // } 
 #endif
 }
 
