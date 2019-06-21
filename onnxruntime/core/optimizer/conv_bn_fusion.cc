@@ -24,20 +24,30 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   // Get initializers of BatchNormalization
   const auto& bn_inputs = bn_node.InputDefs();
   const ONNX_NAMESPACE::TensorProto* bn_scale_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[1]->Name(), bn_scale_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[1]->Name(), bn_scale_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* bn_B_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[2]->Name(), bn_B_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[2]->Name(), bn_B_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* bn_mean_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[3]->Name(), bn_mean_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[3]->Name(), bn_mean_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* bn_var_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[4]->Name(), bn_var_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[4]->Name(), bn_var_tensor_proto)) {
+    return Status::OK();
+  }
 
   const auto& conv_inputs = conv_node.InputDefs();
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
+    return Status::OK();
+  }
 
   // Currently, fusion is only supported for float or double data type.
   if (!Initializer::IsSupportedDataType(bn_scale_tensor_proto) ||

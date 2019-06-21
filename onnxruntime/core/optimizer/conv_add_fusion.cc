@@ -16,14 +16,12 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   const auto& add_inputs = add_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  bool rc = graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
-  if (!rc) {
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
     return Status::OK();
   }
 
   const ONNX_NAMESPACE::TensorProto* add_B_tensor_proto = nullptr;
-  rc = graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto);
-  if (!rc) {
+  if (!graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto)) {
     return Status::OK();
   }
 
@@ -55,7 +53,9 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (conv_inputs.size() == 3) {
-    graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto);
+    if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto)) {
+      return Status::OK();
+    }
 
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||

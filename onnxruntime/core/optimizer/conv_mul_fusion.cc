@@ -16,10 +16,14 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   const auto& mul_inputs = mul_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* mul_B_tensor_proto = nullptr;
-  graph.GetInitializedTensor(mul_inputs[1]->Name(), mul_B_tensor_proto);
+  if (!graph.GetInitializedTensor(mul_inputs[1]->Name(), mul_B_tensor_proto)) {
+    return Status::OK();
+  }
 
   if (!Initializer::IsSupportedDataType(conv_W_tensor_proto) ||
       !Initializer::IsSupportedDataType(mul_B_tensor_proto) ||
