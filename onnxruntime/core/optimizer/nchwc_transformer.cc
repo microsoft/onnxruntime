@@ -385,8 +385,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   }
 
   // Create the replacement node.
-  std::string nchwc_node_name = graph_.GenerateNodeName("Nchwc");
-  Node& nchwc_node = graph_.AddNode(output_defs[0]->Name() + "_nchwc",
+  std::string nchwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nchwc");
+  Node& nchwc_node = graph_.AddNode(nchwc_node_name,
                                     "Conv",
                                     nchwc_node_name,
                                     input_defs,
@@ -445,8 +445,8 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
   }
 
   // Create the replacement node.
-  std::string nchwc_node_name = graph_.GenerateNodeName("Nchwc");
-  Node& nchwc_node = graph_.AddNode(output_defs[0]->Name() + "_nchwc",
+  std::string nchwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_nchwc");
+  Node& nchwc_node = graph_.AddNode(nchwc_node_name,
                                     node.OpType(),
                                     nchwc_node_name,
                                     input_defs,
@@ -704,6 +704,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
 Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   NchwcTransformerImpl impl(graph);
   GraphViewer graph_viewer(graph);
+
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));

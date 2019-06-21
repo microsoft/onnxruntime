@@ -1086,7 +1086,9 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 {
+#if !defined(MLAS_TARGET_AMD64)
     static const PMLAS_POOL_FLOAT_KERNEL PoolKernels[];
+#endif
 
     const MLAS_NCHWC_POOL_WORK_BLOCK* WorkBlock;
 
@@ -1188,12 +1190,16 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     }
 };
 
+#if !defined(MLAS_TARGET_AMD64)
+
 const PMLAS_POOL_FLOAT_KERNEL MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 {
     MlasPoolMaximumFloatKernel,
     MlasPoolAverageExcludePadFloatKernel,
     MlasPoolAverageIncludePadFloatKernel,
 };
+
+#endif
 
 void
 MLASCALL

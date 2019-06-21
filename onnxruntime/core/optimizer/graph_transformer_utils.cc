@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
@@ -15,6 +17,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -111,7 +114,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     } break;
 
     case TransformerLevel::Level3: {
-      transformers.emplace_back(std::make_unique<onnxruntime::NchwcTransformer>());
+#ifndef DISABLE_CONTRIB_OPS
+      // Register the NCHWc layout transformer if supported by the platform.
+      if (MlasNchwcGetBlockSize() > 0) {
+        transformers.emplace_back(std::make_unique<onnxruntime::NchwcTransformer>());
+      }
+#endif
 
     } break;
 
