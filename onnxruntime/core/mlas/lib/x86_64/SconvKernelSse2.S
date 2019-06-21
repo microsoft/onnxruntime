@@ -234,6 +234,10 @@ Implicit Arguments:
 
 Macro Description:
 
+    This macro generates code to process an output block after the inner
+    convolution kernel has executed and then stores the output block to the
+    output buffer.
+
 Arguments:
 
     FilterCount - Supplies the number of rows from the filter to process.
@@ -256,7 +260,7 @@ MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\():
 // with the output block.
 //
 
-        test    dl,1
+        test    dl,MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT
         jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipAccumulateOutput
         EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm8,XMMWORD PTR [r8]"
         EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm9,XMMWORD PTR [r8+16]"
@@ -281,7 +285,7 @@ MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\():
 // Test if the bias buffer should be accumulated with the output block.
 //
 
-        test    dl,2
+        test    dl,MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION
         jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipBiasAddition
         EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm8,XMMWORD PTR [rcx]"
         EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "movups xmm9,XMMWORD PTR [rcx+16]"
@@ -306,7 +310,7 @@ MlasConvPostProcessFloatSseFilter\FilterCount\()Output\OutputCount\():
 // Test for fused ReLU activation.
 //
 
-        test    dl,4
+        test    dl,MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION
         jz      .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipReluActivation
         xorps   xmm15,xmm15
         EmitIfCount2GE \FilterCount\(), 1, \OutputCount\(), 1, "maxps xmm0,xmm15"

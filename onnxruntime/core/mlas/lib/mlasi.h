@@ -188,6 +188,8 @@ void
     unsigned Flags
     );
 
+typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
+
 typedef
 void
 (MLASCALL MLAS_CONV_DEPTHWISE_FLOAT_KERNEL)(
@@ -209,6 +211,8 @@ void
     unsigned Flags
     );
 
+typedef MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL;
+
 typedef
 void
 (MLASCALL MLAS_CONV_POINTWISE_FLOAT_KERNEL)(
@@ -225,6 +229,8 @@ void
     const float* Bias,
     unsigned Flags
     );
+
+typedef MLAS_CONV_POINTWISE_FLOAT_KERNEL* PMLAS_CONV_POINTWISE_FLOAT_KERNEL;
 
 typedef
 void
@@ -244,6 +250,8 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad
     );
+
+typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
 
 typedef
 void
@@ -334,6 +342,9 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
 #endif
 
     MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
@@ -404,11 +415,11 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
-    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
-    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
+    PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
+    PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
+    PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
+    PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
+    PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
     PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
@@ -418,54 +429,6 @@ struct MLAS_PLATFORM {
 #if defined(MLAS_USE_WIN32_THREADPOOL)
     int32_t MaximumThreadCount;
 #endif
-
-    MLAS_CONV_FLOAT_KERNEL*
-    GetConvNchwFloatKernel(
-        void
-        )
-    {
-#if defined(MLAS_TARGET_AMD64)
-        return ConvNchwFloatKernel;
-#else
-        return MlasConvNchwFloatKernel;
-#endif
-    }
-
-    MLAS_CONV_FLOAT_KERNEL*
-    GetConvNchwcFloatKernel(
-        void
-        )
-    {
-#if defined(MLAS_TARGET_AMD64)
-        return ConvNchwcFloatKernel;
-#else
-        return MlasConvNchwcFloatKernel;
-#endif
-    }
-
-    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL*
-    GetConvDepthwiseFloatKernel(
-        void
-        )
-    {
-#if defined(MLAS_TARGET_AMD64)
-        return ConvDepthwiseFloatKernel;
-#else
-        return MlasConvDepthwiseFloatKernel;
-#endif
-    }
-
-    MLAS_CONV_POINTWISE_FLOAT_KERNEL*
-    GetConvPointwiseFloatKernel(
-        void
-        )
-    {
-#if defined(MLAS_TARGET_AMD64)
-        return ConvPointwiseFloatKernel;
-#else
-        return MlasConvPointwiseFloatKernel;
-#endif
-    }
 };
 
 extern MLAS_PLATFORM MlasPlatform;

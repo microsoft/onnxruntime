@@ -16,6 +16,15 @@
 ;--
 
 ;
+; Define the convolution kernel flags.
+;
+
+MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     EQU     00000001h
+MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         EQU     00000002h
+MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       EQU     00000004h
+MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      EQU     00000008h
+
+;
 ; Stack frame layout for the convolution kernels.
 ;
 

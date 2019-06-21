@@ -66,6 +66,15 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     MLAS_POOLING_KIND PoolingKind;
 };
 
+//
+// Define the convolution kernel flags.
+//
+
+#define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     0x00000001
+#define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
+#define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
+#define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
+
 size_t
 MLASCALL
 MlasNchwcGetBlockSize(
@@ -83,19 +92,20 @@ Arguments:
 
 Return Value:
 
-    None.
+    Returns the NCHWc block size for the platform. If NCHWc support is not
+    available for the platform, then returns zero.
 
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
     return MlasPlatform.NchwcBlockSize;
 #else
-    return 8;
+    return 0;
 #endif
 }
 
 void
-MlasPrepareNchwcWorkBlock(
+MlasNchwcPrepareWorkBlock(
     MLAS_NCHWC_WORK_BLOCK* WorkBlock,
     size_t Dimensions,
     const int64_t* InputShape,
@@ -105,6 +115,38 @@ MlasPrepareNchwcWorkBlock(
     const int64_t* StrideShape,
     const int64_t* OutputShape
     )
+/*++
+
+Routine Description:
+
+    This routine prepares for a convolution or pooling operation by computing
+    required parameters given the shape attributes.
+
+Arguments:
+
+    WorkBlock - Supplies the structure that contains the commong convolution
+        and pooling parameters.
+
+    Dimensions - Supplies the number of dimensions.
+
+    InputShape - Supplies the shape of the input tensor.
+
+    KernelShape - Supplies the shape of the kernel transform.
+
+    DilationShape - Supplies the shape of the dilation.
+
+    Padding - Supplies the number of padding elements at the edge of the input
+        tensor.
+
+    StrideShape - Supplies the shape of the stride.
+
+    OutputShape - Supplies the shape of the output tensor.
+
+Return Value:
+
+    None.
+
+--*/
 {
     //
     // Extract and skip over the the batch and channel counts.
@@ -162,7 +204,8 @@ MlasPrepareNchwcWorkBlock(
         }
 
         //
-        //
+        // Compute the number of output elements affected by left and right
+        // padding.
         //
 
         const size_t SpanValue =
@@ -346,6 +389,50 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         Filter = WorkBlock->Filter;
         Bias = WorkBlock->Bias;
         Output = WorkBlock->Output;
+    }
+
+    unsigned
+    ComputeKernelFlags(
+        size_t ic,
+        size_t ChannelCount
+        )
+    {
+        unsigned KernelFlags = 0;
+
+        //
+        // Accumulate into the output buffer if this isn't the first input
+        // channel contributing to the output element or if the caller has
+        // requested that the output buffer not be zero initialized (Conv/Sum
+        // fusion).
+        //
+
+        if (ic != 0 || !ZeroMode) {
+            KernelFlags |= MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT;
+        }
+
+        if (ic + ChannelCount == InputChannels) {
+
+            //
+            // Add the bias buffer into the output buffer if necessary.
+            //
+
+            if (Bias != nullptr) {
+                KernelFlags |= MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION;
+            }
+
+            //
+            // Test for fused ReLU activation or other types of activation run
+            // outside of the convolution kernel.
+            //
+
+            if (ActivationKind == MlasReluActivation) {
+                KernelFlags |= MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION;
+            } else if (ActivationKind != MlasIdentityActivation) {
+                KernelFlags |= MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION;
+            }
+        }
+
+        return KernelFlags;
     }
 
     void
@@ -580,7 +667,11 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
-        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvNchwcFloatKernel();
+#if defined(MLAS_TARGET_AMD64)
+        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.ConvNchwcFloatKernel;
+#else
+        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwcFloatKernel;
+#endif
 
         while (WorkRemaining > 0) {
 
@@ -596,28 +687,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
             for (size_t ic = 0; ic < InputChannels; ic += BlockSize) {
 
-                //
-                //
-                //
-
-                unsigned KernelFlags = 0;
-
-                if (ic != 0 || !ZeroMode) {
-                    KernelFlags |= 1;
-                }
-
-                if (ic + BlockSize == InputChannels) {
-
-                    if (Bias != nullptr) {
-                        KernelFlags |= 2;
-                    }
-
-                    if (ActivationKind == MlasReluActivation) {
-                        KernelFlags |= 4;
-                    } else if (ActivationKind != MlasIdentityActivation) {
-                        KernelFlags |= 8;
-                    }
-                }
+                unsigned KernelFlags = ComputeKernelFlags(ic, BlockSize);
 
                 //
                 // Apply the convolution kernel to each row of the output batch.
@@ -656,7 +726,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                     // Test for fused non-ReLU activation.
                     //
 
-                    if ((KernelFlags & 8) != 0) {
+                    if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
                         DoActivation(output, FilterCount, BlockedOutputWidth);
                     }
 
@@ -707,7 +777,11 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
-        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvNchwFloatKernel();
+#if defined(MLAS_TARGET_AMD64)
+        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.ConvNchwFloatKernel;
+#else
+        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwFloatKernel;
+#endif
 
         while (WorkRemaining > 0) {
 
@@ -730,26 +804,9 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             const float* input = Input;
             float* output = Output + BlockSize * ph * OutputWidth;
 
-            for (size_t icc = 0; icc < InputChannels; icc += 1) {
+            for (size_t ic = 0; ic < InputChannels; ic += 1) {
 
-                unsigned KernelFlags = 0;
-
-                if (icc != 0 || !ZeroMode) {
-                    KernelFlags |= 1;
-                }
-
-                if (icc + 1 == InputChannels) {
-
-                    if (Bias != nullptr) {
-                        KernelFlags |= 2;
-                    }
-
-                    if (ActivationKind == MlasReluActivation) {
-                        KernelFlags |= 4;
-                    } else if (ActivationKind != MlasIdentityActivation) {
-                        KernelFlags |= 8;
-                    }
-                }
+                unsigned KernelFlags = ComputeKernelFlags(ic, 1);
 
                 //
                 // Invoke the convolution kernel.
@@ -766,7 +823,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Test for fused non-ReLU activation.
                 //
 
-                if ((KernelFlags & 8) != 0) {
+                if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
                     DoActivation(output, FilterCount, BlockedOutputWidth);
                 }
 
@@ -815,7 +872,11 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const size_t FilterStrideBytes = BlockSize * InputChannels * sizeof(float);
         const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
 
-        MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvPointwiseFloatKernel();
+#if defined(MLAS_TARGET_AMD64)
+        MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasPlatform.ConvPointwiseFloatKernel;
+#else
+        MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
+#endif
 
         while (WorkRemaining > 0) {
 
@@ -857,24 +918,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 InputChannelBatch = (std::min)(InputChannels - ic, MaximumInputChannelBatch);
 
-                unsigned KernelFlags = 0;
-
-                if (ic != 0 || !ZeroMode) {
-                    KernelFlags |= 1;
-                }
-
-                if (ic + InputChannelBatch == InputChannels) {
-
-                    if (Bias != nullptr) {
-                        KernelFlags |= 2;
-                    }
-
-                    if (ActivationKind == MlasReluActivation) {
-                        KernelFlags |= 4;
-                    } else if (ActivationKind != MlasIdentityActivation) {
-                        KernelFlags |= 8;
-                    }
-                }
+                unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 
                 //
                 // Invoke the convolution kernel.
@@ -888,7 +932,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Test for fused non-ReLU activation.
                 //
 
-                if ((KernelFlags & 8) != 0) {
+                if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
                     DoActivation(output, FilterCount, BlockSize * OutputThisIteration);
                 }
 
@@ -965,7 +1009,13 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
-        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasPlatform.GetConvDepthwiseFloatKernel();
+#if defined(MLAS_TARGET_AMD64)
+        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasPlatform.ConvDepthwiseFloatKernel;
+#else
+        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
+#endif
+
+        unsigned KernelFlags = ComputeKernelFlags(0, InputChannels);
 
         while (WorkRemaining > 0) {
 
@@ -979,22 +1029,6 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             size_t EffectiveKernelHeight;
 
             ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih, &EffectiveKernelHeight);
-
-            unsigned KernelFlags = 0;
-
-            if (!ZeroMode) {
-                KernelFlags |= 1;
-            }
-
-            if (Bias != nullptr) {
-                KernelFlags |= 2;
-            }
-
-            if (ActivationKind == MlasReluActivation) {
-                KernelFlags |= 4;
-            } else if (ActivationKind != MlasIdentityActivation) {
-                KernelFlags |= 8;
-            }
 
             //
             // Invoke the convolution kernel.
@@ -1010,7 +1044,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
             // Test for fused non-ReLU activation.
             //
 
-            if ((KernelFlags & 8) != 0) {
+            if ((KernelFlags & MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION) != 0) {
                 DoActivation(Output, 1, BlockedOutputWidth);
             }
 
@@ -1052,6 +1086,8 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 {
+    static const PMLAS_POOL_FLOAT_KERNEL PoolKernels[];
+
     const MLAS_NCHWC_POOL_WORK_BLOCK* WorkBlock;
 
     MLAS_NCHWC_POOL_ALGORITHM(const MLAS_NCHWC_POOL_WORK_BLOCK* WorkBlock) :
@@ -1086,7 +1122,11 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
+#if defined(MLAS_TARGET_AMD64)
         MLAS_POOL_FLOAT_KERNEL* Kernel = MlasPlatform.PoolFloatKernel[WorkBlock->PoolingKind];
+#else
+        MLAS_POOL_FLOAT_KERNEL* Kernel = PoolKernels[WorkBlock->PoolingKind];
+#endif
 
         while (WorkRemaining > 0) {
 
@@ -1146,6 +1186,13 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
             }
         }
     }
+};
+
+const PMLAS_POOL_FLOAT_KERNEL MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
+{
+    MlasPoolMaximumFloatKernel,
+    MlasPoolAverageExcludePadFloatKernel,
+    MlasPoolAverageIncludePadFloatKernel,
 };
 
 void
@@ -1234,7 +1281,7 @@ Return Value:
     // Capture the generic shape parameters to the work block.
     //
 
-    MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
+    MlasNchwcPrepareWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
         DilationShape, Padding, StrideShape, OutputShape);
 
     WorkBlock.InputChannels /= GroupCount;
@@ -1340,7 +1387,7 @@ Return Value:
     // Capture the generic shape parameters to the work block.
     //
 
-    MlasPrepareNchwcWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
+    MlasNchwcPrepareWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
         DilationShape, Padding, StrideShape, OutputShape);
 
     //
@@ -1351,3 +1398,277 @@ Return Value:
 
     MlasExecuteThreaded(MlasNchwcThreaded<MLAS_NCHWC_POOL_ALGORITHM>, &WorkBlock, WorkBlock.tids, ThreadPool);
 }
+
+#if !defined(MLAS_TARGET_AMD64)
+
+//
+// Convolution and pooling kernel stubs for architectures that do not yet have
+// native support.
+//
+
+void
+MLASCALL
+MlasConvNchwFloatKernel(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Filter);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilationWidth);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(FilterStride);
+    MLAS_UNREFERENCED_PARAMETER(OutputStride);
+    MLAS_UNREFERENCED_PARAMETER(KernelHeight);
+    MLAS_UNREFERENCED_PARAMETER(KernelWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputBase);
+    MLAS_UNREFERENCED_PARAMETER(InputWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilatedInputWidth);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountLeftPad);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountRightPad);
+    MLAS_UNREFERENCED_PARAMETER(Bias);
+    MLAS_UNREFERENCED_PARAMETER(Flags);
+}
+
+void
+MLASCALL
+MlasConvNchwcFloatKernel(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Filter);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilationWidth);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(FilterStride);
+    MLAS_UNREFERENCED_PARAMETER(OutputStride);
+    MLAS_UNREFERENCED_PARAMETER(KernelHeight);
+    MLAS_UNREFERENCED_PARAMETER(KernelWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputBase);
+    MLAS_UNREFERENCED_PARAMETER(InputWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilatedInputWidth);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountLeftPad);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountRightPad);
+    MLAS_UNREFERENCED_PARAMETER(Bias);
+    MLAS_UNREFERENCED_PARAMETER(Flags);
+}
+
+void
+MLASCALL
+MlasConvDepthwiseFloatKernel(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Filter);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilationWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(KernelHeight);
+    MLAS_UNREFERENCED_PARAMETER(KernelWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputBase);
+    MLAS_UNREFERENCED_PARAMETER(InputWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilatedInputWidth);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountLeftPad);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountRightPad);
+    MLAS_UNREFERENCED_PARAMETER(Bias);
+    MLAS_UNREFERENCED_PARAMETER(Flags);
+}
+
+void
+MLASCALL
+MlasConvPointwiseFloatKernel(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t InputChannels,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t OutputCount,
+    const float* Bias,
+    unsigned Flags
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Filter);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputChannels);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(FilterStride);
+    MLAS_UNREFERENCED_PARAMETER(OutputStride);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(Bias);
+    MLAS_UNREFERENCED_PARAMETER(Flags);
+}
+
+void
+MLASCALL
+MlasPoolMaximumFloatKernel(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t ActualKernelSize,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilationWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(ActualKernelSize);
+    MLAS_UNREFERENCED_PARAMETER(KernelHeight);
+    MLAS_UNREFERENCED_PARAMETER(KernelWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputBase);
+    MLAS_UNREFERENCED_PARAMETER(InputWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilatedInputWidth);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountLeftPad);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountRightPad);
+}
+
+void
+MLASCALL
+MlasPoolAverageExcludePadFloatKernel(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t ActualKernelSize,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilationWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(ActualKernelSize);
+    MLAS_UNREFERENCED_PARAMETER(KernelHeight);
+    MLAS_UNREFERENCED_PARAMETER(KernelWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputBase);
+    MLAS_UNREFERENCED_PARAMETER(InputWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilatedInputWidth);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountLeftPad);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountRightPad);
+}
+
+void
+MLASCALL
+MlasPoolAverageIncludePadFloatKernel(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t ActualKernelSize,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(Input);
+    MLAS_UNREFERENCED_PARAMETER(Output);
+    MLAS_UNREFERENCED_PARAMETER(StrideWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilationWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputStride);
+    MLAS_UNREFERENCED_PARAMETER(ActualKernelSize);
+    MLAS_UNREFERENCED_PARAMETER(KernelHeight);
+    MLAS_UNREFERENCED_PARAMETER(KernelWidth);
+    MLAS_UNREFERENCED_PARAMETER(InputBase);
+    MLAS_UNREFERENCED_PARAMETER(InputWidth);
+    MLAS_UNREFERENCED_PARAMETER(DilatedInputWidth);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountLeftPad);
+    MLAS_UNREFERENCED_PARAMETER(OutputCount);
+    MLAS_UNREFERENCED_PARAMETER(OutputCountRightPad);
+}
+
+#endif
