@@ -5,7 +5,6 @@
 #include "core/framework/allocatormgr.h"
 #include <cstdlib>
 #include <sstream>
-#include <cstdlib>
 
 namespace onnxruntime {
 
@@ -14,10 +13,12 @@ void* CPUAllocator::Alloc(size_t size) {
     return nullptr;
   //default align to 64;
   void* p;
-#ifdef _WIN32
+#if defined(__AVX512F__)
+  size_t alignment = 64;
+#elif defined(__AVX__)
   size_t alignment = 32;
 #else
-  size_t alignment = 64;
+  size_t alignment = 32; //Indeed, the default one(8 or 16) should be enough
 #endif
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
