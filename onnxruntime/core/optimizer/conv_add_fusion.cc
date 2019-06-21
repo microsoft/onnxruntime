@@ -16,10 +16,16 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   const auto& add_inputs = add_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  bool rc = graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  if (!rc) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* add_B_tensor_proto = nullptr;
-  graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto);
+  rc = graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto);
+  if (!rc) {
+    return Status::OK();
+  }
 
   // Currently, fusion is only supported for float or double data type.
   if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
