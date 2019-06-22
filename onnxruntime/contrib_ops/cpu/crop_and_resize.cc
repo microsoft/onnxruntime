@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+/* Modifications Copyright (c) Microsoft. */
 
 #include "contrib_ops/cpu/crop_and_resize.h"
 
@@ -24,6 +22,7 @@ limitations under the License.
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/cpu/object_detection/roialign.h"
 
 using namespace onnxruntime::concurrency;
 
@@ -165,7 +164,7 @@ void CropAndResizeForward(
             top_data[index] = output_val;
           }
         }
-        else {  // method == "nearest"
+        else {  // mode == "nearest"
           const int closest_x_index = static_cast<int>(roundf(static_cast<float>(in_x)));
           const int closest_y_index = static_cast<int>(roundf(static_cast<float>(in_y)));
           auto closest_index = closest_y_index * width + closest_x_index;
@@ -187,26 +186,12 @@ void CropAndResizeForward(
 
 template <typename T>
 Status CropAndResize<T>::Compute(OpKernelContext* context) const {
-  using namespace onnxruntime::common;
-
   // X
   const auto* X_ptr = context->Input<Tensor>(0);
-  if (!X_ptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
-  }
-
   // rois
   const auto* rois_ptr = context->Input<Tensor>(1);
-  if (!rois_ptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
-  }
-
   // batch indices
   const auto* batch_indices_ptr = context->Input<Tensor>(2);
-  if (!batch_indices_ptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null batch_indices_ptr");
-  }
-
   // crop size
   const auto* crop_size_ptr = context->Input<Tensor>(3);
   if (!crop_size_ptr) {
@@ -218,38 +203,21 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
   const auto& batch_indices_dims = batch_indices_ptr->Shape();
   const auto& crop_size_dims = crop_size_ptr->Shape();
 
-  if (batch_indices_dims.NumDimensions() != 1) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Number of dimensions for batch indices should be exactly 1");
-  }
-
-  // validate rois_dims
-  if (rois_dims.NumDimensions() != EXPECTED_NUM_ROI_DIMS) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Number of dimensions for rois should be exactly " + std::to_string(EXPECTED_NUM_ROI_DIMS));
-  }
-  if (rois_dims[1] != EXPECTED_SECOND_ROI_DIM) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Second dimension for rois should be exactly " + std::to_string(EXPECTED_SECOND_ROI_DIM));
-  }
-
   //validate crop_size
   if (crop_size_dims.NumDimensions() != 1) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Number of dimensions for crop size should be exactly 1");
   }
 
   auto num_rois = batch_indices_dims[0];
-  auto num_rois_from_rois = rois_dims[0];
   auto num_roi_cols = rois_dims[1];
   auto crop_size_data = crop_size_ptr->Data<int32_t>();
   auto crop_height = crop_size_data[0];
   auto crop_width = crop_size_data[1];
 
-  // first dimension of batch_indices and rois should match
-  if (num_rois != num_rois_from_rois) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "First dimension (num_rois) of batch_indices and rois don't match");
+  auto status = CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr);
+  if (status != Status::OK()) {
+    return status;
   }
 
   auto& Y = *context->Output(0, {num_rois, x_dims[1], crop_height, crop_width});
