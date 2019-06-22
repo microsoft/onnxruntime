@@ -93,14 +93,18 @@ Arguments:
 Return Value:
 
     Returns the NCHWc block size for the platform. If NCHWc support is not
-    available for the platform, then returns zero.
+    available for the platform, then returns one.
+
+    N.B. Using the value one as the flag to indicate no support avoids compiler
+    warnings in optimized builds when using this value in division or modulus
+    math.
 
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
     return MlasPlatform.NchwcBlockSize;
 #else
-    return 0;
+    return 1;
 #endif
 }
 

@@ -1478,7 +1478,7 @@ Example 4:
               )DOC");
 
   // Register the NCHWc schemas if supported by the platform.
-  if (MlasNchwcGetBlockSize() > 0) {
+  if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
 

@@ -120,7 +120,7 @@ void RegisterContribKernels(KernelRegistry& kernel_registry) {
   }
 
   // Register the NCHWc kernels if supported by the platform.
-  if (MlasNchwcGetBlockSize() > 0) {
+  if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcKernels(kernel_registry);
   }
 }
