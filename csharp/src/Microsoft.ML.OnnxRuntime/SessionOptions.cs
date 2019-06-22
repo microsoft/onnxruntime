@@ -14,7 +14,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         public IntPtr _nativePtr;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
-        private static string[] cudaDelayLoadedLibs = { "cublas64_91.dll", "cudnn64_7.dll" };
+        private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
         /// <summary>
         /// Constructs an empty SessionOptions
@@ -53,6 +53,24 @@ namespace Microsoft.ML.OnnxRuntime
         public void DisableSequentialExecution()
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
+        }
+
+        /// <summary>
+        /// Enable Mem Pattern. By default, it is enabled
+        /// </summary>
+        /// </param>
+        public void EnableMemPattern()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(_nativePtr));
+        }
+
+        /// <summary>
+        /// Disable Mem Pattern.
+        /// </summary>
+        /// </param>
+        public void DisableMemPattern()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(_nativePtr));
         }
 
         /// <summary>
