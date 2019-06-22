@@ -89,8 +89,8 @@ jobs:
 #      cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)
 #      cd $cwd
 
-# - job: NuGet_Packaging
-#   pool: $(AgentPoolWin)
+- job: NuGet_Packaging
+  pool: $(AgentPoolWin)
 #   dependsOn:
 #   - Windows_CI_Dev
 #   - Windows_CI_Dev_x86
@@ -98,7 +98,7 @@ jobs:
 #   - Linux_CI_Dev_x86
 #   - MacOS_CI_Dev
 #   condition: succeeded()
-#   steps:  
+  steps:  
 #   - task: DownloadPipelineArtifact@0
 #     displayName: 'Download Pipeline Artifact - NuGet'
 #     inputs:
