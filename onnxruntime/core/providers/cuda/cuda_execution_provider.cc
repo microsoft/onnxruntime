@@ -227,7 +227,13 @@ Status CUDAExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst, int exe
       CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
     }
   } else if (strcmp(src.Location().name, CUDA) == 0) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+    if (strcmp(dst.Location().name, CUDA_PINNED) == 0) {
+      // copying from GPU to pinned memory, this is non-blocking
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, streams_[exec_queue_id]));
+    } else {
+      // copying from GPU to CPU memory, this is blocking
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+    }
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
