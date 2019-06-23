@@ -35,6 +35,8 @@ class CropAndResize final : public OpKernel {
  private:
   std::string mode_{"bilinear"};
   float extrapolation_value_{0.0f};
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CropAndResize);
 };
 
 }  // namespace contrib

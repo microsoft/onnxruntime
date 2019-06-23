@@ -29,9 +29,6 @@ using namespace onnxruntime::concurrency;
 namespace onnxruntime {
 namespace contrib {
 
-const int64_t EXPECTED_NUM_ROI_DIMS = 2;
-const int64_t EXPECTED_SECOND_ROI_DIM = 4;
-
 #define ADD_TYPED_CROPANDRESIZE_OP(data_type)                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
       CropAndResize,                                                     \
