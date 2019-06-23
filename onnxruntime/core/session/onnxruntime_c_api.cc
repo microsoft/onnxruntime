@@ -108,6 +108,10 @@ ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_fun
   API_IMPL_END
 }
 
+ORT_API(const char*, OrtGetVersionString) {
+  return ORT_VERSION;
+}
+
 ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Out_ OrtEnv** out) {
   API_IMPL_BEGIN

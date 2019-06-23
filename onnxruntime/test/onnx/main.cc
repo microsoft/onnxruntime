@@ -37,7 +37,14 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-h: help\n");
+      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0, 1 or 2. Default is 1.\n"
+      "\t\t0 -> Disable all optimizations\n"
+      "\t\t1 -> Enable basic optimizations\n"
+      "\t\t2 -> Enable all optimizations\n"
+      "\t-h: help\n"
+      "\n"
+      "onnxruntime version: %s\n",
+      OrtGetVersionString());
 }
 
 #ifdef _WIN32
@@ -88,10 +95,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_openvino = false;
+  uint32_t graph_optimization_level{};
+  bool user_graph_optimization_level_set = false;
+
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xv"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -151,6 +161,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'x':
           enable_sequential_execution = false;
           break;
+        case 'o':
+          graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+          if (graph_optimization_level > 2) {
+            fprintf(stderr, "See usage for valid values of graph optimization level");
+            usage();
+            return -1;
+          }
+          user_graph_optimization_level_set = true;
+          break;
         case '?':
         case 'h':
         default:
@@ -194,7 +213,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     Ort::SessionOptions sf;
 
-
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
     else
@@ -217,12 +235,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
     }
 
-    if(enable_openvino){
+    if (enable_openvino) {
 #ifdef USE_OPENVINO
-        ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
+      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
 #else
-    fprintf(stderr, "OpenVINO is not supported in this build");
-    return -1;
+      fprintf(stderr, "OpenVINO is not supported in this build");
+      return -1;
 #endif
     }
     if (enable_cuda) {
@@ -256,6 +274,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       fprintf(stderr, "nGraph is not supported in this build");
       return -1;
 #endif
+    }
+
+    if (user_graph_optimization_level_set) {
+      sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
@@ -367,7 +389,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123","onnx130","onnx141","onnx150","onnxtip"}});
+  broken_tests.insert({"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
   broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
   broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
@@ -412,11 +434,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
   int result = 0;
-  for (const auto& p: stat.GetFailedTest()) {
+  for (const auto& p : stat.GetFailedTest()) {
     BrokenTest t = {p.first, ""};
     auto iter = broken_tests.find(t);
     if (iter == broken_tests.end() ||
-       (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
+        (p.second != TestModelInfo::unknown_version && !iter->broken_versions_.empty() && iter->broken_versions_.find(p.second) == iter->broken_versions_.end())) {
       fprintf(stderr, "test %s failed, please fix it\n", p.first.c_str());
       result = -1;
     }

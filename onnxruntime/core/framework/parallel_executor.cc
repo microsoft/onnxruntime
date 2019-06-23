@@ -181,7 +181,8 @@ void ParallelExecutor::RunNodeAsyncInternal(size_t p_node_index,
     // Execute the kernel.
     auto status = p_op_kernel->Compute(&op_kernel_context);
     if (!status.IsOK()) {
-      ORT_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name());
+      ORT_THROW("Compute failed for node: ", graph_viewer->GetNode(node_index)->Name(),
+                ". Error:", status.ErrorMessage());
     }
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,

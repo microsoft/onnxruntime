@@ -149,7 +149,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   }
 
   //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
-  ORT_ENFORCE(sub_graph.Resolve().IsOK());
+  auto status = sub_graph.Resolve();
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
