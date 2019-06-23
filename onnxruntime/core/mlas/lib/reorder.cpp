@@ -259,7 +259,7 @@ Return Value:
             }
 
             s += 1;
-            d += 4 * BlockSize;
+            d += BlockSize;
         }
 
         S += BlockSize * InputSize;
