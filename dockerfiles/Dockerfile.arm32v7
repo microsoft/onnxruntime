@@ -14,7 +14,8 @@ RUN install_packages \
     python3-pip \
     python3-dev \
     git \
-    tar
+    tar \
+    libatlas-base-dev
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
