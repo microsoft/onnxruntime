@@ -1008,13 +1008,6 @@ protected:
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
             printf("mismatch: maximum input(%zd,%zd,%zd),kernel(%zd,%zd)!!!\n",
                 InputChannels, InputHeight, InputWidth, KernelHeight, KernelWidth);
-for (size_t z = 0; z < OutputBufferElements; z++) {
-    if (Output[z] != OutputReference[z]) {
-        printf("!! mis %zd: %f %f\n", z, Output[z], OutputReference[z]);
-    }
-}
-__debugbreak();
-        MlasPool2D(MlasMaximumPooling, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
         }
 
         MlasPool2D(MlasAveragePoolingExcludePad, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
