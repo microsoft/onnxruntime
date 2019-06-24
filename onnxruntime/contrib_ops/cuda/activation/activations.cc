@@ -2,8 +2,12 @@
 // Licensed under the MIT License.
 
 #include "activations.h"
+#include "core/framework/op_kernel.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 #define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
@@ -42,16 +46,15 @@ namespace cuda {
   UNARY_ACTIVATION_OP_TYPED(name, ver, float)     \
   UNARY_ACTIVATION_OP_TYPED(name, ver, double)
 
-UNARY_ACTIVATION_OP_HFD(Elu, 6);
-UNARY_ACTIVATION_OP_HFD(HardSigmoid, 6);
-UNARY_ACTIVATION_OP_HFD(LeakyRelu, 6);
-UNARY_ACTIVATION_OP_HFD(Relu, 6);
-UNARY_ACTIVATION_OP_HFD(Selu, 6);
-UNARY_ACTIVATION_OP_HFD(Sigmoid, 6);
-UNARY_ACTIVATION_OP_HFD(Softplus, 1);
-UNARY_ACTIVATION_OP_HFD(Softsign, 1);
-UNARY_ACTIVATION_OP_HFD(Tanh, 6);
-UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
+UNARY_ACTIVATION_OP_HFD(Affine, 1);
+UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1);
+UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1);
 
-}  // namespace cuda
+
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, MLFloat16)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, float)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, double)
+
+}  //namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

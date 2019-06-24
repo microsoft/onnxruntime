@@ -6,7 +6,7 @@
 #include "core/framework/kernel_registry.h"
 
 #ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/contrib_kernels.h"
+#include "contrib_ops/cpu_contrib_kernels.h"
 #endif
 
 #include "core/framework/compute_capability.h"
@@ -647,7 +647,7 @@ static void RegisterCPUKernels(KernelRegistry& kernel_registry) {
   RegisterOnnxOperatorKernels(kernel_registry);
   ::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry);
 #ifndef DISABLE_CONTRIB_OPS
-  ::onnxruntime::contrib::RegisterContribKernels(kernel_registry);
+  ::onnxruntime::contrib::RegisterCpuContribKernels(kernel_registry);
 #endif
 }
 
