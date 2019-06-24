@@ -18,8 +18,7 @@ Search 'https://github.com/onnx/onnx.git', update the commitHash with it.
 3. Update [tools/ci_build/github/linux/docker/scripts/install_onnx.sh](/tools/ci_build/github/linux/docker/scripts/install_onnx.sh) 
 Search 'for version2tag', update the commit hashes. The list should contain every release version from ONNX 1.2, and the latest one in our cmake/external/onnx folder.
 
-4. Update onnxruntime/core/protobuf
-If there is any change on `cmake/external/onnx/onnx/*.in.proto` since the last sync, then : 
+4. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, update onnxruntime/core/protobuf as follows : 
 ```
 - Apply these changes to onnxruntime/core/protobuf/*.in.proto
 - Copy cmake/external/onnx/onnx/gen_proto.py to onnxruntime/core/protobuf and use this script to generate the new \*.proto and \*.proto3 files
