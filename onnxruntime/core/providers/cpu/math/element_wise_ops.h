@@ -288,23 +288,6 @@ class Expand_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
-template <typename T>
-class Scale final : public OpKernel {
- public:
-  Scale(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  float scale_;
-};
-}  // namespace contrib
-#endif
-
 template <typename T>
 class Erf final : public OpKernel {
  public:
