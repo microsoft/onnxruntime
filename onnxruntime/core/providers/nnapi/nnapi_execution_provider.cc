@@ -331,7 +331,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           for (int c = 0; c < C; c++) {
             for (int h = 0; h < H; h++) {
               for (int w = 0; w < W; w++) {
-                nchw_output[n * H * W * C + h * W * C + w * C + c] = nhwc_data[n * C * H * W + c * H * W + h * W + w];
+                nchw_output[n * C * H * W + c * H * W + h * W + w] = nhwc_data[n * H * W * C + h * W * C + w * C + c];
               }
             }
           }
