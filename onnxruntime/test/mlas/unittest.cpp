@@ -811,9 +811,17 @@ protected:
         //
 
         if (Bias != nullptr && GroupCount * FilterCount < NchwcOutputChannels) {
+
             float* AlignedBias = BufferNchwcBias.GetBuffer(NchwcOutputChannels);
-            std::fill_n(AlignedBias, NchwcOutputChannels, 0.0f);
-            std::copy_n(Bias, GroupCount * FilterCount, AlignedBias);
+
+            size_t i;
+            for (i = 0; i < GroupCount * FilterCount; i++) {
+                AlignedBias[i] = Bias[i];
+            }
+            for (; i < NchwcOutputChannels; i++) {
+                AlignedBias[i] = 0.0f;
+            }
+
             Bias = AlignedBias;
         }
 
@@ -1008,13 +1016,6 @@ protected:
         if (memcmp(Output, OutputReference, OutputBufferElements * sizeof(float)) != 0) {
             printf("mismatch: maximum input(%zd,%zd,%zd),kernel(%zd,%zd)!!!\n",
                 InputChannels, InputHeight, InputWidth, KernelHeight, KernelWidth);
-for (size_t z = 0; z < OutputBufferElements; z++) {
-    if (Output[z] != OutputReference[z]) {
-        printf("!! mis %zd: %f %f\n", z, Output[z], OutputReference[z]);
-    }
-}
-__debugbreak();
-        MlasPool2D(MlasMaximumPooling, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
         }
 
         MlasPool2D(MlasAveragePoolingExcludePad, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
