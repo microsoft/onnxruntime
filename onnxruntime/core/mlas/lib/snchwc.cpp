@@ -217,34 +217,23 @@ Return Value:
         const size_t StrideValue = WorkBlock->StrideShape[dim];
         const size_t PaddingLeftValue = WorkBlock->Padding[dim];
 
-        size_t OutputCount;
-
-        if (InputValue >= SpanValue) {
-            OutputCount = (InputValue - SpanValue) / StrideValue + 1;
-        } else {
-            OutputCount = 0;
-        }
-
         size_t OutputCountWithLeftPad;
 
         if (InputValue + PaddingLeftValue >= SpanValue) {
             OutputCountWithLeftPad = (InputValue + PaddingLeftValue - SpanValue) / StrideValue + 1;
         } else {
-            OutputCountWithLeftPad = OutputValue;
+            OutputCountWithLeftPad = 0;
         }
 
-        size_t OutputCountLeftPad = OutputCountWithLeftPad - OutputCount;
+        size_t OutputCountLeftPad = (PaddingLeftValue + StrideValue - 1) / StrideValue;
 
-        if (OutputCountLeftPad == 0 && PaddingLeftValue > 0) {
-            OutputCountLeftPad = 1;
-            OutputCount--;
+        if (OutputCountLeftPad > OutputCountWithLeftPad) {
+            OutputCountLeftPad = OutputCountWithLeftPad;
         }
-
-        size_t OutputCountRightPad = OutputValue - OutputCountWithLeftPad;
 
         WorkBlock->OutputCountLeftPad[dim] = OutputCountLeftPad;
-        WorkBlock->OutputCount[dim] = OutputCount;
-        WorkBlock->OutputCountRightPad[dim] = OutputCountRightPad;
+        WorkBlock->OutputCount[dim] = OutputCountWithLeftPad - OutputCountLeftPad;
+        WorkBlock->OutputCountRightPad[dim] = OutputValue - OutputCountWithLeftPad;
     }
 
     WorkBlock->InputSize = InputSize;
