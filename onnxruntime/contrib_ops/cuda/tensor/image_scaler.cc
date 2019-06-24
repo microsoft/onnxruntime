@@ -4,7 +4,9 @@
 #include "image_scaler.h"
 #include "image_scaler_impl.h"
 
+using namespace onnxruntime::cuda;
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
@@ -62,4 +64,5 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
