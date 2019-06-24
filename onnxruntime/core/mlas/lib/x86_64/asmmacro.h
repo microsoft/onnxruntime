@@ -94,7 +94,7 @@ Arguments:
 
         .macro EmitIfCount2GE Count1, Value1, Count2, Value2, Statement
 
-.if (\Count1\() >= \Value1\()) AND (\Count2\() >= \Value2\())
+.if (\Count1\() >= \Value1\()) && (\Count2\() >= \Value2\())
         \Statement\()
 .endif
 
