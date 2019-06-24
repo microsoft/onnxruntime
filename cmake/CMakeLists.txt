@@ -132,6 +132,8 @@ add_definitions(-DEIGEN_MPL2_ONLY)
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
+  string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
 endif()
 
 #must after OpenMP settings
