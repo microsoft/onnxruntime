@@ -25,6 +25,7 @@ class MLValueNameIdxMap {
       int idx;
       idx = ort_value_max_idx_++;
       map_.insert(it, {name, idx});
+      idx_name_map_[idx] = name;
       return idx;
     }
     return it->second;
@@ -42,6 +43,16 @@ class MLValueNameIdxMap {
     return common::Status::OK();
   }
 
+  common::Status GetName(int idx, std::string& name) const {
+    auto it = idx_name_map_.find(idx);
+    if (it == idx_name_map_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find OrtValue with idx '", idx, "'");
+    }
+
+    name = it->second;
+    return common::Status::OK();
+  }
+
   size_t Size() const { return map_.size(); };
   int MaxIdx() const { return ort_value_max_idx_; }
 
@@ -53,6 +64,7 @@ class MLValueNameIdxMap {
 
   int ort_value_max_idx_ = 0;
   std::unordered_map<std::string, int> map_;
+  std::unordered_map<int, std::string> idx_name_map_;
 };
 using OrtValueNameIdxMap = MLValueNameIdxMap;
 }  // namespace onnxruntime

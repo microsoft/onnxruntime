@@ -38,7 +38,8 @@ class SessionStateInitializer {
   // First perform any transformations and create the execution plan
   common::Status CreatePlan(const Node* parent_node,
                             const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
-                            bool enable_sequential_execution);
+                            bool enable_sequential_execution,
+                            bool only_execute_path_to_fetches);
 
   // initialize tensors, and save. save kernels and input/output node mappings
   // \param implicit_inputs could be NULL

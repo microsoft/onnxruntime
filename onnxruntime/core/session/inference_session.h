@@ -78,6 +78,10 @@ struct SessionOptions {
 
   // How many threads in the session thread pool.
   int session_thread_pool_size = 0;
+
+  // Set to 'true' to run only the nodes from feeds to required fetches.
+  // So it is possible that only some of the nodes are executed.
+  bool only_execute_path_to_fetches = false;
 };
 
 /**

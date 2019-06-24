@@ -490,7 +490,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                             bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger,
-                            bool cache_copy_info) {
+                            bool cache_copy_info, bool only_execute_path_to_fetches) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   auto device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
@@ -498,7 +498,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 
   std::unique_ptr<IExecutor> p_exec;
   if (sequential_execution) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
   } else {
     p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
   }

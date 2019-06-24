@@ -22,9 +22,25 @@ namespace training {
 
 const static string SGD_OP_NAME = "SGDOptimizer";
 const static string SGD_LEARNING_RATE_STRING = "learning_rate";
+static SessionOptions SESSION_OPTION = {
+    true,                              //enable_sequential_execution
+    false,                             //enable_profiling
+    true,                              //enable_mem_pattern
+    true,                              //enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+    "",                                //session_logid
+    0,                                 //session_log_verbosity_level
+    5,                                 //max_num_graph_transformation_steps
+    TransformerLevel::Level1,          //graph_optimization_level
+    0,                                 //session_thread_pool_size
+    true                               //only_execute_path_to_fetches
+};
 
 TrainingRunner::TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params)
-    : training_data_(trainingData), test_data_(testData), params_(params), session_(SessionOptions()) {
+    : training_data_(trainingData),
+      test_data_(testData),
+      params_(params),
+      session_(SESSION_OPTION) {
   ORT_ENFORCE(!params_.model_path_.empty());
   ORT_ENFORCE((!params_.weights_to_train_.empty() && params_.weights_not_to_train_.empty()) ||
               (params_.weights_to_train_.empty() && !params_.weights_not_to_train_.empty()));
@@ -93,9 +109,9 @@ Status TrainingRunner::Run() {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path_, TrainingSession::SaveOption::NO_RELOAD));
   }
 
-  // Load and test the original model.
+  // Test the original model.
   printf("Before training \n");
-  ORT_RETURN_IF_ERROR(LoadAndEvaluate(params_.model_with_loss_func_path_));
+  ORT_RETURN_IF_ERROR(Evaluate(session_, true /*use full test set*/));
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
 
@@ -112,6 +128,7 @@ Status TrainingRunner::TrainingLoop() {
   auto output_names_include_gradients = session_.GetModelOutputNames();
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
   vector<string> feed_names = training_data_.TensorNames();
+
   for (size_t epoch = 0; epoch < params_.num_of_epoch_; ++epoch) {
     // Shuffle the data for each epoch
     training_data_.RandomShuffle();
@@ -181,20 +198,6 @@ Status TrainingRunner::EndTraining() {
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
-  bool in_training_session = typeid(session) == typeid(TrainingSession);
-
-  // !!!! NOTE: calling Evaluate() has side effects (weights are updated unexpectedly) by in-place SGD in CUDA mode.
-  // Because ORT always runs the entire graph regarless of what the fetches are.
-  // Need to fix that before removing this "if"
-#ifdef USE_CUDA
-  if (params_.use_cuda_ && in_training_session) {
-    printf(
-        "Skipping evaluation during training as ORT always runs the entire graph, "
-        "there are side effects when in-place SGD in CUDA is used. (TO be fixed)\n");
-    return Status::OK();
-  }
-#endif
-
   if (params_.world_rank_ != 0) {
     printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.world_rank_);
     return Status::OK();
@@ -218,21 +221,9 @@ Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
          static_cast<int>(current_batch * evaluation_batch_size),
          static_cast<int>((current_batch + 1) * evaluation_batch_size - 1));
 
-  // If use in-graph optimizer, the learning_rate is a new feed
-  bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
-
   vector<string> feed_names = test_data_.TensorNames();
   std::vector<MLValue> feeds = test_data_.GetKthBatch(evaluation_batch_size, current_batch);
-  if (in_training_session && use_in_graph_optimizer) {
-    feed_names.insert(feed_names.begin(), SGD_LEARNING_RATE_STRING);
 
-    MLValue learning_rate_ml_value;
-    TrainingUtil::CreateMLValue(TrainingUtil::GetCpuAllocator(),
-                                {1},
-                                vector<float>(1, params_.learning_rate_),
-                                &learning_rate_ml_value);
-    feeds.insert(feeds.begin(), learning_rate_ml_value);
-  }
   vector<MLValue> fetches;
   ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
                                   feed_names,

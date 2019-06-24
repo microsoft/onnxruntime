@@ -56,6 +56,7 @@ class SGDBuilder : public OptimizerBuilder {
     for (const auto& weight : weights) {
       string output_name = weight + "_SGD_out";
       output_args.emplace_back(output_name);
+      graph_defs.AddGraphOutputs({output_name});
     }
 
     graph_defs.AddNodeDefs({NodeDef("SGDOptimizer", input_args, output_args)});
@@ -133,16 +134,19 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
     for (const auto& weight : weights) {
       string output_name = weight + "_Adam_out";
       output_args.emplace_back(output_name);
+      graph_defs.AddGraphOutputs({output_name});
     }
 
     for (const auto& grad : gradients) {
       string output_name = grad + "_Moment_1_Out";
       output_args.emplace_back(output_name);
+      graph_defs.AddGraphOutputs({output_name});
     }
 
     for (const auto& grad : gradients) {
       string output_name = grad + "_Moment_2_Out";
       output_args.emplace_back(output_name);
+      graph_defs.AddGraphOutputs({output_name});
     }
 
     graph_defs.AddNodeDefs({NodeDef("AdamOptimizer", input_args, output_args, attr)});

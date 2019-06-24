@@ -26,7 +26,6 @@ class Logger;
 
 namespace utils {
 
-
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtAllocatorInfo& allocator_info);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
@@ -43,7 +42,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                             bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger,
-                            bool cache_copy_info = true);
+                            bool cache_copy_info = true, bool only_execute_path_to_fetches = false);
 
 // ExecuteGraph used the cached information in feeds_fetches_manager.
 common::Status ExecuteGraphWithCachedInfo(

@@ -22,6 +22,30 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
+static std::unordered_set<NodeIndex> CalculateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs,
+                                                                const GraphViewer& graph_viewer,
+                                                                const MLValueNameIdxMap& mlvalue_name_idxs) {
+  // Get the nodes generating the fetches.
+  std::vector<const Node*> nodes;
+  nodes.reserve(fetch_mlvalue_idxs.size());
+  for (auto idx : fetch_mlvalue_idxs) {
+    std::string node_arg_name;
+    if (!mlvalue_name_idxs.GetName(idx, node_arg_name).IsOK()) {
+      return {};
+    }
+
+    auto ending_node = graph_viewer.GetGraph()->GetProducerNode(node_arg_name);
+    nodes.push_back(ending_node);
+  }
+
+  // Reversely traverse to get reachable nodes.
+  std::unordered_set<NodeIndex> reachable_nodes;
+  graph_viewer.GetGraph()->ReverseDFSFrom(
+      nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
+
+  return reachable_nodes;
+}
+
 Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
@@ -38,6 +62,15 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
 
+  std::unordered_set<NodeIndex> to_be_executed_nodes;
+  if (only_execute_path_to_fetches_) {
+    // TODO: This information could be potentially stored in a limited size cache.
+    to_be_executed_nodes = CalculateToBeExecutedNodes(fetch_mlvalue_idxs,
+                                                      *session_state.GetGraphViewer(),
+                                                      session_state.GetMLValueNameIdxMap());
+    VLOGS(logger, 1) << to_be_executed_nodes.size() << " nodes to be executed\n";
+  }
+
   LOGS(logger, INFO) << "Begin execution";
   const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
@@ -53,6 +86,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     auto node_index = node_exec_plan.node_index;
+
+    // If it is not necessary to execute the node.
+    if (only_execute_path_to_fetches_ && to_be_executed_nodes.count(node_index) == 0) {
+      continue;
+    }
+
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
