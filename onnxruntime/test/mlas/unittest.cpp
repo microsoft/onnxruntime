@@ -811,9 +811,17 @@ protected:
         //
 
         if (Bias != nullptr && GroupCount * FilterCount < NchwcOutputChannels) {
+
             float* AlignedBias = BufferNchwcBias.GetBuffer(NchwcOutputChannels);
-            std::fill_n(AlignedBias, NchwcOutputChannels, 0.0f);
-            std::copy(Bias, Bias + GroupCount * FilterCount, AlignedBias);
+
+            size_t i;
+            for (i = 0; i < GroupCount * FilterCount; i++) {
+                AlignedBias[i] = Bias[i];
+            }
+            for (; i < NchwcOutputChannels; i++) {
+                AlignedBias[i] = 0.0f;
+            }
+
             Bias = AlignedBias;
         }
 
