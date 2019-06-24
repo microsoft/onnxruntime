@@ -23,13 +23,10 @@ struct CtxAlphaGamma {
 struct CtxNull {
 };
 
-typedef CtxAlphaBeta CtxAffine;
 typedef CtxAlpha CtxElu;
 typedef CtxAlphaBeta CtxHardSigmoid;
 typedef CtxAlpha CtxLeakyRelu;
-typedef CtxAlphaBeta CtxParametricSoftplus;
 typedef CtxNull CtxRelu;
-typedef CtxAlphaBeta CtxScaledTanh;
 typedef CtxAlphaGamma CtxSelu;
 typedef CtxNull CtxSigmoid;
 typedef CtxNull CtxSoftplus;
@@ -38,13 +35,10 @@ typedef CtxNull CtxTanh;
 typedef CtxAlpha CtxThresholdedRelu;
 
 #define UNARY_ACTIVATION_OPS()                 \
-  UNARY_ACTIVATION_OP_NAME(Affine)             \
   UNARY_ACTIVATION_OP_NAME(Elu)                \
   UNARY_ACTIVATION_OP_NAME(HardSigmoid)        \
   UNARY_ACTIVATION_OP_NAME(LeakyRelu)          \
-  UNARY_ACTIVATION_OP_NAME(ParametricSoftplus) \
   UNARY_ACTIVATION_OP_NAME(Relu)               \
-  UNARY_ACTIVATION_OP_NAME(ScaledTanh)         \
   UNARY_ACTIVATION_OP_NAME(Selu)               \
   UNARY_ACTIVATION_OP_NAME(Sigmoid)            \
   UNARY_ACTIVATION_OP_NAME(Softplus)           \

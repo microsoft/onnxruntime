@@ -27,5 +27,6 @@ class ScaledTanh final : public OpKernel {
   const float alpha_;
   const float beta_;
 };
+
 }  // namespace contrib
 }  // namespace onnxruntime
