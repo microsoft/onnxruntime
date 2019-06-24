@@ -366,7 +366,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
 #endif
   for (int64_t i = 0; i < N; ++i) {
     int64_t zindex = i * class_count_;
-    std::vector<float> scores(0.f, class_count_);
+    std::vector<float> scores(0.f, static_cast<uint32_t>(class_count_));
     int64_t current_weight_0 = i * stride;
     std::map<int64_t, float> classes;
     // walk each tree from its root
@@ -445,7 +445,6 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
       }
     }
     write_scores(scores, post_transform_, zindex, Z, write_additional_scores);
-    zindex += scores.size();
   }  // namespace ml
   return status;
 }  // namespace ml
