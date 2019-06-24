@@ -5,6 +5,7 @@
 #include "crop_impl.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
@@ -69,4 +70,5 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
