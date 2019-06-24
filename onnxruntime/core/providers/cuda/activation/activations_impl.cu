@@ -10,13 +10,6 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-struct OP_Affine : public CtxAffine {
-  __device__ __inline__ T operator()(const T& a) const {
-    return a * (T)alpha + (T)beta;
-  }
-};
-
-template <typename T>
 struct OP_Elu : public CtxElu {
   __device__ __inline__ T operator()(const T& a) const {
     return a > (T)0 ? a : (T)alpha * (_Exp(a) - (T)1);
@@ -38,26 +31,9 @@ struct OP_LeakyRelu : public CtxLeakyRelu {
 };
 
 template <typename T>
-struct OP_ParametricSoftplus : public CtxParametricSoftplus {
-  __device__ __inline__ T operator()(const T& a) const {
-    if (a > (T)0)
-      return (T)alpha * (a * (T)beta + _Log(_Exp(-a * (T)beta) + (T)1));
-    else
-      return (T)alpha * _Log(_Exp(a * (T)beta) + (T)1);
-  }
-};
-
-template <typename T>
 struct OP_Relu : public CtxRelu {
   __device__ __inline__ T operator()(const T& a) const {
     return _Max(a, (T)0);
-  }
-};
-
-template <typename T>
-struct OP_ScaledTanh : public CtxScaledTanh {
-  __device__ __inline__ T operator()(const T& a) const {
-    return (T)alpha * _Tanh(a * (T)beta);
   }
 };
 
