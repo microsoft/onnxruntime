@@ -1412,8 +1412,7 @@ Example 4:
         Returns a tensor with crops from the input image at positions defined at the bounding box locations in boxes.
         The cropped boxes are all resized (with bilinear or nearest neighbor interpolation) to
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
-        The resizing is corner aligned.
-        )DOC");
+        The resizing is corner aligned.)DOC");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops

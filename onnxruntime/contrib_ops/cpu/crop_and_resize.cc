@@ -42,7 +42,6 @@ namespace contrib {
       CropAndResize<data_type>);
 
 ADD_TYPED_CROPANDRESIZE_OP(float);
-ADD_TYPED_CROPANDRESIZE_OP(double);
 
 template <typename T>
 void CropAndResizeForward(
