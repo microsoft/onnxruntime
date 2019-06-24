@@ -11,3 +11,4 @@
 #cmakedefine HAS_USELESS_CAST
 #cmakedefine HAS_IGNORED_ATTRIBUTES
 #cmakedefine HAS_DEPRECATED_COPY
+#cmakedefine ORT_VERSION "@ORT_VERSION@"

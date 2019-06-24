@@ -783,26 +783,6 @@ TEST(MathOpTest, Mean_8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
-#ifndef DISABLE_CONTRIB_OPS
-TEST(MathOpTest, AffineDefaultAttributes) {
-  OpTester test("Affine");
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
-}
-
-TEST(MathOpTest, Affine) {
-  OpTester test("Affine");
-  std::vector<int64_t> dims{2, 2};
-  test.AddAttribute("alpha", 2.0f);
-  test.AddAttribute("beta", 1.0f);
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {1.0f, 3.0f, 5.0f, 7.0f});
-  test.Run();
-}
-#endif
-
 template <float (&op)(float value)>
 void TrigTest(OpTester& test, std::initializer_list<float> input) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
@@ -1002,27 +982,6 @@ TEST(MathOpTest, Expand_8_1x3_float16) {
                              MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f))});
   test.Run();
 }
-
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
-TEST(MathOpTest, Scale) {
-  OpTester test("Scale");
-  std::vector<int64_t> dims{2, 2};
-  test.AddAttribute("scale", 2.0f);
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {0.0f, 2.0f, 4.0f, 6.0f});
-  test.Run();
-}
-
-TEST(MathOpTest, Scale_Default) {
-  OpTester test("Scale");
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
-}
-}  // namespace contrib
-#endif
 
 TEST(MathOpTest, Erf) {
   OpTester test("Erf", 9);
