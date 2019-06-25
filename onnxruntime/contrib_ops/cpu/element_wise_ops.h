@@ -24,5 +24,19 @@ class Affine final : public OpKernel {
   float alpha_;
   float beta_;
 };
+
+template <typename T>
+class Scale final : public OpKernel {
+ public:
+  Scale(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  float scale_;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -362,9 +362,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
 #ifdef USE_NGRAPH
-  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
+  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]"});
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});  
 #endif
 
 #ifdef USE_OPENVINO
