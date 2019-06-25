@@ -161,7 +161,7 @@ jobs:
   pool: Win-GPU
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
-    CUDA_VERSION: '9.1'
+    CUDA_VERSION: '10.0'
   strategy:
     matrix:
       Python35:
@@ -182,7 +182,7 @@ jobs:
       displayName: 'Set CUDA path'
       inputs:
         scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
-        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion $(CUDA_VERSION)'
+        arguments: '-CudaMsbuildPath C:\local\cuda_10.0.130_win10\ -CudaVersion $(CUDA_VERSION)'
 
     - task: BatchScript@1
       displayName: 'Setup VS2017 env vars'
@@ -195,8 +195,8 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0"
-      --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10"
+      --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
