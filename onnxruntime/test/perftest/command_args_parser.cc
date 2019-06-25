@@ -16,6 +16,7 @@
 
 #include <core/graph/constants.h>
 #include <core/framework/path_lib.h>
+#include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"
 
@@ -41,7 +42,7 @@ namespace perftest {
       "\t-v: Show verbose information.\n"
       "\t-x [thread_size]: Session thread pool size.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: 0: No transformer optimization, 1:basic optimization, 2: full optimization. \n"
+      "\t-o [optimization level]: 0: No transformer optimization, 1: basic optimization, 2: extended optimization, 3: layout optimization. \n"
       "\t-h: help\n");
 }
 
@@ -127,8 +128,7 @@ namespace perftest {
         break;
       case 'o':
         test_config.run_config.optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        // Valid values are: 0, 1, 2.
-        if (test_config.run_config.optimization_level > 3) {
+        if (test_config.run_config.optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
           return false;
         }
         break;

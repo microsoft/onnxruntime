@@ -19,6 +19,7 @@
 #include <google/protobuf/stubs/common.h>
 #include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/optimizer/graph_transformer_level.h"
 
 using namespace onnxruntime;
 
@@ -37,10 +38,11 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0, 1 or 2. Default is 1.\n"
+      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0 through 3. Default is 1.\n"
       "\t\t0 -> Disable all optimizations\n"
       "\t\t1 -> Enable basic optimizations\n"
-      "\t\t2 -> Enable all optimizations\n"
+      "\t\t2 -> Enable extended optimizations\n"
+      "\t\t3 -> Enable layout optimizations\n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -163,7 +165,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           break;
         case 'o':
           graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (graph_optimization_level > 2) {
+          if (graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
             fprintf(stderr, "See usage for valid values of graph optimization level");
             usage();
             return -1;
@@ -225,6 +227,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
+
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
@@ -341,7 +344,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},      
+      {"convtranspose_3d", "disable reason"},
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
       {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
@@ -364,7 +367,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});  
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
 #endif
 
 #ifdef USE_OPENVINO
