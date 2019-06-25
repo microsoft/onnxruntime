@@ -126,12 +126,11 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
     return false;
   }
 
-  // if (!graph_utils::IsNodeInputConstant(graph, node, 1) /* ||
-  //     (node.InputDefs().size() == 3 && !graph_utils::IsNodeInputConstant(graph, node, 2)) ||
-  //     !graph_utils::IsNodeInputConstant(graph, next_node, 1)*/
-  // ) {
-  //   return false;
-  // }
+  if (!graph_utils::IsNodeInputConstant(graph, node, 1) ||
+      (node.InputDefs().size() == 3 && !graph_utils::IsNodeInputConstant(graph, node, 2)) ||
+      !graph_utils::IsNodeInputConstant(graph, next_node, 1)) {
+    return false;
+  }
 
   return true;
 }
