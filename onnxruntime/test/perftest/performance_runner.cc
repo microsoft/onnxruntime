@@ -70,10 +70,9 @@ Status PerformanceRunner::Run() {
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
 
-  if (performance_test_config_.run_config.f_verbose)
-    std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
-              << "Total iterations:" << performance_result_.time_costs.size() << std::endl
-              << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
+  std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
+            << "Total iterations:" << performance_result_.time_costs.size() << std::endl
+            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
   return Status::OK();
 }
 
