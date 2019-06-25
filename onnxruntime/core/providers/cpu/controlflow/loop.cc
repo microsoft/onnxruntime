@@ -203,22 +203,31 @@ Status LoopImpl::Initialize() {
   }
 
   auto* max_trip_count_tensor = context_.Input<Tensor>(0);
-  auto iter_num_rank = max_trip_count_tensor ? max_trip_count_tensor->Shape().NumDimensions() : 0;
   auto* cond_tensor = context_.Input<Tensor>(1);
-  auto condition_rank = cond_tensor ? cond_tensor->Shape().NumDimensions() : 0;
 
-  if (condition_rank >= 2 || iter_num_rank >= 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "'Loop' input 'M' and 'cond' should be a scalar tensor, but have ranks of ",
-                           condition_rank, " and ", iter_num_rank);
+  if (max_trip_count_tensor) {
+    if (max_trip_count_tensor->Shape().Size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' input 'M' should be a scalar tensor. Got shape of ",
+                             max_trip_count_tensor->Shape());
+    }
+  }
+
+  if (cond_tensor) {
+    if (cond_tensor->Shape().Size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "'Loop' input 'cond' should be a scalar tensor. Got shape of ",
+                             cond_tensor->Shape());
+    }
   }
 
   AllocatorPtr allocator;
   status = context_.GetTempSpaceAllocator(&allocator);
   ORT_RETURN_IF_ERROR(status);
 
-  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, condition_rank);
+  auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
+  auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
+
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(allocator, 0, iter_num_rank);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(allocator, condition_, condition_rank);
 
   subgraph_input_names_.reserve(num_subgraph_inputs_);
   for (int i = 0; i < num_subgraph_inputs_; ++i) {
