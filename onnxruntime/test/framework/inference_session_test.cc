@@ -282,7 +282,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
-    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get());
+    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
