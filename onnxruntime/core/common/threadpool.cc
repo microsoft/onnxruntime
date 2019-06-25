@@ -216,7 +216,7 @@ void ThreadPool::ParallelFor(int64_t total, int64_t unit_size, std::function<voi
   if (total <= 0 || unit_size < 0) return;
 
   // If we have no need for threads, run one block
-  if (total == 1 || NumThreads() == 1) {
+  if (total == 1 || unit_size == 0 || NumThreads() == 1) {
     fn(0, total);
     return;
   }
