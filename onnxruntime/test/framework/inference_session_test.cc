@@ -26,6 +26,9 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
@@ -279,7 +282,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
-    st = DataTransferManager::Instance().CopyTensor(rtensor, *cpu_tensor.get());
+    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get());
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
