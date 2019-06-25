@@ -38,16 +38,6 @@ namespace test {
 
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
-// Returns a map with the number of occurrences of each operator in the graph.
-// Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
-  std::map<std::string, int> op_to_count;
-  for (auto& node : graph.Nodes()) {
-    op_to_count[node.OpType()] =
-        op_to_count.count(node.OpType()) == 0 ? 1 : ++op_to_count[node.OpType()];
-  }
-  return op_to_count;
-}
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -141,7 +131,7 @@ TEST(GraphTransformationTests, ShapeToInitializer) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
 
   op_to_count = CountOpsInGraph(graph);
-  // Two of the Shapes are not eliminated because: 
+  // Two of the Shapes are not eliminated because:
   // One includes a symbolic dimension.
   // Another one includes a negative dimension
   ASSERT_TRUE(op_to_count["Shape"] == 2);
