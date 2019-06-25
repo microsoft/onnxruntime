@@ -768,7 +768,6 @@ public:
 class MlasNchwcConv2DTest : public MlasConv2DTest
 {
 protected:
-    virtual
     void
     MlasConv2D(
         size_t BatchCount,
@@ -793,7 +792,7 @@ protected:
         const float* Filter,
         const float* Bias,
         float* Output
-        )
+        ) override
     {
         int64_t InputShape[] = { int64_t(BatchCount), int64_t(GroupCount * InputChannels), int64_t(InputHeight), int64_t(InputWidth) };
         int64_t FilterShape[] = { int64_t(GroupCount * FilterCount), int64_t(InputChannels), int64_t(KernelHeight), int64_t(KernelWidth) };
@@ -1276,7 +1275,6 @@ public:
 class MlasNchwcPool2DTest : public MlasPool2DTest
 {
 protected:
-    virtual
     void
     MlasPool2D(
         MLAS_POOLING_KIND PoolingKind,
@@ -1287,7 +1285,7 @@ protected:
         const int64_t* OutputShape,
         const float* Input,
         float* Output
-        )
+        ) override
     {
         size_t NchwcChannels = (size_t(InputShape[1]) + BlockSize - 1) & ~(BlockSize - 1);
 
