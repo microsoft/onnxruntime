@@ -108,15 +108,15 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
     int64_t remainder = total - unit_size * NumThreads();
-    int64_t spawnedThreads = (unit_size == 1 ? total : NumThreads()) - 1;
-    Eigen::Barrier barrier(static_cast<unsigned int>(spawnedThreads));
+    int64_t spawned_threads = (unit_size == 1 ? total : NumThreads()) - 1;
+    Eigen::Barrier barrier(static_cast<unsigned int>(spawned_threads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
 
     int64_t last = unit_size;
-    for (int64_t iteration = 1; iteration <= spawnedThreads; iteration++) {
+    for (int64_t iteration = 1; iteration <= spawned_threads; iteration++) {
       int64_t first = last;
       last = first + unit_size + (remainder-- > 0 ? 1 : 0);
       Schedule([=, &handle_iteration]() { handle_iteration(first, last); });
@@ -169,14 +169,14 @@ class ThreadPool::Impl : public TaskThreadPool {
     }
 #else
     int64_t remainder = total - unit_size * NumThreads();
-    int64_t spawnedThreads = (unit_size == 1 ? total : NumThreads()) - 1;
-    Eigen::Barrier barrier(static_cast<unsigned int>(spawnedThreads));
+    int64_t spawned_threads = (unit_size == 1 ? total : NumThreads()) - 1;
+    Eigen::Barrier barrier(static_cast<unsigned int>(spawned_threads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
       barrier.Notify();
     };
     int64_t last = unit_size;
-    for (int64_t iteration = 1; iteration <= spawnedThreads; iteration++) {
+    for (int64_t iteration = 1; iteration <= spawned_threads; iteration++) {
       int64_t first = last;
       last = first + unit_size + (remainder-- > 0 ? 1 : 0);
       Schedule([=, &handle_iteration]() { handle_iteration(first, last); });
