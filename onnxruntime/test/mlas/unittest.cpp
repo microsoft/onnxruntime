@@ -17,8 +17,8 @@ Abstract:
 #include <stdio.h>
 #include <memory.h>
 #include <algorithm>
-#include <vector>
 #include <limits>
+#include <memory>
 #include <mlas.h>
 
 #if defined(_WIN32)
@@ -148,7 +148,40 @@ private:
     float* _GuardAddress;
 };
 
-class MlasSgemmTest
+class MlasTestBase
+{
+public:
+    virtual
+    ~MlasTestBase(
+        void
+        )
+    {
+    }
+
+    //
+    // Contains tests that run quickly as part of a checkin integration to
+    // sanity check that the functionality is working.
+    //
+
+    virtual
+    void
+    ExecuteShort(
+        void
+        ) = 0;
+
+    //
+    // Contains tests that can run slowly to more exhaustively test that
+    // functionality is working across a broader range of parameters.
+    //
+
+    virtual
+    void
+    ExecuteLong(
+        void
+        ) = 0;
+};
+
+class MlasSgemmTest : public MlasTestBase
 {
 private:
     void
@@ -318,32 +351,34 @@ private:
     MatrixGuardBuffer BufferCReference;
 
 public:
-    static
     void
-    Execute(
+    ExecuteShort(
         void
-        )
+        ) override
     {
-        MlasSgemmTest test;
-
-        // Trial balloons.
         for (size_t b = 1; b < 16; b++) {
-            test.Test(b, b, b, 1.0f, 0.0f);
+            Test(b, b, b, 1.0f, 0.0f);
         }
         for (size_t b = 16; b <= 256; b <<= 1) {
-            test.Test(b, b, b, 1.0f, 0.0f);
+            Test(b, b, b, 1.0f, 0.0f);
         }
         for (size_t b = 256; b < 320; b += 32) {
-            test.Test(b, b, b, 1.0f, 0.0f);
+            Test(b, b, b, 1.0f, 0.0f);
         }
+    }
 
+    void
+    ExecuteLong(
+        void
+        ) override
+    {
         static const float multipliers[] = { 0.0f, -0.0f, 0.25f, -0.5f, 1.0f, -1.0f };
 
         for (size_t N = 1; N < 128; N++) {
             for (size_t K = 1; K < 128; K++) {
                 for (size_t a = 0; a < _countof(multipliers); a++) {
                     for (size_t b = 0; b < _countof(multipliers); b++) {
-                        test.Test(1, N, K, multipliers[a], multipliers[b]);
+                        Test(1, N, K, multipliers[a], multipliers[b]);
                     }
                 }
             }
@@ -362,21 +397,21 @@ public:
                         for (size_t k = 0; k < _countof(ks); k++) {
                             size_t K = ks[k];
 
-                            test.Test(M, N, K, alpha, beta);
-                            test.Test(M + 1, N, K, alpha, beta);
-                            test.Test(M, N + 1, K, alpha, beta);
-                            test.Test(M + 1, N + 1, K, alpha, beta);
-                            test.Test(M + 3, N + 2, K, alpha, beta);
-                            test.Test(M + 4, N, K, alpha, beta);
-                            test.Test(M, N + 4, K, alpha, beta);
-                            test.Test(M + 4, N + 4, K, alpha, beta);
-                            test.Test(M + 3, N + 7, K, alpha, beta);
-                            test.Test(M + 8, N, K, alpha, beta);
-                            test.Test(M, N + 8, K, alpha, beta);
-                            test.Test(M + 12, N + 12, K, alpha, beta);
-                            test.Test(M + 13, N, K, alpha, beta);
-                            test.Test(M, N + 15, K, alpha, beta);
-                            test.Test(M + 15, N + 15, K, alpha, beta);
+                            Test(M, N, K, alpha, beta);
+                            Test(M + 1, N, K, alpha, beta);
+                            Test(M, N + 1, K, alpha, beta);
+                            Test(M + 1, N + 1, K, alpha, beta);
+                            Test(M + 3, N + 2, K, alpha, beta);
+                            Test(M + 4, N, K, alpha, beta);
+                            Test(M, N + 4, K, alpha, beta);
+                            Test(M + 4, N + 4, K, alpha, beta);
+                            Test(M + 3, N + 7, K, alpha, beta);
+                            Test(M + 8, N, K, alpha, beta);
+                            Test(M, N + 8, K, alpha, beta);
+                            Test(M + 12, N + 12, K, alpha, beta);
+                            Test(M + 13, N, K, alpha, beta);
+                            Test(M, N + 15, K, alpha, beta);
+                            Test(M + 15, N + 15, K, alpha, beta);
                         }
                     }
                     printf("a %zd/%zd b %zd/%zd M %zd\n", a, _countof(multipliers), b, _countof(multipliers), M);
@@ -387,7 +422,7 @@ public:
         for (size_t M = 1; M < 160; M++) {
             for (size_t N = 1; N < 160; N++) {
                 for (size_t K = 1; K < 160; K++) {
-                    test.Test(M, N, K, 1.0f, 0.0f);
+                    Test(M, N, K, 1.0f, 0.0f);
                 }
             }
             printf("M %zd\n", M);
@@ -396,10 +431,10 @@ public:
         for (size_t M = 160; M < 320; M += 24) {
             for (size_t N = 112; N < 320; N += 24) {
                 for (size_t K = 1; K < 16; K++) {
-                    test.Test(M, N, K, 1.0f, 0.0f);
+                    Test(M, N, K, 1.0f, 0.0f);
                 }
                 for (size_t K = 16; K < 160; K += 32) {
-                    test.Test(M, N, K, 1.0f, 0.0f);
+                    Test(M, N, K, 1.0f, 0.0f);
                 }
             }
             printf("M %zd\n", M);
@@ -407,7 +442,7 @@ public:
     }
 };
 
-class MlasConv2DTest
+class MlasConv2DTest : public MlasTestBase
 {
 protected:
     void
@@ -661,35 +696,38 @@ protected:
     MatrixGuardBuffer BufferIm2Col;
 
 public:
-    static
     void
-    Execute(
+    ExecuteShort(
         void
-        )
+        ) override
     {
-        MlasConv2DTest test;
+        for (unsigned i = 1; i < 256; i <<= 1) {
+            Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
+            Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
+            Test(1, 1, 16, i, i, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+            Test(1, 1, 16, i, i, 32, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 1, 16, i, i, 32, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 1, 16, i, i, 32, 1, i, 0, 0, 0, 0, 1, 1, 1, 1);
+        }
+    }
 
+    void
+    ExecuteLong(
+        void
+        ) override
+    {
         static const unsigned cs[] = { 32, 14, 1 };
         static const unsigned is[] = { 53, 11, 5, 1 };
 
-        for (unsigned i = 1; i < 256; i <<= 1) {
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 1, i, 0, 0, 0, 0, 1, 1, 1, 1);
-        }
-
         for (unsigned i = 1; i <= 32; i++) {
-            test.Test(4, 18, 1, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(4, 18, 1, 32, 89, 48, i, 89, 1, 1, 1, 1, 1, 1, 1, 1);
-            test.Test(4, 18, 2, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(4, 18, 1, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(4, 18, 1, 32, 89, 48, i, 89, 1, 1, 1, 1, 1, 1, 1, 1);
+            Test(4, 18, 2, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
         }
 
         for (unsigned b = 1; b < 64; b++) {
-            test.Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
         }
 
         for (unsigned ic = 0; ic < _countof(cs); ic++) {
@@ -709,7 +747,7 @@ public:
                                                     for (unsigned dw = 1; dw <= 2; dw++) {
                                                         for (unsigned sh = 1; sh <= 2; sh++) {
                                                             for (unsigned sw = 1; sw <= 2; sw++) {
-                                                                test.Test(1, 1, cs[ic], is[ih], is[iw], cs[fc], kh, kw, p0, p1, p2, p3, dh, dw, sh, sw);
+                                                                Test(1, 1, cs[ic], is[ih], is[iw], cs[fc], kh, kw, p0, p1, p2, p3, dh, dw, sh, sw);
                                                             }
                                                         }
                                                     }
@@ -730,7 +768,6 @@ public:
 class MlasNchwcConv2DTest : public MlasConv2DTest
 {
 protected:
-    virtual
     void
     MlasConv2D(
         size_t BatchCount,
@@ -755,7 +792,7 @@ protected:
         const float* Filter,
         const float* Bias,
         float* Output
-        )
+        ) override
     {
         int64_t InputShape[] = { int64_t(BatchCount), int64_t(GroupCount * InputChannels), int64_t(InputHeight), int64_t(InputWidth) };
         int64_t FilterShape[] = { int64_t(GroupCount * FilterCount), int64_t(InputChannels), int64_t(KernelHeight), int64_t(KernelWidth) };
@@ -876,56 +913,43 @@ protected:
     MatrixGuardBuffer BufferNchwcOutput;
 
 public:
-    static
     void
-    Execute(
+    ExecuteLong(
         void
-        )
+        ) override
     {
-        MlasNchwcConv2DTest test;
-
         // N.B. InputChannels must be a multiple of 4 if the count is greater
         // than the block size.
         static const unsigned cis[] = { 32, 20, 5, 1 };
         static const unsigned cos[] = { 64, 15, 1 };
         static const unsigned is[] = { 27, 11, 5, 1 };
 
-        for (unsigned i = 1; i < 256; i <<= 1) {
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, i, i, 32, 1, i, 0, 0, 0, 0, 1, 1, 1, 1);
-        }
-
         // Depthwise convolutions.
         for (unsigned i = 16; i < 256; i <<= 1) {
-            test.Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
-            test.Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
-            test.Test(1, i, 1, 28, 28, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
-            test.Test(1, i, 1, 28, 28, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, i, 1, 28, 28, 1, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(12, i, 1, 11, 11, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 1, 1, 2, 2);
+            Test(1, i, 1, 28, 28, 1, 3, 3, 0, 0, 0, 0, 2, 2, 1, 1);
+            Test(1, i, 1, 28, 28, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+            Test(1, i, 1, 28, 28, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, i, 1, 28, 28, 1, i, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(12, i, 1, 11, 11, 1, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
         }
 
         // Test varying FilterCounts.
         for (unsigned i = 1; i < 128; i++) {
-            test.Test(1, 1, 3, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(1, 1, 16, 34, 34, i, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 1, 3, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 1, 16, 34, 34, i, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(1, 1, 16, 34, 34, i, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
         }
 
         for (unsigned i = 1; i <= 32; i++) {
-            test.Test(4, 18, 1, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
-            test.Test(4, 18, 1, 32, 89, 48, i, 89, 1, 1, 1, 1, 1, 1, 1, 1);
-            test.Test(4, 18, 2, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(4, 18, 1, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(4, 18, 1, 32, 89, 48, i, 89, 1, 1, 1, 1, 1, 1, 1, 1);
+            Test(4, 18, 2, 32, 89, 48, i, 89, 0, 0, 0, 0, 1, 1, 1, 1);
         }
 
         for (unsigned b = 1; b < 64; b++) {
-            test.Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
+            Test(b, 1, 64, 11, 11, 128, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1);
         }
 
         for (unsigned ic = 0; ic < _countof(cis); ic++) {
@@ -945,7 +969,7 @@ public:
                                                     for (unsigned dw = 1; dw <= 2; dw++) {
                                                         for (unsigned sh = 1; sh <= 2; sh++) {
                                                             for (unsigned sw = 1; sw <= 2; sw++) {
-                                                                test.Test(1, 1, cis[ic], is[ih], is[iw], cos[fc], kh, kw, p0, p1, p2, p3, dh, dw, sh, sw);
+                                                                Test(1, 1, cis[ic], is[ih], is[iw], cos[fc], kh, kw, p0, p1, p2, p3, dh, dw, sh, sw);
                                                             }
                                                         }
                                                     }
@@ -964,7 +988,7 @@ public:
 
 };
 
-class MlasPool2DTest
+class MlasPool2DTest : public MlasTestBase
 {
 protected:
     void
@@ -1001,7 +1025,7 @@ protected:
         int64_t KernelShape[] = { int64_t(KernelHeight), int64_t(KernelWidth) };
         int64_t Padding[] = { int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth) };
         int64_t StrideShape[] = { int64_t(StrideHeight), int64_t(StrideWidth) };
-        int64_t OutputShape[] = { int64_t(BatchCount), int64_t(InputChannels), int64_t(OutputHeight64), int64_t(OutputWidth64) };
+        int64_t OutputShape[] = { int64_t(BatchCount), int64_t(InputChannels), OutputHeight64, OutputWidth64 };
 
         size_t InputBufferElements = size_t(InputShape[0] * InputShape[1] * InputShape[2] * InputShape[3]);
         size_t OutputBufferElements = size_t(OutputShape[0] * OutputShape[1] * OutputShape[2] * OutputShape[3]);
@@ -1191,26 +1215,39 @@ protected:
     MatrixGuardBuffer BufferOutputReference;
 
 public:
-    static
     void
-    Execute(
+    ExecuteShort(
         void
-        )
+        ) override
     {
-        MlasPool2DTest test;
+        for (unsigned i = 1; i < 256; i <<= 1) {
+            Test(1, 16, i, i, 3, 3, 0, 0, 0, 0, 1, 1);
+            Test(1, 16, i, i, 3, 3, 0, 0, 0, 0, 2, 2);
+            Test(1, 16, i, i, 3, 3, 0, 0, 0, 0, 1, 1);
+            Test(1, 16, i, i, 3, 3, 1, 1, 1, 1, 1, 1);
+            Test(1, 16, i, i, 1, 1, 0, 0, 0, 0, 1, 1);
+            Test(1, 16, i, i, i, 1, 0, 0, 0, 0, 1, 1);
+            Test(1, 16, i, i, 1, i, 0, 0, 0, 0, 1, 1);
+        }
+    }
 
+    void
+    ExecuteLong(
+        void
+        ) override
+    {
         static const unsigned is[] = { 53, 17, 11, 5, 4, 3, 2, 1 };
 
         for (unsigned i = 1; i < 2058; i++) {
-            test.Test(1, 1, 4, i, 2, 4, 0, 2, 0, 1, 1, 1);
+            Test(1, 1, 4, i, 2, 4, 0, 2, 0, 1, 1, 1);
         }
 
         for (unsigned ih = 0; ih < _countof(is); ih++) {
             for (unsigned iw = 0; iw < _countof(is); iw++) {
                 fprintf(stderr, "Handling %ux%u\n", is[ih], is[iw]);
-                test.Test(1, 1, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
-                test.Test(1, 1, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
-                test.Test(1, 1, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
+                Test(1, 1, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
+                Test(1, 1, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
+                Test(1, 1, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
                 for (unsigned kh = 1; kh <= 5; kh++) {
                     if (kh > is[ih]) break;
                     for (unsigned kw = 1; kw <= 5; kw++) {
@@ -1221,7 +1258,7 @@ public:
                                     for (unsigned p1 = 0; p1 < kw; p1++) {
                                         for (unsigned p2 = 0; p2 < kh; p2++) {
                                             for (unsigned p3 = 0; p3 < kw; p3++) {
-                                                test.Test(5, 3, is[ih], is[iw], kh, kw, p0, p1, p2, p3, sh, sw);
+                                                Test(5, 3, is[ih], is[iw], kh, kw, p0, p1, p2, p3, sh, sw);
                                             }
                                         }
                                     }
@@ -1238,7 +1275,6 @@ public:
 class MlasNchwcPool2DTest : public MlasPool2DTest
 {
 protected:
-    virtual
     void
     MlasPool2D(
         MLAS_POOLING_KIND PoolingKind,
@@ -1249,7 +1285,7 @@ protected:
         const int64_t* OutputShape,
         const float* Input,
         float* Output
-        )
+        ) override
     {
         size_t NchwcChannels = (size_t(InputShape[1]) + BlockSize - 1) & ~(BlockSize - 1);
 
@@ -1284,22 +1320,19 @@ protected:
     const size_t BlockSize = MlasNchwcGetBlockSize();
 
 public:
-    static
     void
-    Execute(
+    ExecuteLong(
         void
-        )
+        ) override
     {
-        MlasNchwcPool2DTest test;
-
         static const unsigned is[] = { 53, 11, 1 };
 
         for (unsigned ih = 0; ih < _countof(is); ih++) {
             for (unsigned iw = 0; iw < _countof(is); iw++) {
                 fprintf(stderr, "Handling %ux%u\n", is[ih], is[iw]);
-                test.Test(1, 12, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
-                test.Test(1, 32, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
-                test.Test(1, 68, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
+                Test(1, 12, is[ih], is[iw], is[ih], is[iw], 0, 0, 0, 0, 1, 1);
+                Test(1, 32, is[ih], is[iw], is[ih], 1, 0, 0, 0, 0, 1, 1);
+                Test(1, 68, is[ih], is[iw], 1, is[iw], 0, 0, 0, 0, 1, 1);
                 for (unsigned kh = 1; kh <= 5; kh++) {
                     if (kh > is[ih]) break;
                     for (unsigned kw = 1; kw <= 5; kw++) {
@@ -1310,7 +1343,7 @@ public:
                                     for (unsigned p1 = 0; p1 < kw; p1++) {
                                         for (unsigned p2 = 0; p2 < kh; p2++) {
                                             for (unsigned p3 = 0; p3 < kw; p3++) {
-                                                test.Test(1, 32, is[ih], is[iw], kh, kw, p0, p1, p2, p3, sh, sw);
+                                                Test(1, 32, is[ih], is[iw], kh, kw, p0, p1, p2, p3, sh, sw);
                                             }
                                         }
                                     }
@@ -1325,7 +1358,7 @@ public:
 
 };
 
-class MlasPool3DTest
+class MlasPool3DTest : public MlasTestBase
 {
 protected:
     void
@@ -1349,11 +1382,29 @@ protected:
         size_t StrideWidth
         )
     {
+        const size_t DilationDepth = 1;
+        const size_t DilationHeight = 1;
+        const size_t DilationWidth = 1;
+
+        int64_t OutputDepth64 =
+            ((int64_t(InputDepth) + int64_t(PaddingLeftDepth) + int64_t(PaddingRightDepth)) -
+            (int64_t(DilationDepth) * (int64_t(KernelDepth) - 1) + 1)) / int64_t(StrideDepth) + 1;
+        int64_t OutputHeight64 =
+            ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
+            (int64_t(DilationHeight) * (int64_t(KernelHeight) - 1) + 1)) / int64_t(StrideHeight) + 1;
+        int64_t OutputWidth64 =
+            ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
+            (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) / int64_t(StrideWidth) + 1;
+
+        if (OutputDepth64 <= 0 || OutputHeight64 <= 0 || OutputWidth64 <= 0) {
+            return;
+        }
+
         int64_t InputShape[] = { int64_t(BatchCount), int64_t(InputChannels), int64_t(InputDepth), int64_t(InputHeight), int64_t(InputWidth) };
         int64_t KernelShape[] = { int64_t(KernelDepth), int64_t(KernelHeight), int64_t(KernelWidth) };
         int64_t Padding[] = { int64_t(PaddingLeftDepth), int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightDepth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth) };
         int64_t StrideShape[] = { int64_t(StrideDepth), int64_t(StrideHeight), int64_t(StrideWidth) };
-        int64_t OutputShape[] = { int64_t(BatchCount), int64_t(InputChannels), 0, 0, 0 };
+        int64_t OutputShape[] = { int64_t(BatchCount), int64_t(InputChannels), OutputDepth64, OutputHeight64, OutputWidth64 };
 
         OutputShape[2] = (InputShape[2] + Padding[0] + Padding[3] - KernelShape[0]) / StrideShape[0] + 1;
         OutputShape[3] = (InputShape[3] + Padding[1] + Padding[4] - KernelShape[1]) / StrideShape[1] + 1;
@@ -1565,21 +1616,34 @@ protected:
     MatrixGuardBuffer BufferOutputReference;
 
 public:
-    static
     void
-    Execute(
+    ExecuteShort(
         void
-        )
+        ) override
     {
-        MlasPool3DTest test;
+        for (unsigned i = 1; i < 64; i <<= 1) {
+            Test(1, 16, i, i, i, 3, 3, 3, 0, 0, 0, 0, 0, 0, 1, 1, 1);
+            Test(1, 16, i, i, i, 3, 3, 3, 0, 0, 0, 0, 0, 0, 2, 2, 2);
+            Test(1, 16, i, i, i, 3, 3, 3, 0, 0, 0, 0, 0, 0, 1, 1, 1);
+            Test(1, 16, i, i, i, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+            Test(1, 16, i, i, i, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1);
+            Test(1, 16, i, i, i, 1, i, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1);
+            Test(1, 16, i, i, i, 1, 1, i, 0, 0, 0, 0, 0, 0, 1, 1, 1);
+        }
+    }
 
+    void
+    ExecuteLong(
+        void
+        ) override
+    {
         static const unsigned is[] = { 11, 5, 4, 3, 2, 1 };
 
         for (unsigned id = 0; id < _countof(is); id++) {
             for (unsigned ih = 0; ih < _countof(is); ih++) {
                 for (unsigned iw = 0; iw < _countof(is); iw++) {
                     fprintf(stderr, "Handling %ux%ux%u\n", is[id], is[ih], is[iw]);
-                    test.Test(1, 1, is[id], is[ih], is[iw], is[id], is[ih], is[iw], 0, 0, 0, 0, 0, 0, 1, 1, 1);
+                    Test(1, 1, is[id], is[ih], is[iw], is[id], is[ih], is[iw], 0, 0, 0, 0, 0, 0, 1, 1, 1);
                     for (unsigned kd = 1; kd <= 4; kd++) {
                         if (kd > is[id]) break;
                         for (unsigned kh = 1; kh <= 4; kh++) {
@@ -1595,7 +1659,7 @@ public:
                                                         for (unsigned p3 = 0; p3 < kd; p3++) {
                                                             for (unsigned p4 = 0; p4 < kh; p4++) {
                                                                 for (unsigned p5 = 0; p5 < kw; p5++) {
-                                                                    test.Test(1, 1, is[id], is[ih], is[iw], kd, kh, kw, p0, p1, p2, p3, p4, p5, sd, sh, sw);
+                                                                    Test(1, 1, is[id], is[ih], is[iw], kd, kh, kw, p0, p1, p2, p3, p4, p5, sd, sh, sw);
                                                                 }
                                                             }
                                                         }
@@ -1622,13 +1686,21 @@ main(
     void
     )
 {
-//    MlasSgemmTest::Execute();
-//    MlasConv2DTest::Execute();
-    MlasNchwcConv2DTest::Execute();
-//    MlasPool2DTest::Execute();
-//    MlasNchwcPool2DTest::Execute();
-//    MlasPool3DTest::Execute();
-//    ExecutePool3DTests();
+    printf("SGEMM tests.\n");
+    std::make_unique<MlasSgemmTest>()->ExecuteShort();
+
+    printf("Conv2D tests.\n");
+    std::make_unique<MlasConv2DTest>()->ExecuteShort();
+    std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+
+    printf("Pool2D tests.\n");
+    std::make_unique<MlasPool2DTest>()->ExecuteShort();
+    std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+
+    printf("Pool3D tests.\n");
+    std::make_unique<MlasPool3DTest>()->ExecuteShort();
+
+    printf("Done.\n");
 
     return 0;
 }
