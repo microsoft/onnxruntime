@@ -39,19 +39,42 @@ class DataLoader {
    @shard_index the shard to be loaded, used when loading partial data for data-parallelism training
    @total_shard total number of shards, used when loading partial data for data-parallelism training
   */
-  common::Status Load(const PATH_STRING_TYPE& dir, size_t shard_index = 0, size_t total_shard = 1);
+  virtual common::Status Load(const PATH_STRING_TYPE& dir_path, size_t shard_index = 0, size_t total_shard = 1);
   ~DataLoader();
 
   DataSet& MutableDataSet() {
     return *data_set_;
   }
 
- private:
+ protected:
   common::Status AddData(const std::vector<ONNX_NAMESPACE::TensorProto>& inputs);
-
   std::unique_ptr<DataSet> data_set_;
+
+ private:
   std::vector<std::unique_ptr<char[]>> buffer_for_mlvalues_;
   std::vector<OrtCallback> deleter_for_mlvalues_;
 };
+
+/*
+Bert training file is organized in the following format:
+  
+  [Sample ByteSize] [Feature0 ByteSize] [Feature0 TensorProto] ... [FeatureN ByteSize] [FeatureN TensorProto]
+  next sample ...
+
+All the bytesize fields are stored as 4 bytes uint32_t
+*/
+
+class BertDataLoader : public DataLoader {
+ public:
+  BertDataLoader() {}
+  virtual common::Status Load(const PATH_STRING_TYPE& dir_path, size_t shard_index = 0, size_t total_shard = 1) override;
+
+ private:
+  common::Status LoadFile(const PATH_STRING_TYPE& file_path);
+  common::Status LoadOneSample(google::protobuf::io::CodedInputStream& coded_in, uint32_t sample_size);
+
+  const static size_t SIZEOF_UINT32 = 4;
+};
+
 }  // namespace training
 }  // namespace onnxruntime

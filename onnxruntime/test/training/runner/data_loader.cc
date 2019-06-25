@@ -6,11 +6,15 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "onnx/onnx-ml.pb.h"
 #include "test/training/runner/data_loader.h"
+#include <fstream>
 
 using namespace std;
 
 namespace onnxruntime {
 namespace training {
+
+using FileInputStream = google::protobuf::io::FileInputStream;
+using CodedInputStream = google::protobuf::io::CodedInputStream;
 
 //load tensors from a list of pb files.
 static Status LoadTensors(const vector<PATH_STRING_TYPE>& pb_files,
@@ -19,7 +23,7 @@ static Status LoadTensors(const vector<PATH_STRING_TYPE>& pb_files,
     int tensor_fd;
     auto st = Env::Default().FileOpenRd(pb_files.at(i), tensor_fd);
     ORT_RETURN_IF_ERROR(st);
-    google::protobuf::io::FileInputStream f(tensor_fd);
+    FileInputStream f(tensor_fd);
     f.SetCloseOnDelete(true);
     ONNX_NAMESPACE::TensorProto tensor;
     if (!tensor.ParseFromZeroCopyStream(&f)) {
@@ -81,6 +85,17 @@ Status DataLoader::AddData(const vector<ONNX_NAMESPACE::TensorProto>& inputs) {
       deleter_for_mlvalues_.emplace_back(deleter);
     }
   }
+
+  // TODO: Initialize data_set_ in constructor
+  // Currently, we do it here because we need to know the names of tensors
+  if (data_set_ == nullptr) {
+    std::vector<std::string> tensor_names;
+    for (const auto& tensor_proto : inputs) {
+      tensor_names.push_back(tensor_proto.name());
+    }
+    data_set_ = std::make_unique<DataSet>(tensor_names);
+  }
+
   return data_set_->AddData(std::move(sample));
 }
 
@@ -128,6 +143,82 @@ DataLoader ::~DataLoader() {
   for (OrtCallback& deleter : deleter_for_mlvalues_) {
     deleter.f(deleter.param);
   }
+}
+
+vector<PATH_STRING_TYPE> GetAllTrainingFiles(const PATH_STRING_TYPE& dir_path) {
+  vector<PATH_STRING_TYPE> training_files;
+  LoopDir(dir_path,
+          [&training_files, &dir_path](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+            PATH_STRING_TYPE filename_str = filename;
+            if (filename_str[0] == '.' ||
+                f_type != OrtFileType::TYPE_REG ||
+                !HasExtensionOf(filename_str, ORT_TSTR("pb"))) {
+              return true;
+            }
+            training_files.push_back(ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str));
+            return true;
+          });
+  return training_files;
+}
+
+Status BertDataLoader::Load(const PATH_STRING_TYPE& dir_path, size_t shard_index, size_t total_shard) {
+  vector<PATH_STRING_TYPE> training_files = GetAllTrainingFiles(dir_path);
+  vector<PATH_STRING_TYPE> partial_training_files;
+  // If only need to load partial data for data-parallelism training
+  if (total_shard > 1) {
+    ORT_RETURN_IF_NOT(shard_index < total_shard, "shard_index must be 0~", total_shard - 1);
+    int count = 0;
+    for (const auto& file : training_files) {
+      if ((count++ % total_shard) == shard_index) {
+        partial_training_files.push_back(file);
+      }
+    }
+    training_files = partial_training_files;
+  }
+  for (auto file_path : training_files) {
+    ORT_RETURN_IF_ERROR(LoadFile(file_path));
+  }
+  return Status::OK();
+}
+
+Status BertDataLoader::LoadFile(const PATH_STRING_TYPE& file_path) {
+  int tensor_fd;
+  ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(file_path, tensor_fd));
+  FileInputStream f(tensor_fd);
+  CodedInputStream coded_in(&f);
+  f.SetCloseOnDelete(true);
+
+  uint32_t sample_size;
+  while (coded_in.ReadRaw(&sample_size, SIZEOF_UINT32)) {
+    Status s = LoadOneSample(coded_in, sample_size);
+    if (!s.IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", ToMBString(file_path), "' failed");
+    }
+  }
+  return Status::OK();
+}
+
+Status BertDataLoader::LoadOneSample(CodedInputStream& coded_in, uint32_t sample_size) {
+  uint32_t read = 0;
+  std::vector<ONNX_NAMESPACE::TensorProto> features;
+  while (read < sample_size) {
+    uint32_t feature_size;
+    coded_in.ReadRaw(&feature_size, SIZEOF_UINT32);
+    std::string s;
+    coded_in.ReadString(&s, feature_size);
+
+    ONNX_NAMESPACE::TensorProto tensor;
+    if (!tensor.ParseFromString(s)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse one TensoProto");
+    }
+
+    features.emplace_back(tensor);
+    read += SIZEOF_UINT32 + feature_size;
+  }
+
+  ORT_RETURN_IF_ERROR(AddData(features));
+
+  return Status::OK();
 }
 
 }  // namespace training

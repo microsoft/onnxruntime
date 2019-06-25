@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/environment.h"
@@ -9,6 +10,7 @@
 #include "core/training/weight_updater.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
+#include "test/training/runner/data_loader.h"
 
 #ifdef USE_HOROVOD
 #include "core/graph/training/horovod_adapters.h"
@@ -30,9 +32,8 @@ const static float LEARNING_RATE = 0.1f;
 const static int BATCH_SIZE = 10;
 const static int NUM_CLASS = 10;
 const static int NUM_SAMPLES_FOR_EVALUATION = 10;
-const static vector<int64_t> IMAGE_DIMS = {1, 784};  //{1, 1, 28, 28} for mnist_conv
-const static vector<int64_t> LABEL_DIMS = {1, 10};
-const static std::string MNIST_DATA_PATH = "mnist_data";
+const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("bert_data/train");
+const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("bert_data/test");
 
 int validate_params(int argc, char* args[]) {
   if (argc < 2) {
@@ -176,9 +177,8 @@ int main(int argc, char* args[]) {
 #endif
   setup_training_params(model_name, params);
 
-#ifdef USE_CUDA
   int device_id = 0, device_count = 1;
-
+#ifdef USE_CUDA
   // setup horovod
 #ifdef USE_HOROVOD
   std::tie(device_id, device_count) = setup_horovod();
@@ -190,6 +190,13 @@ int main(int argc, char* args[]) {
     printf("Using cuda device #%d \n", params.world_rank_);
   }
 #endif
+
+  BertDataLoader training_data_loader, test_data_loader;
+  RETURN_IF_FAIL(training_data_loader.Load(TRAINING_DATA_PATH, device_id, device_count));
+  // Evaluation is only done in device #0
+  if (device_id == 0) {
+    RETURN_IF_FAIL(test_data_loader.Load(TEST_DATA_PATH));
+  }
 
   // setup fake data
   // input1 : int64[batch,max_seq_len_in_batch], value [0 ~ 30522]
