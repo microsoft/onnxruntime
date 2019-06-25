@@ -970,6 +970,17 @@ TEST(MathOpTest, Expand_8_1x3_int64) {
   test.Run();
 }
 
+TEST(MathOpTest, Expand_8_3x1x3x1_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1, 3, 1, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int64_t>("data_1", {4}, {3, 1, 3, 1});
+  test.AddOutput<int64_t>("result", {3, 3, 3, 3},
+	  {1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+	   1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+	   1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,});
+  test.Run();
+}
+
 TEST(MathOpTest, Expand_8_3x3_float16) {
   OpTester test("Expand", 8);
   test.AddInput<MLFloat16>("data_0", {1}, {MLFloat16(math::floatToHalf(1.0f))});
