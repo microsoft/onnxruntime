@@ -4,6 +4,14 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
+schedules:
+- cron: "0 10 * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
 variables:
   PackageName: 'Microsoft.ML.OnnxRuntime.MKLML'
 
