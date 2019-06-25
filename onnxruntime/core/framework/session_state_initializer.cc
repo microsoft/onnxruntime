@@ -36,7 +36,8 @@ static common::Status SaveInitializedTensors(const Env& env, const std::basic_st
                                              const onnxruntime::Graph& graph, const ExecutionProviders& exec_providers,
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
                                              ITensorAllocator* planner, const T& save_tensor_func,
-                                             const logging::Logger& logger);
+                                             const logging::Logger& logger,
+                                             const DataTransferManager& data_transfer_mgr);
 
 static common::Status SaveKernels(const ExecutionProviders& execution_providers,
                                   SessionState& session_state,
@@ -111,7 +112,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
       [this](int idx, const OrtValue& value, const OrtCallback& d) -> Status {
         return session_state_.AddInitializedTensor(idx, value, &d);
       },
-      logger_));
+      logger_, session_state_.GetDataTrasnferMgr()));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
@@ -179,7 +180,8 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, OrtV
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
                                              const ExecutionProviders& exec_providers, OrtValue& ort_value,
-                                             OrtCallback& deleter) {
+                                             OrtCallback& deleter,
+                                             const DataTransferManager& data_transfer_mgr) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
@@ -218,7 +220,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
                                       m.GetAllocInfo());
   // TODO: does this function work for string tensor?
-  Status copy_status = DataTransferManager::Instance().CopyTensor(p_deserialize_tensor, *p_tensor);
+  Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);
   if (d.f) d.f(d.param);
   if (!copy_status.IsOK()) {
     if (copy_status.ErrorMessage().empty()) {
@@ -238,7 +240,8 @@ template <typename T>
 common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                       const Graph& graph, const ExecutionProviders& exec_providers,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
-                                      const T& save_tensor_func, const logging::Logger& logger) {
+                                      const T& save_tensor_func, const logging::Logger& logger,
+                                      const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > 0, "OrtValue indexes should have been populated.");
 
@@ -271,7 +274,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
 #endif
     OrtValue ort_value;
-    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter);
+    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter, data_transfer_mgr);
     if (!st.IsOK()) {
       std::ostringstream oss;
       oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();

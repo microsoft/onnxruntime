@@ -138,7 +138,7 @@ class CudaKernel : public OpKernel {
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
-    return DataTransferManager::Instance().CopyTensor(src, dst);
+    return Info().GetDataTransferManager().CopyTensor(src, dst);
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }

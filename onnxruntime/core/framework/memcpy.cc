@@ -14,7 +14,7 @@ Memcpy::Memcpy(const OpKernelInfo& info)
 Status Memcpy::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   Tensor* Y = ctx->Output(0, X->Shape());
-  Status retval = DataTransferManager::Instance().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+  Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
   return retval;
 }
 

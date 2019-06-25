@@ -7,12 +7,14 @@
 
 #include "core/graph/graph.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/ml_value.h"
 #include "core/common/callback.h"
 
 namespace onnxruntime {
+class DataTransferManager;
 
 class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
@@ -55,7 +57,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     const int device_id_{0};
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
-
+    DataTransferManager data_transfer_mgr_;
     // MLValues for optimizer
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;

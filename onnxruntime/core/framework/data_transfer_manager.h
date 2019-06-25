@@ -13,7 +13,8 @@ namespace onnxruntime {
 // It's not thread-safe.
 class DataTransferManager {
  public:
-  static DataTransferManager& Instance();
+  DataTransferManager() = default;
+  //static DataTransferManager& Instance();
 
   common::Status RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer);
 
@@ -21,8 +22,6 @@ class DataTransferManager {
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
 
  private:
-  DataTransferManager() = default;
-
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DataTransferManager);
 
   // It's assumed that data transfers in this array have no overlap in terms of copying functionality.

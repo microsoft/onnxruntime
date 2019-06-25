@@ -11,9 +11,6 @@
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
-#ifdef USE_CUDA
-#include "core/providers/cuda/gpu_data_transfer.h"
-#endif
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -71,11 +68,6 @@ Internal copy node
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
-
-	DataTransferManager::Instance().RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
-#ifdef USE_CUDA
-    DataTransferManager::Instance().RegisterDataTransfer(std::make_unique<GPUDataTransfer>());    
-#endif
 
     is_initialized_ = true;
   } catch (std::exception& ex) {

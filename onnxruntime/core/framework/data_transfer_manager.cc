@@ -6,11 +6,6 @@
 namespace onnxruntime {
 using namespace common;
 
-DataTransferManager& DataTransferManager::Instance() {
-  static DataTransferManager data_transfer_mgr;
-  return data_transfer_mgr;
-}
-
 common::Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer) {
   if (nullptr == data_transfer) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "data_transfer registered is nullptr.");

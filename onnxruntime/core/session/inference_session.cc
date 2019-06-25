@@ -44,6 +44,9 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -462,6 +465,11 @@ common::Status InferenceSession::Initialize() {
       LOGS(*session_logger_, INFO) << "Session has already been initialized.";
       return common::Status::OK();
     }
+
+    session_state_.GetDataTrasnferMgr().RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+#ifdef USE_CUDA
+    session_state_.GetDataTrasnferMgr().RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
+#endif
 
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls
     if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
