@@ -896,7 +896,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             //
             // Shrinking the batch size causes a slowdown from additional
             // flushing of intermediate results to the output tensor. Extending
-            // the batc sizes causes a slowdown from processor cache thrashing.
+            // the batch sizes causes a slowdown from processor cache thrashing.
             //
 
             const float* input = Input + BlockSize * (ph * StrideHeight * InputWidth);
