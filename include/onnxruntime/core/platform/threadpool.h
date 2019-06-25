@@ -40,7 +40,7 @@ class ThreadPool {
   Estimate the number of shards to divide work into given the number of threads of the current
   threadpool, number of iterations to compute and approximate work complexity.
   */
-  int64_t CalculateShardSize(int64_t total, float complexity = 0.0f);
+  int64_t CalculateShardSize(int64_t total, float complexity = 0.0f) const;
 
   // This is not supported until the latest Eigen
   // void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);

@@ -203,7 +203,7 @@ void ThreadPool::ParallelFor(int64_t total, std::function<void(int64_t)> fn) {
   // If we have no need for threads, run sequentially
   if (total == 1 || NumThreads() == 1) {
     for (int i = 0; i < total; i++) {
-      fn(0);
+      fn(i);
     }
 
     return;
@@ -224,7 +224,7 @@ void ThreadPool::ParallelFor(int64_t total, int64_t unit_size, std::function<voi
   impl_->ParallelFor(total, unit_size, fn);
 }
 
-int64_t ThreadPool::CalculateShardSize(int64_t total, float complexity) {
+int64_t ThreadPool::CalculateShardSize(int64_t total, float complexity) const {
   ORT_UNUSED_PARAMETER(complexity);
 
   // TODO: Simplified calculation, ignores complexity.
