@@ -149,7 +149,7 @@ jobs:
 #       artifactName: 'drop-signed-nuget'
 #       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - task: AzureFileCopy@3
+  - task: AzureFileCopy@2
     displayName: 'AzureBlob File Copy'
     inputs:
       SourcePath: '$(Build.ArtifactStagingDirectory)'
