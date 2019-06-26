@@ -154,7 +154,7 @@ jobs:
   - task: AzureFileCopy@3
     displayName: 'AzureBlob File Copy'
     inputs:
-      SourcePath: '$(Build.SourcesDirectory)\README.md'
+      SourcePath: '$(Build.SourcesDirectory)\.\requirements-*.txt'
       azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
       Destination: AzureBlob
       storage: ortpackages
