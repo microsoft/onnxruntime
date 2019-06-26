@@ -8,9 +8,6 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-namespace concurrency {
-class ThreadPool;
-}
 namespace contrib {
 
 class WordConvEmbedding final : public OpKernel {
@@ -41,7 +38,7 @@ class WordConvEmbedding final : public OpKernel {
       int64_t char_embedding_size,
       int64_t filter_width,
       int64_t num_filters,
-      float* output, onnxruntime::concurrency::ThreadPool* tp) const;
+      float* output) const;
   void CalculateLengthOfEachWordInSequence(
       const int* seq_ptr,
       int* words_len_ptr,

@@ -16,7 +16,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/common/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -106,6 +106,10 @@ ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_fun
     *out = new OrtEnv(env.release(), default_logging_manager.release());
   return ToOrtStatus(status);
   API_IMPL_END
+}
+
+ORT_API(const char*, OrtGetVersionString) {
+  return ORT_VERSION;
 }
 
 ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,

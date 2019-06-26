@@ -13,7 +13,7 @@ version2tag=(5af210ca8a1c73aa6bae8754c9346ec54d0a756e-onnx123
              bae6333e149a59a3faa9c4d9c44974373dcf5256-onnx130
              9e55ace55aad1ada27516038dfbdc66a8a0763db-onnx141
              7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef-onnx150
-             5c51f0dbbe88ee1536f17ee7bd462b2ab3772c52-onnxtip)
+             01f77251b74438bcde5c40a2533bdd289f257ea1-onnxtip)
 for v2t in ${version2tag[*]}; do
   onnx_version="$(cut -d'-' -f1<<<${v2t})"
   onnx_tag="$(cut -d'-' -f2<<<${v2t})"
