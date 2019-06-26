@@ -39,6 +39,10 @@ __global__ void _ExpandKernel(
     }
     output_data[output_index] = input_data[input_index];
     output_index += stride;
+    out_coord = output_index;
+    sizeTillDimensionOutput = N;
+    sizeTillDimensionInput = N_input;  
+    input_index = 0;
   }
 }
 
