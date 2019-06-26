@@ -90,7 +90,9 @@ jobs:
 #      cd $cwd
 
 - job: NuGet_Packaging
-  pool: $(AgentPoolWin)
+  pool: 
+    name: Hosted
+    demands: azureps
   dependsOn:
   - Windows_CI_Dev
 #   - Windows_CI_Dev_x86
@@ -149,7 +151,7 @@ jobs:
 #       artifactName: 'drop-signed-nuget'
 #       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - task: AzureFileCopy@2
+  - task: AzureFileCopy@3
     displayName: 'AzureBlob File Copy'
     inputs:
       SourcePath: '$(Build.ArtifactStagingDirectory)'
