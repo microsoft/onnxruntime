@@ -89,6 +89,20 @@ whether next task is ready or not. Use PASSIVE if your CPU usage already high, u
 Yes, we have created a tool named onnxruntime_perf_test.exe, and you find it at the build drop.
 You can use this tool to test all those knobs easily. Please find the usage of this tool by onnxruntime_perf_test.exe -h
 
+## How to enable profiling and view the generated JSON file?
 
+You can enable ONNX Runtime latency profiling in code:
 
+```python
+import onnxruntime as rt
+
+sess_options = rt.SessionOptions()
+enable_profiling.enable_profiling = True
+```
+Or, if you are using the onnxruntime_perf_test.exe tool, you can add -p [profile_file] to enable performance profiling.
+
+In both ways, you will get a JSON file, which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+* Open chrome browser
+* Type chrome://tracing in the address bar
+* Load the generated JSON file
 
