@@ -158,7 +158,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
-  pool: Win-GPU-CUDA10
+  pool: Win-GPU
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '10.0'
