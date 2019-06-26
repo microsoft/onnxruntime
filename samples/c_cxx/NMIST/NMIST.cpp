@@ -94,6 +94,7 @@ void ConvertDibToNmist() {
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
+// The Windows entry point function
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow) {
   {
     WNDCLASSEX wc{};
