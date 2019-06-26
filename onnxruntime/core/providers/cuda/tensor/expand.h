@@ -8,7 +8,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
 class Expand final : public CudaKernel {
  public:
   Expand(const OpKernelInfo& info) : CudaKernel(info) {}

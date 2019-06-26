@@ -8,20 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
-      Expand,                                                    \
-      kOnnxDomain,                                               \
-      8,                                                         \
-      T,                                                         \
-      kCudaExecutionProvider,                                    \
-      KernelDefBuilder()                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),               \
-      Expand<T>);
-
-template <typename T>
-Status Expand<T>::ComputeInternal(OpKernelContext* ctx) const {
+Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input0 = *ctx->Input<Tensor>(0);
   const auto& input1 = *ctx->Input<Tensor>(1);
   int device_id = GetDeviceId();
@@ -75,14 +62,15 @@ Status Expand<T>::ComputeInternal(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
-  template Status Expand<T>::ComputeInternal(OpKernelContext* ctx) const;
-
-SPECIALIZED_COMPUTE(uint8_t)
-SPECIALIZED_COMPUTE(uint16_t)
-SPECIALIZED_COMPUTE(uint32_t)
-SPECIALIZED_COMPUTE(uint64_t)
+ONNX_OPERATOR_KERNEL_EX(
+    Expand,
+    kOnnxDomain,
+    8,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
+    Expand);
 
 }  // namespace cuda
 };  // namespace onnxruntime
