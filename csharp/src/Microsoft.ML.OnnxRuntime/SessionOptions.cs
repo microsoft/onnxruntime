@@ -14,14 +14,14 @@ namespace Microsoft.ML.OnnxRuntime
     {
         public IntPtr _nativePtr;
         protected static readonly Lazy<SessionOptions> _default = new Lazy<SessionOptions>(MakeSessionOptionWithCpuProvider);
-        private static string[] cudaDelayLoadedLibs = { "cublas64_91.dll", "cudnn64_7.dll" };
+        private static string[] cudaDelayLoadedLibs = { "cublas64_100.dll", "cudnn64_7.dll" };
 
         /// <summary>
         /// Constructs an empty SessionOptions
         /// </summary>
         public SessionOptions()
         {
-            _nativePtr = NativeMethods.OrtCreateSessionOptions();
+            NativeMethods.OrtCreateSessionOptions(out _nativePtr);
         }
 
         /// <summary>
@@ -32,11 +32,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// 0 -> Disable all optimizations
         /// 1 -> Enable basic optimizations
         /// 2 -> Enable all optimizations
-        /// <returns>True on success and false otherwise</returns>
-        public bool SetSessionGraphOptimizationLevel(uint optimization_level)
+        public void SetSessionGraphOptimizationLevel(uint optimization_level)
         {
-            var result = NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level);
-            return result == 0;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionGraphOptimizationLevel(_nativePtr, optimization_level));
         }
 
         /// <summary>
@@ -45,7 +43,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </param>
         public void EnableSequentialExecution()
         {
-            NativeMethods.OrtEnableSequentialExecution(_nativePtr);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableSequentialExecution(_nativePtr));
         }
 
         /// <summary>
@@ -54,7 +52,25 @@ namespace Microsoft.ML.OnnxRuntime
         /// </param>
         public void DisableSequentialExecution()
         {
-            NativeMethods.OrtDisableSequentialExecution(_nativePtr);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
+        }
+
+        /// <summary>
+        /// Enable Mem Pattern. By default, it is enabled
+        /// </summary>
+        /// </param>
+        public void EnableMemPattern()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableMemPattern(_nativePtr));
+        }
+
+        /// <summary>
+        /// Disable Mem Pattern.
+        /// </summary>
+        /// </param>
+        public void DisableMemPattern()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableMemPattern(_nativePtr));
         }
 
         /// <summary>

@@ -57,10 +57,6 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
   }
 }
 
-std::shared_ptr<KernelRegistry> NGRAPHExecutionProvider::GetKernelRegistry() const {
-  return std::make_shared<KernelRegistry>();
-}
-
 /**
  * Checks if a tensor represented by srcLocation can be copied into the dstLocation tensor
  * @param src_location result of Location().name call on the source tensor
@@ -359,6 +355,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                       /*out*/ std::vector<std::string>& cluster_inputs,
                                       /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
+  std::vector<std::string> ordered_input_args;
   std::unordered_set<std::string> output_args;
   std::unordered_set<std::string> external_output_args;
 
@@ -367,8 +364,15 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 
     // Collect all inputs and outputs
     node->ForEachDef(
-        [&input_args, &output_args](const NodeArg& node_arg, bool is_input) {
-          is_input ? input_args.insert(node_arg.Name()) : output_args.insert(node_arg.Name());
+        [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
+          if (is_input) {
+            if (!input_args.count(node_arg.Name())) {
+              ordered_input_args.push_back(node_arg.Name());
+            }
+            input_args.insert(node_arg.Name());
+          } else {
+            output_args.insert(node_arg.Name());
+          }
         },
         true);
 
@@ -396,8 +400,6 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     }
   }
 
-  std::vector<std::string> cluster_initializers;
-
   //Extract initializers used by this_cluster.
   std::unordered_set<std::string> original_graph_inputs;
   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
@@ -405,10 +407,10 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   }
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  for (const auto& in_arg : input_args) {
+  for (const auto& in_arg : ordered_input_args) {
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {
-      cluster_initializers.push_back(in_arg);
+      cluster_inputs.push_back(in_arg);
     } else if (!output_args.count(in_arg)) {
       cluster_inputs.push_back(in_arg);
     }
@@ -547,10 +549,7 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-
-      const Status compute_status = ng_custom_op->Compute(api, context);
-
-      return compute_status == Status::OK() ? 0 : 1;
+      return ng_custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);
