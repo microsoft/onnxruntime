@@ -92,11 +92,13 @@ std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& 
   size_t output_count = output_names.size();
 
   std::vector<const char*> input_ptrs{};
-  for (auto const& input: input_names){
+  input_ptrs.reserve(input_count);
+  for (const auto& input: input_names){
     input_ptrs.push_back(input.data());
   }
   std::vector<const char *> output_ptrs{};
-  for (auto const& output: output_names){
+  output_ptrs.reserve(output_count);
+  for (const auto& output: output_names){
     output_ptrs.push_back(output.data());
   }
 
@@ -130,7 +132,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
 
   if (!request.output_filter().empty()) {
     output_names.reserve(request.output_filter_size());
-    for (auto const& name: request.output_filter()){
+    for (const auto& name: request.output_filter()){
       output_names.push_back(name);
     }
   } else {
