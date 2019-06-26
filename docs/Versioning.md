@@ -27,7 +27,7 @@ the model doesn't use ops that were newly introduced in opset ver 9.
 
 ### Version matrix
 Following table summarizes the relationship between the ONNX Runtime version and the ONNX
-opset version implemented in that release. Please note the Backward and Forward compatiblity notes above.
+opset version implemented in that release. Please note the Backwards and Forward compatiblity notes above.
 For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
 
 | ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [WinML compatibility](https://docs.microsoft.com/en-us/windows/ai/windows-ml/)|
@@ -44,7 +44,7 @@ A variety of tools can be used to create ONNX models. Unless otherwise noted, pl
 
 |Tool|Recommended Version|Supported ONNX version(s)|
 |---|---|---|
-|[Pytorch](https://pytorch.org/)|[Latest stable](https://pytorch.org/get-started/locally/)|1.2-1.5*<br>*may require [ONNX version converter](https://github.com/onnx/onnx/blob/master/docs/VersionConverter.md) to convert to desired opset #*|
+|[PyTorch](https://pytorch.org/)|[Latest stable](https://pytorch.org/get-started/locally/)|1.2-1.5*<br>*may require [ONNX version converter](https://github.com/onnx/onnx/blob/master/docs/VersionConverter.md) to convert to desired opset #*|
 |[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br>CoreML, LightGBM, XGBoost, LibSVM|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.2-1.5|
 |[ONNXMLTools](https://pypi.org/project/onnxmltools/)<br> SparkML|[Latest stable](https://github.com/onnx/onnxmltools/releases)|1.4-1.5|
 |[SKLearn-ONNX](https://pypi.org/project/skl2onnx/)|[Latest stable](https://github.com/onnx/skl2onnx/releases)|1.2-1.5|
