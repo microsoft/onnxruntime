@@ -17,9 +17,9 @@
 
 // Struct to represent a physical device.
 struct OrtDevice {
-  typedef int8_t DeviceType;
-  typedef int8_t MemoryType;
-  typedef int16_t DeviceId;
+  using DeviceType = int8_t;
+  using MemoryType = int8_t;
+  using DeviceId = int16_t;
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
