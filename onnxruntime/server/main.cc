@@ -60,14 +60,16 @@ int main(int argc, char* argv[]) {
   auto logger = env->GetAppLogger();
   logger->info("Model path: {}", config.model_path);
 
-  auto status = env->InitializeModel(config.model_path);
-  if (!status.IsOK()) {
-    logger->critical("Initialize Model Failed: {} ---- Error: [{}]", status.Code(), status.ErrorMessage());
+try{
+  env->InitializeModel(config.model_path);
+  logger->debug("Initialize Model Successfully!");
+}
+catch (const Ort::Exception& ex){
+ 
+    logger->critical("Initialize Model Failed: {} ---- Error: [{}]", ex.GetOrtErrorCode(), ex.what());
     exit(EXIT_FAILURE);
-  } else {
-    logger->debug("Initialize Model Successfully!");
-  }
-
+  
+}
 
   auto const boost_address = boost::asio::ip::make_address(config.address);
   server::App app{};

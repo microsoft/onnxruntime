@@ -64,7 +64,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector <std::string>& inpu
     return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateAllocatorInfo() failed");
   }
 
-  // Prepare the MLValue object
+  // Prepare the Value object
   for (const auto& input : request.inputs()) {
     using_raw_data_ = using_raw_data_ && input.second.has_raw_data();
 

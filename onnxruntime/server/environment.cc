@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <memory>
-#include "core/common/logging/logging.h"
 #include "environment.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -17,7 +16,7 @@ void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* categor
       return;
     }
 
-ServerEnvironment::ServerEnvironment(logging::Severity severity, spdlog::sink_ptr sink) : severity_(severity),
+ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sink_ptr sink) : severity_(severity),
                                                                      logger_id_("ServerApp"),
                                                                      sink_(sink),
                                                                      default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink_)),
@@ -28,7 +27,7 @@ ServerEnvironment::ServerEnvironment(logging::Severity severity, spdlog::sink_pt
   spdlog::initialize_logger(default_logger_);
 }
 
-common::Status ServerEnvironment::InitializeModel(const std::string& model_path) {
+void ServerEnvironment::InitializeModel(const std::string& model_path) {
   session = Ort::Session(runtime_environment_, model_path.c_str(), Ort::SessionOptions());
 
   auto outputCount = session.GetOutputCount();
@@ -40,7 +39,6 @@ common::Status ServerEnvironment::InitializeModel(const std::string& model_path)
     allocator.Free(name);
   }
 
-  return common::Status::OK();
 }
 
 const std::vector<std::string>& ServerEnvironment::GetModelOutputNames() const {
@@ -48,7 +46,7 @@ const std::vector<std::string>& ServerEnvironment::GetModelOutputNames() const {
 }
 
 
-logging::Severity ServerEnvironment::GetLogSeverity() const {
+OrtLoggingLevel ServerEnvironment::GetLogSeverity() const {
   return severity_;
 }
 

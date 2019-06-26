@@ -26,7 +26,7 @@ TEST(ConfigParsingTests, AllArgs) {
   EXPECT_EQ(config.address, "4.4.4.4");
   EXPECT_EQ(config.http_port, 80);
   EXPECT_EQ(config.num_http_threads, 1);
-  EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kINFO);
+  EXPECT_EQ(config.logging_level, ORT_LOGGING_LEVEL_INFO);
 }
 
 TEST(ConfigParsingTests, Defaults) {
@@ -42,7 +42,7 @@ TEST(ConfigParsingTests, Defaults) {
   EXPECT_EQ(config.address, "0.0.0.0");
   EXPECT_EQ(config.http_port, 8001);
   EXPECT_EQ(config.num_http_threads, 3);
-  EXPECT_EQ(config.logging_level, onnxruntime::logging::Severity::kINFO);
+  EXPECT_EQ(config.logging_level, ORT_LOGGING_LEVEL_INFO);
 }
 
 TEST(ConfigParsingTests, Help) {

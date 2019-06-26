@@ -22,9 +22,8 @@ TEST(ExecutorTests, TestMul_1) {
   const static auto expected = R"({"outputs":{"Y":{"dims":["3","2"],"dataType":1,"floatData":[1,4,9,16,25,36]}}})";
 
   onnxruntime::server::ServerEnvironment* env = ServerEnv();
-  auto status = env->InitializeModel(model_file);
-  EXPECT_TRUE(status.IsOK());
-
+  env->InitializeModel(model_file);
+  
   onnxruntime::server::Executor executor(env, "RequestId");
   onnxruntime::server::PredictRequest request{};
   onnxruntime::server::PredictResponse response{};
