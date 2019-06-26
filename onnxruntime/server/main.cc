@@ -12,7 +12,7 @@
 
 #define VALUE_TO_STRING(x) #x
 #define VALUE(x) VALUE_TO_STRING(x)
-#define VAR_NAME_VALUE(var) #var "="  VALUE(var)
+#define VAR_NAME_VALUE(var) #var "=" VALUE(var)
 
 #define LOCAL_BUILD_VERSION "local_build"
 #if !defined(SRV_VERSION)
@@ -34,12 +34,12 @@ int main(int argc, char* argv[]) {
   // Here we use std::cout print out the version and latest commit id,
   // to make sure in case even logger has problem, we still have the version information and commit id.
   std::string version = SRV_VERSION;
-  if (version.empty()){
+  if (version.empty()) {
     version = LOCAL_BUILD_VERSION;
   }
 
   std::string commit_id = LATEST_COMMIT_ID;
-  if (commit_id.empty()){
+  if (commit_id.empty()) {
     commit_id = DEFAULT_COMMIT_ID;
   }
 
@@ -60,16 +60,13 @@ int main(int argc, char* argv[]) {
   auto logger = env->GetAppLogger();
   logger->info("Model path: {}", config.model_path);
 
-try{
-  env->InitializeModel(config.model_path);
-  logger->debug("Initialize Model Successfully!");
-}
-catch (const Ort::Exception& ex){
- 
+  try {
+    env->InitializeModel(config.model_path);
+    logger->debug("Initialize Model Successfully!");
+  } catch (const Ort::Exception& ex) {
     logger->critical("Initialize Model Failed: {} ---- Error: [{}]", ex.GetOrtErrorCode(), ex.what());
     exit(EXIT_FAILURE);
-  
-}
+  }
 
   auto const boost_address = boost::asio::ip::make_address(config.address);
   server::App app{};

@@ -12,8 +12,8 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::string& message){
-protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
+protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::string& message) {
+  protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
   switch (onnx_status) {
     case onnxruntime::common::StatusCode::OK:
     case onnxruntime::common::StatusCode::MODEL_LOADED:

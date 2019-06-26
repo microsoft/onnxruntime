@@ -23,7 +23,7 @@ TEST(ExecutorTests, TestMul_1) {
 
   onnxruntime::server::ServerEnvironment* env = ServerEnv();
   env->InitializeModel(model_file);
-  
+
   onnxruntime::server::Executor executor(env, "RequestId");
   onnxruntime::server::PredictRequest request{};
   onnxruntime::server::PredictResponse response{};

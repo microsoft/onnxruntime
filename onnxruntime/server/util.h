@@ -44,4 +44,3 @@ google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common:
 
 }  // namespace server
 }  // namespace onnxruntime
-

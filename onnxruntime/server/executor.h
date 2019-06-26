@@ -10,7 +10,6 @@
 #include "util.h"
 #include "core/session/onnxruntime_c_api.h"
 
-
 namespace onnxruntime {
 namespace server {
 
@@ -36,8 +35,8 @@ class Executor {
                                             OrtAllocatorInfo* cpu_allocator_info,
                                             /* out */ Ort::Value& ml_value);
 
-  google::protobuf::util::Status SetNameMLValueMap(/* out */std::vector <std::string>& input_names,
-                                                   /* out */std::vector <Ort::Value>& input_values,
+  google::protobuf::util::Status SetNameMLValueMap(/* out */ std::vector<std::string>& input_names,
+                                                   /* out */ std::vector<Ort::Value>& input_values,
                                                    const onnxruntime::server::PredictRequest& request,
                                                    MemBufferArray& buffers);
 };

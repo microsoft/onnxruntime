@@ -12,7 +12,6 @@
 namespace onnxruntime {
 namespace server {
 
-
 class ServerEnvironment {
  public:
   explicit ServerEnvironment(OrtLoggingLevel severity, spdlog::sink_ptr sink);
