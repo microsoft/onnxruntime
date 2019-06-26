@@ -108,7 +108,7 @@ class ThreadPool::Impl : public Eigen::ThreadPool {
     // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
     // We will simply rely on the work queue and stealing in the short term.
     int64_t remainder = total - unit_size * NumThreads();
-    int64_t spawned_threads = (unit_size == 1 ? total : NumThreads()) - 1;
+    int64_t spawned_threads = (total < NumThreads() ? total : NumThreads()) - 1;
     Eigen::Barrier barrier(static_cast<unsigned int>(spawned_threads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
@@ -169,7 +169,7 @@ class ThreadPool::Impl : public TaskThreadPool {
     }
 #else
     int64_t remainder = total - unit_size * NumThreads();
-    int64_t spawned_threads = (unit_size == 1 ? total : NumThreads()) - 1;
+    int64_t spawned_threads = (total < NumThreads() ? total : NumThreads()) - 1;
     Eigen::Barrier barrier(static_cast<unsigned int>(spawned_threads));
     std::function<void(int64_t, int64_t)> handle_iteration = [&barrier, &fn](int64_t first, int64_t last) {
       fn(first, last);
