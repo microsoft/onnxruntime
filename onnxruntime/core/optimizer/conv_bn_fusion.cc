@@ -24,20 +24,30 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   // Get initializers of BatchNormalization
   const auto& bn_inputs = bn_node.InputDefs();
   const ONNX_NAMESPACE::TensorProto* bn_scale_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[1]->Name(), bn_scale_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[1]->Name(), bn_scale_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* bn_B_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[2]->Name(), bn_B_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[2]->Name(), bn_B_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* bn_mean_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[3]->Name(), bn_mean_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[3]->Name(), bn_mean_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* bn_var_tensor_proto = nullptr;
-  graph.GetInitializedTensor(bn_inputs[4]->Name(), bn_var_tensor_proto);
+  if (!graph.GetInitializedTensor(bn_inputs[4]->Name(), bn_var_tensor_proto)) {
+    return Status::OK();
+  }
 
   const auto& conv_inputs = conv_node.InputDefs();
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
+    return Status::OK();
+  }
 
   // Currently, fusion is only supported for float or double data type.
   if (!Initializer::IsSupportedDataType(bn_scale_tensor_proto) ||
@@ -149,9 +159,24 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
-           next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
+      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      // Make sure the two nodes do not span execution providers.
+      next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    return false;
+  }
+
+  // Check that the appropriate inputs to the Conv and BN nodes are constants.
+  if (!graph_utils::IsNodeArgConstant(graph, *node.InputDefs()[1]) ||
+      (node.InputDefs().size() == 3 && !graph_utils::IsNodeArgConstant(graph, *node.InputDefs()[2])) ||
+      !graph_utils::IsNodeArgConstant(graph, *next_node.InputDefs()[1]) ||
+      !graph_utils::IsNodeArgConstant(graph, *next_node.InputDefs()[2]) ||
+      !graph_utils::IsNodeArgConstant(graph, *next_node.InputDefs()[3]) ||
+      !graph_utils::IsNodeArgConstant(graph, *next_node.InputDefs()[4])) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace onnxruntime

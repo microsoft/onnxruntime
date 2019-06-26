@@ -399,10 +399,9 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
-bool IsNodeInputConstant(const Graph& graph, const Node& node, int index) {
+bool IsNodeArgConstant(const Graph& graph, const NodeArg& node_arg) {
   const onnx::TensorProto* initializer = nullptr;
-  const auto& input_def = node.InputDefs()[index];
-  return graph.GetInitializedTensor(input_def->Name(), initializer) && !IsGraphInput(graph, input_def);
+  return graph.GetInitializedTensor(node_arg.Name(), initializer) && !IsGraphInput(graph, &node_arg);
 }
 
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {

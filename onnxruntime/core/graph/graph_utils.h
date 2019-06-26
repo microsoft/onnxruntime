@@ -41,8 +41,8 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input);
 /** Checks if the given node has only constant inputs (initializers). */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
 
-/** Check if the input identified by the index to the give node is constant */
-bool IsNodeInputConstant(const Graph& graph, const Node& node, int index);
+/** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
+bool IsNodeArgConstant(const Graph& graph, const NodeArg& node_arg);
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);

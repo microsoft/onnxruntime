@@ -121,14 +121,16 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
 
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-      next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node)) {
+      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      // Make sure the two nodes do not span execution providers.
+      next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
   }
 
-  if (!graph_utils::IsNodeInputConstant(graph, node, 1) ||
-      (node.InputDefs().size() == 3 && !graph_utils::IsNodeInputConstant(graph, node, 2)) ||
-      !graph_utils::IsNodeInputConstant(graph, next_node, 1)) {
+  // Check that the appropriate inputs to the Conv and Add nodes are constants.
+  if (!graph_utils::IsNodeArgConstant(graph, *node.InputDefs()[1]) ||
+      (node.InputDefs().size() == 3 && !graph_utils::IsNodeArgConstant(graph, *node.InputDefs()[2])) ||
+      !graph_utils::IsNodeArgConstant(graph, *next_node.InputDefs()[1])) {
     return false;
   }
 
