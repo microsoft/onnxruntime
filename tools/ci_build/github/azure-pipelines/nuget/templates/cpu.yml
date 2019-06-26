@@ -91,7 +91,7 @@ jobs:
 
 - job: NuGet_Packaging
   pool: 
-    name: Hosted
+    name: Hosted Windows 2019 with VS2019
     demands: azureps
   dependsOn:
   - Windows_CI_Dev
