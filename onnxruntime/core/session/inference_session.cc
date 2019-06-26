@@ -106,7 +106,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
   // Register data transfer methods.
   data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
 #ifdef USE_CUDA
-  data_transfer_mgr_.GetDataTrasnferMgr().RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
+  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
 #endif
   session_state_.SetDataTrasnferMgr(&data_transfer_mgr_);
 
