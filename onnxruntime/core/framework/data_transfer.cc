@@ -9,8 +9,8 @@ common::Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }
 
-bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const {
-  return src_device.Type() == OrtDevice::CPU && dst_Device.Type() == OrtDevice::CPU;
+bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;
 }
 
 common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {

@@ -25,17 +25,19 @@ struct OrtDevice {
   static const DeviceType CPU = 0;
   static const DeviceType GPU = 1; //CUDA
   static const DeviceType FPGA = 2;
-
-  // Pre-defined memory types.
-  static const MemoryType Default = 0;
-  static const MemoryType CUDA_PINNED = 1;
+  
+  struct MemType {
+	// Pre-defined memory types.
+	static const MemoryType Default = 0;
+	static const MemoryType CUDA_PINNED = 1;
+  };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
       : device_type(device_type_),
         memory_type(memory_type_),
         device_id(device_id_) {}
 
-  constexpr OrtDevice() : OrtDevice(CPU, Default, 0) {}
+  constexpr OrtDevice() : OrtDevice(CPU, MemType::Default, 0) {}
 
   DeviceType Type() const {
     return device_type;
@@ -49,7 +51,7 @@ struct OrtDevice {
     return device_id;
   }
 
-  inline std::string ToString() const {
+  std::string ToString() const {
     std::ostringstream ostr;
     ostr << "Device: ["
          << " type:" << device_type

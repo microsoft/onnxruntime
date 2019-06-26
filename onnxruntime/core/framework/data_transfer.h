@@ -8,13 +8,12 @@
 
 namespace onnxruntime {
 
-// Data transfer manager, which has all functions registered to copy tensors with different location.
-// It's not thread-safe.
+// Data transfer interface.
 class IDataTransfer {
  public:
   virtual ~IDataTransfer() = default;
 
-  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const = 0;
+  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const = 0;
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const = 0;
@@ -23,7 +22,7 @@ class IDataTransfer {
 class CPUDataTransfer : public IDataTransfer {
  public:
   CPUDataTransfer() = default;
-  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const override;
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 };
 }  // namespace onnxruntime

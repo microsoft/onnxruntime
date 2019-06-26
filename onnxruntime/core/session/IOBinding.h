@@ -44,7 +44,7 @@ class IOBinding {
    * copy it to the desired location. This copy may or may not be async. It depends on the exec provider.
    * If the input ort_value is not at the desired location, it should be preallocated
    * If the input ort_value isn't preallocated, it should have memtype of OrtMemTypeDefault
-   * For copying it leverages DataTransferManager::Instance::CopyTensor().
+   * For copying it leverages DataTransferManager::CopyTensor().
    */
   common::Status BindInput(const std::string& name, const OrtValue& ml_value);
 

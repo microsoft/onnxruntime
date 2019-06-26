@@ -12,11 +12,11 @@ GPUDataTransfer::GPUDataTransfer() {
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 }
 
-bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const {
-  return src_device.Type() == OrtDevice::GPU 
-   || (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED)
-   || dst_Device.Type() == OrtDevice::GPU 
-   || (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED);
+bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  return src_device.Type() == OrtDevice::GPU
+	  || src_device.MemType() == OrtDevice::MemType::CUDA_PINNED  // In this case, src_device.Type() == OrtDevice::CPU.
+	  || dst_device.Type() == OrtDevice::GPU
+	  || dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED;  // In this case, src_device.Type() == OrtDevice::CPU
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
@@ -28,7 +28,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
   auto& dst_device = dst.Location().device;
 
   if (dst_device.Type() == OrtDevice::GPU) {
-    if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::CUDA_PINNED) {
+    if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
       // copy from pinned memory to GPU, this is non-blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, streams_[exec_queue_id]));
     } else if (src_device.Type() == OrtDevice::GPU) {
@@ -39,7 +39,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
       CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
-    if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::CUDA_PINNED) {
+    if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
       // copying from GPU to pinned memory, this is non-blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, streams_[exec_queue_id]));
     } else {

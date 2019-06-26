@@ -19,9 +19,9 @@ class GPUDataTransfer : public IDataTransfer {
  public:
   GPUDataTransfer();
 
-  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_Device) const override;
+  bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
  private:
   cudaStream_t streams_[kTotalCudaStreams];
