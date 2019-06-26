@@ -8,18 +8,18 @@ parameters:
   DoEsrp: 'false'
 
 jobs: 
-- template: ../../templates/win-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolWin)
-    JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: 'false'
-    DoEsrp: ${{ parameters.DoEsrp }}
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+# - template: ../../templates/win-ci.yml
+#   parameters:
+#     AgentPool : $(AgentPoolWin)
+#     JobName: 'Windows_CI_Dev'
+#     BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+#     DoDebugBuild: 'false'
+#     DoNugetPack : 'true'
+#     DoCompliance: 'false'
+#     DoEsrp: ${{ parameters.DoEsrp }}
+#     NuPackScript: |
+#      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
+#      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 
 # - template: ../../templates/win-x86-ci.yml
@@ -93,8 +93,8 @@ jobs:
   pool: 
     name: Hosted Windows 2019 with VS2019
     demands: azureps
-  dependsOn:
-    - Windows_CI_Dev
+#  dependsOn:
+#    - Windows_CI_Dev
 #   - Windows_CI_Dev_x86
 #   - Linux_CI_Dev
 #   - Linux_CI_Dev_x86
@@ -154,7 +154,7 @@ jobs:
   - task: AzureFileCopy@3
     displayName: 'AzureBlob File Copy'
     inputs:
-      SourcePath: '$(Build.ArtifactStagingDirectory)'
+      SourcePath: '$(Build.SourcesDirectory)\README.md'
       azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
       Destination: AzureBlob
       storage: ortpackages
