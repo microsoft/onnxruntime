@@ -34,7 +34,7 @@ Status GetThresholdsFromInputs(const PrepareContext& pc,
                                float& iou_threshold,
                                float& score_threshold) {
   if (pc.max_output_boxes_per_class_ != nullptr) {
-    max_output_boxes_per_class = std::max(*pc.max_output_boxes_per_class_, 0ll);
+    max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
   }
 
   if (pc.iou_threshold_ != nullptr) {
