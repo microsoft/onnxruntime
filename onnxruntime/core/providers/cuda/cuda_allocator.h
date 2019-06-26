@@ -6,8 +6,6 @@
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
-constexpr const char* CUDA = "Cuda";
-constexpr const char* CUDA_PINNED = "CudaPinned";
 
 class CUDAAllocator : public IDeviceAllocator {
  public:

@@ -54,10 +54,11 @@ ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocator
                     OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out) {
   if (strcmp(name1, onnxruntime::CPU) == 0) {
     *out = new OrtAllocatorInfo(name1, type, OrtDevice(), id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CUDA) == 0) {
+    *out = new OrtAllocatorInfo(name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::Default, id1), id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
+    *out = new OrtAllocatorInfo(name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, id1), id1, mem_type1);
   }
-  // Other cases not handled as,
-  // 1. there should be no one calling this function to create non-cpu allocation information.
-  // 2. this function should/will be deprecated.
   return nullptr;
 }
 

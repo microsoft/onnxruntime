@@ -126,6 +126,8 @@ std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info);
 
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
+constexpr const char* CUDA = "Cuda";
+constexpr const char* CUDA_PINNED = "CudaPinned";
 
 // forward declaration
 class SessionState;
