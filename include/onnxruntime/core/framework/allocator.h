@@ -54,8 +54,8 @@ struct OrtDevice {
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "Device: ["
-         << " type:" << device_type
-         << " memory_type:" << memory_type
+         << " type:" << static_cast<int>(device_type)
+         << " memory_type:" << static_cast<int>(memory_type)
          << " device_id:" << device_id
          << "]";
     return ostr.str();

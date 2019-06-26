@@ -33,7 +33,7 @@ common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, i
 
   return ORT_MAKE_STATUS(ONNXRUNTIME,
                          FAIL,
-                         "There's no data transfer registered for copying tensors from",
+                         "There's no data transfer registered for copying tensors from ",
                          src.Location().device.ToString(),
                          " to ",
                          dst.Location().device.ToString());

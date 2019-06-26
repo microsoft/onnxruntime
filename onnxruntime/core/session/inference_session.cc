@@ -103,6 +103,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
 
   InitLogger(logging_manager);
 
+  // Register data transfer methods.
+  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+#ifdef USE_CUDA
+  data_transfer_mgr_.GetDataTrasnferMgr().RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
+#endif
+  session_state_.SetDataTrasnferMgr(&data_transfer_mgr_);
+
   // The threadpool is currently evolving.  We will always create a per session threadpool.
   // Beyond this, we will create a global thread pool to share across sessions.
   {
@@ -399,7 +406,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
       subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
-
+	  // Pass data transfer manager to subgraph.
+      subgraph_session_state->SetDataTrasnferMgr(&session_state.GetDataTrasnferMgr());
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
@@ -465,11 +473,6 @@ common::Status InferenceSession::Initialize() {
       LOGS(*session_logger_, INFO) << "Session has already been initialized.";
       return common::Status::OK();
     }
-
-    session_state_.GetDataTrasnferMgr().RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
-#ifdef USE_CUDA
-    session_state_.GetDataTrasnferMgr().RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
-#endif
 
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls
     if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
