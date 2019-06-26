@@ -399,7 +399,7 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
-bool IsNodeArgConstant(const Graph& graph, const NodeArg& node_arg) {
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   const onnx::TensorProto* initializer = nullptr;
   return graph.GetInitializedTensor(node_arg.Name(), initializer) && !IsGraphInput(graph, &node_arg);
 }
@@ -408,12 +408,11 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
-  const onnx::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
-    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || IsGraphInput(graph, input_def)) {
+    if (!NodeArgIsConstant(graph, *input_def)) {
       return false;
     }
   }

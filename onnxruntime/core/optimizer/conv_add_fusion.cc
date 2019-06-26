@@ -128,9 +128,9 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
   }
 
   // Check that the appropriate inputs to the Conv and Add nodes are constants.
-  if (!graph_utils::IsNodeArgConstant(graph, *node.InputDefs()[1]) ||
-      (node.InputDefs().size() == 3 && !graph_utils::IsNodeArgConstant(graph, *node.InputDefs()[2])) ||
-      !graph_utils::IsNodeArgConstant(graph, *next_node.InputDefs()[1])) {
+  if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
+      (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
+      !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
     return false;
   }
 
