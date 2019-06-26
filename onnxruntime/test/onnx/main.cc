@@ -164,7 +164,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'o':
           graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (graph_optimization_level > 2) {
-            fprintf(stderr, "See usage for valid values of graph optimization level");
+            fprintf(stderr, "See usage for valid values of graph optimization level\n");
             usage();
             return -1;
           }
