@@ -93,8 +93,8 @@ jobs:
   pool: 
     name: Hosted Windows 2019 with VS2019
     demands: azureps
-#  dependsOn:
-#  - Windows_CI_Dev
+  dependsOn:
+    - Windows_CI_Dev
 #   - Windows_CI_Dev_x86
 #   - Linux_CI_Dev
 #   - Linux_CI_Dev_x86
