@@ -20,40 +20,6 @@ namespace cuda {
           .InputMemoryType<OrtMemTypeCPUInput>(1),               \
       Expand<T>);
 
-void PrintData2(int32_t* buffer, const void* data, int64_t count, std::string name) {
-  cudaMemcpy(buffer, data, count, cudaMemcpyDeviceToHost);
-  std::cout << name << ":" << std::endl;
-  for (int64_t i = 0; i < count; ++i) {
-    std::cout << buffer[i] << std::endl;
-  }
-}
-
-static Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
-  size_t lhs_rank = lhs_shape.NumDimensions();
-  size_t rhs_rank = rhs_shape.NumDimensions();
-  size_t out_rank = std::max(lhs_rank, rhs_rank);
-
-  std::vector<int64_t> output_dims(out_rank, 0);
-  for (size_t i = 0; i < out_rank; ++i) {
-    int64_t lhs_dim = 1;
-    if (i < lhs_rank)
-      lhs_dim = lhs_shape[lhs_rank - 1 - i];
-    int64_t rhs_dim = 1;
-    if (i < rhs_rank)
-      rhs_dim = rhs_shape[rhs_rank - 1 - i];
-    int64_t out_dim = std::max(lhs_dim, rhs_dim);
-    if (lhs_dim != out_dim && lhs_dim != 1)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
-                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
-    if (rhs_dim != out_dim && rhs_dim != 1)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": right operand cannot broadcast on dim ", rhs_rank - 1 - i,
-                             " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
-    output_dims[out_rank - 1 - i] = out_dim;
-  }
-  out_shape = TensorShape(output_dims);
-  return Status::OK();
-}
-
 template <typename T>
 Status Expand<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input0 = *ctx->Input<Tensor>(0);
@@ -65,19 +31,30 @@ Status Expand<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims{p_shape, p_shape + input1.Shape().Size()};
   TensorShape output_shape(output_dims);
 
-  ORT_RETURN_IF_ERROR(onnxruntime::cuda::ComputeOutputShape(Node().Name(), input0.Shape(), output_dims, output_shape));
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), input0.Shape(), output_dims, output_shape));
 
   // pad input_dims with 1 to make ranks match
+  auto rank = output_shape.NumDimensions();
   auto& output_tensor = *ctx->Output(0, output_shape);
-  auto input_dims = input0.Shape().GetDims();
-  for (int i = 0; i < output_shape.GetDims().size() - input_dims.size(); i++) {
-    input_dims.insert(input_dims.begin(), 1);
+  auto input_shape = input0.Shape().GetDims();
+  for (int i = 0; i < rank - input_shape.size(); i++) {
+    input_shape.insert(input_shape.begin(), 1);
   }
 
-  CudaAsyncBuffer<int64_t> input_dims_gpu(this, device_id, input_dims);
-  CudaAsyncBuffer<int64_t> output_dims_gpu(this, device_id, output_shape.GetDims());
-  ORT_RETURN_IF_ERROR(input_dims_gpu.CopyToGpu());
-  ORT_RETURN_IF_ERROR(output_dims_gpu.CopyToGpu());
+  // create fast_divmod using dimension values
+  CudaAsyncBuffer<fast_divmod> fdm_input_dims_gpu(this, device_id, rank);
+  CudaAsyncBuffer<fast_divmod> fdm_output_dims_gpu(this, device_id, rank);
+  {
+    auto in_span = fdm_input_dims_gpu.CpuSpan();
+    auto out_span = fdm_output_dims_gpu.CpuSpan();
+    for (auto i = 0; i < rank; i++) {
+      in_span[i] = fast_divmod(static_cast<int>(input_shape[i]));
+      out_span[i] = fast_divmod(static_cast<int>(output_shape[i]));
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(fdm_input_dims_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(fdm_output_dims_gpu.CopyToGpu());
 
   ExpandImpl(
       output_tensor.Shape().NumDimensions(),
@@ -85,8 +62,9 @@ Status Expand<T>::ComputeInternal(OpKernelContext* ctx) const {
       input0.Shape().Size(),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input0.template Data<T>()),
       reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.template MutableData<T>()),
-      input_dims_gpu.GpuPtr(),
-      output_dims_gpu.GpuPtr());
+      fdm_input_dims_gpu.GpuPtr(),
+      fdm_output_dims_gpu.GpuPtr());
+
   return Status::OK();
 }
 
@@ -105,6 +83,7 @@ SPECIALIZED_COMPUTE(uint16_t)
 SPECIALIZED_COMPUTE(uint32_t)
 SPECIALIZED_COMPUTE(uint64_t)
 SPECIALIZED_COMPUTE(bool)
+SPECIALIZED_COMPUTE(MLFloat16)
 
 }  // namespace cuda
 };  // namespace onnxruntime

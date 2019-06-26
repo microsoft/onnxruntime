@@ -16,8 +16,8 @@ void ExpandImpl(
     const size_t N_input,
     const T* input_data,
     T* output_data,
-    const int64_t* input_dims,
-    const int64_t* output_dims);
+    const fast_divmod* fdm_input_dims,
+    const fast_divmod* fdm_output_dims);
 
 }  // namespace cuda
 }  // namespace onnxruntime
