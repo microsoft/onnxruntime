@@ -166,7 +166,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'o':
           graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
           if (graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
-            fprintf(stderr, "See usage for valid values of graph optimization level");
+            fprintf(stderr, "See usage for valid values of graph optimization level\n");
             usage();
             return -1;
           }
@@ -353,8 +353,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
       {"shrink", "test case is wrong", {"onnx141"}},
-      {"maxpool_2d_precomputed_strides", "ShapeInferenceError"},
-      {"averagepool_2d_precomputed_strides", "ShapeInferenceError"},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"tf_mobilenet_v2_1.0_224", "result mismatch"},
