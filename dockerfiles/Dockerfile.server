@@ -18,13 +18,16 @@ RUN apt-get update && \
     apt-get install -y sudo git bash
 
 ENV PATH="/opt/cmake/bin:${PATH}"
-RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive https://github.com/Microsoft/onnxruntime onnxruntime
+COPY . onnxruntime
 RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
-    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh && \
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_server_deps.sh
+
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /
 RUN mkdir -p /onnxruntime/build && \
-    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server
+    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --parallel
 
 FROM minimal AS final
 WORKDIR /onnxruntime/server/
