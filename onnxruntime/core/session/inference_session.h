@@ -436,7 +436,7 @@ class InferenceSession {
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
-#ifdef ENABLE_LANGUAGE_INTEROP_OPS 
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
 };
