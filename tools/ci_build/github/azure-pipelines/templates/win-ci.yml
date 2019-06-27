@@ -6,7 +6,13 @@ parameters:
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
   NuPackScript : ''
+  DoEsrp: 'false'
   DoTestCoverage: 'false'
+  BuildArch: 'x64'
+  SetVcvars: 'false'
+  MsbuildArguments: '/m'
+  EnvSetupScript: 'setup_env.bat'
+  CudaVersion: ''
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -17,14 +23,15 @@ jobs:
     BuildCommand: ${{ parameters.BuildCommand }}
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
+    CUDA_VERSION: ${{ parameters.CudaVersion }}
 
   steps:
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'x64'
-        setVcvars: false
+        EnvSetupScript: ${{ parameters.EnvSetupScript }}
+        buildArch: ${{ parameters.BuildArch }}
+        setVcvars: ${{ parameters.SetVcvars }}
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
@@ -41,7 +48,7 @@ jobs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'x64'
           configuration: 'Debug'
-          msbuildArguments: '/m'
+          msbuildArguments: ${{ parameters.MsbuildArguments }}
           msbuildArchitecture: 'x64'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
@@ -88,7 +95,7 @@ jobs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'x64'
         configuration: 'RelWithDebInfo'
-        msbuildArguments: '/m'
+        msbuildArguments: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
@@ -134,6 +141,19 @@ jobs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
           arguments: 'x64 -vcvars_ver=14.11'
           modifyEnvironment: true
+
+      # Esrp signing
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign C# dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
 
       - script: |
          ${{ parameters.NuPackScript }}

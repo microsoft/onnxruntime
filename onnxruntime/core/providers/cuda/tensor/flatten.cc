@@ -6,10 +6,20 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Flatten,
+    kOnnxDomain,
+    1, 8,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Flatten);
+
 ONNX_OPERATOR_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    1,
+    9,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
