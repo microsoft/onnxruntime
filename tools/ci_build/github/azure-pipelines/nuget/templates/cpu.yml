@@ -158,7 +158,8 @@ jobs:
 
   - template: ../../templates/set-version-number-variables-step.yml
   - task: AzureFileCopy@3
-    displayName: 'AzureBlob File Copy'
+    displayName: 'Copy Signed NuGet Package to Blob Store'
+    condition: ${{ parameters.DoEsrp }}
     inputs:
       SourcePath: '$(Build.ArtifactStagingDirectory)/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
       azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
