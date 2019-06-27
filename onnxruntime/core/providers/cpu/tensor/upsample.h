@@ -18,6 +18,11 @@ enum UpsampleMode {
 class UpsampleBase {
  protected:
   UpsampleBase(OpKernelInfo info) : scales_cached_(false) {
+    int start;
+    int end;
+    info.GetKernelDef().SinceVersion(&start, &end);
+    is_resize = (start == 10);
+
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
@@ -28,7 +33,6 @@ class UpsampleBase {
       ScalesValidation(scales_, mode_);
     }
 
-    // opset 9
     if (input_count > 1) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(1, &scale);
@@ -48,12 +52,12 @@ class UpsampleBase {
   UpsampleMode StringToUpsampleMode(const std::string& mode) {
     if (strcmp(mode.c_str(), UpsampleModeNN) == 0) {
       return UpsampleMode::NN;
-    } else if (strcmp(mode.c_str(), UpsampleModeLinear) == 0) {
+    }
+    if (strcmp(mode.c_str(), UpsampleModeLinear) == 0) {
       return UpsampleMode::LINEAR;
-    } else {
+    }
       ORT_THROW("mode attribute is " + mode + ". It can only be " +
                 UpsampleModeNN + "(default) or " + UpsampleModeLinear + ".");
-    }
   }
 
   void ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
@@ -75,10 +79,10 @@ class UpsampleBase {
   }
 
   void ParseScalesData(const Tensor* scale, std::vector<float>& scales) const {
-    const float* scale_data = scale->template Data<float>();
+    const auto* scale_data = scale->template Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_ENFORCE(scales_size > 0, "scales size should be greater than 0.");
-    if (scales.size() == 0) {
+    if (scales.empty()) {
       scales.resize(scales_size);
     }
     memcpy(scales.data(), scale_data, scales_size * sizeof(float));

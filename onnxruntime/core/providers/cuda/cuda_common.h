@@ -71,8 +71,12 @@ class CudaKernel : public OpKernel {
       AllocCpuPtr(device_id, count);
     }
 
-    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, const T& value) : CudaAsyncBuffer(op_kernel, device_id, 1) {
-      *CpuPtr() = value;
+    CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, const T& value, size_t count)
+        : CudaAsyncBuffer(op_kernel, device_id, count) {
+      T* p = CpuPtr();
+      for (size_t i = 0; i != count; ++i) {
+        *p++ = value;
+      }
     }
 
     CudaAsyncBuffer(const CudaKernel* op_kernel, int device_id, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, device_id, vec.size()) {
@@ -135,6 +139,8 @@ class CudaKernel : public OpKernel {
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
     return provider_->CopyTensor(src, dst);
   }
+
+  inline int GetDeviceId() const { return provider_->GetDeviceId(); }
 
  private:
   CUDAExecutionProvider* provider_;

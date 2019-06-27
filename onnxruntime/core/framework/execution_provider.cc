@@ -65,7 +65,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
     ORT_THROW("duplicated allocator");
   }
   allocators_.insert(iter, {key, allocator});
-  allocator_list_.push_back(gsl::not_null<IAllocator*>(allocator.get()));
+  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
@@ -76,6 +76,10 @@ common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::string& /*dll_path*/) {
   return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
+}
+
+std::shared_ptr<KernelRegistry> IExecutionProvider::GetKernelRegistry() const {
+  return nullptr;
 }
 
 }  // namespace onnxruntime

@@ -61,7 +61,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+            options.SetSessionGraphOptimizationLevel(graphOptimizationLevel);
             if(disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))
@@ -208,7 +208,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        [Fact]
+        [x64Fact]
         private void TestPreTrainedModelsOpset7And8()
         {
             var skipModels = new List<String>() {
@@ -586,11 +586,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var seq = outNode2.AsEnumerable<NamedOnnxValue>();
 
                     // try-cast first element in sequence to map/dictionary type
-                    var map = seq.First().AsDictionary<Int64, float>();
-                    //verify values are valid
-                    Assert.Equal(0.25938290, map[0], 6);
-                    Assert.Equal(0.40904793, map[1], 6);
-                    Assert.Equal(0.33156919, map[2], 6);
+                    if (System.Environment.Is64BitProcess)
+                    {
+                        var map = seq.First().AsDictionary<Int64, float>();
+                        Assert.Equal(0.25938290, map[0], 6);
+                        Assert.Equal(0.40904793, map[1], 6);
+                        Assert.Equal(0.33156919, map[2], 6);
+                    }
+                    else // 32-bit
+                    {
+                        var map = seq.First().AsDictionary<long, float>();
+                        Assert.Equal(0.25938290, map[0], 6);
+                        Assert.Equal(0.40904793, map[1], 6);
+                        Assert.Equal(0.33156919, map[2], 6);
+                    }
                 }
             }
         }
@@ -652,15 +661,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
+	    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+
             using (var session = tuple.Item1)
             {
                 var inputData = tuple.Item2;
                 var tensor = tuple.Item3;
                 var inputMeta = session.InputMetadata;
                 var container = new List<NamedOnnxValue>();
-                container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
-                var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-                Assert.Contains("Missing Input", ex.Message);
+                container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
+                var res = session.Run(container);
+		var resultArray = res.First().AsTensor<float>().ToArray();
+                Assert.Equal(expectedOutput, resultArray, new floatComparer());
             }
         }
 
@@ -687,7 +699,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
             "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
-            "OrtCastTypeInfoToTensorInfo","OrtGetTensorShapeAndType","OrtGetTensorElementType","OrtGetNumOfDimensions",
+            "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
             "OrtGetDimensions","OrtGetTensorShapeElementCount","OrtReleaseValue"};
 
             var hModule = LoadLibrary(module);
@@ -770,9 +782,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             public GpuFact()
             {
-                if (System.Environment.GetEnvironmentVariable("TESTONGPU") == null)
+		var testOnGpu = System.Environment.GetEnvironmentVariable("TESTONGPU");
+                if (testOnGpu == null || !testOnGpu.Equals("ON") )
                 {
                     Skip = "GPU testing not enabled";
+                }
+            }
+        }
+
+        private class x64Fact : FactAttribute
+        {
+            public x64Fact()
+            {
+                if (System.Environment.Is64BitProcess == false)
+                {
+                    Skip = "Not 64-bit process";
                 }
             }
         }

@@ -24,7 +24,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
   auto dimension_count = input_shape.NumDimensions();
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<int64_t> input_dims(this, device_id, input_shape.GetDims());
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
   CudaAsyncBuffer<int64_t> lower_pads(this, device_id, dimension_count);

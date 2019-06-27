@@ -53,8 +53,8 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
-  const Tensor* left_X = ctx->Input<Tensor>(0);
-  const Tensor* right_X = ctx->Input<Tensor>(1);
+  const auto* left_X = ctx->Input<Tensor>(0);
+  const auto* right_X = ctx->Input<Tensor>(1);
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape()));

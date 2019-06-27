@@ -29,33 +29,50 @@ ORT_API_STATUS_IMPL(OrtKernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* i
   return onnxruntime::ToOrtStatus(status);
 }
 
-ORT_API(OrtValue*, OrtKernelContext_GetInput, OrtKernelContext* context, _In_ size_t index) {
-  return reinterpret_cast<OrtValue*>(const_cast<onnxruntime::MLValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index)));
+ORT_API_STATUS_IMPL(OrtKernelContext_GetInputCount, const OrtKernelContext* context, _Out_ size_t* out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+  return nullptr;
 };
 
-ORT_API(OrtValue*, OrtKernelContext_GetOutput, OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count) {
+ORT_API_STATUS_IMPL(OrtKernelContext_GetOutputCount, const OrtKernelContext* context, _Out_ size_t* out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
+  return nullptr;
+};
+
+ORT_API_STATUS_IMPL(OrtKernelContext_GetInput, const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
+  *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
+  return nullptr;
+};
+
+ORT_API_STATUS_IMPL(OrtKernelContext_GetOutput, OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
   onnxruntime::TensorShape shape(dim_values, dim_count);
-  return reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+  *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+  return nullptr;
 };
 
 constexpr OrtCustomOpApi g_custom_op_api = {
     &OrtKernelInfoGetAttribute_float,
     &OrtKernelInfoGetAttribute_int64,
 
-    &OrtGetTensorShapeAndType,
+    &OrtGetTensorTypeAndShape,
 
     &OrtGetTensorShapeElementCount,
-    &OrtGetNumOfDimensions,
-    &OrtGetDimensions,
-    &OrtSetDims,
+    &OrtGetTensorElementType,
 
+    &OrtGetDimensionsCount,
+    &OrtGetDimensions,
+    &OrtSetDimensions,
     &OrtGetTensorMutableData,
 
     &OrtReleaseTensorTypeAndShapeInfo,
 
+    &OrtKernelContext_GetInputCount,
     &OrtKernelContext_GetInput,
+    &OrtKernelContext_GetOutputCount,
     &OrtKernelContext_GetOutput,
 };
+
+const OrtCustomOpApi& GetCustomOpApi() { return g_custom_op_api; }
 
 namespace onnxruntime {
 
@@ -66,9 +83,7 @@ struct CustomOpKernel : OpKernel {
     op_kernel_ = op_.CreateKernel(&op_, &g_custom_op_api, reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }
 
-  ~CustomOpKernel() {
-    op_.KernelDestroy(op_kernel_);
-  }
+  ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
 
   Status Compute(OpKernelContext* ctx) const override {
     auto* ictx = static_cast<OpKernelContextInternal*>(ctx);
@@ -119,8 +134,12 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
-          .SinceVersion(1)
-          .Provider(onnxruntime::kCpuExecutionProvider);
+          .SinceVersion(1);
+      if (const char* provider_type = op->GetExecutionProviderType(op))
+        def_builder.Provider(provider_type);
+      else
+        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+
       KernelCreateFn kernel_create_fn = [&op](const OpKernelInfo& info) -> OpKernel* { return new CustomOpKernel(info, *op); };
       KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
 

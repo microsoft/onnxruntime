@@ -47,7 +47,7 @@ class Squeeze final : public OpKernel, public SqueezeBase {
   explicit Squeeze(const OpKernelInfo& info) : OpKernel(info), SqueezeBase(info) {}
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
     std::vector<int64_t> output_shape = ComputeOutputShape(X_shape.GetDims(), axes_);
 

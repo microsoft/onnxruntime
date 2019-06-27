@@ -179,7 +179,8 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
-             OpTester::ExpectResult::kExpectFailure, "Invalid input shape: {1}");
+             OpTester::ExpectResult::kExpectFailure, "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
+             "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2");
 }
 
 TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
@@ -197,7 +198,8 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, true, true,
-             OpTester::ExpectResult::kExpectFailure, "Input channels C is not equal to kernel channels * group.");
+             OpTester::ExpectResult::kExpectFailure, "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
+             "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0");
 }
 
 // Conv30

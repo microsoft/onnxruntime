@@ -48,9 +48,8 @@ struct GraphEdge {
 static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge& output_edge) {
   // we treat the explicit and implicit inputs as sequential, so if the destination arg index of an output edge
   // is past the valid range for the node's explicit inputs, it is for an implicit input
-  const auto num_explicit_inputs = (*graph.GetNode(output_edge.dst_node)).InputDefs().size();
-  bool is_implicit_input = output_edge.dst_arg_index >= num_explicit_inputs;
-  return is_implicit_input;
+  const size_t num_explicit_inputs = (*graph.GetNode(output_edge.dst_node)).InputDefs().size();
+  return static_cast<size_t>(output_edge.dst_arg_index) >= num_explicit_inputs;
 }
 
 /** Checks if new_output_name can be used to replace removed_output_name in the subgraph input.
@@ -69,7 +68,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(Node& node,
     for (auto& subgraph_node : attr_subgraph_pair.second->Nodes()) {
       // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
       // subgraphs, and at least one level lower uses removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -99,7 +98,7 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       // recurse if this node also consumes removed_output_name as an implicit input
       // (i.e. there are multiple levels of nested subgraphs, and at least one level lower uses
       // removed_output_name as an implicit input
-      const auto& subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
+      const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
             std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
@@ -234,7 +233,7 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
     auto output_node = graph.GetNode(output_edge.dst_node);
     ORT_ENFORCE(output_node, "Outgoing node could not be found.");
 
-    auto dst_arg_idx = output_edge.dst_arg_index;
+    size_t dst_arg_idx = static_cast<size_t>(output_edge.dst_arg_index);
     if (dst_arg_idx < output_node->InputDefs().size()) {
       output_node->MutableInputDefs()[output_edge.dst_arg_index] = input_def;
     } else if (dst_arg_idx < output_node->InputDefs().size() + output_node->ImplicitInputDefs().size()) {
@@ -255,37 +254,42 @@ static bool RemoveNodeWithSingleInitializerIn(Graph& graph, Node& node) {
 
 const std::string& GetNodeInputName(const Node& node, int index) {
   const auto& inputs = node.InputDefs();
-  ORT_ENFORCE(index < inputs.size(), "Attempting to get an input that does not exist.");
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < inputs.size(),
+              "Attempting to get an input that does not exist.");
   return inputs[index]->Name();
 }
 
 const std::string& GetNodeOutputName(const Node& node, int index) {
   const auto& outputs = node.OutputDefs();
-  assert(index < outputs.size());
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < outputs.size(),
+              "Attempting to get an output that does not exist.");
   return outputs[index]->Name();
 }
 
-// fusion is only done for ONNX domain ops
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        const std::string& op_type,
-                                       ONNX_NAMESPACE::OperatorSetVersion version,
+                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
                                        const std::string& domain) {
-  if (node.OpType() != op_type ||
-      node.Op()->Deprecated() || node.Op()->SinceVersion() != version ||
-      (!node.Domain().empty() && node.Domain() != domain)) {
-    return false;
-  }
-  return true;
+  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
+          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
+}
+
+bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+}
+
+bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
+  const auto& node_domain = node.Domain();
+  // We do a special check for the ONNX domain, as it has two aliases.
+  return node_domain == domain ||
+         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
+          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
 }
 
 bool IsSupportedProvider(const Node& node,
                          const std::unordered_set<std::string>& compatible_providers) {
-  if (!compatible_providers.empty() &&
-      compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end()) {
-    return false;
-  }
-
-  return true;
+  return !(!compatible_providers.empty() &&
+           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
 Status ForAllMutableSubgraphs(Graph& graph, std::function<Status(Graph&)> func) {
@@ -335,9 +339,7 @@ Status ForAllSubgraphs(const Graph& graph, std::function<Status(const Graph&)> f
 }
 
 bool IsSingleInSingleOutNode(const Node& node) {
-  return node.InputDefs().size() == 1 &&
-         node.ImplicitInputDefs().size() == 0 &&
-         node.OutputDefs().size() == 1;
+  return node.InputDefs().size() == 1 && node.ImplicitInputDefs().empty() && node.OutputDefs().size() == 1;
 }
 
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
@@ -346,19 +348,49 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-bool RemoveSingleInputNode(Graph& graph, Node& node) {
-  // Cannot remove a node with multiple output NodeArgs (multiple output edges is fine), neither
-  // a node whose output is also a graph output.
-  if (!IsSingleInSingleOutNode(node) ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. */
+static bool IsOnlyOneOutputUsed(const Node& node) {
+  if (node.GetOutputEdgesCount() > 1) {
+    const int unassigned = -1;
+    int first_output = unassigned;
+    for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+      if (first_output == unassigned) {
+        first_output = it->GetSrcArgIndex();
+      } else if (first_output != it->GetSrcArgIndex()) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsOutputUsed(const Node& node, int index) {
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetSrcArgIndex() == index) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool RemoveNode(Graph& graph, Node& node) {
+  // Cannot remove a node with implicit inputs, whose output is also a graph output,
+  // or with more than one of its outputs as input to downstream Operators.
+  if (!node.ImplicitInputDefs().empty() ||
+      graph.IsNodeOutputsInGraphOutputs(node) || !IsOnlyOneOutputUsed(node)) {
     return false;
   }
 
-  // If the single input comes from another node (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
+    // If there is a single input edge from another node (initializers are not connected with edges to nodes).
     return RemoveNodeWithSingleNodeIn(graph, node);
-  } else {
+  }
+  if (node.InputDefs().size() == 1) {
+    // If a single initializer is the only input.
     return RemoveNodeWithSingleInitializerIn(graph, node);
+  } else {
+    // No other node removal is supported, because there will be no way to connect its inputs to its outputs.
+    return false;
   }
 }
 
@@ -367,16 +399,20 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
+  const onnx::TensorProto* initializer = nullptr;
+  return graph.GetInitializedTensor(node_arg.Name(), initializer) && !IsGraphInput(graph, &node_arg);
+}
+
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
-  const onnx::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
-    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || IsGraphInput(graph, input_def)) {
+    if (!NodeArgIsConstant(graph, *input_def)) {
       return false;
     }
   }

@@ -6,7 +6,6 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/rewrite_rule.h"
-using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
@@ -17,7 +16,7 @@ class GraphTransformerManager {
   explicit GraphTransformerManager(unsigned steps) : steps_(steps) {
   }
 
-  // Register a transformer with a level and compatible providers list
+  // Register a transformer with a level.
   common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
 
   // Apply all transformers registered for the given level on the given graph

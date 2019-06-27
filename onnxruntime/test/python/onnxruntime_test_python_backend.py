@@ -9,11 +9,12 @@ import numpy as np
 import onnxruntime as onnxrt
 from onnxruntime import datasets
 import onnxruntime.backend as backend
+from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 from onnx import load
 
 
 class TestBackend(unittest.TestCase):
-    
+
     def get_name(self, name):
         if os.path.exists(name):
             return name
@@ -43,10 +44,10 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[49.752754]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testRunModelProto(self):        
+    def testRunModelProto(self):
         name = datasets.get_example("logreg_iris.onnx")
         model = load(name)
-        
+
         rep = backend.prepare(model)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         res = rep.run(x)
@@ -56,6 +57,20 @@ class TestBackend(unittest.TestCase):
                            {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846},
                            {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]
         self.assertEqual(output_expected, res[1])
+
+    def testRunModelProtoApi(self):
+        name = datasets.get_example("logreg_iris.onnx")
+        model = load(name)
+
+        inputs = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        outputs = ort_backend.run_model(model, inputs)
+
+        output_expected = np.array([0, 0, 0], dtype=np.float32)
+        np.testing.assert_allclose(output_expected, outputs[0], rtol=1e-05, atol=1e-08)
+        output_expected = [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654},
+                           {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846},
+                           {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]
+        self.assertEqual(output_expected, outputs[1])
 
 
 if __name__ == '__main__':

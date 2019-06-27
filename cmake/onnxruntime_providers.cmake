@@ -1,19 +1,31 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB_RECURSE onnxruntime_providers_srcs
+file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
-file(GLOB_RECURSE onnxruntime_contrib_ops_srcs
-  "${ONNXRUNTIME_ROOT}/contrib_ops/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/*.cc"
+file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
-file(GLOB onnxruntime_providers_common_srcs
+file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
+)
+
+file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
@@ -34,19 +46,34 @@ if(onnxruntime_USE_TENSORRT)
   set(PROVIDERS_TENSORRT onnxruntime_providers_tensorrt)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
 endif()
+if(onnxruntime_USE_OPENVINO)
+  set(PROVIDERS_OPENVINO onnxruntime_providers_openvino)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_contrib_ops_srcs})
+source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
 
 # disable contrib ops conditionally
 if(onnxruntime_DISABLE_CONTRIB_OPS)
   add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_contrib_ops_srcs})
+  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
-set(gemmlowp_src ${ONNXRUNTIME_ROOT}/../cmake/external/gemmlowp)
+if(HAS_DEPRECATED_COPY)
+  #temporarily ignore this warning
+  #see: https://en.wikipedia.org/wiki/Rule_of_three_(C%2B%2B_programming)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/math/matmul_integer.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/math/quantize_linear_matmul.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/qlinearconv.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/nn/conv_integer.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/generator/random.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/onehot.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
+endif()
+set(gemmlowp_src ${PROJECT_SOURCE_DIR}/external/gemmlowp)
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
 add_dependencies(onnxruntime_providers gsl onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -55,19 +82,29 @@ set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_CUDA)
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
   )
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  
+  # disable contrib ops conditionally
+  if(onnxruntime_DISABLE_CONTRIB_OPS)
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  else()
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  endif()
+
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
@@ -82,6 +119,13 @@ if (onnxruntime_USE_CUDA)
         PROPERTIES
         COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
     endforeach()
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
+        set_source_files_properties(${src_file}
+          PROPERTIES
+          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
+      endforeach()
+    endif()
     set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
       PROPERTIES
       COMPILE_FLAGS "/Yccuda_pch.h"
@@ -95,7 +139,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_MKLDNN)
-  file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.cc"
   )
@@ -121,7 +165,7 @@ if (onnxruntime_USE_TENSORRT)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if (WIN32)
     set(OLD_CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /wd2220")
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4701 /wd4805")
     endif()
@@ -159,7 +203,7 @@ if (onnxruntime_USE_TENSORRT)
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   set(onnxparser_link_libs nvonnxparser_static nvonnxparser_plugin)
 
-  file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
   )
@@ -182,7 +226,7 @@ endif()
 
 if (onnxruntime_USE_NGRAPH)
   include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
-  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_ngraph_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/ngraph/*.cc"
   )
@@ -195,9 +239,40 @@ if (onnxruntime_USE_NGRAPH)
   target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_ngraph PROPERTIES LINKER_LANGUAGE CXX)
 
-  target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
-  target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
+  if (NOT MSVC)
+    target_compile_options(onnxruntime_providers_ngraph PRIVATE "SHELL:-Wformat" "SHELL:-Wformat-security" "SHELL:-fstack-protector-strong" "SHELL:-D_FORTIFY_SOURCE=2")
+    target_link_options(onnxruntime_providers_ngraph PRIVATE "LINKER:-z, noexecstack " "LINKER:-z relro" "LINKER:-z now" "LINKER:-pie")
+  endif()
+endif()
 
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
+  )
+  file(GLOB_RECURSE onnxruntime_providers_openvino_py_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
+  )
+
+  # Below variables point to directories within the OpenVINO installation directory
+  # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
+  if (onnxruntime_USE_OPENVINO_BINARY)
+    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
+    set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
+  endif()
+
+  find_package(PythonLibs REQUIRED)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
+  add_library(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_openvino gsl onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_openvino ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_openvino PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
+  link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
+  target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
+  file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

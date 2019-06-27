@@ -36,7 +36,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
       .SetDoc("Input variable.")
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   ExecutionProviders execution_providers;
-  SessionState s{execution_providers};
+  SessionState s{execution_providers, true};
 
   onnxruntime::Model model("graph_1");
   auto& graph = model.MainGraph();
@@ -53,11 +53,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   KernelDef kernel_def;
   CPUExecutionProvider execution_provider{CPUExecutionProviderInfo{"CPUExecutionProvider"}};
 
-  OpKernelInfo p_info(node,
-                      kernel_def,
-                      execution_provider,
-                      s.GetInitializedTensors(),
-                      s.GetMLValueNameIdxMap(),
+  OpKernelInfo p_info(node, kernel_def, execution_provider, s.GetInitializedTensors(), s.GetOrtValueNameIdxMap(),
                       s.GetFuncMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));

@@ -125,22 +125,6 @@ class Node {
     return common::Status::OK();
   }
 
-  /** Gets the Node's input definitions.
-  @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  const ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
-    return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
-  }
-
-  /** Gets a modifiable collection of the Node's input definitions. */
-  std::vector<NodeArg*>& MutableInputDefs() noexcept {
-    return definitions_.input_defs;
-  }
-
-  /** Gets a modifiable collection of the Node's output definitions. */
-  std::vector<NodeArg*>& MutableOutputDefs() noexcept {
-    return definitions_.output_defs;
-  }
-
   /** Gets the count of arguments for each of the Node's explicit inputs. */
   const std::vector<int>& InputArgCount() const noexcept { return definitions_.input_arg_count; }
 
@@ -149,11 +133,22 @@ class Node {
         Currently these operations are separate which is not a good setup. */
   std::vector<int>& MutableInputArgsCount() { return definitions_.input_arg_count; }
 
+  /** Gets the Node's input definitions.
+  @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
+  ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
+    return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
+  }
+
+  /** Gets a modifiable collection of the Node's input definitions. */
+  std::vector<NodeArg*>& MutableInputDefs() noexcept {
+    return definitions_.input_defs;
+  }
+
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
-  const std::vector<NodeArg*>& ImplicitInputDefs() const noexcept {
-    return definitions_.implicit_input_defs;
+  ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept {
+    return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.implicit_input_defs);
   }
 
   /** Gets a modifiable collection of the Node's implicit input definitions. */
@@ -163,8 +158,13 @@ class Node {
 
   /** Gets the Node's output definitions.
   @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  const ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
+  ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
+  }
+
+  /** Gets a modifiable collection of the Node's output definitions. */
+  std::vector<NodeArg*>& MutableOutputDefs() noexcept {
+    return definitions_.output_defs;
   }
 
   /** Struct to provide sorting between EdgeEnd instances based on NodeIndex first, and NodeArg::Name second. */
@@ -211,7 +211,9 @@ class Node {
   NodeConstIterator InputNodesEnd() const noexcept { return NodeConstIterator(relationships_.input_edges.cend()); }
 
   /** Gets an iterator to the beginning of the output nodes from this Node. */
-  NodeConstIterator OutputNodesBegin() const noexcept { return NodeConstIterator(relationships_.output_edges.cbegin()); }
+  NodeConstIterator OutputNodesBegin() const noexcept {
+    return NodeConstIterator(relationships_.output_edges.cbegin());
+  }
   /** Gets an iterator to the end of the output nodes from this Node. */
   NodeConstIterator OutputNodesEnd() const noexcept { return NodeConstIterator(relationships_.output_edges.cend()); }
 
@@ -269,6 +271,13 @@ class Node {
   @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
   */
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
+
+  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop).
+  @returns true if the Node contains a subgraph.
+  */
+  bool ContainsSubgraph() const {
+    return !attr_to_subgraph_map_.empty();
+  }
 
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
@@ -698,6 +707,7 @@ class Graph {
 
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+  ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -727,27 +737,15 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
-  /** When programmatically constructing a Graph, explicitly set the order to use for graph inputs when the graph is
-  resolved.
-  This will determine the graph input order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
-  @param inputs NodeArgs that represent graph inputs which need to be explicitly ordered.
-  Any graph inputs not in this list will be appended to the ordered graph input list, in the order that they were first
-  used by Nodes (i.e. the order of Node creation implicitly determines the ordering).
+  /** When programmatically constructing a Graph, explicitly set graph inputs.
+  @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetInputOrder(const std::vector<const NodeArg*> inputs) {
-    graph_input_order_ = inputs;
-  }
+  void SetInputs(const std::vector<const NodeArg*>& inputs);
 
-  /** When programmatically constructing a Graph, explicitly set the order to use for graph outputs when the graph is
-  resolved.
-  This will determine the graph output order when the Graph is converted to a GraphProto by Graph::ToGraphProto.
-  @param outputs NodeArgs that represent graph outputs which need to be explicitly ordered.
-  Any graph outputs not in this list will be appended to the ordered graph output list, in the order that they were first
-  produced by Nodes (i.e. the order of Node creation implicitly determines the ordering).
+  /** When programmatically constructing a Graph, explicitly set graph outputs.
+  @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks If the Graph was loaded from a GraphProto this has no effect.*/
-  void SetOutputOrder(const std::vector<const NodeArg*> outputs) {
-    graph_output_order_ = outputs;
-  }
+  void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
@@ -882,9 +880,6 @@ class Graph {
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
 
-  // Sync graph inputs/outputs when serializing to proto.
-  void SyncGraphInputsOutputs();
-
   // Clear all unused initializers
   void CleanUnusedInitializers();
 
@@ -907,6 +902,8 @@ class Graph {
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+
+  void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
 
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and
@@ -945,12 +942,14 @@ class Graph {
 
   // Full list of graph inputs. Matches number and order of inputs in the GraphProto.
   std::vector<const NodeArg*> graph_inputs_including_initializers_;
+  bool graph_inputs_manually_set_ = false;
 
   // Graph inputs excluding initializers.
   std::vector<const NodeArg*> graph_inputs_excluding_initializers_;
 
   // Graph outputs.
   std::vector<const NodeArg*> graph_outputs_;
+  bool graph_outputs_manually_set_ = false;
 
   // Graph value_info.
   std::vector<const NodeArg*> value_info_;
@@ -975,12 +974,6 @@ class Graph {
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
-
-  // Explicit graph input order to be used when constructing a Graph manually.
-  std::vector<const NodeArg*> graph_input_order_;
-
-  // Explicit graph output order to be used when constructing a Graph manually.
-  std::vector<const NodeArg*> graph_output_order_;
 };
 
 }  // namespace onnxruntime

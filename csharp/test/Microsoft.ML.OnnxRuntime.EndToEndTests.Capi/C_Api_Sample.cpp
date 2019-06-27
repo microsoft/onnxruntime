@@ -29,7 +29,8 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
 
   // initialize session options if needed
-  OrtSessionOptions* session_options = OrtCreateSessionOptions();
+  OrtSessionOptions* session_options;
+  CHECK_STATUS(OrtCreateSessionOptions(&session_options));
   OrtSetSessionThreadPoolSize(session_options, 1);
 
   // Sets graph optimization level
@@ -39,12 +40,21 @@ int main(int argc, char* argv[]) {
   // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
   OrtSetSessionGraphOptimizationLevel(session_options, 1);
 
+  // Optionally add more execution providers via session_options
+  // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:
+  // OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
+
   //*************************************************************************
   // create session and load model into memory
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
   OrtSession* session;
+#ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
+#else
+  const char* model_path = "squeezenet.onnx";
+#endif
+
   CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************
@@ -52,13 +62,13 @@ int main(int argc, char* argv[]) {
   size_t num_input_nodes;
   OrtStatus* status;
   OrtAllocator* allocator;
-  OrtCreateDefaultAllocator(&allocator);
+  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
 
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
-                                        // Otherwise need vector<vector<>>
+                                         // Otherwise need vector<vector<>>
 
   printf("Number of inputs = %zu\n", num_input_nodes);
 
@@ -73,12 +83,15 @@ int main(int argc, char* argv[]) {
     // print input node types
     OrtTypeInfo* typeinfo;
     status = OrtSessionGetInputTypeInfo(session, i, &typeinfo);
-    const OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(typeinfo);
-    ONNXTensorElementDataType type = OrtGetTensorElementType(tensor_info);
+    const OrtTensorTypeAndShapeInfo* tensor_info;
+    CHECK_STATUS(OrtCastTypeInfoToTensorInfo(typeinfo, &tensor_info));
+    ONNXTensorElementDataType type;
+    CHECK_STATUS(OrtGetTensorElementType(tensor_info, &type));
     printf("Input %zu : type=%d\n", i, type);
 
     // print input shapes/dims
-    size_t num_dims = OrtGetNumOfDimensions(tensor_info);
+    size_t num_dims;
+    CHECK_STATUS(OrtGetDimensionsCount(tensor_info, &num_dims));
     printf("Input %zu : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
@@ -122,17 +135,20 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   OrtValue* input_tensor = NULL;
   CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-  assert(OrtIsTensor(input_tensor));
+  int is_tensor;
+  CHECK_STATUS(OrtIsTensor(input_tensor, &is_tensor));
+  assert(is_tensor);
   OrtReleaseAllocatorInfo(allocator_info);
 
   // score model & input tensor, get back output tensor
   OrtValue* output_tensor = NULL;
   CHECK_STATUS(OrtRun(session, NULL, input_node_names.data(), (const OrtValue* const*)&input_tensor, 1, output_node_names.data(), 1, &output_tensor));
-  assert(OrtIsTensor(output_tensor));
+  CHECK_STATUS(OrtIsTensor(output_tensor, &is_tensor));
+  assert(is_tensor);
 
   // Get pointer to output tensor float values
   float* floatarr;
-  OrtGetTensorMutableData(output_tensor, (void**)&floatarr);
+  CHECK_STATUS(OrtGetTensorMutableData(output_tensor, (void**)&floatarr));
   assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes

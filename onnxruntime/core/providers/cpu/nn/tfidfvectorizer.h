@@ -13,7 +13,7 @@ namespace onnxruntime {
 class TfIdfVectorizer final : public OpKernel {
  public:
   explicit TfIdfVectorizer(const OpKernelInfo& info);
-  ~TfIdfVectorizer();
+  ~TfIdfVectorizer() override;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TfIdfVectorizer);
 
   Status Compute(OpKernelContext* ctx) const override;

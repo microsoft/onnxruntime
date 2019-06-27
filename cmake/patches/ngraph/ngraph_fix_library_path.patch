@@ -1,0 +1,33 @@
+From fcd51f874f4a96fb4ca77d762ed39ea1bf3f2c0d Mon Sep 17 00:00:00 2001
+From: Junfeng Dong <junfeng.dong@intel.com>
+Date: Wed, 17 Apr 2019 13:42:42 -0700
+Subject: [PATCH] Fix dll library load path on Windows.
+
+---
+ src/ngraph/runtime/backend_manager.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ngraph/runtime/backend_manager.cpp b/src/ngraph/runtime/backend_manager.cpp
+index eaa8fc26a..4d35c63ec 100644
+--- a/src/ngraph/runtime/backend_manager.cpp
++++ b/src/ngraph/runtime/backend_manager.cpp
+@@ -123,7 +123,7 @@ unique_ptr<runtime::Backend> runtime::BackendManager::create_backend(const std::
+ static string find_my_file()
+ {
+ #ifdef _WIN32
+-    HMODULE hModule = GetModuleHandleW(NULL);
++    HMODULE hModule = GetModuleHandleW(L"ngraph.dll");
+     WCHAR wpath[MAX_PATH];
+     GetModuleFileNameW(hModule, wpath, MAX_PATH);
+     wstring ws(wpath);
+@@ -157,6 +157,7 @@ DL_HANDLE runtime::BackendManager::open_shared_library(string type)
+     string my_directory = file_util::get_directory(find_my_file());
+     string library_path = file_util::path_join(my_directory, library_name);
+ #ifdef _WIN32
++    SetDllDirectory((LPCSTR)my_directory.c_str());
+     handle = LoadLibrary(library_path.c_str());
+ #else
+     handle = dlopen(library_path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+-- 
+2.13.0.windows.1
+

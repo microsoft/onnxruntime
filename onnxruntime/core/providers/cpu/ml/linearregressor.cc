@@ -22,7 +22,7 @@ LinearRegressor<T>::LinearRegressor(const OpKernelInfo& info) : OpKernel(info),
 
 template <>
 Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
-  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto* X = ctx->Input<Tensor>(0);
   if (X->Shape().NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input shape needs to be at least a single dimension.");
@@ -34,7 +34,7 @@ Status LinearRegressor<float>::Compute(OpKernelContext* ctx) const {
   const auto* Xdata = X->template Data<float>();
   int64_t yindex = 0;
 
-  bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_) ? true : false;
+  bool useIntercepts = intercepts_.size() == static_cast<size_t>(targets_);
   for (int64_t i = 0; i < N; i++)  //for each point
   {
     std::vector<float> scores;

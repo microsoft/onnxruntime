@@ -19,16 +19,16 @@ class CropBase {
   }
 
   Status ValidateInput(const Tensor* X) const {
-    if (border_.size() < 4) {
+    if (border_.size() != 4) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Attribute border needs to be specified with four border elements, got ", border_.size());
     }
 
     const auto dims = X->Shape().GetDims();
 
-    if (dims.size() < 4) {
+    if (dims.size() != 4) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
+                             "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size(), " input dimensions instead");
     }
 
     const int64_t H = dims[2];
@@ -41,11 +41,11 @@ class CropBase {
             bottomBorder = border_[3];
 
     if (H < topBorder + bottomBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + bottomBorder (", bottomBorder, ")");
     }
 
     if (W < leftBorder + rightBorder) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
     }
 
     int64_t bottomLimit = H - bottomBorder;
@@ -58,11 +58,11 @@ class CropBase {
 
       if (H < bottomLimit) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input's height (", H, ") needs to be greater than the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
+                               "Input's height (", H, ") needs to be greater than or equal to the topBorder (", topBorder, ") + scale_[0] (", scale_[0], ")");
       }
 
       if (W < rightLimit) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + scale_[1] (", scale_[1], ")");
       }
     }
 
@@ -132,5 +132,5 @@ class Crop final : public CropBase, public OpKernel {
   }
 };
 
-}
+}  // namespace contrib
 }  //namespace onnxruntime

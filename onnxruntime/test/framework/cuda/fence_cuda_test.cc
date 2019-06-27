@@ -108,7 +108,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
       shape,
       cpu_allocator);
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -121,10 +121,8 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   ASSERT_TRUE(session.Initialize().IsOK());
   ASSERT_TRUE(1 == CountCopyNodes(graph));
 
-  vector<MLValue> outputs;
-  session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Out"},
-              &outputs);
+  vector<OrtValue> outputs;
+  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   EXPECT_EQ(output.Shape(), shape);
@@ -163,7 +161,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
       cpu_allocator);
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
 
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -175,10 +173,8 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   ASSERT_TRUE(session.Initialize().IsOK());
 
-  vector<MLValue> outputs;
-  session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Y"},
-              &outputs);
+  vector<OrtValue> outputs;
+  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   EXPECT_EQ(output.Shape(), TensorShape({2, 4}));
@@ -227,7 +223,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
       cpu_allocator);
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
 
-  MLValue value;
+  OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -239,10 +235,8 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
   ASSERT_TRUE(session.Initialize().IsOK());
 
-  vector<MLValue> outputs;
-  session.Run(std::unordered_map<std::string, MLValue>{{"X1", value}},
-              std::vector<std::string>{"Out"},
-              &outputs);
+  vector<OrtValue> outputs;
+  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
   EXPECT_EQ(output.Shape(), TensorShape({4, 4}));

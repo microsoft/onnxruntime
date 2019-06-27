@@ -15,16 +15,20 @@ namespace cuda {
 // 4. Add op kernel class definition in binary_elementwise_ops.h
 // 5. Add op kernel registration and compute specialization in binary_elementwise_ops.cc
 
-#define BINARY_OPS()                   \
-  BINARY_OP_NAME_EXPR(Add, (a + b))    \
-  BINARY_OP_NAME_EXPR(Sub, (a - b))    \
-  BINARY_OP_NAME_EXPR(Mul, (a * b))    \
-  BINARY_OP_NAME_EXPR(Div, (a / b))    \
-  BINARY_OP_NAME_EXPR(Pow, _Pow(a, b)) \
-  BINARY_OP_NAME_EXPR(And, (a & b))    \
-  BINARY_OP_NAME_EXPR(Or, (a | b))     \
-  BINARY_OP_NAME_EXPR(Xor, (a ^ b))    \
-  BINARY_OP_NAME_EXPR(PRelu, (a > (T)0 ? a : a * b))
+#define BINARY_OPS()                                 \
+  BINARY_OP_NAME_EXPR(Add, (a + b))                  \
+  BINARY_OP_NAME_EXPR(Sub, (a - b))                  \
+  BINARY_OP_NAME_EXPR(Mul, (a * b))                  \
+  BINARY_OP_NAME_EXPR(Div, (a / b))                  \
+  BINARY_OP_NAME_EXPR(Pow, _Pow(a, b))               \
+  BINARY_OP_NAME_EXPR(And, (a & b))                  \
+  BINARY_OP_NAME_EXPR(Or, (a | b))                   \
+  BINARY_OP_NAME_EXPR(Xor, (a ^ b))                  \
+  BINARY_OP_NAME_EXPR(PRelu, (a > (T)0 ? a : a * b)) \
+  BINARY_OP_NAME_EXPR(Greater, (a > b) ? 1 : 0)      \
+  BINARY_OP_NAME_EXPR(Equal, ((a == b) ? 1 : 0))     \
+  BINARY_OP_NAME_EXPR(Max, _Max(a, b))               \
+  BINARY_OP_NAME_EXPR(Min, _Min(a, b))
 
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here

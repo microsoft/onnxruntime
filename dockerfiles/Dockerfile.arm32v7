@@ -1,5 +1,8 @@
 FROM balenalib/raspberrypi3-python:latest-stretch-build
 
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
+
 #Enforces cross-compilation through Quemu
 RUN [ "cross-build-start" ]
 
@@ -14,7 +17,8 @@ RUN install_packages \
     python3-pip \
     python3-dev \
     git \
-    tar
+    tar \
+    libatlas-base-dev
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
@@ -23,10 +27,10 @@ RUN pip3 install numpy
 
 # Build the latest cmake
 WORKDIR /code
-RUN wget https://cmake.org/files/v3.12/cmake-3.12.3.tar.gz;
-RUN tar zxf cmake-3.12.3.tar.gz
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3.tar.gz
+RUN tar zxf cmake-3.14.3.tar.gz
 
-WORKDIR /code/cmake-3.12.3
+WORKDIR /code/cmake-3.14.3
 RUN ./configure --system-curl
 RUN make
 RUN sudo make install
@@ -37,7 +41,7 @@ ARG BUILDARGS="--config ${BUILDTYPE} --arm"
 
 # Prepare onnxruntime Repo
 WORKDIR /code
-RUN git clone --recursive https://github.com/Microsoft/onnxruntime
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
 
 # Start the basic build
 WORKDIR /code/onnxruntime

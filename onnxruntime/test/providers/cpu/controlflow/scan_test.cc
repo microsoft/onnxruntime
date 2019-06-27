@@ -380,7 +380,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
 
       // skip if this is an invalid input test and axis is out of the valid range
       if (axis >= -rank && axis < rank) {
-        std::vector<int64_t> permutations;
+        std::vector<size_t> permutations;
         std::vector<int64_t> new_shape;
         scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, output_shape.size()),
                                                         permutations, new_shape);
@@ -1046,8 +1046,8 @@ void MixedTypeInputs(bool is_v8) {
   graph.AddNode("node3", "Identity", "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
   graph.AddNode("node4", "Identity", "Copy scan_in_2 to state_out_2", {&scan_in_2}, {&state_out_2});
 
-  graph.SetInputOrder({&state_in_1, &state_in_2, &scan_in_1, &scan_in_2});
-  graph.SetOutputOrder({&state_out_1, &state_out_2, &scan_out_1, &scan_out_2});
+  graph.SetInputs({&state_in_1, &state_in_2, &scan_in_1, &scan_in_2});
+  graph.SetOutputs({&state_out_1, &state_out_2, &scan_out_1, &scan_out_2});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
@@ -1108,8 +1108,8 @@ void UnknownDimInSubgraphOutput(bool is_v8) {
   graph.AddNode("node1", "Identity", "Copy state_in_1 to scan_out_1", {&state_in_1}, {&scan_out_1});
   graph.AddNode("node2", "Identity", "Copy scan_in_1 to state_out_1", {&scan_in_1}, {&state_out_1});
 
-  graph.SetInputOrder({&state_in_1, &scan_in_1});
-  graph.SetOutputOrder({&state_out_1, &scan_out_1});
+  graph.SetInputs({&state_in_1, &scan_in_1});
+  graph.SetOutputs({&state_out_1, &scan_out_1});
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());

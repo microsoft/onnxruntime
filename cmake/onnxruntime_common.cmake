@@ -30,9 +30,18 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
     )
+
+    if (onnxruntime_USE_SYSLOG)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.cc"
+        )
+    endif()
 endif()
 
-file(GLOB onnxruntime_common_src ${onnxruntime_common_src_patterns})
+file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
+    ${onnxruntime_common_src_patterns}
+    )
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
@@ -57,4 +66,19 @@ set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 if(WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
     set_target_properties(onnxruntime_common PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+endif()
+
+# check if we need to link against librt on Linux
+include(CheckLibraryExists)
+include(CheckFunctionExists)
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+  check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
+
+  if (NOT HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES time.h)
+    check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES)
+  else()
+    target_link_libraries(onnxruntime_common rt)
+  endif()
 endif()
