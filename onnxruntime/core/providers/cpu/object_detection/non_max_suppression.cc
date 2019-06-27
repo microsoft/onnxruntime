@@ -148,12 +148,12 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
       if (pc.score_threshold_ != nullptr) {
         for (int64_t box_index = 0; box_index < pc.num_boxes_; ++box_index, ++class_scores) {
           if (*class_scores > score_threshold) {
-            sorted_scores_with_index.emplace(*class_scores, box_index);
+            sorted_scores_with_index.push(ScoreIndexPair(*class_scores, box_index));
           }
         }
       } else {
         for (int64_t box_index = 0; box_index < pc.num_boxes_; ++box_index, ++class_scores) {
-          sorted_scores_with_index.emplace(*class_scores, box_index);
+          sorted_scores_with_index.push(ScoreIndexPair(*class_scores, box_index));
         }
       }
 
@@ -186,9 +186,11 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     }    //for class_index
   }      //for batch_index
 
+  const auto last_dim = 3;
   const auto num_selected = selected_indices.size();
-  Tensor* output = ctx->Output(0, {static_cast<int64_t>(num_selected), 3});
+  Tensor* output = ctx->Output(0, {static_cast<int64_t>(num_selected), last_dim});
   ORT_ENFORCE(output != nullptr);
+  static_assert(last_dim * sizeof(int64_t) == sizeof(SelectedIndex), "Possible modification of SelectedIndex");
   memcpy(output->MutableData<int64_t>(), selected_indices.data(), num_selected * sizeof(SelectedIndex));
 
   return Status::OK();
