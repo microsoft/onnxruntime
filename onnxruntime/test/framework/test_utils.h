@@ -2,18 +2,27 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <map>
+#include <string>
+
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ml_value.h"
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
-#ifdef USE_TENSORRT 
+#ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
+#endif
+#ifdef USE_OPENVINO
+#include "core/providers/openvino/openvino_execution_provider.h"
 #endif
 
 namespace onnxruntime {
+class Graph;
+
 namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
@@ -26,6 +35,10 @@ IExecutionProvider* TestCudaExecutionProvider();
 #ifdef USE_TENSORRT
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestTensorrtExecutionProvider();
+#endif
+
+#ifdef USE_OPENVINO
+IExecutionProvider* TestOpenVINOExecutionProvider();
 #endif
 
 template <typename T>
@@ -55,5 +68,10 @@ void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtVa
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
+
+// Returns a map with the number of occurrences of each operator in the graph.
+// Helper function to check that the graph transformations have been successfully applied.
+std::map<std::string, int> CountOpsInGraph(const Graph& graph);
+
 }  // namespace test
 }  // namespace onnxruntime

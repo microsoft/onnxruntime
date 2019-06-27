@@ -58,8 +58,7 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
 
     auto registry = provider->GetKernelRegistry();
     if (!registry) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider ", provider->Type(),
-                             "does not have a kernel registry.");
+      continue;
     }
 
     provider_type_to_registry_.insert(std::make_pair(provider->Type(), registry));

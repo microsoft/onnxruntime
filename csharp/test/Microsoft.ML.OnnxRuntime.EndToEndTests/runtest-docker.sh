@@ -38,7 +38,7 @@ docker run -h $HOSTNAME \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
         -e "IsReleaseBuild=$IsReleaseBuild" \
         -e "PackageName=$PackageName" \
-        -e "DisableContribOps=$DisableContribOps" \
+        -e "DisableContribOps=$DISABLECONTRIBOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
         "onnxruntime-$IMAGE" \

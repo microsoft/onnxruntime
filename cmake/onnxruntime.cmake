@@ -26,7 +26,7 @@ add_custom_command(OUTPUT ${SYMBOL_FILE}
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE})
 add_library(onnxruntime SHARED ${onnxruntime_session_srcs})
-set_target_properties(onnxruntime PROPERTIES VERSION ${VERSION_NUMBER})
+set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime gsl)
@@ -61,6 +61,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_OPENVINO}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
