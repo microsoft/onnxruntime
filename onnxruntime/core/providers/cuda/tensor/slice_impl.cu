@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T >
 __global__ void _SliceKernel(const int32_t dimension_count,
                              const int64_t* starts,
                              const int64_t* steps,
