@@ -5,6 +5,7 @@
 import sys
 import os
 import warnings
+import onnxruntime.capi._ld_preload
 
 try:
     from onnxruntime.capi.onnxruntime_pybind11_state import *  # noqa
