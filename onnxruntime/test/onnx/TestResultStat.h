@@ -8,6 +8,8 @@
 #include <string>
 #include <atomic>
 #include <core/platform/ort_mutex.h>
+#include <cstring>
+#include <set>
 
 class TestResultStat {
  public:
@@ -35,10 +37,10 @@ class TestResultStat {
 
   void AddFailedTest(const std::pair<std::string, std::string>& p) {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
-    failed_test_cases.push_back(p);
+    failed_test_cases.insert(p);
   }
 
-  const std::vector< std::pair<std::string, std::string> >& GetFailedTest() const {
+  const std::set<std::pair<std::string, std::string>>& GetFailedTest() const {
     std::lock_guard<onnxruntime::OrtMutex> l(m_);
     return failed_test_cases;
   }
@@ -75,5 +77,5 @@ class TestResultStat {
   mutable onnxruntime::OrtMutex m_;
   std::unordered_set<std::string> not_implemented_kernels;
   std::unordered_set<std::string> failed_kernels;
-  std::vector< std::pair<std::string, std::string> > failed_test_cases; // pairs of test name and version
+  std::set<std::pair<std::string, std::string>> failed_test_cases; // pairs of test name and version
 };

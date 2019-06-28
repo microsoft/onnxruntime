@@ -118,7 +118,6 @@ class FuseExecutionProvider : public IExecutionProvider {
     ORT_UNUSED_PARAMETER(dst);
     return Status::OK();
   }
-
 };
 
 namespace test {
@@ -465,6 +464,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
 
 #ifndef NDEBUG
@@ -604,6 +604,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   SessionOptions so;
 
   so.session_logid = "ConfigureVerbosityLevel";
+  so.session_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   so.session_log_verbosity_level = 1;
 
   // create CapturingSink. LoggingManager will own it, but as long as the logging_manager
@@ -622,6 +623,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   RunOptions run_options;
   run_options.run_tag = "ConfigureVerbosityLevel";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   run_options.run_log_verbosity_level = 1;
   RunModel(session_object, run_options);
 
@@ -1424,7 +1426,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   so.enable_sequential_execution = false;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so};
-  
+
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());

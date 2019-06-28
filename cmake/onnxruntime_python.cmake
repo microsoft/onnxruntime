@@ -60,7 +60,7 @@ onnxruntime_add_include_to_target(onnxruntime_pybind11_state gsl)
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --no-undefined -Xlinker --gc-sections")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --gc-sections")
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
@@ -72,6 +72,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_MKLDNN}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -82,6 +83,10 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_common
     onnxruntime_mlas
 )
+
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}

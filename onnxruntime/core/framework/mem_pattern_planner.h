@@ -89,15 +89,15 @@ class MemPatternPlanner {
   }
 
  protected:
-  struct MLValueAllocationBlock {
+  struct OrtValueAllocationBlock {
     int index_{-1};
     MemoryBlock block_;
 
-    MLValueAllocationBlock() = default;
-    MLValueAllocationBlock(int index, MemoryBlock block) : index_(index), block_(block) {}
+    OrtValueAllocationBlock() = default;
+    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block) {}
   };
 
-  std::vector<MLValueAllocationBlock> allocs_;
+  std::vector<OrtValueAllocationBlock> allocs_;
   // blocks_ the list of currently allocated memory blocks, sorted in order of their offset
   std::list<int> blocks_;
   size_t buffer_size{0};
