@@ -89,7 +89,7 @@ Linux | (conda) passed | (conda) passed | passed
 Mac |  (conda) passed | (conda) passed | (conda) passed
 
 ## Example
-Developers could resort to PyOp during model conversion:
+Developers could resort to PyOp during model conversion for missing operators:
 ```python
 import os
 import numpy as np
@@ -117,6 +117,8 @@ custom_shape_calculators = {type(nmf): calculate_sklearn_nmf_output_shapes}
 custom_conversion_functions = {type(nmf): convert_nmf}
 initial_types = [('X', FloatTensorType([6,2]))]
 onx = convert_sklearn(nmf, '', initial_types, '', None, custom_conversion_functions, custom_shape_calculators)
+with th open("model.onnx", "wb") as f:
+    f.write(onx.SerializeToString())
 ```
 mymodule.py:
 ```python
