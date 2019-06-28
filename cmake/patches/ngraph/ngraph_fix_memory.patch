@@ -1,12 +1,6 @@
-From c6788c99e2ad801e9f1dbfb5b868df4e871c6f51 Mon Sep 17 00:00:00 2001
-From: Junfeng Dong <junfeng.dong@intel.com>
-Date: Tue, 25 Jun 2019 11:23:36 -0700
-Subject: [PATCH] Fix unnecessary memory allocation in MKLDNN conv 1x1.
-
----
- cmake/external_mkldnn.cmake   |   1 +
- cmake/mkldnn_fix_memory.patch | 105 ++++++++++++++++++++++++++++++++++
- 2 files changed, 106 insertions(+)
+ cmake/external_mkldnn.cmake   |  1 +
+ cmake/mkldnn_fix_memory.patch | 99 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 100 insertions(+)
  create mode 100644 cmake/mkldnn_fix_memory.patch
 
 diff --git a/cmake/external_mkldnn.cmake b/cmake/external_mkldnn.cmake
@@ -23,16 +17,10 @@ index 7874aca76..bbae6d1a4 100644
          CMAKE_GENERATOR_TOOLSET ${CMAKE_GENERATOR_TOOLSET}
 diff --git a/cmake/mkldnn_fix_memory.patch b/cmake/mkldnn_fix_memory.patch
 new file mode 100644
-index 000000000..20a76ede1
+index 000000000..ea1a3bd61
 --- /dev/null
 +++ b/cmake/mkldnn_fix_memory.patch
-@@ -0,0 +1,105 @@
-+From db24b0d2cb0c03eee11e1f67e78e254669540824 Mon Sep 17 00:00:00 2001
-+From: Junfeng Dong <junfeng.dong@intel.com>
-+Date: Tue, 25 Jun 2019 11:15:11 -0700
-+Subject: [PATCH] Fix unnecessary memory allocation.
-+
-+---
+@@ -0,0 +1,99 @@
 + src/cpu/jit_avx2_1x1_convolution.cpp                 | 6 +++---
 + src/cpu/jit_avx512_common_1x1_convolution.cpp        | 9 +++++----
 + src/cpu/jit_avx512_core_x8s8s32x_1x1_convolution.cpp | 2 +-
