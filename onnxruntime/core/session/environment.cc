@@ -3,7 +3,6 @@
 
 #include "core/session/environment.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/data_transfer_manager.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"

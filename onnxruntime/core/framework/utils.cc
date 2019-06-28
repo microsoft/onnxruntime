@@ -152,7 +152,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
     copy_info.allocation_provider = required_provider;
     copy_info.copy_provider = p_copy_provider;
 
-    ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTrasnferMgr(), copy_info, orig_mlvalue, new_mlvalue));
+    ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue));
 
     needed_copy = true;
 
@@ -382,7 +382,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 
     const int device_id = 0;  // TODO: As per comment in the copy input code, make this configurable.
     FeedsFetchesManager::MLValueCopyInfo copy_info{device_id, p_output_provider, p_copy_provider};
-    ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTrasnferMgr(), copy_info, fetched_mlvalue, output_mlvalue));
+    ORT_RETURN_IF_ERROR(CopyMLValue(session_state.GetDataTransferMgr(), copy_info, fetched_mlvalue, output_mlvalue));
 
     if (copiers) {
       (*copiers)[idx] = copy_info;
@@ -461,7 +461,7 @@ common::Status ExecuteGraphWithCachedInfo(
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CachedCopyInputsAcrossDevices(feeds, device_feeds,
                                                         feeds_fetches_manager.GetFeedsDeviceCopiers(),
-                                                        session_state.GetDataTrasnferMgr()));
+                                                        session_state.GetDataTransferMgr()));
       p_feeds = &device_feeds;
     }
 
@@ -486,7 +486,7 @@ common::Status ExecuteGraphWithCachedInfo(
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CachedCopyOutputsAcrossDevices(*p_fetches, fetches,
                                                          feeds_fetches_manager.GetFetchesDeviceCopiers(),
-                                                         session_state.GetDataTrasnferMgr()));
+                                                         session_state.GetDataTransferMgr()));
     }
   }
 

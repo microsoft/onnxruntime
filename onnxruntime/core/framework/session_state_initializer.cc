@@ -112,7 +112,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
       [this](int idx, const OrtValue& value, const OrtCallback& d) -> Status {
         return session_state_.AddInitializedTensor(idx, value, &d);
       },
-      logger_, session_state_.GetDataTrasnferMgr()));
+      logger_, session_state_.GetDataTransferMgr()));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better

@@ -14,10 +14,9 @@ bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
 }
 
 common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
-  memcpy(dst_data, src_data, bytes);
+  memcpy(dst_data, src_data, src.Size());
   return Status::OK();
 }
 

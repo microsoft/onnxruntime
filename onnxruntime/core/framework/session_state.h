@@ -175,8 +175,8 @@ class SessionState {
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
-  const DataTransferManager& GetDataTrasnferMgr() const { return *data_transfer_mgr_; }
-  void SetDataTrasnferMgr(const DataTransferManager* data_transfer_mgr) { data_transfer_mgr_ = data_transfer_mgr; }
+  const DataTransferManager& GetDataTransferMgr() const { return *data_transfer_mgr_; }
+  void SetDataTransferMgr(const DataTransferManager* data_transfer_mgr) { data_transfer_mgr_ = data_transfer_mgr; }
 
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
 

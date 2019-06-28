@@ -54,7 +54,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   CPUExecutionProvider execution_provider{CPUExecutionProviderInfo{"CPUExecutionProvider"}};
 
   OpKernelInfo p_info(node, kernel_def, execution_provider, s.GetInitializedTensors(), s.GetOrtValueNameIdxMap(),
-                      s.GetFuncMgr(), s.GetDataTrasnferMgr());
+                      s.GetFuncMgr(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();

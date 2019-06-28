@@ -108,7 +108,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
 #ifdef USE_CUDA
   data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
 #endif
-  session_state_.SetDataTrasnferMgr(&data_transfer_mgr_);
+  session_state_.SetDataTransferMgr(&data_transfer_mgr_);
 
   // The threadpool is currently evolving.  We will always create a per session threadpool.
   // Beyond this, we will create a global thread pool to share across sessions.
@@ -407,7 +407,7 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       // Pass threadpool to subgraph
       subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
 	  // Pass data transfer manager to subgraph.
-      subgraph_session_state->SetDataTrasnferMgr(&session_state.GetDataTrasnferMgr());
+      subgraph_session_state->SetDataTransferMgr(&session_state.GetDataTransferMgr());
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
