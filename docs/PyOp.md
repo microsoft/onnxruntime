@@ -70,13 +70,13 @@ class Multi_2:
 Copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
-* TensorProto.BOOL,
-* TensorProto.UINT8,
-* TensorProto.UINT16,
-* TensorProto.UINT32,
-* TensorProto.INT16,
-* TensorProto.INT32,
-* TensorProto.FLOAT,
+* TensorProto.BOOL
+* TensorProto.UINT8
+* TensorProto.UINT16
+* TensorProto.UINT32
+* TensorProto.INT16
+* TensorProto.INT32
+* TensorProto.FLOAT
 * TensorProto.DOUBLE
 
 ## Limitations
