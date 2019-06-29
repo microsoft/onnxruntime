@@ -6,6 +6,10 @@
 
 # Ubuntu 16.04 Base Image
 FROM ubuntu:16.04
+
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
+
 WORKDIR /code
 ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
 
@@ -14,8 +18,9 @@ COPY install_common_deps.sh /code/install_common_deps.sh
 RUN /bin/sh install_common_deps.sh
 
 # Prepare onnxruntime repository & build onnxruntime
-RUN git clone --recursive http://github.com/Microsoft/onnxruntime -b master --single-branch && \
-    cd onnxruntime && \
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime && \
+    /bin/sh onnxruntime/dockerfiles/install_common_deps.sh &&\
+    cd onnxruntime &&\
     /bin/sh ./build.sh --config Release --build_wheel --update --build && \
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl && \
     cd .. && \

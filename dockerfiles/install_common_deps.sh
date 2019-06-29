@@ -19,7 +19,6 @@ rm ~/miniconda.sh
 conda install -y python=3.6 numpy
 conda clean -aqy
 rm -rf /opt/miniconda/pkgs
-find / -type d -name __pycache__ -prune -exec rm -rf {};
 
 # Dependencies: cmake
 sudo wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz

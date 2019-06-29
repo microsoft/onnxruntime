@@ -6,51 +6,19 @@
 
 # nVidia cuda 10.0 Base Image
 FROM nvidia/cuda:10.0-cudnn7-devel
-WORKDIR /work/deps
 
-# Dependencies: Ubuntu-core
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends sudo \
-    wget \
-    zip \
-    build-essential curl libcurl4-openssl-dev libssl-dev python3-dev git
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
 
-# Dependencies: conda
-ENV PATH /opt/miniconda/bin:${PATH}
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh && \
-    /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
-    rm ~/miniconda.sh && \
-    /opt/miniconda/bin/conda clean -tipsy
-
-RUN conda install -y python=3.6 numpy && \
-    conda clean -aqy && \
-    rm -rf /opt/miniconda/pkgs && \
-    find / -type d -name __pycache__ -prune -exec rm -rf {} \;
-
-# Build the latest cmake
 WORKDIR /code
-RUN wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz
-RUN tar zxf cmake-3.14.3-Linux-x86_64.tar.gz
-
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
 
-# Prepare onnxruntime repository
-RUN git clone --recursive https://github.com/Microsoft/onnxruntime -b master --single-branch
-WORKDIR /code/onnxruntime
-
-# Start the CUDA build
-RUN /bin/sh ./build.sh --cuda_home /usr/local/cuda \
---cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda \
---config Release --build_wheel --update --build
-
-# Copy the ONNX Runtime wheel into the root directory
-RUN cp /code/onnxruntime/build/Linux/Release/dist/*.whl /code
-COPY LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
-
-WORKDIR /code
-
-# Remove unecessary files to reduce image size
-RUN rm -rf onnxruntime cmake-3.14.3-Linux-x86_64.tar.gz cmake-3.14.3-Linux-x86_64
-
-# Install the onnxruntime-gpu CUDA wheel
-RUN pip install *.whl
+# Prepare onnxruntime repository & build onnxruntime with TensorRT
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime && \
+    /bin/sh onnxruntime/dockerfiles/install_common_deps.sh &&\
+    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
+    cd onnxruntime &&\
+    /bin/sh ./build.sh --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda --config Release --build_wheel --update --build &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl && \
+    cd .. && \
+    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64.tar.gz cmake-3.14.3-Linux-x86_64
