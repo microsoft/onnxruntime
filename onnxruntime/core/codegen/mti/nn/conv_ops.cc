@@ -68,12 +68,6 @@ tvm::Tensor Conv2D(const tvm::Tensor& input,
                    const tvm::Array<tvm::Expr>& stride,
                    const tvm::Array<tvm::Expr>& padding,
                    const std::string& name) {
-  // Gemm Convolution
-  const int64_t* batch_size = tvm::as_const_int(input->shape[0]);
-  if (batch_size != nullptr && *batch_size == 1)
-    return Conv2D_gemm(input, filter, output_shape, stride, padding);
-
-  // Native Convolution
   return Conv2D_native(input, filter, output_shape, stride, padding);
 }
 
