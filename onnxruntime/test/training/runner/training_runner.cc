@@ -57,7 +57,7 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path_));
 
   // Add loss func
-  ORT_RETURN_IF_ERROR(session_.AddLossFuncion(params_.loss_func_info_));
+  ORT_RETURN_IF_ERROR(session_.BuildLossFuncion(params_.loss_func_info_));
   if (params_.world_rank_ == 0 && !params_.model_with_loss_func_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_loss_func_path_,
                                       TrainingSession::SaveOption::NO_RELOAD));
@@ -67,28 +67,25 @@ Status TrainingRunner::Initialize() {
   // Otherweise, generate the list by removing not-to-train ones from all initializers.
   auto weights_to_train = params_.weights_to_train_;
   if (weights_to_train.empty()) {
-    auto all_weights = session_.GetTrainableModelInitializers(params_.immutable_weigths_);
+    weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weigths_);
     for (const auto& not_to_train : params_.weights_not_to_train_) {
-      all_weights.erase(not_to_train);
+      weights_to_train.erase(not_to_train);
     }
-    weights_to_train.reserve(all_weights.size());
-    weights_to_train.insert(weights_to_train.end(), all_weights.begin(), all_weights.end());
   }
 
   for (auto weight : weights_to_train) {
     std::cout << "Training weight " << weight << std::endl;
   }
 
-  vector<in_graph_optimizer::OptimizerInfo> opt_info;
+  std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo> opt_info;
 #ifdef USE_CUDA
   if (params_.use_cuda_) {
-    opt_info.resize(weights_to_train.size());
-    SetupOptimizerParams(opt_info);
+    ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, opt_info));
   }
 #endif
 
   // Add gradient graph
-  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name_, opt_info));
+  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name, opt_info));
   if (params_.world_rank_ == 0 && !params_.model_with_training_graph_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_training_graph_path_,
                                       TrainingSession::SaveOption::NO_RELOAD));
@@ -110,8 +107,8 @@ Status TrainingRunner::Run() {
   }
 
   // Test the original model.
-  printf("Before training \n");
-  ORT_RETURN_IF_ERROR(Evaluate(session_, true /*use full test set*/));
+  //printf("Before training \n");
+  //ORT_RETURN_IF_ERROR(Evaluate(session_, true /*use full test set*/));
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
 
@@ -145,7 +142,7 @@ Status TrainingRunner::TrainingLoop() {
 
       NameMLValMap grad;
       for (size_t i = 0; i < training_output_names.size(); i++) {
-        if (training_output_names[i] == params_.loss_func_info_.loss_name_ ||
+        if (training_output_names[i] == params_.loss_func_info_.loss_name ||
             training_output_names[i] == params_.model_prediction_name_) {
           continue;
         }
@@ -228,7 +225,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
   ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
                                   feed_names,
                                   feeds,
-                                  {params_.model_prediction_name_, params_.loss_func_info_.loss_name_},
+                                  {params_.model_prediction_name_, params_.loss_func_info_.loss_name},
                                   &fetches));
 
   // Call error function with predict, label and loss.
@@ -255,7 +252,8 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
   return Evaluate(s, true /*use full test set*/);
 }
 
-Status TrainingRunner::SetupOptimizerParams(vector<in_graph_optimizer::OptimizerInfo>& opt_infos) {
+Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
+                                            std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& opt_infos) {
   // If in-graph optimizer is used, prepare the weight<->optimizer mapping.
   // Here all weights use the same SGDOptimizer or AdamOptimizer
   bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
@@ -270,8 +268,9 @@ Status TrainingRunner::SetupOptimizerParams(vector<in_graph_optimizer::Optimizer
       opt_info.attributes_["epsilon"] = params_.adam_opt_params_.epsilon_;
     }
 
-    for (unsigned int i = 0; i < opt_infos.size(); ++i) {
-      opt_infos[i] = opt_info;
+    opt_infos.reserve(weights_to_train.size());
+    for (const auto& weight_name : weights_to_train) {
+      opt_infos[weight_name] = opt_info;
     }
   }
 

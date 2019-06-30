@@ -25,6 +25,7 @@ struct ArgDef {
 };
 
 struct OpDef {
+  OpDef() {}
   OpDef(const std::string& type, const std::string& domain = kOnnxDomain)
       : type(type),
         domain(domain){};
@@ -131,8 +132,15 @@ class GraphAugmenter {
     // When adding ArgDef, if new TypeProto is needed, call this func to get a new one
     // So that the life cycle is managed by GraphDefs.
     TypeProto* CreateTypeProto() {
-      graph_type_protos.push_back(std::make_unique<TypeProto>());
-      return graph_type_protos.back().get();
+      graph_type_protos_.push_back(std::make_unique<TypeProto>());
+      return graph_type_protos_.back().get();
+    }
+
+    TypeProto* CopyTypeProto(const NodeArg* node_arg) {
+      ORT_ENFORCE(node_arg != nullptr, "CopyTypeProto's node_arg is null.");
+      TypeProto* type_proto = CreateTypeProto();
+      type_proto->CopyFrom(*(node_arg->TypeAsProto()));
+      return type_proto;
     }
 
    private:
@@ -141,7 +149,7 @@ class GraphAugmenter {
     std::vector<TensorProto> graph_initializers_;
 
     // A pool of TypeProto, used when adding ArgDef if new TypeProto is needed.
-    std::vector<std::unique_ptr<TypeProto>> graph_type_protos;
+    std::vector<std::unique_ptr<TypeProto>> graph_type_protos_;
   };
 
   // Augment the graph with new_graph_elements which defines new nodes, outputs, initializers.

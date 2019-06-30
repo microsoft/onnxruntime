@@ -885,6 +885,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
+              {GO(0), I(0), I(1)},
+              {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef& X = I(0);
 

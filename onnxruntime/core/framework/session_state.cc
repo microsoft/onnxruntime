@@ -48,7 +48,7 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
 
 const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
-NameMLValMap SessionState::GetInitializedTensors(const std::vector<std::string>& interested_weights) const {
+NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const {
   NameMLValMap result;
   for (const auto& name : interested_weights) {
     int idx;

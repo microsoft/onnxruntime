@@ -22,12 +22,15 @@ class TrainingRunner {
   };
 
   struct Parameters {
+    Parameters() {}
+
     std::string model_path_;
     std::string model_with_loss_func_path_;          // To save the model after adding loss func.
     std::string model_with_training_graph_path_;     // To save the model after adding loss func and backward graph.
     std::string model_actual_running_graph_path_;    // To save the model with the actual running graph after transformations.
     std::string model_trained_path_;                 // To save the model after training.
     std::string model_trained_with_loss_func_path_;  // To save the model with loss func after training.
+
     LossFunctionInfo loss_func_info_;
 
     // The in-graph optimizer info.
@@ -42,11 +45,11 @@ class TrainingRunner {
     std::string model_prediction_name_;
 
     // The weights to train, exclusive with weights_not_to_train_.
-    std::vector<std::string> weights_to_train_;
+    std::unordered_set<std::string> weights_to_train_;
 
     // The weights not to train. If not empty, all the initializers not in the vector will be trained.
     // exclusive with weights_not_to_train_.
-    std::vector<std::string> weights_not_to_train_;
+    std::unordered_set<std::string> weights_not_to_train_;
 
     TrainingSession::ImmutableWeights immutable_weigths_;
 
@@ -86,7 +89,8 @@ class TrainingRunner {
   Status EndTraining();
   Status Evaluate(InferenceSession& session, bool use_full_set = false);
   Status LoadAndEvaluate(const std::string& model_path);
-  Status SetupOptimizerParams(std::vector<in_graph_optimizer::OptimizerInfo>& infos);
+  Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
+                              std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& infos);
 
   DataSet& training_data_;
   DataSet& test_data_;

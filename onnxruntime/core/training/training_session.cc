@@ -20,14 +20,15 @@ namespace onnxruntime {
 namespace training {
 
 static Status AddLossFuncionInternal(Graph& graph,
+                                     std::shared_ptr<ILossFunction>& loss_graph_builder,
                                      const LossFunctionInfo& loss_func_info) {
-  return GraphAugmenter::AugmentGraph(graph, LossFunctionBuilder().Build(graph, loss_func_info));
+  return GraphAugmenter::AugmentGraph(graph, loss_graph_builder->operator()(graph, loss_func_info));
 }
 
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const string& loss_function_output_name,
-                                         const vector<string>& node_arg_names_to_train,
-                                         const vector<in_graph_optimizer::OptimizerInfo>& opt_info) {
+                                         const unordered_set<string>& node_arg_names_to_train,
+                                         const unordered_map<string, in_graph_optimizer::OptimizerInfo>& opt_info) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
@@ -37,20 +38,25 @@ static Status BuildGradientGraphInternal(Graph& graph,
   return grad_graph_builder.Build();
 }
 
-Status TrainingSession::AddLossFuncion(const LossFunctionInfo& loss_func_info) {
+Status TrainingSession::BuildLossFuncion(const LossFunctionInfo& loss_func_info) {
+  if (loss_func_info.op_def.type.empty() || loss_func_info.loss_name.empty()) {
+    ORT_THROW("BuildLossFuncion's loss_function_info is invalid.");
+  }
+
   loss_func_info_ = loss_func_info;
+  loss_graph_builder_ = LossFunctionBuilder::Build(loss_func_info_.op_def.type);
 
   try {
-    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(model_->MainGraph(), loss_func_info_));
+    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(model_->MainGraph(), loss_graph_builder_, loss_func_info_));
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add loss function:", exp.what());
   }
   return DoPostLoadProcessing(*model_);
 }
 
-Status TrainingSession::BuildGradientGraph(const vector<string>& weights_to_train,
+Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_to_train,
                                            const string& loss_function_output_name,
-                                           const vector<in_graph_optimizer::OptimizerInfo>& opt_info) {
+                                           const unordered_map<string, in_graph_optimizer::OptimizerInfo>& opt_info) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
   opt_info_ = opt_info;
@@ -134,12 +140,12 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
 
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
       opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS /*with everything*/) {
-    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(new_model->MainGraph(), loss_func_info_));
+    ORT_RETURN_IF_ERROR(AddLossFuncionInternal(new_model->MainGraph(), loss_graph_builder_, loss_func_info_));
   }
 
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS) {
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
-                                                   loss_func_info_.loss_name_,
+                                                   loss_func_info_.loss_name,
                                                    weights_to_train_,
                                                    opt_info_));
   }

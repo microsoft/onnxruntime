@@ -38,10 +38,10 @@ class TrainingSession : public InferenceSession {
                      GRADIENT_OF_LABEL
            And also in gradient_builder.cc, the gradient builder must have been registered.
   */
-  common::Status AddLossFuncion(const LossFunctionInfo& loss_func_info);
+  common::Status BuildLossFuncion(const LossFunctionInfo& loss_func_info);
 
   /** Perform auto-diff to add backward graph into the model.
-  @param weights_to_train a list of weights to be training.
+  @param weights_to_train a set of weights to be training.
   @param loss_function_output_name the name of the loss function's output.
   @param opt_info optional, specify the optimizers used by each weight in weights_to_train, 1-1 mapping to weights_to_train.
   @remarks if optimizer_and_params is not empty, in the gradient graph, every gradient will be fed into a new optimizer
@@ -53,9 +53,9 @@ class TrainingSession : public InferenceSession {
            4. Differnt weights can have different optimizers and parameters.
   */
 
-  common::Status BuildGradientGraph(const std::vector<std::string>& weights_to_train,
+  common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
-                                    const std::vector<in_graph_optimizer::OptimizerInfo>& opt_info = {});
+                                    const std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& opt_info = {});
 
   /** Save a model, 3 options:
   1. save with updated weights
@@ -100,9 +100,12 @@ class TrainingSession : public InferenceSession {
                             const logging::Logger* logger = nullptr);
 
  private:
-  std::vector<std::string> weights_to_train_;
+  std::unordered_set<std::string> weights_to_train_;
+
+  std::shared_ptr<ILossFunction> loss_graph_builder_;
   LossFunctionInfo loss_func_info_;
-  std::vector<in_graph_optimizer::OptimizerInfo> opt_info_;
+
+  std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo> opt_info_;
 };
 }  // namespace training
 }  // namespace onnxruntime

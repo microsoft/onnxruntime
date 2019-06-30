@@ -3,32 +3,25 @@
 #pragma once
 
 #include <string>
+#include "core/framework/data_types.h"
 #include "core/graph/training/graph_augmenter.h"
 
 namespace onnxruntime {
 namespace training {
 
 struct LossFunctionInfo {
-  //The standard loss function name or an op name (as a cost function)
-  std::string name_;
+  LossFunctionInfo() {}
+  LossFunctionInfo(const OpDef& op_def, const std::string& loss_name, const VectorString& loss_builder_args)
+      : op_def(op_def), loss_name(loss_name), loss_builder_args(loss_builder_args) {}
 
-  //The name of the "prediction" of the loss function, must be one of the existing outputs in the model.
-  std::string prediction_name_;
-
-  //The name of the "label" of the loss function, must be different from any existing inputs in the model
-  std::string label_name_;
-
-  //loss_name Output name of the loss function, must be different from any existing outputs in the model
-  std::string loss_name_;
-
-  //The domain of loss function op
-  std::string domain_;
+  OpDef op_def;
+  std::string loss_name;
+  VectorString loss_builder_args;
 };
 
-class ILossFunction {
- public:
-  virtual GraphAugmenter::GraphDefs GetDefs(const LossFunctionInfo& loss_func_info) const = 0;
-  virtual ~ILossFunction() {}
+struct ILossFunction {
+  virtual GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) = 0;
+  virtual ~ILossFunction(){};
 };
 
 }  // namespace training

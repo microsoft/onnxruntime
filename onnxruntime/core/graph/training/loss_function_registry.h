@@ -12,6 +12,10 @@
 namespace onnxruntime {
 namespace training {
 
+struct LossFunctionUsingOperator : public ILossFunction {
+  GraphAugmenter::GraphDefs operator()(const Graph&, const LossFunctionInfo&) override;
+};
+
 class LossFunctionRegistry : public GenericRegistry<ILossFunction> {
  public:
   // Register a list of non-operator loss functions stacitally.

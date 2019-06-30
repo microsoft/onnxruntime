@@ -86,7 +86,7 @@ class SessionState {
   /**
   Get some initialized tensors (weights).
   */
-  NameMLValMap GetInitializedTensors(const std::vector<std::string>& interested_weights) const;
+  NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 
   /**
   Update some initialized tensors (weights).

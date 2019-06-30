@@ -51,17 +51,17 @@ void GradientOpTester::Run(
 
     // TODO: We will need finer control over both inputs and ouptuts
     // Not all inputs/outputs reqiures/have a gradient, e.g.index in gather
-    VectorString weights_to_train;
+    std::unordered_set<std::string> weights_to_train;
     for (size_t i = 0; i < input_data_.size(); i++) {
       if (input_infos_[i].has_gradient) {
-        weights_to_train.push_back(input_data_[i].def_.Name());
+        weights_to_train.insert(input_data_[i].def_.Name());
       }
     }
 
-    VectorString dy_values;
+    std::unordered_set<std::string> dy_values;
     for (size_t i = 0; i < output_data_.size(); i++) {
       if (output_infos_[i].has_gradient) {
-        dy_values.push_back(output_data_[i].def_.Name());
+        dy_values.insert(output_data_[i].def_.Name());
       }
     }
 

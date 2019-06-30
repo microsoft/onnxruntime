@@ -22,10 +22,10 @@ namespace training {
 using namespace common;
 
 GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
-                                           const vector<string>& y_node_arg_names,
-                                           const vector<string>& x_node_arg_names,
+                                           const unordered_set<string>& y_node_arg_names,
+                                           const unordered_set<string>& x_node_arg_names,
                                            string loss_node_arg_name,
-                                           const vector<in_graph_optimizer::OptimizerInfo>& opt_info)
+                                           const unordered_map<string, in_graph_optimizer::OptimizerInfo>& opt_info)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
       pre_training_graph_transformer_{"pre_training_graph_transformer"},
@@ -37,11 +37,11 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     if (!node_arg) {
       ORT_THROW("Node arg ", name, " is not found in the graph.");
     }
-    y_node_args_.push_back(node_arg);
+    y_node_args_.insert(node_arg);
 
-    const Node* node = graph_->GetProducerNode(node_arg->Name());
+    const Node* node = graph_->GetProducerNode(name);
     if (!node) {
-      ORT_THROW(node_arg->Name(), " couldn't find the producer node.");
+      ORT_THROW(name, " couldn't find the producer node.");
     }
     y_nodes_.insert(node);
   }
@@ -51,12 +51,16 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     if (!node_arg) {
       ORT_THROW("Node arg ", name, " is not found in the graph.");
     }
-    x_node_args_.push_back(node_arg);
+    x_node_args_.insert(node_arg);
 
-    vector<const Node*> nodes = graph_->GetConsumerNodes(node_arg->Name());
+    vector<const Node*> nodes = graph_->GetConsumerNodes(name);
     if (nodes.empty()) {
-      ORT_THROW(node_arg->Name(), " couldn't find the consumer node.");
+      ORT_THROW(name, " couldn't find the consumer node.");
     }
+
+    string grad_arg_name = GradientBuilderBase::GradientName(name);
+    pending_[grad_arg_name] = static_cast<int>(nodes.size());
+
     x_nodes_.insert(nodes.begin(), nodes.end());
   }
 }
@@ -130,7 +134,7 @@ Status GradientGraphBuilder::Build() {
   // Going forward to figure out which node_args need backprop-ed.
   deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
   NodeSet visited(x_nodes_);
-  unordered_set<const NodeArg*> visited_node_args(x_node_args_.begin(), x_node_args_.end());
+  unordered_set<const NodeArg*> visited_node_args = x_node_args_;
   visited_node_args.insert(y_node_args_.begin(), y_node_args_.end());
 
   while (!queue.empty()) {
@@ -144,6 +148,7 @@ Status GradientGraphBuilder::Build() {
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
       string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
+
       pending_[grad_node_arg_name] += 1;
 
       visited_node_args.insert(node_arg);
@@ -204,14 +209,21 @@ Status GradientGraphBuilder::Build() {
   } else {
     // Add optimizer nodes
     // For now every weight has its own optimizer node.
-    for (size_t i = 0; i < x_node_args_.size(); ++i) {
-      auto opt_builder = in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info_[i].name_);
-      const string& weight_name = x_node_args_[i]->Name();
-      const TensorShapeProto* weight_shape = x_node_args_[i]->Shape();
+    for (const NodeArg* x_node_arg : x_node_args_) {
+      const string& weight_name = x_node_arg->Name();
+
+      auto opt_info_it = opt_info_.find(weight_name);
+      if (opt_info_it == opt_info_.end()) {
+        ORT_THROW("Weight ", weight_name, " is not found in the optimizier info map.");
+      }
+      const auto& opt_info = opt_info_it->second;
+      auto opt_builder = in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info.name_);
+
+      const TensorShapeProto* weight_shape = x_node_arg->Shape();
       opt_builder->Build({weight_name},
                          {weight_shape},
                          {GradientBuilderBase::GradientName(weight_name)},
-                         opt_info_[i],
+                         opt_info,
                          gradient_graph_defs);
     }
   }

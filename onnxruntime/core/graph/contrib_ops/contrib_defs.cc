@@ -1279,6 +1279,69 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .Input(0, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(1, "label", "label is 1-D input of shape (batch_size).", "Tind")
+      .Output(0, "Y", "loss.", "T")
+      .TypeConstraint("T",
+                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("Tind",
+                      {"tensor(int32)", "tensor(int64)"},
+                      "Constrain indices to integer types")
+      .SetDoc(R"DOC(SparseSoftmaxCrossEntropy)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropyGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "logits", "Unscaled log probabilities, 1-D input of shape (batch_size).", "T")
+      .Input(2, "label", "label is 2-D input of shape (batch_size, num_classes).", "Tind")
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint("T",
+                      {"tensor(float16)", "tensor(float)", "tensor(double)"},
+                      "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("Tind",
+                      {"tensor(int32)", "tensor(int64)"},
+                      "Constrain indices to integer types")
+      .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("TrainableDropout")
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::FLOAT, OPTIONAL)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "ratio",
+             "The ratio of random dropout, with value in [0, 1]. If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of input, which is typically "
+             "the case during training.",
+             "T",
+             OpSchema::Optional)
+      .Output(0, "output", "The output.", "T")
+      .Output(1, "mask", "The output mask.", "T1", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(bool)"},
+          "Constrain output 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        if (ctx.getNumOutputs() == 2) {
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          if (hasNInputShapes(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
+      });
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

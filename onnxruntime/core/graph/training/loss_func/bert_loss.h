@@ -8,8 +8,11 @@
 namespace onnxruntime {
 namespace training {
 
-struct MeanSquaredError : public ILossFunction {
+struct BertLoss : public ILossFunction {
   GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) override;
+
+ private:
+  static TypeProto* GetLabelTypeProto(const NodeArg* prediction_arg, GraphAugmenter::GraphDefs& graph_defs);
 };
 
 }  // namespace training

@@ -1,23 +1,35 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/graph/training/loss_func/mean_squared_error.h"
+
 #include <vector>
+#include "core/graph/training/loss_func/mean_squared_error.h"
 
 namespace onnxruntime {
 namespace training {
 
-GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss_func_info) const {
+GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) {
+  const std::string& loss_name = loss_func_info.loss_name;
+  const VectorString& args = loss_func_info.loss_builder_args;
+  ORT_ENFORCE(args.size() == 2, " Invalid loss_func_info for MeanSquaredError.");
+  const std::string& prediction_name = args[0];
+  const std::string& label_name = args[1];
+
   GraphAugmenter::GraphDefs graph_defs;
 
-  graph_defs.AddGraphOutputs({loss_func_info.loss_name_});
+  graph_defs.AddGraphOutputs({loss_name});
 
   std::vector<NodeDef> new_nodes;
   // Sub
   {
+    const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
+    ORT_ENFORCE(prediction_arg != nullptr,
+                "Predition arg ", prediction_name, " is not found in the graph.");
+    TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
+
     new_nodes.emplace_back(NodeDef("Sub",  // Op
                                    {
-                                       ArgDef(loss_func_info.prediction_name_),
-                                       ArgDef(loss_func_info.label_name_)},  // Inputs
+                                       ArgDef(prediction_name),
+                                       ArgDef(label_name, label_type_proto)},
                                    {
                                        ArgDef("MeanSquaredError_diff")  // Outputs
                                    },
@@ -36,7 +48,7 @@ GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss
 
     new_nodes.emplace_back(NodeDef("Pow",  // Op
                                    {
-                                       ArgDef("MeanSquaredError_diff"),  // Inputs
+                                       ArgDef("MeanSquaredError_diff"),
                                        ArgDef("MeanSquaredError_exponent")},
                                    {
                                        ArgDef("MeanSquaredError_diff_square")  // Outputs
@@ -64,9 +76,9 @@ GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss
     }
     new_nodes.emplace_back(NodeDef("ReduceMean",  // Op
                                    {
-                                       ArgDef("MeanSquaredError_diff_square")},  // Inputs
+                                       ArgDef("MeanSquaredError_diff_square")},
                                    {
-                                       ArgDef(loss_func_info.loss_name_)  // Outputs
+                                       ArgDef(loss_name)  // Outputs
                                    },
                                    attributes,
                                    "MeanSquaredError_reduce_mean"  // name
@@ -74,6 +86,7 @@ GraphAugmenter::GraphDefs MeanSquaredError::GetDefs(const LossFunctionInfo& loss
   }
 
   graph_defs.AddNodeDefs(new_nodes);
+
   return graph_defs;
 }
 }  // namespace training
