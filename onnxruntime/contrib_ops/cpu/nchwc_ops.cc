@@ -101,6 +101,9 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
 
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(ConvBase::ComputeKernelShape(W->Shape(), kernel_shape));
+  if (kernel_shape.size() != 2) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported convolution size.");
+  }
 
   std::vector<int64_t> pads(ConvBase::pads_);
   if (pads.empty()) {
@@ -176,7 +179,7 @@ Status NchwcPoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) 
   ORT_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
 
   size_t pooling_dims = input_dims - 2;
-  if (pooling_dims > 3) {
+  if (pooling_dims != 2) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported pooling size.");
   }
   if (!global_pooling_) {
@@ -191,7 +194,7 @@ Status NchwcPoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) 
                 pooling_dims,
                 X->Shape().GetDims().data(),
                 global_pooling_ ? nullptr : kernel_shape_.data(),
-                nullptr,
+                global_pooling_ ? nullptr : dilations_.data(),
                 global_pooling_ ? nullptr : pads.data(),
                 global_pooling_ ? nullptr : strides_.data(),
                 output_dims.data(),

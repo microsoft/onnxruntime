@@ -44,7 +44,7 @@ void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
   schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
   schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-    ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
+    ONNX_NAMESPACE::convPoolShapeInference(ctx, true, true, 0, 1);
   });
 }
 
