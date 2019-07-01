@@ -34,13 +34,13 @@ static std::unordered_set<NodeIndex> CalculateToBeExecutedNodes(const std::vecto
       return {};
     }
 
-    auto ending_node = graph_viewer.GetProducerNode(node_arg_name);
+    auto ending_node = graph_viewer.GetGraph()->GetProducerNode(node_arg_name);
     nodes.push_back(ending_node);
   }
 
   // Reversely traverse to get reachable nodes.
   std::unordered_set<NodeIndex> reachable_nodes;
-  graph_viewer.ReverseDFSFrom(
+  graph_viewer.GetGraph()->ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
 
   return reachable_nodes;
