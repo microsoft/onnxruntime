@@ -72,6 +72,8 @@ template <typename T>
 Status ReorderInput<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
+  ORT_ENFORCE(X_shape.NumDimensions() == 4);
+  ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
   Tensor* Y = context->Output(0, X_shape);
   MlasReorderInput(X_shape.GetDims().data(), X->template Data<T>(), Y->template MutableData<T>());
   return Status::OK();
@@ -80,7 +82,9 @@ Status ReorderInput<T>::Compute(OpKernelContext* context) const {
 template <typename T>
 Status ReorderOutput<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  std::vector<int64_t> Y_shape(X->Shape().GetDims());
+  const TensorShape& X_shape = X->Shape();
+  ORT_ENFORCE(X_shape.NumDimensions() == 4);
+  std::vector<int64_t> Y_shape(X_shape.GetDims());
   ORT_ENFORCE(channels_ <= Y_shape[1]);
   Y_shape[1] = channels_;
   Tensor* Y = context->Output(0, Y_shape);
@@ -94,13 +98,18 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   const Tensor* W = context->Input<Tensor>(1);
   const Tensor* B = context->Input<Tensor>(2);
   const Tensor* Sum = context->Input<Tensor>(3);
-  const int64_t N = X->Shape()[0];
-  const int64_t M = W->Shape()[0];
 
   ORT_RETURN_IF_ERROR(ConvBase::ValidateInputShape(X, W));
 
+  const TensorShape& X_shape = X->Shape();
+  const TensorShape& W_shape = W->Shape();
+  ORT_ENFORCE(X_shape.NumDimensions() == 4);
+
+  const size_t nchwc_block_size = MlasNchwcGetBlockSize();
+  ORT_ENFORCE((static_cast<size_t>(X_shape[1]) < nchwc_block_size) || ((X_shape[1] % nchwc_block_size) == 0));
+
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ConvBase::ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(ConvBase::ComputeKernelShape(W_shape, kernel_shape));
   if (kernel_shape.size() != 2) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported convolution size.");
   }
@@ -119,7 +128,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   }
 
   std::vector<int64_t> Y_dims;
-  Y_dims.insert(Y_dims.begin(), {N, M});
+  Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, Y_dims);
@@ -153,7 +162,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   }
 
   MlasNchwcConv(kernel_shape.size(),
-                X->Shape().GetDims().data(),
+                X_shape.GetDims().data(),
                 kernel_shape.data(),
                 dilations.data(),
                 pads.data(),
@@ -173,26 +182,22 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
 
 Status NchwcPoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
   const Tensor* X = context->Input<Tensor>(0);
-  const TensorShape& x_shape = X->Shape();
 
-  size_t input_dims = x_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
+  const TensorShape& X_shape = X->Shape();
+  ORT_ENFORCE(X_shape.NumDimensions() == 4);
+  ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
-  size_t pooling_dims = input_dims - 2;
-  if (pooling_dims != 2) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported pooling size.");
-  }
   if (!global_pooling_) {
-    ORT_RETURN_IF_NOT(pooling_dims == kernel_shape_.size(), "kernel_shape num_dims is not compatible with X num_dims.");
+    ORT_RETURN_IF_NOT(kernel_shape_.size() == 2, "kernel_shape num_dims is not compatible with X num_dims.");
   }
 
   std::vector<int64_t> pads = pads_;
-  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
+  std::vector<int64_t> output_dims = PoolBase::SetOutputSize(X_shape, X_shape[1], &pads, dilations_, ceil_mode_);
   Tensor* Y = context->Output(0, output_dims);
 
   MlasNchwcPool(kind,
-                pooling_dims,
-                X->Shape().GetDims().data(),
+                2,
+                X_shape.GetDims().data(),
                 global_pooling_ ? nullptr : kernel_shape_.data(),
                 global_pooling_ ? nullptr : dilations_.data(),
                 global_pooling_ ? nullptr : pads.data(),
