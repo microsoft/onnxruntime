@@ -13,7 +13,7 @@ onnxruntime                          pywrapper                          script
      |       call with tensor(s)        | ------------------------------> |
      |                                  |         call with numpy(s)      | 
      |                                  |                                 | compute
-     |                                  |  <----------------------------- |
+     |                                  | <------------------------------ |
      | <------------------------------  |           return numpys(s)      |
      |         return tensor(s)         |                                 |
 </pre>
