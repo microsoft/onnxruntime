@@ -42,11 +42,7 @@ struct NchwcTestHelper {
   NchwcTestHelper(Graph& graph) : graph_(graph), fill_value_(0) {
   }
 
-  template <typename T>
-  NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto);
-
-  template <>
-  NodeArg* MakeInput<float>(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
+  NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
     int64_t num_elements = 1;
     for (auto& dim : shape) {
       num_elements *= dim;
@@ -61,11 +57,7 @@ struct NchwcTestHelper {
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
-  template <typename T>
-  NodeArg* MakeInput(const std::vector<int64_t>& shape);
-
-  template <>
-  NodeArg* MakeInput<float>(const std::vector<int64_t>& shape) {
+  NodeArg* MakeInput(const std::vector<int64_t>& shape) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
@@ -73,7 +65,7 @@ struct NchwcTestHelper {
       type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
     }
 
-    return MakeInput<float>(shape, type_proto);
+    return MakeInput(shape, type_proto);
   }
 
   NodeArg* MakeOutput() {
@@ -200,7 +192,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({16, 3, 224, 224});
+      auto* input_arg = helper.MakeInput({16, 3, 224, 224});
       auto* output_arg = helper.MakeOutput();
 
       auto* conv_output_arg = output_arg;
@@ -236,7 +228,7 @@ TEST(NchwcOptimizerTests, ConvNchw) {
 TEST(NchwcOptimizerTests, ConvNchwc) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({16, 64, 28, 28});
+      auto* input_arg = helper.MakeInput({16, 64, 28, 28});
       auto* output_arg = helper.MakeOutput();
 
       auto* conv_output_arg = output_arg;
@@ -270,7 +262,7 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
 TEST(NchwcOptimizerTests, ConvNchwcGrouped) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({16, 48, 28, 28});
+      auto* input_arg = helper.MakeInput({16, 48, 28, 28});
       auto* output_arg = helper.MakeOutput();
 
       auto* conv_output_arg = output_arg;
@@ -305,7 +297,7 @@ TEST(NchwcOptimizerTests, ConvNchwcGrouped) {
 TEST(NchwcOptimizerTests, ConvDepthwise) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({16, 96, 28, 28});
+      auto* input_arg = helper.MakeInput({16, 96, 28, 28});
       auto* output_arg = helper.MakeOutput();
 
       auto* conv_output_arg = output_arg;
@@ -340,7 +332,7 @@ TEST(NchwcOptimizerTests, ConvDepthwise) {
 TEST(NchwcOptimizerTests, ConvPointwise) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({16, 64, 28, 42});
+      auto* input_arg = helper.MakeInput({16, 64, 28, 42});
       auto* output_arg = helper.MakeOutput();
 
       auto* conv_output_arg = output_arg;
@@ -373,7 +365,7 @@ TEST(NchwcOptimizerTests, ConvPointwise) {
 
 TEST(NchwcOptimizerTests, ConvClip) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<float>({1, 3, 28, 28});
+    auto* input_arg = helper.MakeInput({1, 3, 28, 28});
     auto* conv_output_arg = helper.MakeIntermediate();
     auto* output_arg = helper.MakeOutput();
 
@@ -396,7 +388,7 @@ TEST(NchwcOptimizerTests, ConvClip) {
 
 TEST(NchwcOptimizerTests, ConvMaxPool) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<float>({1, 48, 34, 34});
+    auto* input_arg = helper.MakeInput({1, 48, 34, 34});
     auto* conv_output_arg = helper.MakeIntermediate();
     auto* output_arg = helper.MakeOutput();
 
@@ -420,7 +412,7 @@ TEST(NchwcOptimizerTests, ConvMaxPool) {
 
 TEST(NchwcOptimizerTests, ConvMaxPoolDilations) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<float>({1, 48, 66, 77});
+    auto* input_arg = helper.MakeInput({1, 48, 66, 77});
     auto* conv_output_arg = helper.MakeIntermediate();
     auto* output_arg = helper.MakeOutput();
 
@@ -445,7 +437,7 @@ TEST(NchwcOptimizerTests, ConvMaxPoolDilations) {
 TEST(NchwcOptimizerTests, ConvAveragePool) {
   auto test_case = [&](bool count_include_pad) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 48, 34, 34});
+      auto* input_arg = helper.MakeInput({1, 48, 34, 34});
       auto* conv_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
@@ -477,7 +469,7 @@ TEST(NchwcOptimizerTests, ConvAveragePool) {
 TEST(NchwcOptimizerTests, ConvGlobalPool) {
   auto test_case = [&](const std::string& op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 96, 54, 54});
+      auto* input_arg = helper.MakeInput({1, 96, 54, 54});
       auto* conv_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
@@ -507,7 +499,7 @@ TEST(NchwcOptimizerTests, ConvGlobalPool) {
 TEST(NchwcOptimizerTests, ConvAddFusion) {
   auto test_case = [&](const std::string& op_type, bool do_relu) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 32, 28, 28});
+      auto* input_arg = helper.MakeInput({1, 32, 28, 28});
       auto* conv1_output_arg = helper.MakeIntermediate();
       auto* conv2_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
@@ -548,7 +540,7 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
 TEST(NchwcOptimizerTests, FusedConvAddFusion) {
   auto test_case = [&](bool do_relu1, bool do_relu2, int add_count) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 32, 28, 28});
+      auto* input_arg = helper.MakeInput({1, 32, 28, 28});
       auto* add1_input_arg = helper.MakeIntermediate();
       auto* add2_input_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
@@ -595,7 +587,7 @@ TEST(NchwcOptimizerTests, FusedConvAddFusion) {
 TEST(NchwcOptimizerTests, ConvConcat) {
   auto test_case = [&](int axis, int channel_count, int reorder_output_count) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 48, 17, 34});
+      auto* input_arg = helper.MakeInput({1, 48, 17, 34});
       auto* conv1_output_arg = helper.MakeIntermediate();
       auto* conv2_output_arg = helper.MakeIntermediate();
       auto* conv3_output_arg = helper.MakeIntermediate();
@@ -631,7 +623,7 @@ TEST(NchwcOptimizerTests, ConvConcat) {
 
 TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBiBo) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<float>({1, 64, 7, 7});
+    auto* input_arg = helper.MakeInput({1, 64, 7, 7});
     auto* output1_arg = helper.MakeOutput();
     auto* output2_arg = helper.MakeOutput();
     auto* output3_arg = helper.MakeOutput();
@@ -672,10 +664,10 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBiBo) {
 
 TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBo) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input1_arg = helper.MakeInput<float>({1, 64, 7, 7});
-    auto* input2_arg = helper.MakeInput<float>({1, 64, 7, 7});
-    auto* input3_arg = helper.MakeInput<float>({1, 1, 7, 7});
-    auto* input4_arg = helper.MakeInput<float>({1, 1, 7, 7});
+    auto* input1_arg = helper.MakeInput({1, 64, 7, 7});
+    auto* input2_arg = helper.MakeInput({1, 64, 7, 7});
+    auto* input3_arg = helper.MakeInput({1, 1, 7, 7});
+    auto* input4_arg = helper.MakeInput({1, 1, 7, 7});
     auto* output1_arg = helper.MakeOutput();
     auto* output2_arg = helper.MakeOutput();
     auto* output3_arg = helper.MakeOutput();
@@ -729,7 +721,7 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_height");
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_width");
 
-    auto* input_arg = helper.MakeInput<float>({1, 3, 50, 100}, type_proto);
+    auto* input_arg = helper.MakeInput({1, 3, 50, 100}, type_proto);
     auto* output_arg = helper.MakeOutput();
 
     auto* conv1_output_arg = helper.MakeIntermediate();
@@ -772,7 +764,7 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
 
 TEST(NchwcOptimizerTests, MixedOutputUsage) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput<float>({6, 5, 11, 11});
+    auto* input_arg = helper.MakeInput({6, 5, 11, 11});
     auto* output_arg = helper.MakeOutput();
 
     auto* conv1_output_arg = helper.MakeIntermediate();
@@ -804,24 +796,24 @@ TEST(NchwcOptimizerTests, MixedOutputUsage) {
 TEST(NchwcOptimizerTests, TensorAlignment) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
     // Input channel count must currently be a multiple of the NCHWc block size.
-    auto* input1_arg = helper.MakeInput<float>({1, 60, 28, 42});
+    auto* input1_arg = helper.MakeInput({1, 60, 28, 42});
     auto* output1_arg = helper.MakeOutput();
     helper.AddConvNode(input1_arg, output1_arg, {128, 60, 1, 1});
 
     // Grouped input channel count must be a multiple of the NCHWc block size.
-    auto* input2_arg = helper.MakeInput<float>({1, 48, 28, 42});
+    auto* input2_arg = helper.MakeInput({1, 48, 28, 42});
     auto* output2_arg = helper.MakeOutput();
     auto& conv2_node = helper.AddConvNode(input2_arg, output2_arg, {128, 12, 3, 3});
     conv2_node.AddAttribute("group", static_cast<int64_t>(4));
 
     // Grouped output channel count must be a multiple of the NCHWc block size.
-    auto* input3_arg = helper.MakeInput<float>({1, 64, 28, 42});
+    auto* input3_arg = helper.MakeInput({1, 64, 28, 42});
     auto* output3_arg = helper.MakeOutput();
     auto& conv3_node = helper.AddConvNode(input3_arg, output3_arg, {48, 16, 3, 3});
     conv3_node.AddAttribute("group", static_cast<int64_t>(4));
 
     // Channel count must currently be a multiple of the NCHWc block size.
-    auto* input4_arg = helper.MakeInput<float>({1, 60, 12, 12});
+    auto* input4_arg = helper.MakeInput({1, 60, 12, 12});
     auto* output4_arg = helper.MakeOutput();
     auto& pool_node = helper.AddNode("MaxPool", {input4_arg}, {output4_arg});
     pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
