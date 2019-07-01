@@ -500,6 +500,9 @@ class Graph {
   /** Removes all initializer tensors from this Graph and releases the memory they were using. */
   void CleanAllInitializedTensors() noexcept;
 
+  /** Returns true if an initializer value can be overridden by a graph input with the same name. */
+  bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
+
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */
@@ -962,7 +965,7 @@ class Graph {
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_functions_;
 
   // Model IR version.
-  Version ir_version_{};
+  Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
   int name_generator_ = 0;
 

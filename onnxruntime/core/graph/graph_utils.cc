@@ -399,9 +399,24 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
+bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name) {
+  bool constant = true;
+
+  if (graph.CanOverrideInitializer()) {
+    const auto& graph_inputs = graph.GetInputsIncludingInitializers();
+    constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                            [&initializer_name](const NodeArg* input) {
+                              return input->Name() == initializer_name;
+                            });
+  }
+
+  return constant;
+}
+
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   const onnx::TensorProto* initializer = nullptr;
-  return graph.GetInitializedTensor(node_arg.Name(), initializer) && !IsGraphInput(graph, &node_arg);
+  return graph.GetInitializedTensor(node_arg.Name(), initializer) &&
+         (!graph.CanOverrideInitializer() || !IsGraphInput(graph, &node_arg));
 }
 
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {

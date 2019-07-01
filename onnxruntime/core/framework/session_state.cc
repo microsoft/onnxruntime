@@ -36,17 +36,32 @@ void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_s
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
-Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d) {
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
+                                          bool constant) {
   ORT_ENFORCE(ort_value_index >= 0 && ort_value_index <= ort_value_name_idx_map_.MaxIdx());
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-  if (d != nullptr && d->f != nullptr) deleter_for_initialized_tensors_[ort_value_index] = *d;
+
+  if (d != nullptr && d->f != nullptr) {
+    deleter_for_initialized_tensors_[ort_value_index] = *d;
+  }
+  
+  if (constant) {
+    constant_initialized_tensors_.insert({ort_value_index, ort_value});
+  }
+
   return Status::OK();
 }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
+const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const {
+  return initialized_tensors_;
+}
+
+const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
+  return constant_initialized_tensors_;
+}
 
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;

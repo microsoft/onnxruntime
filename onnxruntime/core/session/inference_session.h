@@ -414,7 +414,8 @@ class InferenceSession {
   std::vector<std::unique_ptr<IExecutor>> executors_;  // TODO do we need this vector?
 
   ModelMetadata model_metadata_;
-  InputDefList required_input_def_list_;
+  std::unordered_set<std::string> required_inputs_;
+  std::unordered_set<std::string> valid_inputs_;
   std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 
