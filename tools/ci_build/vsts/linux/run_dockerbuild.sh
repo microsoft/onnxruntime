@@ -3,7 +3,7 @@ set -e -o -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
-CUDA_VER=cuda9.1-cudnn7.1
+CUDA_VER=cuda10.0-cudnn7.4
 
 while getopts c:o:d:r:p:x: parameter_Option
 do case "${parameter_Option}"
