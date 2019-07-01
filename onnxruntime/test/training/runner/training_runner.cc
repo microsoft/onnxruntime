@@ -57,7 +57,7 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path_));
 
   // Add loss func
-  ORT_RETURN_IF_ERROR(session_.BuildLossFuncion(params_.loss_func_info_));
+  ORT_RETURN_IF_ERROR(session_.BuildLossFunction(params_.loss_func_info_));
   if (params_.world_rank_ == 0 && !params_.model_with_loss_func_path_.empty()) {
     ORT_RETURN_IF_ERROR(session_.Save(params_.model_with_loss_func_path_,
                                       TrainingSession::SaveOption::NO_RELOAD));

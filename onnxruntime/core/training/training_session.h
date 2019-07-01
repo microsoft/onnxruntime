@@ -38,7 +38,7 @@ class TrainingSession : public InferenceSession {
                      GRADIENT_OF_LABEL
            And also in gradient_builder.cc, the gradient builder must have been registered.
   */
-  common::Status BuildLossFuncion(const LossFunctionInfo& loss_func_info);
+  common::Status BuildLossFunction(const LossFunctionInfo& loss_func_info);
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.
@@ -50,7 +50,7 @@ class TrainingSession : public InferenceSession {
                           Optimizer with same names share the same parameters.
            2. New outputs: the output of optimizer will become the new graph outputs.
            3. Every weight in weights_to_train must have the optimizer info specified.
-           4. Differnt weights can have different optimizers and parameters.
+           4. Different weights can have different optimizers and parameters.
   */
 
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,

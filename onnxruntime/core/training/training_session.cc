@@ -38,7 +38,7 @@ static Status BuildGradientGraphInternal(Graph& graph,
   return grad_graph_builder.Build();
 }
 
-Status TrainingSession::BuildLossFuncion(const LossFunctionInfo& loss_func_info) {
+Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info) {
   if (loss_func_info.op_def.type.empty() || loss_func_info.loss_name.empty()) {
     ORT_THROW("BuildLossFuncion's loss_function_info is invalid.");
   }

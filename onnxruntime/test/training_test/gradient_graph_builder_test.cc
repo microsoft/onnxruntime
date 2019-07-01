@@ -53,7 +53,7 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   LossFunctionInfo loss(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
   EXPECT_TRUE(training_session.Load(ORIGINAL_MODEL_PATH).IsOK());
-  EXPECT_TRUE(training_session.BuildLossFuncion(loss).IsOK());
+  EXPECT_TRUE(training_session.BuildLossFunction(loss).IsOK());
   EXPECT_TRUE(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss").IsOK());
   EXPECT_TRUE(training_session.Save(BACKWARD_MODEL_PATH,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
@@ -72,7 +72,7 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
   LossFunctionInfo loss(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
   EXPECT_TRUE(training_session.Load(ORIGINAL_MODEL_PATH).IsOK());
-  EXPECT_TRUE(training_session.BuildLossFuncion(loss).IsOK());
+  EXPECT_TRUE(training_session.BuildLossFunction(loss).IsOK());
   EXPECT_TRUE(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss").IsOK());
   EXPECT_TRUE(training_session.Save(BACKWARD_MODEL_PATH,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
