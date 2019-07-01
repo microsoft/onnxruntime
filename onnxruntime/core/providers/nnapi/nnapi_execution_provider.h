@@ -20,10 +20,6 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
-
  private:
   std::unordered_map<std::string, std::unique_ptr<dnn::Model>> dnn_models_;
   std::vector<std::vector<int>> GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const;
