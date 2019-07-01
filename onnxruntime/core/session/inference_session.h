@@ -177,7 +177,7 @@ class InferenceSession {
     * The order of invocation indicates the reversed preference order: Register your most
     * preferred registry at the end.
     * Calling this API is optional.
-	* This API is not thread safe.
+    * This API is not thread safe.
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
@@ -210,7 +210,7 @@ class InferenceSession {
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
-	* This API is thread-safe.
+    * This API is thread-safe.
     * @return OK if success
     */
   common::Status Initialize();
@@ -415,7 +415,6 @@ class InferenceSession {
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
-  std::unordered_set<std::string> valid_inputs_;
   std::unordered_map<std::string, const NodeArg*> input_def_map_;
   OutputDefList output_def_list_;
 

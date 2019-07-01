@@ -563,7 +563,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
   std::unordered_set<std::string> seen_names;
   seen_names.reserve(feeds.size());
-  int seen_required_inputs = 0;
+  size_t seen_required_inputs = 0;
   const auto model_ir_version = model_->IrVersion();
 
   for (size_t i = 0; i < feeds.size(); ++i) {
@@ -597,7 +597,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
 
-    // IR < 4 all entries in input_def_map_ are required. 
+    // IR < 4 all entries in input_def_map_ are required.
     // IR 4 or above we need to do a lookup to see if this was a required input
     if (model_ir_version < 4 || required_inputs_.find(feed_name) != required_inputs_.cend()) {
       ++seen_required_inputs;
@@ -614,7 +614,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     }
 
     req_input_str << " . Got: ";
-    for (int i = 0; i < feed_names.size(); ++i) {
+    for (size_t i = 0; i < feed_names.size(); ++i) {
       if (i > 0)
         req_input_str << ", ";
       req_input_str << feed_names[i];
