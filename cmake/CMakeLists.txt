@@ -116,7 +116,7 @@ endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
-file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" VERSION_NUMBER)
+file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
@@ -133,6 +133,8 @@ add_definitions(-DEIGEN_MPL2_ONLY)
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
+  string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
 endif()
 
 #must after OpenMP settings

@@ -5,6 +5,8 @@
 
 * com.microsoft
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
+  * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
+  * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
@@ -226,6 +228,109 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T1</tt> : tensor(int32)</dt>
 <dd>Constrain seq_lens to integral tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ConvTransposeWithDynamicPads"></a><a name="com.microsoft.convtransposewithdynamicpads">**com.microsoft.ConvTransposeWithDynamicPads**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>auto_pad</tt> : string</dt>
+<dd></dd>
+<dt><tt>dilations</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>group</tt> : int</dt>
+<dd></dd>
+<dt><tt>kernel_shape</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>output_padding</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>strides</tt> : list of ints</dt>
+<dd></dd>
+</dl>
+
+#### Inputs (2 - 4)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd></dd>
+<dt><tt>W</tt> : T</dt>
+<dd></dd>
+<dt><tt>Pads</tt> (optional) : tensor(int64)</dt>
+<dd></dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd></dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd></dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.CropAndResize"></a><a name="com.microsoft.cropandresize">**com.microsoft.CropAndResize**</a>
+
+  Extracts crops from the input image tensor and resizes them using bilinear sampling or nearest neighbor sampling
+          (possibly with aspect ratio change) to a common output size specified by crop_height and crop_width.
+          Returns a tensor with crops from the input image at positions defined at the bounding box locations in boxes.
+          The cropped boxes are all resized (with bilinear or nearest neighbor interpolation) to
+          a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
+          The resizing is corner aligned.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>extrapolation_value</tt> : float</dt>
+<dd>Value used for extrapolation, when applicable. Default is 0.0f. </dd>
+<dt><tt>mode</tt> : string</dt>
+<dd>The pooling method. Two modes are supported: 'bilinear' and 'nearest'. Default is 'bilinear'.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T1</dt>
+<dd>Input data tensor from the previous operator; 4-D feature map of shape (N, C, H, W), where N is the batch size, C is the number of channels, and H and W are the height and the width of the data.</dd>
+<dt><tt>rois</tt> : T1</dt>
+<dd>RoIs (Regions of Interest) to pool over; rois is 2-D input of shape (num_rois, 4) given as [[y1, x1, y2, x2], ...]. The RoIs' coordinates are normalized in the coordinate system of the input image. Each coordinate set has a 1:1 correspondence with the 'batch_indices' input.</dd>
+<dt><tt>batch_indices</tt> : T2</dt>
+<dd>1-D tensor of shape (num_rois,) with each element denoting the index of the corresponding image in the batch.</dd>
+<dt><tt>crop_size</tt> : T2</dt>
+<dd>1-D tensor of 2 elements: [crop_height, crop_width]. All cropped image patches are resized to this size. Both crop_height and crop_width need to be positive.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>RoI pooled output, 4-D tensor of shape (num_rois, C, crop_height, crop_width). The r-th batch element Y[r-1] is a pooled feature map corresponding to the r-th RoI X[r-1].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(int32)</dt>
+<dd>Constrain types to int tensors.</dd>
 </dl>
 
 
@@ -682,41 +787,30 @@ This version of the operator has been available since version 1 of the 'com.micr
     The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
     the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
     "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
-  
     Let's assume "separators" is [" "] and consider an example.
     If input is
-  
     ["Hello World", "I love computer science !"] whose shape is [2],
-  
     then the output would be
-  
    [["Hello", "World", padvalue, padvalue, padvalue],
    ["I", "love", "computer", "science", "!"]]
-  
    whose shape is [2, 5] because you can find at most 5 tokens per input string.
    Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
-  
    If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
    will be broken part into individual characters.
-  
    For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
    The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
    This operator searches for the first match starting from the beginning of the considered string,
    and then launches another search starting from the first remained character after the first matched token.
    If no match found, this operator will remove the first character from the remained string and do another search.
    This procedure will be repeated until reaching the end of the considered string.
-  
     Let's consider another example to illustrate the effect of setting "mark" to true.
     If input is ["Hello", "World"],
     then the corresponding output would be [0x02, "Hello", "World", 0x03].
     This implies that if mark is true, [C]/[N, C] - input's output shape becomes [C, D+2]/[N, C, D+2].
-  
   If tokenizer removes the entire content of [C]-input, it will produce [[]].
   I.e. the output shape should be [C][0] or [N][C][0] if input shape was [N][C].
-  
   If the tokenizer receives empty input of [0] then the output is [0] if empty input
   of [N, 0] then [N, 0].
-  
 
 #### Version
 
