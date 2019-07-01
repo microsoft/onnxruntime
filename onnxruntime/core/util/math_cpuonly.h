@@ -17,11 +17,15 @@
 
 #pragma once
 
+#include "onnxruntime_config.h"
 // external/eigen/Eigen/src/Core/AssignEvaluator.h:86:63:
 // error: enum constant in boolean context [-Werror=int-in-bool-context]
 #if defined(__GNUC__) && __GNUC__>=7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#ifdef HAS_DEPRECATED_COPY
+#pragma GCC diagnostic ignored "-Wdeprecated-copy"
+#endif
 #endif
 
 #include "Eigen/Core"

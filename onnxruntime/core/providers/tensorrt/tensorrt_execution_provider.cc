@@ -241,7 +241,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     graph_build.AddInitializedTensor(*(tensor.second));
   }
 
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
+  auto status = graph_build.Resolve();
+  ORT_ENFORCE(status.IsOK(), status);
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
@@ -277,11 +278,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   return result;
-}
-
-std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  return kernel_registry;
 }
 
 common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {

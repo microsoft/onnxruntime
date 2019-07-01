@@ -9,7 +9,6 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -71,8 +70,6 @@ static gsl::span<const T> SecondHalfSpan(const gsl::span<const T>& dspan) {
 
 template <typename T>
 Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  auto tp = ctx_internal->GetOperatorThreadPool();
   auto& logger = context.Logger();
 
   // original lstm processing
@@ -232,7 +229,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                  last_cell_size_per_direction);
 
     auto fam = std::make_unique<BahdanauAttention<T>>(
-        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false, tp);
+        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
     fam->SetWeights(
         FirstHalfSpan(am_v_weights.DataAsSpan<T>()),
         FirstHalfSpan(am_query_layer_weights.DataAsSpan<T>()),
@@ -251,10 +248,10 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, *tp);
+        clip_, ttp_);
 
     auto bam = std::make_unique<BahdanauAttention<T>>(
-        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false, tp);
+        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
     bam->SetWeights(
         SecondHalfSpan(am_v_weights.DataAsSpan<T>()),
         SecondHalfSpan(am_query_layer_weights.DataAsSpan<T>()),
@@ -273,14 +270,14 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[3],
         activation_funcs_.Entries()[4],
         activation_funcs_.Entries()[5],
-        clip_, *tp);
+        clip_, ttp_);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
 
   } else {
     auto fam = std::make_unique<BahdanauAttention<T>>(
-        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false, tp);
+        alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
     fam->SetWeights(
         am_v_weights.DataAsSpan<T>(),
         am_query_layer_weights.DataAsSpan<T>(),
@@ -299,7 +296,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, *tp);
+        clip_, ttp_);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }

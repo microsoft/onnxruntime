@@ -40,10 +40,9 @@ class OpKernel {
     return op_kernel_info_.GetKernelDef();
   }
 
-  virtual Status Compute(OpKernelContext* context) const = 0;
+  virtual Status Compute(OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
-  virtual Status ComputeAsync(OpKernelContext*,
-                              DoneCallback) const {
+  virtual Status ComputeAsync(OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
@@ -94,8 +93,7 @@ class OpKernelContext {
     if (index < 0 || index >= OutputCount())
       return nullptr;
 
-    OrtValue* p_ml_value = nullptr;
-    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    OrtValue* p_ml_value = GetOrCreateOutputMLValue(index);
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
@@ -175,7 +173,7 @@ class OpKernelContext {
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
 
-  Status GetOrCreateOutputMLValue(int index, OrtValue*& value);
+  OrtValue* GetOrCreateOutputMLValue(int index);
 
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;

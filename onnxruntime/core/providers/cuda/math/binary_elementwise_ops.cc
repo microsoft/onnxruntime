@@ -20,7 +20,7 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
   return Status::OK();
 }
 
-static Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
+ Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
   size_t lhs_rank = lhs_shape.NumDimensions();
   size_t rhs_rank = rhs_shape.NumDimensions();
   size_t out_rank = std::max(lhs_rank, rhs_rank);

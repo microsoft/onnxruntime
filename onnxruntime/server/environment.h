@@ -6,8 +6,10 @@
 #include <memory>
 #include <vector>
 
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include <spdlog/spdlog.h>
+
 
 namespace onnxruntime {
 namespace server {
