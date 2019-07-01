@@ -6,6 +6,7 @@
 
 # Ubuntu 16.04 Base Image
 FROM ubuntu:16.04
+MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_SERVER_BRANCH=master

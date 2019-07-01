@@ -6,6 +6,7 @@
 
 # nVidia TensorRT Base Image
 FROM nvcr.io/nvidia/tensorrt:19.03-py3
+MAINTAINER Vinitra Swamy "viswamy@microsoft.com"
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_SERVER_BRANCH=master
