@@ -7,7 +7,9 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/autopad_type.h"
-#include "core/mlas/inc/mlas.h"
+
+// forward declaration
+enum MLAS_POOLING_KIND;
 
 namespace onnxruntime {
 
