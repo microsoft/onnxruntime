@@ -45,25 +45,25 @@ class NchwcConv : public Conv<T> {
   Status Compute(OpKernelContext* context) const override;
 };
 
-class NchwcPoolBase : public OpKernel, public PoolBase {
+class NchwcPoolBase : public PoolBase {
  public:
-  NchwcPoolBase(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
+  NchwcPoolBase(const OpKernelInfo& info) : PoolBase(info) {
   }
 
-  Status Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const;
+  Status NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind) const;
 };
 
-class NchwcMaxPool : public NchwcPoolBase {
+class NchwcMaxPool : public OpKernel, public NchwcPoolBase {
  public:
-  NchwcMaxPool(const OpKernelInfo& info) : NchwcPoolBase(info) {
+  NchwcMaxPool(const OpKernelInfo& info) : OpKernel(info), NchwcPoolBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
 };
 
-class NchwcAveragePool : public NchwcPoolBase {
+class NchwcAveragePool : public OpKernel, public NchwcPoolBase {
  public:
-  NchwcAveragePool(const OpKernelInfo& info) : NchwcPoolBase(info) {
+  NchwcAveragePool(const OpKernelInfo& info) : OpKernel(info), NchwcPoolBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

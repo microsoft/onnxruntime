@@ -180,7 +180,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-Status NchwcPoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
+Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
   const Tensor* X = context->Input<Tensor>(0);
 
   const TensorShape& X_shape = X->Shape();
@@ -211,11 +211,11 @@ Status NchwcPoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) 
 }
 
 Status NchwcMaxPool::Compute(OpKernelContext* context) const {
-  return NchwcPoolBase::Compute(context, MlasMaximumPooling);
+  return NchwcPoolBase::NchwcPool(context, MlasMaximumPooling);
 }
 
 Status NchwcAveragePool::Compute(OpKernelContext* context) const {
-  return NchwcPoolBase::Compute(context, count_include_pad_ ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
+  return NchwcPoolBase::NchwcPool(context, count_include_pad_ ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
 }
 
 }  // namespace contrib
