@@ -14,7 +14,7 @@ namespace server {
 
 class ServerEnvironment {
  public:
-  explicit ServerEnvironment(OrtLoggingLevel severity, spdlog::sink_ptr sink);
+  explicit ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_init_list sink);
   ~ServerEnvironment() = default;
   ServerEnvironment(const ServerEnvironment&) = delete;
 
@@ -29,7 +29,7 @@ class ServerEnvironment {
  private:
   const OrtLoggingLevel severity_;
   const std::string logger_id_;
-  const spdlog::sink_ptr sink_;
+  const std::vector<spdlog::sink_ptr> sink_;
   const std::shared_ptr<spdlog::logger> default_logger_;
 
   Ort::Env runtime_environment_;

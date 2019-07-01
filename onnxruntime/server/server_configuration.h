@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 #include "boost/program_options.hpp"
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace server {

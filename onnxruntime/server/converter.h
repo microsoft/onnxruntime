@@ -23,7 +23,7 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementData
 //   * external_data field: we do not expect very large tensors in the prediction output
 // Note: If any input data is in raw_data field, all outputs tensor data will be put into raw_data field.
 common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
-                                    std::shared_ptr<spdlog::logger> logger,
+                                    const std::shared_ptr<spdlog::logger>& logger,
                                     /* out */ onnx::TensorProto& tensor_proto);
 
 }  // namespace server

@@ -10,29 +10,29 @@ namespace server {
 
 void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
                       const char* message) {
-  spdlog::logger* logger = (spdlog::logger*)param;
-  logger->log((spdlog::level::level_enum)(severity - 1), "[{} {} {}]: {}", logid, category, code_location, message);
+  spdlog::logger* logger = static_cast<spdlog::logger*>(param);
+  logger->log(static_cast<spdlog::level::level_enum>(severity - 1), "[{} {} {}]: {}", logid, category, code_location, message);
   return;
 }
 
-ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sink_ptr sink) : severity_(severity),
+ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_init_list sink) : severity_(severity),
                                                                                         logger_id_("ServerApp"),
                                                                                         sink_(sink),
-                                                                                        default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink_)),
-                                                                                        runtime_environment_((OrtLoggingLevel)severity, logger_id_.c_str(), Log, default_logger_.get()),
+                                                                                        default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink)),
+                                                                                        runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get()),
                                                                                         session(nullptr) {
   spdlog::set_automatic_registration(false);
-  spdlog::set_level((spdlog::level::level_enum)severity_);
+  spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_));
   spdlog::initialize_logger(default_logger_);
 }
 
 void ServerEnvironment::InitializeModel(const std::string& model_path) {
   session = Ort::Session(runtime_environment_, model_path.c_str(), Ort::SessionOptions());
 
-  auto outputCount = session.GetOutputCount();
+  auto output_count = session.GetOutputCount();
 
   auto allocator = Ort::Allocator::CreateDefault();
-  for (size_t i = 0; i < outputCount; i++) {
+  for (size_t i = 0; i < output_count; i++) {
     auto name = session.GetOutputName(i, allocator);
     model_output_names_.push_back(name);
     allocator.Free(name);
@@ -52,7 +52,7 @@ const Ort::Session& ServerEnvironment::GetSession() const {
 }
 
 std::shared_ptr<spdlog::logger> ServerEnvironment::GetLogger(const std::string& request_id) const {
-  auto logger = std::make_shared<spdlog::logger>(request_id, sink_);
+  auto logger = std::make_shared<spdlog::logger>(request_id, sink_.begin(), sink_.end());
   spdlog::initialize_logger(logger);
   return logger;
 }

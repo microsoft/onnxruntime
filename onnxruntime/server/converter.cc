@@ -15,38 +15,38 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementDataType cpp_type) {
-  switch (cpp_type) {
+onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementDataType onnx_enum) {
+  switch (onnx_enum) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;  // maps to c type uint8_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;  // maps to c type int8_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;  // maps to c type uint16_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;  // maps to c type int16_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT32;  // maps to c type int32_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT32; 
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;  // maps to c type int64_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;  // maps to c++ type std::string
+      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
       return onnx::TensorProto_DataType::TensorProto_DataType_BOOL;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT16;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;  // maps to c type double
+      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;  // maps to c type uint32_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;  // maps to c type uint64_t
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
-      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;  // complex with float32 real and imaginary components
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;  
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;  // complex with float64 real and imaginary components
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
       return onnx::TensorProto_DataType::TensorProto_DataType_BFLOAT16;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
@@ -56,7 +56,7 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementData
 }
 
 common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
-                                    std::shared_ptr<spdlog::logger> logger,
+                                    const std::shared_ptr<spdlog::logger>& logger,
                                     /* out */ onnx::TensorProto& tensor_proto) {
   if (!ml_value.IsTensor()) {
     //TODO: Throw?
