@@ -198,8 +198,8 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       auto length = ml_value.GetStringTensorDataLength();
       std::vector<char> buffer;
       std::vector<size_t> offsets;
-      buffer.resize(length);
-      offsets.resize(elem_count);
+      buffer.reserve(length);
+      offsets.reserve(elem_count);
       ml_value.GetStringTensorContent(buffer.data(), length, offsets.data(), elem_count);
       size_t start = 0;
       for (size_t i = 1; i < elem_count; ++i) {
