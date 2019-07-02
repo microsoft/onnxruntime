@@ -37,6 +37,9 @@ rm -rf /tmp/src
 DISTRIBUTOR=$(lsb_release -i -s)
 if [ "$DISTRIBUTOR" = "Ubuntu" ]; then
   apt-get -y remove libprotobuf-dev protobuf-compiler
+elif [ "$AUDITWHEEL_PLAT" = "manylinux2010_x86_64" ]; then
+  # we did not install protobuf 2.x no need to uninstall
+  :
 else
   dnf remove -y protobuf-devel protobuf-compiler
 fi
