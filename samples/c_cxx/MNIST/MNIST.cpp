@@ -87,8 +87,8 @@ void ConvertDibToMnist() {
       output[x] += input[x] == 0 ? 1.0f : 0.0f;
     }
     input = reinterpret_cast<const DWORD*>(reinterpret_cast<const BYTE*>(input) + info.Pitch());
+    output += MNIST::width_;
   }
-  output += MNIST::width_;
 }
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
