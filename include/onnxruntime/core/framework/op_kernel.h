@@ -316,6 +316,23 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
         static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
   }
 
+#define ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name) \
+  provider##_##name##_##domain##_ver##ver##_##type1##_##type2
+
+#define ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(name, domain, ver, type1, type2, provider, builder, ...)                    \
+  class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name);                         \
+  template <>                                                                                                         \
+  KernelCreateInfo                                                                                                    \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name)>() {     \
+    return KernelCreateInfo(                                                                                          \
+        builder.SetName(#name)                                                                                        \
+            .SetDomain(domain)                                                                                        \
+            .SinceVersion(ver)                                                                                        \
+            .Provider(provider)                                                                                       \
+            .Build(),                                                                                                 \
+        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+  }
+
 #define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \
   provider##_##name##_##domain##_ver##startver##_##endver##_##type
 

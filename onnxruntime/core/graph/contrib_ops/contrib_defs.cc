@@ -1247,8 +1247,8 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropy)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
-      .Input(1, "label", "label is 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(0, "logits", "Unscaled log probabilities, N-D input of shape (-1, num_classes).", "T")
+      .Input(1, "label", "The onehot label is N-D input with the same shape as logits.", "T")
       .Output(0, "Y", "loss.", "T")
       .TypeConstraint(
           "T",
@@ -1260,8 +1260,8 @@ Example 4:
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY", "gradient of Y", "T")
-      .Input(1, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
-      .Input(2, "label", "label is 2-D input of shape (batch_size, num_classes).", "T")
+      .Input(1, "logits", "Unscaled log probabilities, N-D input of shape (-1, num_classes).", "T")
+      .Input(2, "label", "The onehot label is N-D input with the same shape as logits.", "T")
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint(
           "T",
@@ -1269,21 +1269,15 @@ Example 4:
           "Constrain to float, float16 and double tensors.")
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduceOp)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(1)
-      .Input(0, "input", "tensor to be reduced", "T")
-      .Output(0, "output", "reduced tensor", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.");
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "logits", "Unscaled log probabilities, 2-D input of shape (batch_size, num_classes).", "T")
-      .Input(1, "label", "label is 1-D input of shape (batch_size).", "Tind")
+      .Input(0, "logits", "Unscaled log probabilities, (N+1)-D input of shape (-1, num_classes).", "T")
+      .Input(1, "label", "label is N-D input whose shape should match that of logits. "
+             "It is a tensor of nonnegative integers, "
+             "where each element is the nonnegative integer label for the element of the batch.", 
+             "Tind")
+      .Input(2, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
       .Output(0, "Y", "loss.", "T")
       .TypeConstraint("T",
                       {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1294,11 +1288,15 @@ Example 4:
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropyGrad)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY", "gradient of Y", "T")
-      .Input(1, "logits", "Unscaled log probabilities, 1-D input of shape (batch_size).", "T")
-      .Input(2, "label", "label is 2-D input of shape (batch_size, num_classes).", "Tind")
+      .Input(1, "logits", "Unscaled log probabilities, (N+1)-D input of shape (batch_size).", "T")
+      .Input(2, "label", "label is N-D input whose shape should match that of logits. "
+             "It is a tensor of nonnegative integers, "
+             "where each element is the nonnegative integer label for the element of the batch.", 
+             "Tind")
+      .Input(3, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T",
                       {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1307,6 +1305,16 @@ Example 4:
                       {"tensor(int32)", "tensor(int64)"},
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduceOp)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .Input(0, "input", "tensor to be reduced", "T")
+      .Output(0, "output", "reduced tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)

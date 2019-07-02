@@ -886,10 +886,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
+  if (GetSrcNodeInputSize() == 2) {
+    return std::vector<NodeDef>{
+      NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad", kMSDomain},
               {GO(0), I(0), I(1)},
               {GI(0)})};
+  } else if (GetSrcNodeInputSize() == 3) {
+    return std::vector<NodeDef>{
+      NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad", kMSDomain},
+              {GO(0), I(0), I(1), I(2)},
+              {GI(0)})};    
+  } else {
+    ORT_ENFORCE(false, "the number of input arguments must be 2 or 3");
+  }
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {

@@ -42,6 +42,8 @@ class TensorShape : private std::vector<int64_t> {
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 
+  using std::vector<int64_t>::emplace_back;
+
   /**
      Return the dimension specified by <idx>.
   */

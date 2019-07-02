@@ -23,7 +23,7 @@ void ASSERT_IS_TINY(float max_error, float tolerance = 1.5e-2) {
 }
 
 template <typename T>
-void GenerateRandomData(
+void GenerateRandomDataWithOneHot(
     std::vector<std::vector<float>>& x_datas,
     std::vector<TensorShape> input_shapes,
     const std::unordered_set<int>& one_hot_input_indices) {
@@ -39,11 +39,13 @@ void GenerateRandomData(
     auto x_data_length = input_shapes[i].Size();
     x_datas[i].resize(x_data_length);
 
-    if (one_hot_input_indices.count(i) > 0 && input_shapes[i].NumDimensions() == 2) {  //only 2 dims supported for now
+    if (one_hot_input_indices.count(i) > 0 && input_shapes[i].NumDimensions() > 1) {
+      int64_t N = input_shapes[i].SizeToDimension(input_shapes[i].NumDimensions() - 1);
+      int64_t D = input_shapes[i][input_shapes[i].NumDimensions() - 1];
+
       std::fill(x_datas[i].begin(), x_datas[i].end(), (T)0);
-      auto data_count_per_batch = input_shapes[i].GetDims()[1];
-      for (int64_t k = 0; k < input_shapes[i].GetDims()[0]; k++)
-        x_datas[i][k * data_count_per_batch + (seed % data_count_per_batch)] = (T)1;
+      for (int64_t k = 0; k < N; k++)
+        x_datas[i][k * D + (seed % D)] = (T)1;
     } else {
       std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
     }
@@ -823,13 +825,87 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
+  const int64_t D = 11;
 
   {
-    TensorShape input_shape({1, 100});
+    const TensorShape N({5});
+    TensorShape input_shape(N);
+    input_shape.emplace_back(D);
+
     std::vector<std::vector<float>> x_datas(2);
-    GenerateRandomData<float>(x_datas, {input_shape, input_shape}, {1});
+    GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
 
     gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error, x_datas);
+    ASSERT_IS_TINY(max_error);
+  }
+
+  {
+    const TensorShape N({2, 3, 2});
+    TensorShape input_shape(N);
+    input_shape.emplace_back(D);
+
+    std::vector<std::vector<float>> x_datas(2);
+    GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
+
+    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error, x_datas);
+    ASSERT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"SparseSoftmaxCrossEntropy", kMSDomain};
+
+  const TensorShape N_1d({5});
+  const TensorShape N_3d({2, 3, 2});
+  const int64_t D = 11;
+  std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x), 11.0f); };
+  std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
+
+  {
+    TensorShape logit_shape(N_1d);
+    logit_shape.emplace_back(D);
+
+    TensorInfo x_info({logit_shape});
+    TensorInfo index_info(N_1d, false, &transformer_index, DataTypeImpl::GetTensorType<int32_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}}, &max_error);
+    ASSERT_IS_TINY(max_error);
+  }
+
+  {
+    TensorShape logit_shape(N_1d);
+    logit_shape.emplace_back(D);
+
+    TensorInfo x_info({logit_shape});
+    TensorInfo index_info(N_1d, false, &transformer_index, DataTypeImpl::GetTensorType<int32_t>());
+    TensorInfo weight_info(N_1d, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info}, {{1}}, &max_error);
+    ASSERT_IS_TINY(max_error);
+  }
+
+  {
+    TensorShape logit_shape(N_3d);
+    logit_shape.emplace_back(D);
+
+    TensorInfo x_info({logit_shape});
+    TensorInfo index_info(N_3d, false, &transformer_index, DataTypeImpl::GetTensorType<int32_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}}, &max_error);
+    ASSERT_IS_TINY(max_error);
+  }
+
+  {
+    TensorShape logit_shape(N_3d);
+    logit_shape.emplace_back(D);
+
+    TensorInfo x_info({logit_shape});
+    TensorInfo index_info(N_3d, false, &transformer_index, DataTypeImpl::GetTensorType<int32_t>());
+    TensorInfo weight_info(N_3d, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info}, {{1}}, &max_error);
     ASSERT_IS_TINY(max_error);
   }
 }
