@@ -24,7 +24,7 @@ for onnx_version in ${!version2tag[@]}; do
   cd /tmp/src/onnx-$onnx_version
   git clone https://github.com/pybind/pybind11.git third_party/pybind11
   python3 setup.py bdist_wheel
-  if [ $1 = "x86" ]; then
+  if [ "$1" = "x86" ]; then
     pip3 install -q onnx
   else
     pip3 install -q dist/*
