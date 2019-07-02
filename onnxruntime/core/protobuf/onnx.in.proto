@@ -512,6 +512,19 @@ message TypeProto {
     optional TensorShapeProto shape = 2;
   }
 
+  message Table {
+     message Column {
+       // This field MUST NOT have the value of UNDEFINED 
+       repeated TypeProto fields = 1;
+     }
+     repeated Column columns = 1;
+  }
+
+  message DateTime {
+     // UTC timestamp
+     required int64  timestamp = 1;
+  }
+
 // #endif
 
   oneof value {
@@ -534,6 +547,10 @@ message TypeProto {
     Opaque opaque_type = 7;
 
     SparseTensor sparse_tensor_type = 8;
+
+    Table        table_type = 100;
+
+    DateTime     datetime = 101;
 
 // #endif
   }
