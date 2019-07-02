@@ -45,7 +45,7 @@ jobs:
         displayName: 'Build Debug'
         inputs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-          platform: 'x64'
+          platform: 'arm64'
           configuration: 'Debug'
           msbuildArguments: ${{ parameters.MsbuildArguments }}
           msbuildArchitecture: 'x64'
@@ -61,7 +61,7 @@ jobs:
       displayName: 'Build RelWithDebInfo'
       inputs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: 'x64'
+        platform: 'arm64'
         configuration: 'RelWithDebInfo'
         msbuildArguments: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
