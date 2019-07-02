@@ -2,7 +2,7 @@
 
 This sample uses the MNIST model from the Model Zoo: https://github.com/onnx/models/tree/master/mnist
 
-(inline image of app)
+![Screenshot](Screenshot.png)
 
 ## Requirements
 
