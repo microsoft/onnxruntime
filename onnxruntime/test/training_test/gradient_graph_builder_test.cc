@@ -14,8 +14,8 @@ using namespace google::protobuf::util;
 namespace onnxruntime {
 namespace test {
 
-#define ORIGINAL_MODEL_PATH "testdata/test_training_model.onnx"
-#define BACKWARD_MODEL_PATH "backward_model.onnx"
+constexpr auto ORIGINAL_MODEL_PATH = "testdata/test_training_model.onnx";
+const static std::string BACKWARD_MODEL_PATH = "backward_model.onnx";
 
 AllocatorPtr GetAllocator() {
   static CPUExecutionProviderInfo info;
@@ -44,7 +44,7 @@ static void CreateMLValue(AllocatorPtr alloc,
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
-TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
+static std::string BuildBackPropGraph(const std::string& forward_model_file) {
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
@@ -52,31 +52,25 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   TrainingSession training_session{so};
   LossFunctionInfo loss(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
-  EXPECT_TRUE(training_session.Load(ORIGINAL_MODEL_PATH).IsOK());
+  EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
   EXPECT_TRUE(training_session.BuildLossFunction(loss).IsOK());
   EXPECT_TRUE(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss").IsOK());
   EXPECT_TRUE(training_session.Save(BACKWARD_MODEL_PATH,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
                   .IsOK());
 
-  std::shared_ptr<Model> pModel;
-  EXPECT_TRUE(Model::Load(BACKWARD_MODEL_PATH, pModel).IsOK());
+  return BACKWARD_MODEL_PATH;
 }
 
-TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
+static TrainingSession& RunTrainingSessionWithChecks(
+  SessionOptions& so, const std::string& backprop_model_file)
+{
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
-  SessionOptions so;
-  TrainingSession training_session{so};
-  LossFunctionInfo loss(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+  TrainingSession& training_session = *(new TrainingSession(so));
 
-  EXPECT_TRUE(training_session.Load(ORIGINAL_MODEL_PATH).IsOK());
-  EXPECT_TRUE(training_session.BuildLossFunction(loss).IsOK());
-  EXPECT_TRUE(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss").IsOK());
-  EXPECT_TRUE(training_session.Save(BACKWARD_MODEL_PATH,
-                                    TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
-                  .IsOK());
+  EXPECT_TRUE(training_session.Load(backprop_model_file).IsOK());
 
   EXPECT_TRUE(training_session.Initialize().IsOK());
 
@@ -116,6 +110,67 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
   }
 
   EXPECT_TRUE(weight_updater.Update(grad, 1).IsOK());
+
+  return training_session;
+}
+
+TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH);
+
+  std::shared_ptr<Model> pModel;
+  EXPECT_TRUE(Model::Load(backprop_model_file, pModel).IsOK());
+}
+
+TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH);
+
+  SessionOptions so;
+  RunTrainingSessionWithChecks(so, backprop_model_file);
+}
+
+TEST(GradientGraphBuilderTest, RunTrainingSessionTestWithProfiler) {
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH);
+
+  SessionOptions so;
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnx_training_profiler_test");
+
+  TrainingSession& training_session = RunTrainingSessionWithChecks(so, backprop_model_file);
+
+  std::string profile_file = training_session.EndProfiling();
+
+  std::cout << "Profile output file = " << profile_file << std::endl;
+
+  std::ifstream profile(profile_file);
+  ASSERT_TRUE(profile);
+
+  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+  int count = 0;
+  std::string line;
+  while (std::getline(profile, line)) {
+    if (count == 0) {
+      ASSERT_TRUE(line.find('[') != std::string::npos);
+      // Opening array marker found.
+    } else if (line.find(']') != std::string::npos) {
+      // Closing array marker found.
+      break;
+    } else if (count >= 1) {
+#ifdef DEBUG
+      std::cout << count << ": " << line << std::endl;
+#endif
+
+      if (count == 1) {
+        ASSERT_TRUE(line.find("model_loading_uri") != std::string::npos);
+      }
+
+      for (auto& s : tags) {
+        ASSERT_TRUE(line.find(s) != std::string::npos);
+      }
+    }
+
+    count++;
+  }
+  ASSERT_TRUE(count > 1);
 }
 }  // namespace test
 }  // namespace onnxruntime

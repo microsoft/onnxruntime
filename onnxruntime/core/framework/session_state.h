@@ -210,7 +210,7 @@ class SessionState {
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
 
   const logging::Logger* logger_ = nullptr;
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
 
   // switch for enable memory pattern optimization or not.
   const bool enable_mem_pattern_;
