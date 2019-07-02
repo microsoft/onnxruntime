@@ -13,7 +13,7 @@ onnxruntime                          pywrapper                          script
      |       call with tensor(s)        | ------------------------------> |
      |                                  |         call with numpy(s)      | 
      |                                  |                                 | compute
-     |                                  |  <----------------------------- |
+     |                                  | <------------------------------ |
      | <------------------------------  |           return numpys(s)      |
      |         return tensor(s)         |                                 |
 </pre>
@@ -88,3 +88,47 @@ Windows | (conda) passed | (conda) passed | passed
 Linux | (conda) passed | (conda) passed | passed
 Mac |  (conda) passed | (conda) passed | (conda) passed
 
+## Example
+Developers could resort to PyOp during model conversion for missing operators:
+```python
+import os
+import numpy as np
+from onnx import *
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+from skl2onnx.common.utils import check_input_and_output_numbers
+
+X = np.array([[1, 1], [2, 1], [3, 1.2], [4, 1], [5, 0.8], [6, 1]],dtype=np.single)
+nmf = NMF(n_components=2, init='random', random_state=0)
+W = np.array(nmf.fit_transform(X), dtype=np.single)
+
+def calculate_sklearn_nmf_output_shapes(operator):
+    check_input_and_output_numbers(operator, output_count_range=1, input_count_range=1)
+    operator.outputs[0].type.shape = operator.inputs[0].type.shape
+
+def convert_nmf(scope, operator, container):
+    ws = [str(w) for w in W.flatten()]
+    attrs = {'W':'|'.join(ws)}
+    container.add_node(op_type='PyOp', name='nmf', inputs=['X'], outputs=['variable'],
+                       op_version=10, op_domain='MyDomain', module='mymodule', class_name='MyNmf',
+                       input_types=[TensorProto.FLOAT], output_types=[TensorProto.FLOAT], **attrs)
+
+custom_shape_calculators = {type(nmf): calculate_sklearn_nmf_output_shapes}
+custom_conversion_functions = {type(nmf): convert_nmf}
+initial_types = [('X', FloatTensorType([6,2]))]
+onx = convert_sklearn(nmf, '', initial_types, '', None, custom_conversion_functions, custom_shape_calculators)
+with th open("model.onnx", "wb") as f:
+    f.write(onx.SerializeToString())
+```
+mymodule.py:
+```python
+import numpy as np
+class MyNmf:
+    def __init__(self,W):
+        A = []
+        for w in W.split('|'):
+            A.append(float(w))
+        self.__W = np.array(A,dtype=np.single).reshape(6,2)
+    def compute(self,X):
+        return self.__W
+```
