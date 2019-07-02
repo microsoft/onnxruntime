@@ -37,7 +37,7 @@ jobs:
      ren *.nupkg win-x86.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/win-ci.yml
+- template: ../../templates/win-ci-arm.yml
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_Arm64_Dev'
