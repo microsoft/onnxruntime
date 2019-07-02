@@ -13,6 +13,7 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
                               const fast_divmod block_size_inside_axis_dim_div,
                               const int64_t* concat_sizes,
                               const int64_t* concat_sizes_range,
+                              const int64_t* axis_dimension_input_output_mapping,
                               const int num_inputs,
                               T* output_data,
                               const void** input_ptr,
@@ -24,20 +25,12 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
   int block_index = 0;
   int offset = 0;
 
-  int input_index = 0;
-  int block_offset = 0;
-
   block_size_including_axis_dim_div.divmod(id, outter_block_index, offset);
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
-  for (int i = 0; i < num_inputs; ++i) {
-    int64_t range_left = (i == 0) ? 0 : concat_sizes_range[i - 1];
-    if ((range_left <= block_index) && (block_index < concat_sizes_range[i])) {
-      input_index = i;
-      block_offset = block_index - range_left;
-      break;
-    }
-  }
+  int input_index = axis_dimension_input_output_mapping[block_index];
+  int64_t range_left = (input_index == 0) ? 0 : concat_sizes_range[input_index - 1];
+  int block_offset = block_index - range_left;
 
   input_pos = (outter_block_index * concat_sizes[input_index] + block_offset) *
                block_size_inside_axis_dim_div.d_ +
@@ -51,6 +44,7 @@ Status ConcatImpl(const size_t element_bytes,
                   const int block_size_inside_axis_dim,
                   const int64_t* concat_sizes,
                   const int64_t* concat_sizes_range,
+                  const int64_t* axis_dimension_input_output_mapping,
                   const int num_inputs,
                   void* output_data,
                   const void** input_ptr,
@@ -64,7 +58,8 @@ Status ConcatImpl(const size_t element_bytes,
     case sizeof(int8_t):
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          concat_sizes, concat_sizes_range, num_inputs,
+          concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
+          num_inputs,
           reinterpret_cast<int8_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
@@ -72,7 +67,8 @@ Status ConcatImpl(const size_t element_bytes,
     case sizeof(int16_t):
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          concat_sizes, concat_sizes_range, num_inputs,
+          concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
+          num_inputs,
           reinterpret_cast<int16_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
@@ -80,7 +76,8 @@ Status ConcatImpl(const size_t element_bytes,
     case sizeof(int32_t):
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          concat_sizes, concat_sizes_range, num_inputs,
+          concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
+          num_inputs,
           reinterpret_cast<int32_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
@@ -88,7 +85,8 @@ Status ConcatImpl(const size_t element_bytes,
     case sizeof(int64_t):
       _ConcatKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          concat_sizes, concat_sizes_range, num_inputs,
+          concat_sizes, concat_sizes_range, axis_dimension_input_output_mapping,
+          num_inputs,
           reinterpret_cast<int64_t*>(output_data),
           input_ptr,
           (CUDA_LONG)N);
