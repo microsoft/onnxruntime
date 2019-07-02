@@ -50,6 +50,10 @@ if(onnxruntime_USE_OPENVINO)
   set(PROVIDERS_OPENVINO onnxruntime_providers_openvino)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
 endif()
+if(onnxruntime_USE_NNAPI)
+  set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
 source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
@@ -273,6 +277,33 @@ if (onnxruntime_USE_OPENVINO)
   link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
   target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
+endif()
+
+if (onnxruntime_USE_NNAPI)
+  add_definitions(-DUSE_NNAPI=1)
+  option(DNN_READ_ONNX "" ON)
+  set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+  option(DNN_CMAKE_INSTALL "" OFF)
+  option(DNN_BUILD_BIN "" OFF)
+  add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
+  file(GLOB_RECURSE
+    onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
+  add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf-lite dnnlibrary::dnnlibrary)
+  target_link_libraries(onnxruntime_providers_nnapi dnnlibrary::dnnlibrary)
+  add_dependencies(onnxruntime_providers_nnapi
+    dnnlibrary::dnnlibrary
+    onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  # Header files of DNNLibrary requires C++17, fortunately, all modern Android NDKs support C++17
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD 17)
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
