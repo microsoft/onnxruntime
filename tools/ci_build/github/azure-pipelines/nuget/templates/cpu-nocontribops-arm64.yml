@@ -45,6 +45,7 @@ jobs:
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
+    MsbuildArguments: '/m /p:platform=arm64'
     DoEsrp: ${{ parameters.DoEsrp }}
     ArtifactName: 'drop-nuget-arm64'
     NuPackScript: |
