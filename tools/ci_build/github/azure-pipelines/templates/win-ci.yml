@@ -6,6 +6,7 @@ parameters:
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
   NuPackScript : ''
+  ArtifactName: 'drop-nuget'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64'
@@ -163,7 +164,7 @@ jobs:
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: drop-nuget'
         inputs:
-          artifactName: 'drop-nuget'
+          artifactName: ${{ ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
     # Compliance tasks require logs from Debug Build
