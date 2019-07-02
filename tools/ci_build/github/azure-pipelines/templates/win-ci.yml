@@ -164,7 +164,7 @@ jobs:
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: drop-nuget'
         inputs:
-          artifactName: ${{ ArtifactName }}
+          artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
     # Compliance tasks require logs from Debug Build
