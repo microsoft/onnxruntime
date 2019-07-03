@@ -107,7 +107,7 @@ common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) c
 
   const auto* x_data = X->template Data<std::string>();
   const auto x_size = input_shape.Size();
-  for (int64_t i = 0; i < input_shape.Size(); ++i) {
+  for (int64_t i = 0; i < x_size; ++i) {
     auto str_idx = cats_strings_.find(x_data[i]);
     if (str_idx != cats_strings_.cend())
       y_data[i * num_categories_ + str_idx->second] = 1.0f;

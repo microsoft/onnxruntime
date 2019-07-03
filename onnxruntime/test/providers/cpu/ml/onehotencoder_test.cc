@@ -42,7 +42,7 @@ void TestIntCategory(std::vector<T>& input) {
   test_vector.AddAttribute("zeros", int64_t{0});
   test_vector.Run(OpTester::ExpectResult::kExpectFailure);
 
-  // Test MultiDimensional [:, Labels, :]
+  // Test MultiDimensional [:, :, Labels]
   OpTester test_multiD("OneHotEncoder", 1, onnxruntime::kMLDomain);
   test_multiD.AddAttribute("cats_int64s", categories);
   test_multiD.AddInput<T>("X", {1, 1, 7}, input);
