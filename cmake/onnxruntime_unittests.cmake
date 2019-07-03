@@ -429,6 +429,12 @@ if(WIN32)
       $<TARGET_FILE_DIR:${test_data_target}>
     )
   endif()
+  if (onnxruntime_USE_TVM)
+    add_custom_command(
+      TARGET ${test_data_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
+      )
+  endif()
 endif()
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
