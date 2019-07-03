@@ -22,7 +22,7 @@ mkdir $BINARY_DIR/$BUILD_ID
 cp $BINARY_DIR/onnxruntime_server $BINARY_DIR/$BUILD_ID
 cp $BINARY_DIR/onnxruntime_server.symbol $BINARY_DIR/$BUILD_ID
 cp $BINARY_DIR/libonnxruntime.so.* $BINARY_DIR/$BUILD_ID
-cp $BINARY_DIR/libonxruntime.symbol $BINARY_DIR/$BUILD_ID
+cp $BINARY_DIR/libonnxruntime.symbol $BINARY_DIR/$BUILD_ID
 
 echo "Create build info file ..."
 echo "Build parameters: $BUILD_PARAMETERS" >> $BINARY_DIR/$BUILD_ID/build_info.txt
