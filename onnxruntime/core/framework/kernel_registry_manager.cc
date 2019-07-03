@@ -23,7 +23,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   {
     std::lock_guard<OrtMutex> lock(lock_);
     for (auto& registry : custom_kernel_registries_) {
-      status = registry->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
+      status = registry->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
                                          session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
       if (status.IsOK()) {
         return status;
@@ -38,7 +38,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
     if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   }
   if (p != nullptr) {
-    status = p->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
+    status = p->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
                                 session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
     if (status.IsOK()) {
       return status;
