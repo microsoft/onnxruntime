@@ -245,35 +245,28 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
   //1. first plan the memory
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-  // map of ort value index to <initializer name, TensorProto>
-  using NameAndProto = std::pair<const std::string, const ONNX_NAMESPACE::TensorProto*>;
-  std::unordered_map<int, NameAndProto> id_to_initialized_tensor;
-
+  std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
-    id_to_initialized_tensor.insert({ort_value_index, {entry.first, entry.second}});
+    id_to_initialized_tensor[ort_value_index] = entry.second;
   }
-
   for (const auto& entry : id_to_initialized_tensor) {
-    ORT_RETURN_IF_ERROR(planner->Trace(entry.first, entry.second.second));
+    ORT_RETURN_IF_ERROR(planner->Trace(entry.first, entry.second));
   }
 
   //2. allocate weight buffer on different locations
   ORT_RETURN_IF_ERROR(planner->FinalizePlan());
-
   OrtCallback deleter;
-
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
-    const std::string& initializer_name = entry.second.first;
-    const ONNX_NAMESPACE::TensorProto& tensor_proto = *entry.second.second;
-    ORT_ENFORCE(!initializer_name.empty(), "Initializer had no name.");
+    const char* name = entry.second->has_name() ? entry.second->name().c_str() : "";
+    const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
     std::unique_ptr<MemBuffer> m;
     // TODO: if the tensor need be copied, does it have enough room?
-    ORT_RETURN_IF_ERROR(planner->GetPreallocatedBuffer(ort_value_index, initializer_name.c_str(), m));
+    ORT_RETURN_IF_ERROR(planner->GetPreallocatedBuffer(ort_value_index, name, m));
 #ifndef NDEBUG
     ORT_ENFORCE(m != nullptr);
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
@@ -282,14 +275,14 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter);
     if (!st.IsOK()) {
       std::ostringstream oss;
-      oss << "Deserialize tensor " << initializer_name << " failed. Error:" << st.ErrorMessage();
+      oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
       return Status(st.Category(), st.Code(), oss.str());
     }
 
-    bool constant = graph_utils::IsConstantInitializer(graph, initializer_name);
+    bool constant = graph_utils::IsConstantInitializer(graph, name, /* check_outer_scope */ false);
     ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
 
-    VLOGS(logger, 1) << "Added weight with name : " << initializer_name << " with index: " << ort_value_index;
+    VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
 
   LOGS(logger, INFO) << "Done saving initialized tensors";

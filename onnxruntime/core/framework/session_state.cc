@@ -47,7 +47,7 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   if (d != nullptr && d->f != nullptr) {
     deleter_for_initialized_tensors_[ort_value_index] = *d;
   }
-  
+
   if (constant) {
     constant_initialized_tensors_.insert({ort_value_index, ort_value});
   }

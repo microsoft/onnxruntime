@@ -565,6 +565,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
   seen_names.reserve(feeds.size());
   size_t seen_required_inputs = 0;
   const auto model_ir_version = model_->IrVersion();
+  const Graph& graph = model_->MainGraph();
 
   for (size_t i = 0; i < feeds.size(); ++i) {
     const auto& feed_name = feed_names[i];
@@ -575,15 +576,20 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
     auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
-      // if IR < 4 we disallow using a graph input to override an initializer. check for this and output a nicer
-      // error message given the name will appear in the list of graph inputs and seemingly be valid.
-      bool attempt_to_override_initializer = graph_utils::IsConstantInitializer(model_->MainGraph(), feed_name);
+      // if IR < 4 all initializers are required to have a matching graph input with the same name,
+      // however we disallow using that graph input to override the initializer, and treat the initializers as constant.
+      // check for this and output a nicer error message if that is the case.
+      // As we've already moved all initializers to SessionState we need to check if it's in the constant initializers there
+      int idx;
+      bool is_constant_initializer = session_state_.GetOrtValueNameIdxMap().GetIdx(feed_name, idx).IsOK() &&
+                                     session_state_.GetConstantInitializedTensors().find(idx) !=
+                                         session_state_.GetConstantInitializedTensors().cend();
 
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid Feed Input Name:", feed_name,
-                             attempt_to_override_initializer ? ". Initializers may not be overridden by feeds"
-                                                               " if model IR version is less than 4."
-                                                             : ".");
+                             is_constant_initializer ? ". Initializers may not be overridden by feeds"
+                                                       " if model IR version is less than 4."
+                                                     : ".");
     }
 
     auto expected_type = utils::GetMLDataType(*iter->second);
@@ -597,9 +603,8 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
 
-    // IR < 4 all entries in input_def_map_ are required.
-    // IR 4 or above we need to do a lookup to see if this was a required input
-    if (model_ir_version < 4 || required_inputs_.find(feed_name) != required_inputs_.cend()) {
+    if (!graph.CanOverrideInitializer() ||  // all entries in input_def_map_ are required.
+        required_inputs_.find(feed_name) != required_inputs_.cend()) {
       ++seen_required_inputs;
     }
   }

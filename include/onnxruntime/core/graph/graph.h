@@ -753,6 +753,9 @@ class Graph {
   /** Returns true if this is a subgraph or fase if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
 
+  /** Returns the parent graph if this is a subgraph */
+  const Graph* ParentGraph() const { return parent_graph_; }
+
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
   @param parent_graph The Graph containing the Node which has a GraphProto attribute.

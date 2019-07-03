@@ -2363,8 +2363,10 @@ Status Graph::SetGraphInputsOutputs() {
             bool is_initializer = name_to_initial_tensor_.find(name) != name_to_initial_tensor_.end();
 
             if (!graph_inputs_manually_set_) {
-              // all initializers need matching inputs if IR version < 4.
-              // for IR version >= 4 any matching inputs for initializers need to be explicitly specified
+              // if IR version < 4 all initializers must have a matching graph input
+              // (even though the graph input is not allowed to override the initializer).
+              // if IR version >= 4 initializers are not required to have a matching graph input.
+              // any graph inputs that are to override initializers must be specified by calling SetInputs.
               if (!is_initializer || ir_version_ < 4) {
                 graph_inputs_including_initializers_.push_back(input_arg);
               }
