@@ -33,7 +33,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
   size_t cpu_tensor_length = 0;
   try {
     onnxruntime::server::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
-  } catch (Ort::Exception& e) {
+  } catch (const Ort::Exception& e) {
     logger->error("GetSizeInBytesFromTensorProto() failed. Error Message: {}", e.what());
     return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }
@@ -44,7 +44,7 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
                                               onnxruntime::server::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
                                               ml_value);
 
-  } catch (Ort::Exception& e) {
+  } catch (const Ort::Exception& e) {
     logger->error("TensorProtoToMLValue() failed. Message: {}", e.what());
     return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }
@@ -138,7 +138,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   std::vector<Ort::Value> outputs;
   try {
     outputs = Run(env_->GetSession(), run_options, input_names, input_values, output_names);
-  } catch (Ort::Exception& e) {
+  } catch (const Ort::Exception& e) {
     return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }
 
@@ -147,7 +147,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
     onnx::TensorProto output_tensor{};
     try {
       MLValueToTensorProto(outputs[i], using_raw_data_, logger, output_tensor);
-    } catch (Ort::Exception& e) {
+    } catch (const Ort::Exception& e) {
       logger = env_->GetLogger(request_id_);
       logger->error("MLValueToTensorProto() failed. Output name: {}. Error Message: {}", output_names[i], e.what());
       return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
