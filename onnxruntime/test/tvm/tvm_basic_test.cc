@@ -319,7 +319,7 @@ static void RunSession(InferenceSession& session_object,
     ASSERT_EQ(found[i], values_y[i]);
 }
 
-static const std::string MODEL_URI = "testdata/fuse_add_1.onnx";
+static const std::string MODEL_URI = "testdata/fuse_add_1.pb";
 
 TEST(TVMTest, Fuse_Add_Test) {
   SessionOptions so;
