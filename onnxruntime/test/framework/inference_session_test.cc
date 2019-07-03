@@ -828,56 +828,19 @@ TEST(InferenceSessionTests, ModelWithoutOpset) {
   }
 }
 
-static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
-  Model model("ModelWithOptionalInputs");
-  auto& graph = model.MainGraph();
-
-  // create an initializer, which is an optional input that can be overridden
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.add_dims(1);
-  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
-  tensor_proto.add_float_data(1.f);
-  tensor_proto.set_name("optional_input");
-
-  graph.AddInitializedTensor(tensor_proto);
-
-  TypeProto single_float;
-  single_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  single_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-
-  auto& required_input = graph.GetOrCreateNodeArg("required_input", &single_float);
-  auto& optional_input = graph.GetOrCreateNodeArg("optional_input", nullptr);
-  auto& add_output = graph.GetOrCreateNodeArg("add_output", &single_float);
-
-  EXPECT_TRUE(optional_input.Shape() != nullptr) << "AddInitializedTensor should have created the NodeArg with shape.";
-
-  graph.AddNode("add", "Add", "Add required and optional inputs", {&required_input, &optional_input}, {&add_output});
-
-  auto status = graph.Resolve();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-  auto model_proto = model.ToProto();
-
-  return model_proto;
-}
-
 static common::Status RunOptionalInputTest(bool add_required_input,
                                            bool add_optional_input,
-                                           bool add_invalid_input) {
-  auto model_proto = CreateModelWithOptionalInputs();
-
+                                           bool add_invalid_input,
+                                           int model_ir_version) {
   SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestOptionalInputs";
+  so.session_logid = "RunOptionalInputTest";
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status status;
+  std::string model_path = "testdata/optional_inputs_ir" + std::to_string(model_ir_version) + ".onnx";
 
-  std::string s1;
-  model_proto.SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  auto status = session_object.Load(sstr);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  status = session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ORT_RETURN_IF_ERROR(session_object.Load(model_path));
+  ORT_RETURN_IF_ERROR(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
@@ -885,12 +848,17 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   // prepare inputs
   std::vector<int64_t> dims = {1};
   std::vector<float> required_input_val = {1.f};
+  std::vector<float> other_required_input_val = {0.f};
   std::vector<float> optional_input_val = {10.f};  // override initializer value of 1
   std::vector<float> unknown_input_val = {20.f};
 
   OrtValue required_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, required_input_val, &required_input_mlvalue);
+
+  OrtValue other_required_input_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       dims, other_required_input_val, &other_required_input_mlvalue);
 
   OrtValue optional_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
@@ -904,6 +872,9 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   if (add_required_input)
     feeds.insert(std::make_pair("required_input", required_input_mlvalue));
+
+  // always add this one
+  feeds.insert(std::make_pair("other_required_input", other_required_input_mlvalue));
 
   if (add_optional_input)
     feeds.insert(std::make_pair("optional_input", optional_input_mlvalue));
@@ -933,24 +904,36 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   return status;
 }
 
+// test the change in handling of graph inputs that match initializers between IR version 3 and 4
+// in V3 disallow overriding an initializer via the feeds
+// for V4 allow it
 TEST(InferenceSessionTests, TestOptionalInputs) {
-  // required input only
-  auto status = RunOptionalInputTest(true, false, false);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  std::vector<int> ir_versions{3, 4};
+  for (auto version : ir_versions) {
+    // required input only
+    auto status = RunOptionalInputTest(true, false, false, version);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  // required and optional input
-  status = RunOptionalInputTest(true, true, false);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    // required and optional input
+    status = RunOptionalInputTest(true, true, false, version);
+    if (version < 4) {
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(),
+                  testing::HasSubstr("Initializers may not be overridden by feeds if model IR version is less than 4"));
+    } else {
+      ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
 
-  // required, optional and invalid input
-  status = RunOptionalInputTest(true, true, true);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+    // required, optional and invalid input
+    status = RunOptionalInputTest(true, true, true, version);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
-  // missing required
-  status = RunOptionalInputTest(false, true, false);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
+    // missing required
+    status = RunOptionalInputTest(false, false, false, version);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("One or more missing required inputs"));
+  }
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
@@ -1138,6 +1121,7 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
 
 TEST(InferenceSessionTests, TestTruncatedSequence) {
   // model/data generated by <repo>/onnxruntime/test/testdata/CNTK/gen.py GenScan()
+  // Manually updated to have IR version of 4.
   static const std::string LSTM_MODEL_URI = "testdata/scan_1.pb";
   // This model is a 4x forward LSTM. Parse it to find out mapping between init_state input/output
   ONNX_NAMESPACE::ModelProto model_proto;

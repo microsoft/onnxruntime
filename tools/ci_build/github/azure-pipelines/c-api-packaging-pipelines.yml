@@ -180,11 +180,4 @@ jobs:
         artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
 
-    - task: PowerShell@2
-      displayName: 'Clean up Cuda Path 9.1'
-      inputs:
-        targetType: 'filePath'
-        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
-        arguments: '-CudaVersion 9.1'
-
     - template: templates/clean-agent-build-directory-step.yml

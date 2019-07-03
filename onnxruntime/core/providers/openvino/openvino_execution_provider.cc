@@ -14,12 +14,13 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/util/protobuf_parsing_utils.h"
+#include "core/common/logging/logging.h"
 
 #include "openvino_execution_provider.h"
 #include "core/graph/model.h"
 #include "openvino_graph.h"
 
-#include "core/util/protobuf_parsing_utils.h"
 namespace onnxruntime {
 
 constexpr const char* OpenVINO = "OpenVINO";
@@ -454,73 +455,77 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
   std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
-  if (IsGraphSupported(graph_viewer,device_id)) {
-    std::string model_proto_strbuf;
-    model_proto.SerializeToString(&model_proto_strbuf);
-
-    std::string xml_string, weights_string;
-
-    // Try converting with OpenVINO's Model Optimizer
-    try {
-      openvino_ep::OpenVINOGraph::ConvertONNXModelToOpenVINOIR(model_proto_strbuf, xml_string, weights_string, precision_fp32);
-    } catch  (const char* msg) {
-      // Model Optimizer cannot convert this model.
-      return result;
-    }
-
-    auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
-
-    for (auto index : node_indexes) {
-      sub_graph->nodes.push_back(index);
-      const auto node = graph_viewer.GetNode(index);
-
-      // Track graph inputs and initializers
-      for (auto input_def : node->InputDefs()) {
-        if (fused_outputs.find(input_def) == fused_outputs.end()) {
-          fused_inputs.insert(input_def);
-        } else {
-          fused_outputs.erase(input_def);
-        }
-      }
-
-      // Track graph outputs
-      for (auto output_def : node->OutputDefs()) {
-        if (fused_inputs.find(output_def) == fused_inputs.end()) {
-          fused_outputs.insert(output_def);
-        } else {
-          fused_inputs.erase(output_def);
-        }
-      }
-    }
-
-    ONNX_NAMESPACE::AttributeProto xml_str_attr;
-    xml_str_attr.set_name("xml_str");
-    xml_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-    xml_str_attr.set_s(xml_string);
-
-    ONNX_NAMESPACE::AttributeProto weights_str_attr;
-    weights_str_attr.set_name("weights_str");
-    weights_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
-    weights_str_attr.set_s(weights_string);
-
-    auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->attributes["xml_str"] = xml_str_attr;
-    meta_def->attributes["weights_str"] = weights_str_attr;
-    meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
-    meta_def->domain = "OpenVINO";
-    meta_def->since_version = 1;
-
-    for (auto input : fused_inputs) {
-      meta_def->inputs.push_back(input->Name());
-    }
-
-    for (auto output : fused_outputs) {
-      meta_def->outputs.push_back(output->Name());
-    }
-
-    sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  if (!IsGraphSupported(graph_viewer,device_id)) {
+    LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations.";
+    return result;
   }
+
+  std::string model_proto_strbuf;
+  model_proto.SerializeToString(&model_proto_strbuf);
+
+  std::string xml_string, weights_string;
+
+  // Try converting with OpenVINO's Model Optimizer
+  try {
+    openvino_ep::OpenVINOGraph::ConvertONNXModelToOpenVINOIR(model_proto_strbuf, xml_string, weights_string, precision_fp32);
+  } catch  (const char* msg) {
+    // Model Optimizer cannot convert this model.
+    LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as Model Optimizer cannot convert this model." << msg;
+    return result;
+  }
+
+  auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (auto index : node_indexes) {
+    sub_graph->nodes.push_back(index);
+    const auto node = graph_viewer.GetNode(index);
+
+    // Track graph inputs and initializers
+    for (auto input_def : node->InputDefs()) {
+      if (fused_outputs.find(input_def) == fused_outputs.end()) {
+        fused_inputs.insert(input_def);
+      } else {
+        fused_outputs.erase(input_def);
+      }
+    }
+
+    // Track graph outputs
+    for (auto output_def : node->OutputDefs()) {
+      if (fused_inputs.find(output_def) == fused_inputs.end()) {
+        fused_outputs.insert(output_def);
+      } else {
+        fused_inputs.erase(output_def);
+      }
+    }
+  }
+
+  ONNX_NAMESPACE::AttributeProto xml_str_attr;
+  xml_str_attr.set_name("xml_str");
+  xml_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  xml_str_attr.set_s(xml_string);
+
+  ONNX_NAMESPACE::AttributeProto weights_str_attr;
+  weights_str_attr.set_name("weights_str");
+  weights_str_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  weights_str_attr.set_s(weights_string);
+
+  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  meta_def->attributes["xml_str"] = xml_str_attr;
+  meta_def->attributes["weights_str"] = weights_str_attr;
+  meta_def->name = "OpenVINOKernel_" + std::to_string(counter++);
+  meta_def->domain = "OpenVINO";
+  meta_def->since_version = 1;
+
+  for (auto input : fused_inputs) {
+    meta_def->inputs.push_back(input->Name());
+  }
+
+  for (auto output : fused_outputs) {
+    meta_def->outputs.push_back(output->Name());
+  }
+
+  sub_graph->SetMetaDef(meta_def);
+  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
 
   return result;
 }
@@ -534,6 +539,7 @@ common::Status OpenVINOExecutionProvider::Compile(
       openvino_graph = std::make_shared<openvino_ep::OpenVINOGraph>(fused_node);
 
     } catch (const char* msg) {
+      LOGS_DEFAULT(ERROR) << openvino_ep::OpenVINOGraph::log_tag << "Compilation error: " << msg;
       return Status(common::StatusCategory::ONNXRUNTIME,
                     common::StatusCode::NOT_IMPLEMENTED, msg);
     }
