@@ -16,11 +16,15 @@
 #include "core/graph/graph.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/logging/logging.h"
 
 #include "openvino_graph.h"
 
 namespace onnxruntime{
 namespace openvino_ep {
+
+
+const std::string OpenVINOGraph::log_tag = "[OpenVINO-EP] ";
 
 OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
 
@@ -227,6 +231,8 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
                                                 plugin_path)
                                                 .getPluginByDevice(device);
 
+  LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
+
   // Configure input & output
   // Prepare input blobs
 
@@ -301,11 +307,15 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
   InferenceEngine::ExecutableNetwork exeNetwork = plugin.LoadNetwork(*network,
                                                                      {});
 
+  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
+
   // Create infer request
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
   for (size_t i = 0; i < num_inf_reqs_; i++) {
     infer_requests.push_back(exeNetwork.CreateInferRequestPtr());
   }
+  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
+
   return infer_requests;
 }
 
@@ -320,6 +330,8 @@ size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* inpu
   if ((input_shape.size() == graph_dims.size() && input_shape[0] > 1 && graph_dims[0] == 1) || (input_shape.size() == graph_dims.size() + 1)) {
     batch_size = input_shape[0];
   }
+
+  LOGS_DEFAULT(INFO) << log_tag << "Deduced batch size: " << batch_size;
 
   return batch_size;
 }
@@ -424,6 +436,8 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Currently allows only one Infer execution at a time
   std::lock_guard<std::mutex> lock(compute_lock_);
 
+  LOGS_DEFAULT(INFO) << log_tag << "Starting inference";
+
   // Get Input and Output tensors
   size_t input_count = openvino_network_->getInputsInfo().size();
   size_t output_count = openvino_network_->getOutputsInfo().size();
@@ -465,6 +479,8 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
   }
+
+  LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
 }  // namespace openvino_ep
