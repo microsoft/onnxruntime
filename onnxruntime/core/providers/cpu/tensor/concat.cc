@@ -21,7 +21,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   const size_t inputs_0_rank = inputs_0_dims.size();
   ORT_RETURN_IF_NOT(inputs_0_rank > 0, "Cannot concatenate scalars");
 
-  uint64_t axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions()));
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, inputs_0.Shape().NumDimensions()));
 
   // cache num of elements in tensor for later use
   // as it's expensive to call Size() on TensorShape over and over
@@ -39,7 +39,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     // Ensure all the other (non-concat) axes match
     for (size_t axis_index = 0; axis_index < inputs_0_rank; ++axis_index) {
       num_elements *= inputs_n_dims[axis_index];
-      if (axis_index == axis)
+      if (axis_index == p.axis)
         continue;
       ORT_RETURN_IF_NOT(inputs_n_dims[axis_index] == inputs_0_dims[axis_index],
                         "Non concat axis dimensions must match: Axis ", 
@@ -53,7 +53,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
   size_t concat_axis_size = 0;
   for (int index = 0; index < input_count; index++) {
     tensor_pointer = ctx->Input<Tensor>(index);
-    concat_axis_size += tensor_pointer->Shape()[int(axis)];
+    concat_axis_size += tensor_pointer->Shape()[int(p.axis)];
   }
 
   // Calculate the shape of the output tensor
@@ -64,7 +64,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     num_elements *= inputs_0_dims[dimension_index];
   }
   tensor_num_elements[0] = num_elements;
-  dims[axis] = concat_axis_size;
+  dims[p.axis] = concat_axis_size;
   TensorShape output_shape(dims);
  
   auto& concat_result = *ctx->Output(0, output_shape);
@@ -78,7 +78,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     
   // The output_axis_pitch is the number of elements to add to move to the next split axis in the output
   p.output_axis_pitch = 1;
-  for (size_t i = inputs_0_rank; i-- > axis;) p.output_axis_pitch *= dims[i];
+  for (size_t i = inputs_0_rank; i-- > p.axis;) p.output_axis_pitch *= dims[i];
 
   p.inputs.reserve(input_count);
   for (int input_index = 0; input_index < input_count; input_index++) {
@@ -90,7 +90,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, int input_count, Prep
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
-    for (size_t i = inputs_0_rank; i-- > axis;) input_axis_pitch *= data_dims[i];
+    for (size_t i = inputs_0_rank; i-- > p.axis;) input_axis_pitch *= data_dims[i];
 
     p.inputs.push_back({&data_n, tensor_num_elements[input_index], input_axis_pitch});
   }
