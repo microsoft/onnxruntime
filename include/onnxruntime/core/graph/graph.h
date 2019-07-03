@@ -974,6 +974,8 @@ class Graph {
   // NodeArgs that come from outer scope. Used when building a graph so that
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
+
+  int num_resolves_ = 0;
 };
 
 }  // namespace onnxruntime
