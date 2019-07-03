@@ -8,21 +8,38 @@
 namespace onnxruntime {
 namespace server {
 
+static spdlog::level::level_enum Convert(OrtLoggingLevel in) {
+  switch (in) {
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE:
+      return spdlog::level::level_enum::debug;
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO:
+      return spdlog::level::level_enum::info;
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING:
+      return spdlog::level::level_enum::warn;
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR:
+      return spdlog::level::level_enum::err;
+    case OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL:
+      return spdlog::level::level_enum::critical;
+    default:
+      return spdlog::level::level_enum::off;
+  }
+}
+
 void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
                       const char* message) {
   spdlog::logger* logger = static_cast<spdlog::logger*>(param);
-  logger->log(static_cast<spdlog::level::level_enum>(severity - 1), "[{} {} {}]: {}", logid, category, code_location, message);
+  logger->log(Convert(severity), "[{} {} {}]: {}", logid, category, code_location, message);
   return;
 }
 
 ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_init_list sink) : severity_(severity),
-                                                                                        logger_id_("ServerApp"),
-                                                                                        sink_(sink),
-                                                                                        default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink)),
-                                                                                        runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get()),
-                                                                                        session(nullptr) {
+                                                                                               logger_id_("ServerApp"),
+                                                                                               sink_(sink),
+                                                                                               default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink)),
+                                                                                               runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get()),
+                                                                                               session(nullptr) {
   spdlog::set_automatic_registration(false);
-  spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_));
+  spdlog::set_level(Convert(severity_));
   spdlog::initialize_logger(default_logger_);
 }
 

@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level, spdlog::sinks_init_list{std::make_shared<spdlog::sinks::stdout_sink_st>(), std::make_shared<spdlog::sinks::syslog_sink_st>()});
+  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level, spdlog::sinks_init_list{std::make_shared<spdlog::sinks::stdout_sink_mt>(), std::make_shared<spdlog::sinks::syslog_sink_mt>()});
   auto logger = env->GetAppLogger();
   logger->info("Model path: {}", config.model_path);
 

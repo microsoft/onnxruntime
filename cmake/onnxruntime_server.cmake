@@ -4,19 +4,18 @@
 set(SERVER_APP_NAME "onnxruntime_server")
 
 # Generate .h and .cc files from protobuf file
-add_library(server_proto ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto)
+add_library(server_proto ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto ${ONNXRUNTIME_ROOT}/server/protobuf/onnx-ml.proto)
 if(WIN32)
   target_compile_options(server_proto PRIVATE "/wd4125" "/wd4456")
 endif()
 target_include_directories(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 target_compile_definitions(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/server/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf TARGET server_proto)
-add_dependencies(server_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+add_dependencies(server_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
-    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/model_metadata.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/model_status.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/predict.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+     set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/predict.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+     set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/onnx-ml.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
 
@@ -83,22 +82,16 @@ target_include_directories(onnxruntime_server_lib PRIVATE
   ${re2_src}
 )
 
+
 target_link_libraries(onnxruntime_server_lib PRIVATE
   server_proto
   ${Boost_LIBRARIES}
   onnxruntime_server_http_core_lib
-  onnxruntime_session
-  onnxruntime_optimizer
-  onnxruntime_providers
-  onnxruntime_util
-  onnxruntime_framework
-  onnxruntime_util
-  onnxruntime_graph
-  onnxruntime_common
-  onnxruntime_mlas
-  ${onnxruntime_EXTERNAL_LIBRARIES}
   PUBLIC
+  protobuf::libprotobuf
+  ${onnxruntime_EXTERNAL_DEPENDENCIES}
   spdlog::spdlog
+  onnxruntime
 )
 
 if (onnxruntime_USE_SYSLOG)

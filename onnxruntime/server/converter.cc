@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <onnx/onnx_pb.h>
 #include "core/session/onnxruntime_cxx_api.h"
-
 
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
@@ -21,31 +19,31 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementData
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT32; 
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT32;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
       return onnx::TensorProto_DataType::TensorProto_DataType_BOOL;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
       return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT16;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
-      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;  
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
       return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
@@ -56,14 +54,11 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementData
   }
 }
 
-common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
-                                    const std::shared_ptr<spdlog::logger>& logger,
-                                    /* out */ onnx::TensorProto& tensor_proto) {
+void MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
+                          const std::shared_ptr<spdlog::logger>& logger,
+                          /* out */ onnx::TensorProto& tensor_proto) {
   if (!ml_value.IsTensor()) {
-    //TODO: Throw?
-    return common::Status(common::StatusCategory::ONNXRUNTIME,
-                          common::StatusCode::NOT_IMPLEMENTED,
-                          "Don't support Non-Tensor values");
+    throw Ort::Exception("Don't support Non-Tensor values", OrtErrorCode::ORT_NOT_IMPLEMENTED);
   }
   // Tensor in MLValue
   const auto& shape = ml_value.GetTensorTypeAndShapeInfo();
@@ -256,13 +251,13 @@ common::Status MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
     }
     default: {
       logger->error("Unsupported TensorProto DataType: {}", data_type);
-      return common::Status(common::StatusCategory::ONNXRUNTIME,
-                            common::StatusCode::NOT_IMPLEMENTED,
-                            "Unsupported TensorProto DataType: " + std::to_string(data_type));
+      std::ostringstream ostr;
+      ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
+      throw Ort::Exception(ostr.str(), OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
   }
 
-  return common::Status::OK();
+  return;
 }
 }  // namespace server
 }  // namespace onnxruntime

@@ -44,9 +44,5 @@ protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::s
   return protobufutil::Status(code, oss.str());
 }
 
-protobufutil::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message) {
-  return GenerateProtobufStatus(onnx_status.Code(), message);
-}
-
 }  // namespace server
 }  // namespace onnxruntime

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <stdio.h>
-#include <onnx/onnx_pb.h>
 #include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
 #include "core/session/environment.h"
@@ -32,19 +31,22 @@ protobufutil::Status Executor::SetMLValue(const onnx::TensorProto& input_tensor,
   auto logger = env_->GetLogger(request_id_);
 
   size_t cpu_tensor_length = 0;
-  auto status = onnxruntime::server::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
-  if (!status.IsOK()) {
-    logger->error("GetSizeInBytesFromTensorProto() failed. Error Message: {}", status.ToString());
-    return GenerateProtobufStatus(status, "GetSizeInBytesFromTensorProto() failed: " + status.ToString());
+  try {
+    onnxruntime::server::GetSizeInBytesFromTensorProto<0>(input_tensor, &cpu_tensor_length);
+  } catch (Ort::Exception& e) {
+    logger->error("GetSizeInBytesFromTensorProto() failed. Error Message: {}", e.what());
+    return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }
 
   auto* buf = buffers.AllocNewBuffer(cpu_tensor_length);
-  status = onnxruntime::server::TensorProtoToMLValue(input_tensor,
-                                                     onnxruntime::server::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
-                                                     ml_value);
-  if (!status.IsOK()) {
-    logger->error("TensorProtoToMLValue() failed. Message: {}", status.ToString());
-    return GenerateProtobufStatus(status, "TensorProtoToMLValue() failed:" + status.ToString());
+  try {
+    onnxruntime::server::TensorProtoToMLValue(input_tensor,
+                                              onnxruntime::server::MemBuffer(buf, cpu_tensor_length, *cpu_allocator_info),
+                                              ml_value);
+
+  } catch (Ort::Exception& e) {
+    logger->error("TensorProtoToMLValue() failed. Message: {}", e.what());
+    return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
   }
 
   return protobufutil::Status::OK;
@@ -143,12 +145,12 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   // Build the response
   for (size_t i = 0, sz = outputs.size(); i < sz; ++i) {
     onnx::TensorProto output_tensor{};
-    auto status = MLValueToTensorProto(outputs[i], using_raw_data_, logger, output_tensor);
-    logger = env_->GetLogger(request_id_);
-
-    if (!status.IsOK()) {
-      logger->error("MLValueToTensorProto() failed. Output name: {}. Error Message: {}", output_names[i], status.ToString());
-      return GenerateProtobufStatus(status, "MLValueToTensorProto() failed: " + status.ToString());
+    try {
+      MLValueToTensorProto(outputs[i], using_raw_data_, logger, output_tensor);
+    } catch (Ort::Exception& e) {
+      logger = env_->GetLogger(request_id_);
+      logger->error("MLValueToTensorProto() failed. Output name: {}. Error Message: {}", output_names[i], e.what());
+      return GenerateProtobufStatus(e.GetOrtErrorCode(), e.what());
     }
 
     auto insertion_result = response.mutable_outputs()->insert({output_names[i], output_tensor});
