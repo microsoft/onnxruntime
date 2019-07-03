@@ -564,7 +564,6 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
   std::unordered_set<std::string> seen_names;
   seen_names.reserve(feeds.size());
   size_t seen_required_inputs = 0;
-  const auto model_ir_version = model_->IrVersion();
   const Graph& graph = model_->MainGraph();
 
   for (size_t i = 0; i < feeds.size(); ++i) {
