@@ -286,6 +286,33 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+// if IR version is 4 or higher the weights can be overridden if there's a matching graph input.
+// check that we don't fuse if that is the case
+TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
+  string model_uri = MODEL_FOLDER + "fusion/negative-fuse-conv-add-no-bias.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
+  rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+  // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] != 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-add-mul-3d.onnx";
 
