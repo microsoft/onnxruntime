@@ -1350,6 +1350,34 @@ Example 4:
           }
         }
       });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("TrainableDropoutGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dy", "The gradient tensor from output.", "T")
+      .Input(1, "mask",
+             "The mask tensor of the dropout. ", "T1")
+      .Input(2, "ratio",
+             "The ratio of random dropout, with value in [0, 1]. If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of input, which is typically "
+             "the case during training.",
+             "T",
+             OpSchema::Optional)
+      .Output(0, "dx", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(bool)"},
+          "Constrain 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

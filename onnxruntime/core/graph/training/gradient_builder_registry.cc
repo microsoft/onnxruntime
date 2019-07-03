@@ -69,7 +69,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("MaxPool", GetMaxPoolGradient);
   REGISTER_GRADIENT_BUILDER("LRN", GetLRNGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient);
-  REGISTER_GRADIENT_BUILDER("TrainableDropout", GetDropoutGradient);
   REGISTER_GRADIENT_BUILDER("Gather", GetGatherGradient);
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
   REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
@@ -78,6 +77,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("SparseSoftmaxCrossEntropy", GetSparseSoftmaxCrossEntropyGradient);
   REGISTER_GRADIENT_BUILDER("GlobalAveragePool", GetGlobalAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("AveragePool", GetAveragePoolGradient);
+  REGISTER_GRADIENT_BUILDER("TrainableDropout", GetTrainableDropoutGradient)
 };
 
 }  // namespace training

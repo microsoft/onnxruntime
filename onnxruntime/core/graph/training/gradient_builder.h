@@ -49,6 +49,7 @@ DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGemmGradient)
+DECLARE_GRADIENT_BUILDER(GetTrainableDropoutGradient)
 
 using Dimension = onnx::TensorShapeProto_Dimension;
 
