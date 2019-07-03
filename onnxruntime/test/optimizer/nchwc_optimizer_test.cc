@@ -192,7 +192,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput({16, 3, 224, 224});
+      auto* input_arg = helper.MakeInput({16, 3, 112, 112});
       auto* output_arg = helper.MakeOutput();
 
       auto* conv_output_arg = output_arg;
