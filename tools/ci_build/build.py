@@ -74,8 +74,9 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--gen_doc", action='store_true', help="Generate documentation on contrib ops")
 
     # CUDA related
+    # On Windows, to enable CUDA, you should specify all of the following 4 arguments
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
-    parser.add_argument("--cuda_version", help="The version of CUDA toolkit to use. Auto-detect if not specified. e.g. 9.0")
+    parser.add_argument("--cuda_version", help="The version of CUDA toolkit to use.")
     parser.add_argument("--cuda_home", help="Path to CUDA home."
                                             "Read from CUDA_HOME environment variable if --use_cuda is true and --cuda_home is not specified.")
     parser.add_argument("--cudnn_home", help="Path to CUDNN home. "
@@ -445,34 +446,19 @@ def setup_cuda_vars(args):
                              .format(cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid))
 
         if (is_windows()):
+            if not args.cuda_version:
+               raise BuildError("please specify cuda_version")
             # Validate that the cudnn_home is pointing at the right level
             if (not os.path.exists(os.path.join(cudnn_home, "bin"))):
                 raise BuildError("cudnn_home path should include the 'cuda' folder, and must contain the CUDNN 'bin' directory.",
                                  "cudnn_home='{}'".format(cudnn_home))
 
-            os.environ["CUDA_PATH"] = cuda_home
-            os.environ["CUDA_TOOLKIT_ROOT_DIR"] = cuda_home
+            m = re.match("^(\d+).(\d+)",args.cuda_version)
+            if not m:
+                raise BuildError("Couldn't read version from " + args.cuda_version )
 
-            cuda_bin_path = os.path.join(cuda_home, 'bin')
-            os.environ["CUDA_BIN_PATH"] = cuda_bin_path
-            os.environ["PATH"] += os.pathsep + cuda_bin_path + os.pathsep + os.path.join(cudnn_home, 'bin')
-            # Add version specific CUDA_PATH_Vx_y value as the Visual Studio build files require that
-            version_file = os.path.join(cuda_home, 'version.txt')
-            if not os.path.exists(version_file):
-                raise BuildError("No version file found in CUDA install directory. Looked for " + version_file)
-
-            cuda_major_version = "unknown"
-
-            with open(version_file) as f:
-                # First line of version file should have something like 'CUDA Version 9.2.148'
-                first_line = f.readline()
-                m = re.match("CUDA Version (\d+).(\d+)", first_line)
-                if not m:
-                    raise BuildError("Couldn't read version from first line of " + version_file)
-
-                cuda_major_version = m.group(1)
-                minor = m.group(2)
-                os.environ["CUDA_PATH_V{}_{}".format(cuda_major_version, minor)] = cuda_home
+            cuda_major_version = m.group(1)
+            minor = m.group(2)
 
             vc_ver_str = os.getenv("VCToolsVersion") or ""
             vc_ver = vc_ver_str.split(".")
