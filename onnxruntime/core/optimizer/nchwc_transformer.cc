@@ -257,7 +257,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   // Require that the weights tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  if (!graph_.GetInitializedTensor(input_defs[1]->Name(), conv_W_tensor_proto) ||
+  if (!graph_utils::NodeArgIsConstant(graph_, *input_defs[1]) ||
+      !graph_.GetInitializedTensor(input_defs[1]->Name(), conv_W_tensor_proto) ||
       (conv_W_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
       (conv_W_tensor_proto->dims_size() != 4)) {
     return;
@@ -306,7 +307,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   // Also require that the optional bias tensor be static.
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (input_defs.size() >= 3) {
-    if (!graph_.GetInitializedTensor(input_defs[2]->Name(), conv_B_tensor_proto) ||
+    if (!graph_utils::NodeArgIsConstant(graph_, *input_defs[2]) ||
+        !graph_.GetInitializedTensor(input_defs[2]->Name(), conv_B_tensor_proto) ||
         (conv_B_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
         (conv_B_tensor_proto->dims_size() != 1) ||
         (conv_B_tensor_proto->dims(0) != output_channels)) {
