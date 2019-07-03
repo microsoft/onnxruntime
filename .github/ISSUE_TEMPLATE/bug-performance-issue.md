@@ -8,7 +8,7 @@ about: Use this template for reporting a bug or a performance issue.
 A clear and concise description of what the bug is.
 
 **(optional) Urgency**
-If there are particular important use cases blocked by this or strict project-related timelines, please call this out.
+If there are particular important use cases blocked by this or strict project-related timelines, please share more information and dates.
 
 **System information**
 - OS Platform and Distribution (e.g., Linux Ubuntu 16.04):
