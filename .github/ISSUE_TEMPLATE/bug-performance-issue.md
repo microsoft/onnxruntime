@@ -7,6 +7,9 @@ about: Use this template for reporting a bug or a performance issue.
 **Describe the bug**
 A clear and concise description of what the bug is.
 
+**(optional) Urgency**
+If there are particular important use cases blocked by this or strict project-related timelines, please call this out.
+
 **System information**
 - OS Platform and Distribution (e.g., Linux Ubuntu 16.04):
 - ONNX Runtime installed from (source or binary):
