@@ -1,10 +1,10 @@
 # Python Operator 
-To facilitate Python coders on model developing, onnxruntime provides a way to invoke operators implemented in Python.
+The Python Operator provides the capability to easily invoke any custom Python code within a single node of an ONNX graph using ONNX Runtime. This can be useful for quicker experimentation when a model requires operators that are not officially supported in ONNX and ONNX Runtime, particularly if there is already a Python implementation for the required functionality. This should be used with discretion in production scenarios, and all security or other risks should be considered.
 
-## Implemenation
-The feature is implemented under onnxruntime/core/language_interop_ops.
+## Design Overview
+The feature can be found under [onnxruntime/core/language_interop_ops](onnxruntime/core/language_interop_ops).
 All Python C API dependent code are compiled into a dynamic linked library named pywrapper.
-Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which get converted back when done.
+Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which is converted back when completed.
 <p>Here is a chart illustrating the calling sequence:
 <pre>
 onnxruntime                          pywrapper                          script
@@ -18,13 +18,15 @@ onnxruntime                          pywrapper                          script
      |         return tensor(s)         |                                 |
 </pre>
 
-## Usage
-Step 1, build onnxruntime with“--config Release --enable_language_interop_ops --build_shared_lib” and override existing onnxruntime binary with the latest, then copy onnxruntime_pywrapper.dll or libonnxruntime_pywrapper.so or libonnxruntime_pywrapper.dylib to the path where onnxruntime binary is placed.
-Note:
-* It is suggested to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well;
-* If "--numpy_version=..." is specified, Python operator will build with that version.
+## How to Use
+### Step 1
+Build onnxruntime with `--config Release --enable_language_interop_ops --build_shared_lib` and override the existing onnxruntime binary with the latest. Then, copy onnxruntime_pywrapper.dll, libonnxruntime_pywrapper.so, or libonnxruntime_pywrapper.dylib to the path where the onnxruntime binary is located. 
+**Notes:**
+* It is recommended to compile within the Python environment where inferencing will happen. For example, if inferencing will happen in a conda env named myconda1, please compile the binary within that environment as well
+* If `--numpy_version=...` is specified, the Python operator will build with that version.
 
-Step 2, create an onnx model containing Python operator nodes:
+### Step 2
+Create an onnx model containing Python operator nodes:
 ```python
 ad1_node = helper.make_node('Add', ['A','B'], ['S'])
 mul_node = helper.make_node('Mul', ['C','D'], ['P'])
@@ -48,7 +50,8 @@ graph = helper.make_graph([ad1_node,mul_node,py1_node,ad2_node,py2_node,sub_node
 model = helper.make_model(graph, producer_name = 'pyop_model')
 onnx.save(model, './model.onnx')
 ```
-Step 3, implement mymodule.py:
+### Step 3
+Implement mymodule.py:
 ```python
 class Multi_1:
     def __init__(self, W1, W2, W3):
@@ -63,23 +66,24 @@ class Multi_2:
         r1, r2 = H + N, N + E
         return r1, r2
 ```
-Step 4, copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
+### Step 4
+Copy mymodule.py into Python sys.path, then reference with onnxruntime. On Windows, please set PYTHONHOME beforehand. It should point to directory where the python is installed, such as C:\Python37 or C:\ProgramData\Anaconda3\envs\myconda1 if it is in conda.
 
 ## Supported Data Types
-* TensorProto.BOOL,
-* TensorProto.UINT8,
-* TensorProto.UINT16,
-* TensorProto.UINT32,
-* TensorProto.INT16,
-* TensorProto.INT32,
-* TensorProto.FLOAT,
+* TensorProto.BOOL
+* TensorProto.UINT8
+* TensorProto.UINT16
+* TensorProto.UINT32
+* TensorProto.INT16
+* TensorProto.INT32
+* TensorProto.FLOAT
 * TensorProto.DOUBLE
 
 ## Limitations
-* On Windows,  "--config Debug" has known issues,  build with "--config RelWithDebInfo" if need debugging symbols;
-* Due to python C API restrictions, multi-threading is disabled, meaning Python operators will run sequentially.
+* On Windows, `--config Debug` has known issues. Please build with `--config RelWithDebInfo` if debugging symbols are needed.
+* Due to Python C API restrictions, multi-threading is disabled so Python operators will run sequentially.
 
-## Test
+## Test Coverage
 The operator has been tested on multiple platforms, with or without conda:
 
 Platform | Python 3.5 | Python 3.6 | Python 3.7
