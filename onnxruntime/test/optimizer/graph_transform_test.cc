@@ -286,6 +286,8 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+// if IR version is 4 or higher the weights can be overridden if there's a matching graph input.
+// check that we don't fuse if that is the case
 TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   string model_uri = MODEL_FOLDER + "fusion/negative-fuse-conv-add-no-bias.onnx";
 
