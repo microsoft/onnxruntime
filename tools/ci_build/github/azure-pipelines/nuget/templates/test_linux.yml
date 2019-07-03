@@ -1,5 +1,5 @@
 parameters:
-  AgentPool : 'Linux-CPU'
+  AgentPool: 'Linux-CPU'
 
 jobs:
 - job: NuGet_Test_Linux

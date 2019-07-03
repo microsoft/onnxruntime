@@ -40,7 +40,9 @@
 #include "core/util/math_cpuonly.h"
 #include "Eigen/src/Core/arch/GPU/Half.h"
 
+#if defined(USE_MLAS)
 #include "core/mlas/inc/mlas.h"
+#endif
 
 namespace onnxruntime {
 namespace math {
@@ -105,7 +107,7 @@ void GemmEigen(
 // CBLAS call or the Eigen implementation.
 ////////////////////////////////////////////////////////////////////////////////
 // when USE_MKLML is defined, use cblas APIs for MKLML
-#if !defined(USE_MKLML_FOR_BLAS)
+#if defined(USE_EIGEN_FOR_BLAS) && !defined(USE_MKLML_FOR_BLAS)
 
 // Caffe2 gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -123,60 +125,112 @@ void GemmEigen(
 // (transpose) if the argument TransA or TransB is set to CblasNoTrans or
 // CblasTrans, respectively, for each of A and B.
 template <>
-void Gemm<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                          const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                                          float* C, onnxruntime::concurrency::ThreadPool* threadpool) {
+void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+                              float* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
+#if defined(USE_MLAS)
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   // TODO: Make this use the operator threadpool
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, nullptr);
+#else
+  GemmEigen<float>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+#endif
 }
 
 template <>
-void Gemm<double, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                           const int64_t N, const int64_t K, float alpha, const double* A, const double* B,
-                                           float beta, double* C, onnxruntime::concurrency::ThreadPool*) {
+void Gemm<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                               const int64_t N, const int64_t K, float alpha, const double* A, const double* B,
+                               float beta, double* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No double precision Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<int32_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                            const int64_t N, const int64_t K, float alpha, const int32_t* A, const int32_t* B,
-                                            float beta, int32_t* C, onnxruntime::concurrency::ThreadPool*) {
+void Gemm<int32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                const int64_t N, const int64_t K, float alpha, const int32_t* A, const int32_t* B,
+                                float beta, int32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No int32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<uint32_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                             const int64_t N, const int64_t K, float alpha, const uint32_t* A, const uint32_t* B,
-                                             float beta, uint32_t* C, onnxruntime::concurrency::ThreadPool*) {
+void Gemm<uint32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                 const int64_t N, const int64_t K, float alpha, const uint32_t* A, const uint32_t* B,
+                                 float beta, uint32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No uint32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<int64_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                            const int64_t N, const int64_t K, float alpha, const int64_t* A, const int64_t* B,
-                                            float beta, int64_t* C, onnxruntime::concurrency::ThreadPool*) {
+void Gemm<int64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                const int64_t N, const int64_t K, float alpha, const int64_t* A, const int64_t* B,
+                                float beta, int64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No int64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<uint64_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                             const int64_t N, const int64_t K, float alpha, const uint64_t* A, const uint64_t* B,
-                                             float beta, uint64_t* C, onnxruntime::concurrency::ThreadPool*) {
+void Gemm<uint64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                 const int64_t N, const int64_t K, float alpha, const uint64_t* A, const uint64_t* B,
+                                 float beta, uint64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No uint64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void GemmEx<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                                            float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                                            int ldc, onnxruntime::concurrency::ThreadPool* tp) {
-  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, tp);
+void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
+                                int ldc, CPUMathUtil*) {
+#if defined(USE_MLAS)
+  MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
+#else
+  using OuterStride = Eigen::OuterStride<Eigen::Dynamic>;
+  using StridedMap = Eigen::Map<Eigen::MatrixXf, 0, OuterStride>;
+  using ConstStridedMap = Eigen::Map<const Eigen::MatrixXf, 0, OuterStride>;
+  auto C_mat = StridedMap(C, N, M, OuterStride(ldc));
+  if (beta == 0) {
+    C_mat.setZero();
+  } else {
+    C_mat *= beta;
+  }
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() +=
+              alpha * (ConstStridedMap(B, N, K, OuterStride(ldb)) *
+                       ConstStridedMap(A, K, M, OuterStride(lda)));
+          return;
+        case CblasTrans:
+          C_mat.noalias() +=
+              alpha * (ConstStridedMap(B, K, N, OuterStride(ldb)).transpose() *
+                       ConstStridedMap(A, K, M, OuterStride(lda)));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() +=
+              alpha * (ConstStridedMap(B, N, K, OuterStride(ldb)) *
+                       ConstStridedMap(A, M, K, OuterStride(lda)).transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() +=
+              alpha * (ConstStridedMap(B, K, N, OuterStride(ldb)).transpose() *
+                       ConstStridedMap(A, M, K, OuterStride(lda)).transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
+#endif
 }
 
 template <>
@@ -247,12 +301,12 @@ SPECIALIZED_AXPY(float)
 SPECIALIZED_AXPBY(float)
 #undef SPECIALIZED_AXPBY
 
-#else
+#else  // USE_EIGEN_FOR_BLAS
 
 template <>
-void Gemm<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                          const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                                          float* C, concurrency::ThreadPool*) {
+void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                              const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+                              float* C, CPUMathUtil* /*context*/, MLDataType /*math_type*/) {
   int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
   cblas_sgemm(CblasRowMajor, TransA, TransB,
@@ -264,9 +318,9 @@ void Gemm<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CB
 }
 
 template <>
-void Gemm<double, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                           const int64_t N, const int64_t K, float alpha, const double* A, const double* B,
-                                           float beta, double* C, concurrency::ThreadPool*) {
+void Gemm<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                               const int64_t N, const int64_t K, float alpha, const double* A, const double* B,
+                               float beta, double* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
   cblas_dgemm(CblasRowMajor, TransA, TransB, gsl::narrow_cast<int>(M), gsl::narrow_cast<int>(N),
@@ -275,41 +329,41 @@ void Gemm<double, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const C
 }
 
 template <>
-void Gemm<int32_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                            const int64_t N, const int64_t K, float alpha, const int32_t* A, const int32_t* B,
-                                            float beta, int32_t* C, concurrency::ThreadPool*) {
+void Gemm<int32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                const int64_t N, const int64_t K, float alpha, const int32_t* A, const int32_t* B,
+                                float beta, int32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No int32_t Gemm offering from MKLML. Directly fallback to Eigen.
   GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<uint32_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                             const int64_t N, const int64_t K, float alpha, const uint32_t* A, const uint32_t* B,
-                                             float beta, uint32_t* C, concurrency::ThreadPool*) {
+void Gemm<uint32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                 const int64_t N, const int64_t K, float alpha, const uint32_t* A, const uint32_t* B,
+                                 float beta, uint32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No uint32_t Gemm offering from MKLML. Directly fallback to Eigen.
   GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<int64_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                            const int64_t N, const int64_t K, float alpha, const int64_t* A, const int64_t* B,
-                                            float beta, int64_t* C, concurrency::ThreadPool*) {
+void Gemm<int64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                const int64_t N, const int64_t K, float alpha, const int64_t* A, const int64_t* B,
+                                float beta, int64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No int64_t Gemm offering from MKLML. Directly fallback to Eigen.
   GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void Gemm<uint64_t, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                             const int64_t N, const int64_t K, float alpha, const uint64_t* A, const uint64_t* B,
-                                             float beta, uint64_t* C, concurrency::ThreadPool*) {
+void Gemm<uint64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                                 const int64_t N, const int64_t K, float alpha, const uint64_t* A, const uint64_t* B,
+                                 float beta, uint64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No uint64_t Gemm offering from MKLML. Directly fallback to Eigen.
   GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
 }
 
 template <>
-void GemmEx<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                                            float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                                            int ldc, concurrency::ThreadPool*) {
+void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+                                float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
+                                int ldc, CPUMathUtil* /*context*/) {
   cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B, ldb,
               beta, C, ldc);
 }
@@ -363,19 +417,20 @@ CAFFE2_SPECIALIZED_AXPY(float, s)
 CAFFE2_SPECIALIZED_AXPBY(float, s)
 #undef CAFFE2_SPECIALIZED_AXPBY
 
-#endif
+#endif  // USE_EIGEN_FOR_BLAS
 
 template <>
-void GemmBatched<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int A_size,
-                                                 int A_batches, int B_size, int B_batches, int M, int N, int K, float /*alpha*/,
-                                                 const float* A, const float* B, float /*beta*/, float* C,
-                                                 onnxruntime::concurrency::ThreadPool* tp) {
+void GemmBatched<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int A_size,
+                                     int A_batches, int B_size, int B_batches, int M, int N, int K, float /*alpha*/,
+                                     const float* A, const float* B, float /*beta*/, float* C, CPUMathUtil* provider,
+                                     Tensor*, /* scratch */
+                                     MLDataType /* math_type */) {
   auto a_offset = A_size / A_batches;
   auto b_offset = B_size / B_batches;
   auto y_offset = M * N;
   // loop over matrices in the batch
   for (int i = 0; i < A_batches; ++i) {
-    math::Gemm<float, concurrency::ThreadPool>(
+    math::Gemm<float, CPUMathUtil>(
         TransA,
         TransB,
         M,
@@ -386,7 +441,7 @@ void GemmBatched<float, concurrency::ThreadPool>(const CBLAS_TRANSPOSE TransA, c
         B + b_offset * i,
         0,
         C + y_offset * i,
-        tp);
+        provider);
   }
 }
 

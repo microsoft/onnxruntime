@@ -60,7 +60,7 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
                         {4.0f, 5.0f, 6.0f,
                          6.0f, 7.0f, 8.0f,
                          8.0f, 9.0f, 10.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
 TEST(MathOpTest, Add_Broadcast_0x0) {
@@ -96,7 +96,7 @@ TEST(MathOpTest, Add_Broadcast_1x1) {
   test.AddInput<float>("A", {1}, {10.0f});
   test.AddInput<float>("B", {1}, {2.0f});
   test.AddOutput<float>("C", {1}, {12.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 }
 
 TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
@@ -115,7 +115,7 @@ TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
                         {2.0f, 3.0f,
                          5.0f, 6.0f,
                          8.0f, 9.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess,"");
 }
 
 TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
@@ -237,8 +237,15 @@ TEST(MathOpTest, Mul) {
                         {-1.0f, 8.8f, -432.3f,
                          0.0f, 5.25f, -6'400.0f,
                          29.16f, 86.49f, -100'000'000.0f});
+
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
+#else
   test.Run();
+#endif
+
 }
+
 
 TEST(MathOpTest, Div_int32) {
   OpTester test("Div");
@@ -776,26 +783,6 @@ TEST(MathOpTest, Mean_8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
-#ifndef DISABLE_CONTRIB_OPS
-TEST(MathOpTest, AffineDefaultAttributes) {
-  OpTester test("Affine");
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
-}
-
-TEST(MathOpTest, Affine) {
-  OpTester test("Affine");
-  std::vector<int64_t> dims{2, 2};
-  test.AddAttribute("alpha", 2.0f);
-  test.AddAttribute("beta", 1.0f);
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {1.0f, 3.0f, 5.0f, 7.0f});
-  test.Run();
-}
-#endif
-
 template <float (&op)(float value)>
 void TrigTest(OpTester& test, std::initializer_list<float> input) {
   std::vector<int64_t> dims{static_cast<int64_t>(input.size())};
@@ -963,6 +950,17 @@ TEST(MathOpTest, Expand_8_1x3_int64) {
   test.Run();
 }
 
+TEST(MathOpTest, Expand_8_3x1x3x1_int64) {
+  OpTester test("Expand", 8);
+  test.AddInput<int64_t>("data_0", {1, 3, 1, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int64_t>("data_1", {4}, {3, 1, 3, 1});
+  test.AddOutput<int64_t>("result", {3, 3, 3, 3},
+	                      {1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+	                       1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,
+	                       1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6, 4, 5, 6, 7, 8, 9, 7, 8, 9, 7, 8, 9,});
+  test.Run();
+}
+
 TEST(MathOpTest, Expand_8_3x3_float16) {
   OpTester test("Expand", 8);
   test.AddInput<MLFloat16>("data_0", {1}, {MLFloat16(math::floatToHalf(1.0f))});
@@ -995,27 +993,6 @@ TEST(MathOpTest, Expand_8_1x3_float16) {
                              MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(3.0f))});
   test.Run();
 }
-
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
-TEST(MathOpTest, Scale) {
-  OpTester test("Scale");
-  std::vector<int64_t> dims{2, 2};
-  test.AddAttribute("scale", 2.0f);
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {0.0f, 2.0f, 4.0f, 6.0f});
-  test.Run();
-}
-
-TEST(MathOpTest, Scale_Default) {
-  OpTester test("Scale");
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("A", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("B", dims, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
-}
-}  // namespace contrib
-#endif
 
 TEST(MathOpTest, Erf) {
   OpTester test("Erf", 9);
