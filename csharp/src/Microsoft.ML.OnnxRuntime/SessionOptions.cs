@@ -38,6 +38,15 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        ///  Set filepath to save optimized model after graph level transformations.
+        /// </summary>
+        /// <param name="optimizedModelFilepath">File path for saving optimized model.</param>
+        public void SetOptimizedModelFilePath(string optimizedModelFilepath)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, optimizedModelFilepath));
+        }
+
+        /// <summary>
         /// Enable Sequential Execution. By default, it is enabled.
         /// </summary>
         /// </param>

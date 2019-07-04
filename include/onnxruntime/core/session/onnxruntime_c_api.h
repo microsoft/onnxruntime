@@ -201,6 +201,9 @@ ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
  */
 ORT_API_STATUS(OrtCreateSessionOptions, _Out_ OrtSessionOptions** output);
 
+// Set filepath to save optimized model after graph level transformations.
+ORT_API_STATUS(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* in, _In_ const ORTCHAR_T* optimized_model_filepath);
+
 // create a copy of an existing OrtSessionOptions
 ORT_API_STATUS(OrtCloneSessionOptions, _In_ OrtSessionOptions* in, _Out_ OrtSessionOptions** output);
 ORT_API_STATUS(OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
