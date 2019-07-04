@@ -639,9 +639,9 @@ def split_server_binary_and_symbol(build_dir, configs):
                 if len(libonnx) != 1 :
                     raise ValueError("Too many libonxruntime.so.*")
                 libonnx = libonnx[0]
-                run_subprocess(['objcopy', '--only-keep-debug', libonnx, 'libonnxruntime.symbol'], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--only-keep-debug', libonnx, libonnx+'.symbol'], cwd=config_build_dir)
                 run_subprocess(['strip', '--strip-debug', libonnx], cwd=config_build_dir)
-                run_subprocess(['objcopy', '--add-gnu-debuglink=libonnxruntime.symbol', libonnx], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--add-gnu-debuglink={}.symbol'.format(libonnx), libonnx], cwd=config_build_dir)
 
 
 def run_server_tests(build_dir, configs):
