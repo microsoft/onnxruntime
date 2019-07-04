@@ -35,3 +35,6 @@
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary
+[submodule "cmake/external/spdlog"]
+	path = cmake/external/spdlog
+	url = https://github.com/gabime/spdlog.git

@@ -7,7 +7,10 @@
 
 #include "server/executor.h"
 #include "server/http/json_handling.h"
-#include "test/test_environment.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/sink.h>
+#include <spdlog/sinks/stdout_sinks.h>
+#include "test_server_environment.h"
 
 namespace onnxruntime {
 namespace server {
@@ -18,15 +21,10 @@ TEST(ExecutorTests, TestMul_1) {
   const static auto input_json = R"({"inputs":{"X":{"dims":[3,2],"dataType":1,"floatData":[1,2,3,4,5,6]}},"outputFilter":["Y"]})";
   const static auto expected = R"({"outputs":{"Y":{"dims":["3","2"],"dataType":1,"floatData":[1,4,9,16,25,36]}}})";
 
-  onnxruntime::server::ServerEnvironment env(logging::Severity::kWARNING, logging::LoggingManager::InstanceType::Temporal, false);
+  onnxruntime::server::ServerEnvironment* env = ServerEnv();
+  env->InitializeModel(model_file);
 
-  auto status = env.InitializeModel(model_file);
-  EXPECT_TRUE(status.IsOK());
-
-  status = env.GetSession()->Initialize();
-  EXPECT_TRUE(status.IsOK());
-
-  onnxruntime::server::Executor executor(&env, "RequestId");
+  onnxruntime::server::Executor executor(env, "RequestId");
   onnxruntime::server::PredictRequest request{};
   onnxruntime::server::PredictResponse response{};
 
