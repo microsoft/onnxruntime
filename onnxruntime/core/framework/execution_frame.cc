@@ -316,6 +316,17 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
   auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
+
+  // check number of elements matches. shape may not be an exact match (e.g. Reshape op)
+  if (reuse_tensor->Shape().Size() != shape.Size()) {
+    // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
+    // as a dim_param (instead of an empty string or '*') in multiple places making the planner think those
+    // shapes are equal. https://github.com/onnx/onnx/blob/master/docs/IR.md#tensor-shapes
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Shape mismatch attempting to re-use buffer. ", reuse_tensor->Shape(), " != ", shape,
+                           ". Validate usage of dim_param in shapes in the model.");
+  }
+
   void* reuse_buffer = reuse_tensor->MutableDataRaw();
 
   // create fence on reused ort_value if needed
