@@ -14,7 +14,7 @@ namespace server {
 namespace test {
 
 TEST(ExecutorTests, TestMul_1) {
-  const static auto model_file = "testdata/mul_1.pb";
+  const static auto model_file = "testdata/mul_1.onnx";
   const static auto input_json = R"({"inputs":{"X":{"dims":[3,2],"dataType":1,"floatData":[1,2,3,4,5,6]}},"outputFilter":["Y"]})";
   const static auto expected = R"({"outputs":{"Y":{"dims":["3","2"],"dataType":1,"floatData":[1,4,9,16,25,36]}}})";
 
