@@ -56,36 +56,6 @@ std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ON
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  // // This method is based on that of TRT EP
-  // // Construct modelproto from graph
-  // onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
-  // onnxruntime::Graph& graph_build = model.MainGraph();
-  // const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  // std::set<NodeArg*> all_node_inputs;
-  // for (const auto& node : graph.Nodes()) {
-  //   std::vector<onnxruntime::NodeArg*> inputs, outputs;
-  //   for (auto input : node.InputDefs()) {
-  //     auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-  //     inputs.push_back(&n_input);
-  //     all_node_inputs.insert(&n_input);
-  //   }
-  //   for (auto output : node.OutputDefs()) {
-  //     auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-  //     outputs.push_back(&n_output);
-  //   }
-  //   graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  // }
-  // const auto graph_outputs = graph.GetOutputs();
-  // //Add initializer to graph
-  // const auto& init_tensors = graph.GetAllInitializedTensors();
-  // for (const auto& tensor : init_tensors) {
-  //   graph_build.AddInitializedTensor(*(tensor.second));
-  // }
-  //
-  // ORT_ENFORCE(graph_build.Resolve().IsOK());
-  // ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  // model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   const auto graph_outputs = graph.GetOutputs();
   ONNX_NAMESPACE::ModelProto model_proto;
@@ -179,16 +149,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 
       for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-        // for (const auto& x : all_node_inputs) {
-        //   if (x->Name() == it->first->Name()) {
-        //     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-        //     break;
-        //   }
-        // }
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-        if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
-          outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-        }
       }
 
       // Assign inputs and outputs to subgraph's meta_def
