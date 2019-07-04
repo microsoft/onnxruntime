@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace test {
 
 constexpr auto ORIGINAL_MODEL_PATH = "testdata/test_training_model.onnx";
-const static std::string BACKWARD_MODEL_PATH = "backward_model.onnx";
+constexpr auto BACKWARD_MODEL_PATH = "backward_model.onnx";
 
 AllocatorPtr GetAllocator() {
   static CPUExecutionProviderInfo info;
@@ -31,7 +31,7 @@ static void CreateMLValue(AllocatorPtr alloc,
   auto location = alloc->Info();
   auto element_type = DataTypeImpl::GetType<T>();
   void* buffer = alloc->Alloc(element_type->Size() * shape.Size());
-  if (value.size() > 0) {
+  if (!value.empty()) {
     memcpy(buffer, &value[0], element_type->Size() * shape.Size());
   }
 
@@ -45,6 +45,8 @@ static void CreateMLValue(AllocatorPtr alloc,
 }
 
 static std::string BuildBackPropGraph(const std::string& forward_model_file) {
+  const std::string backward_model_file = BACKWARD_MODEL_PATH;
+
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
@@ -55,29 +57,29 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file) {
   EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
   EXPECT_TRUE(training_session.BuildLossFunction(loss).IsOK());
   EXPECT_TRUE(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss").IsOK());
-  EXPECT_TRUE(training_session.Save(BACKWARD_MODEL_PATH,
+  EXPECT_TRUE(training_session.Save(backward_model_file,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
                   .IsOK());
 
-  return BACKWARD_MODEL_PATH;
+  return backward_model_file;
 }
 
-static TrainingSession& RunTrainingSessionWithChecks(
+static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   SessionOptions& so, const std::string& backprop_model_file)
 {
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
-  TrainingSession& training_session = *(new TrainingSession(so));
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so);
 
-  EXPECT_TRUE(training_session.Load(backprop_model_file).IsOK());
+  EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
 
-  EXPECT_TRUE(training_session.Initialize().IsOK());
+  EXPECT_TRUE(training_session->Initialize().IsOK());
 
   // Create a WeightUpdater powered by GradientDescent algorithm.
   const static float LEARNING_RATE = 0.5f;
 
-  WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(training_session, {LEARNING_RATE, GetAllocator()});
+  WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(*training_session, {LEARNING_RATE, GetAllocator()});
 
   std::vector<MLValue> gradient_fetches;
   RunOptions run_option;
@@ -95,10 +97,10 @@ static TrainingSession& RunTrainingSessionWithChecks(
 
   auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
 
-  auto output_names_include_gradients = training_session.GetModelOutputNames();
+  auto output_names_include_gradients = training_session->GetModelOutputNames();
   std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
-  EXPECT_TRUE(training_session.Run(run_option, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
+  EXPECT_TRUE(training_session->Run(run_option, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
 
   // Get gradients
   NameMLValMap grad;
@@ -135,9 +137,9 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTestWithProfiler) {
   so.enable_profiling = true;
   so.profile_file_prefix = ORT_TSTR("onnx_training_profiler_test");
 
-  TrainingSession& training_session = RunTrainingSessionWithChecks(so, backprop_model_file);
+  std::unique_ptr<TrainingSession> training_session = RunTrainingSessionWithChecks(so, backprop_model_file);
 
-  std::string profile_file = training_session.EndProfiling();
+  std::string profile_file = training_session->EndProfiling();
 
   std::cout << "Profile output file = " << profile_file << std::endl;
 
