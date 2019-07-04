@@ -7,6 +7,7 @@
 #endif
 
 #include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 
@@ -107,6 +108,10 @@ const NodeArg* GraphViewer::GetNodeArg(const std::string& name) const {
 
 bool GraphViewer::IsSubgraph() const {
   return graph_->IsSubgraph();
+}
+
+ONNX_NAMESPACE::GraphProto GraphViewer::ToGraphProto() const {
+    return graph_->ToGraphProto();
 }
 
 }  // namespace onnxruntime
