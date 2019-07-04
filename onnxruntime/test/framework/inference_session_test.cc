@@ -332,6 +332,53 @@ TEST(InferenceSessionTests, DisableCPUArena) {
   RunModel(session_object, run_options);
 }
 
+TEST(InferenceSessionTests, TestModelSerialization) {
+  // Load model with level1 tranform level and serialize model the after transformation.
+  SessionOptions so;
+  const string test_model = "testdata/transform/abs-id-max.onnx";
+  so.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so.enable_cpu_mem_arena = false;
+  so.graph_optimization_level = TransformerLevel::Level1;
+  so.optimized_model_filepath = ToWideString(test_model) + L"-TransformLevel-" + std::to_wstring(static_cast<uint32_t>(so.graph_optimization_level));
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+ // Serialize model to the same file path again to make sure that rewrite doesn't fail.
+  InferenceSession overwrite_session_object{so, &DefaultLoggingManager()};
+  ASSERT_TRUE(overwrite_session_object.Load(test_model).IsOK());
+  ASSERT_TRUE(overwrite_session_object.Initialize().IsOK());
+
+  // Load serialized model with no tranform level and serialize model.
+  SessionOptions so_opt;
+  so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
+  so_opt.enable_cpu_mem_arena = false;
+  so_opt.graph_optimization_level = TransformerLevel::Default;
+  so_opt.optimized_model_filepath = ToWideString(so.optimized_model_filepath) + L"-TransformLevel-" + std::to_wstring(static_cast<uint32_t>(so_opt.graph_optimization_level));
+  InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
+  ASSERT_TRUE(session_object_opt.Initialize().IsOK());
+  
+  // Assert that refeed of optimized model results with default transform level results 
+  // in same runtime model as mlnet_encoder.onnx with TransformLevel-1.
+  std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session1.good());
+  std::ifstream model_fs_session2(so_opt.optimized_model_filepath, ios::in | ios::binary);
+  ASSERT_TRUE(model_fs_session2.good());
+  ASSERT_TRUE(model_fs_session1.tellg() == model_fs_session2.tellg());
+  model_fs_session1.seekg(0, std::ifstream::beg);
+  model_fs_session2.seekg(0, std::ifstream::beg);
+  ASSERT_TRUE(std::equal(std::istreambuf_iterator<char>(model_fs_session1.rdbuf()),
+                         std::istreambuf_iterator<char>(),
+                         std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
+
+  // Execute with empty optimized model filepath doesn't fail loading.
+  so_opt.optimized_model_filepath = L"";
+  InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
+  ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
+  ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
+}
+
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
