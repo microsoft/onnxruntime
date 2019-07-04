@@ -16,7 +16,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/common/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -62,13 +62,6 @@ struct OrtEnv {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
 };
 
-#define API_IMPL_BEGIN try {
-#define API_IMPL_END                                          \
-  }                                                           \
-  catch (std::exception & ex) {                               \
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
-  }
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
@@ -113,6 +106,10 @@ ORT_API_STATUS_IMPL(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_fun
     *out = new OrtEnv(env.release(), default_logging_manager.release());
   return ToOrtStatus(status);
   API_IMPL_END
+}
+
+ORT_API(const char*, OrtGetVersionString) {
+  return ORT_VERSION;
 }
 
 ORT_API_STATUS_IMPL(OrtCreateEnv, OrtLoggingLevel default_warning_level,
@@ -339,10 +336,13 @@ ORT_API_STATUS_IMPL(OrtCreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
   API_IMPL_END
 }
 
-ORT_API(OrtCustomOpDomain*, OrtCreateCustomOpDomain, _In_ const char* domain) {
+ORT_API_STATUS_IMPL(OrtCreateCustomOpDomain, _In_ const char* domain, _Out_ OrtCustomOpDomain** out) {
+  API_IMPL_BEGIN
   auto custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   custom_op_domain->domain_ = domain;
-  return custom_op_domain.release();
+  *out = custom_op_domain.release();
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtReleaseCustomOpDomain, OrtCustomOpDomain* ptr) {
@@ -644,32 +644,31 @@ static OrtStatus* GetInputOutputNameImpl(_In_ const OrtSession* sess, size_t ind
   return nullptr;
 }
 
-ORT_API(int, OrtIsTensor, _In_ const OrtValue* value) {
+ORT_API_STATUS_IMPL(OrtIsTensor, _In_ const OrtValue* value, int* out) {
   auto v = reinterpret_cast<const ::OrtValue*>(value);
-  return v->IsTensor() ? 1 : 0;
+  *out = v->IsTensor() ? 1 : 0;
+  return nullptr;
 }
 
-ORT_API(void*, OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size) {
-  try {
-    return ptr->Alloc(ptr, size);
-  } catch (std::exception&) {
-    return nullptr;
-  }
+ORT_API_STATUS_IMPL(OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Out_ void** out) {
+  API_IMPL_BEGIN
+  *out = ptr->Alloc(ptr, size);
+  return nullptr;
+  API_IMPL_END
 }
 
-ORT_API(void, OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p) {
-  try {
-    ptr->Free(ptr, p);
-  } catch (std::exception&) {
-  }
+ORT_API_STATUS_IMPL(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p) {
+  API_IMPL_BEGIN
+  ptr->Free(ptr, p);
+  return nullptr;
+  API_IMPL_END
 }
 
-ORT_API(const struct OrtAllocatorInfo*, OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr) {
-  try {
-    return ptr->Info(ptr);
-  } catch (std::exception&) {
-    return nullptr;
-  }
+ORT_API_STATUS_IMPL(OrtAllocatorGetInfo, _In_ const OrtAllocator* ptr, _Out_ const struct OrtAllocatorInfo** out) {
+  API_IMPL_BEGIN
+  *out = ptr->Info(ptr);
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtSessionGetInputName, _In_ const OrtSession* sess, size_t index,
@@ -704,7 +703,9 @@ OrtStatus* OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
 }
 
 static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
-  auto value_type = OrtGetValueType(value);
+  ONNXType value_type;
+  if (auto status = OrtGetValueType(value, &value_type))
+    return status;
   if (value_type == ONNX_TYPE_MAP) {
     *out = NUM_MAP_INDICES;
     return nullptr;
@@ -909,7 +910,9 @@ static OrtStatus* OrtGetValueImplMap(const OrtValue* value, int index, OrtAlloca
 
 static OrtStatus* OrtGetValueImpl(const OrtValue* value, int index, OrtAllocator* allocator,
                                   OrtValue** out) {
-  auto value_type = OrtGetValueType(value);
+  ONNXType value_type;
+  if (auto status = OrtGetValueType(value, &value_type))
+    return status;
   if (value_type == ONNX_TYPE_MAP) {
     return OrtGetValueImplMap(value, index, allocator, out);
   }
@@ -974,7 +977,9 @@ static OrtStatus* OrtCreateValueImplSeq(OrtValue** in, size_t num_values, OrtVal
   // OrtValue* in OrtValue** will determine the type of the vector used to create the output OrtValue
   // this type should be either a tensor of limited types or map of limited types
   const OrtValue* ovfirst = in[0];
-  auto first_value_type = OrtGetValueType(ovfirst);
+  ONNXType first_value_type;
+  if (auto status = OrtGetValueType(ovfirst, &first_value_type))
+    return status;
   // in onnxruntime type registrations we can support only a fixed vector types
   // this check ensures that the input conforms to that
   if (!(first_value_type == ONNX_TYPE_TENSOR || first_value_type == ONNX_TYPE_MAP)) {
@@ -985,7 +990,9 @@ static OrtStatus* OrtCreateValueImplSeq(OrtValue** in, size_t num_values, OrtVal
   // only a fixed types are registered in onnxruntime
   for (size_t i = 0; i < num_values; ++i) {
     const OrtValue* ov = in[i];
-    auto ov_type = OrtGetValueType(ov);
+    ONNXType ov_type;
+    if (auto status = OrtGetValueType(ov, &ov_type))
+      return status;
     if (ov_type != first_value_type) {
       return OrtCreateStatus(ORT_FAIL,
                              "At least one element in the sequence is of a type different from others.");

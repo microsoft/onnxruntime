@@ -4,7 +4,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/training/training_optimizer.h"
 #include "core/training/training_session.h"
 #include "core/training/weight_updater.h"

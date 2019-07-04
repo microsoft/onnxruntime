@@ -14,24 +14,6 @@ import onnxruntime.backend as c2
 
 pytest_plugins = 'onnx.backend.test.report',
 
-def GetVersionTag():
-    version2tag = {}
-    file_path = '/data/onnx/version2tag'
-    if os.path.isfile(file_path):
-       with open(file_path, 'r') as f:
-           for line in f.readlines():
-               fields = line.strip().split(':')
-               version2tag[fields[0]] = fields[1]
-    print ("version2tag map", version2tag)
-    if onnx.version.git_version in version2tag:
-        return version2tag[onnx.version.git_version]
-    else: return "unknown"
-        
-version_tag = GetVersionTag()
-print ("onnx version:", onnx.__version__)
-print ("git version:", onnx.version.git_version)
-print ("VERSION TAG:", version_tag)
-
 class OrtBackendTest(onnx.backend.test.BackendTest):
 
     def __init__(self, backend, parent_module=None):
@@ -111,19 +93,22 @@ def create_backend_test(testname=None):
         # Tests that are failing temporarily and should be fixed
         current_failing_tests = ('^test_cast_STRING_to_FLOAT_cpu.*',
                                  '^test_cast_FLOAT_to_STRING_cpu.*',
-                                 '^test_dequantizelinear_cpu.*',
                                  '^test_qlinearconv_cpu.*',
-                                 '^test_quantizelinear_cpu.*',
-                                 '^test_gru_seq_length_cpu.*')
-        global version_tag
-        if version_tag == 'onnx141' or onnx.__version__ == '1.4.1':
-            current_failing_tests = current_failing_tests + ('^test_shrink_cpu.*', '^test_constantofshape_*.*',)
-        if version_tag == 'onnx150' or onnx.__version__ == '1.5.0':
-            current_failing_tests = current_failing_tests + ('^test_constantofshape_*.*',)
+                                 '^test_gru_seq_length_cpu.*',
+                                 '^test_bitshift_right_uint16_cpu.*',
+                                 '^test_bitshift_right_uint32_cpu.*',
+                                 '^test_bitshift_right_uint64_cpu.*',
+                                 '^test_bitshift_right_uint8_cpu.*',
+                                 '^test_bitshift_left_uint16_cpu.*',
+                                 '^test_bitshift_left_uint32_cpu.*',
+                                 '^test_bitshift_left_uint64_cpu.*',
+                                 '^test_bitshift_left_uint8_cpu.*',
+                                 '^test_round_cpu.*'
+                                 )
 
-        # Failing for nGraph.
-        if c2.supports_device('NGRAPH'):
-            current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
+        # Example of how to disable tests for a specific provider.
+        # if c2.supports_device('NGRAPH'):
+        #    current_failing_tests = current_failing_tests + ('|^test_operator_repeat_dim_overflow_cpu.*',)
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \

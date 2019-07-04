@@ -52,7 +52,7 @@ NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::s
   NameMLValMap result;
   for (const auto& name : interested_weights) {
     int idx;
-    if (!GetMLValueNameIdxMap().GetIdx(name, idx).IsOK()) {
+    if (!GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
       continue;
     }
     result[name] = initialized_tensors_.at(idx);
@@ -63,7 +63,7 @@ NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::s
 void SessionState::UpdateInitializedTensors(const NameMLValMap& new_weights) {
   for (auto name_and_ml_value : new_weights) {
     int idx;
-    if (!GetMLValueNameIdxMap().GetIdx(name_and_ml_value.first, idx).IsOK()) {
+    if (!GetOrtValueNameIdxMap().GetIdx(name_and_ml_value.first, idx).IsOK()) {
       continue;
     }
     initialized_tensors_.at(idx) = name_and_ml_value.second;

@@ -314,7 +314,7 @@ std::vector<MLValue> OpTester::ExecuteModel(Model& model,
   std::vector<OrtValue> fetches;
   status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
   if (status.IsOK()) {
-    EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess);
+    EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess) << "Expected failure but Run was successful";
     if (expect_result == ExpectResult::kExpectFailure) {
       return fetches;
     }
@@ -370,12 +370,12 @@ std::vector<MLValue> OpTester::ExecuteModel(Model& model,
   return fetches;
 }
 
-void OpTester::Run(
-    ExpectResult expect_result,
-    const std::string& expected_failure_string,
-    const std::unordered_set<std::string>& excluded_provider_types,
-    const RunOptions* run_options,
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+void OpTester::Run(ExpectResult expect_result,
+                   const std::string& expected_failure_string,
+                   const std::unordered_set<std::string>& excluded_provider_types,
+                   const RunOptions* run_options,
+                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
+                   bool sequential_execution) {
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -419,6 +419,7 @@ void OpTester::Run(
     SessionOptions so;
     so.session_logid = op_;
     so.session_log_verbosity_level = 1;
+    so.enable_sequential_execution = sequential_execution;
 
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
@@ -428,6 +429,7 @@ void OpTester::Run(
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
+        kOpenVINOExecutionProvider,
     };
 
     bool has_run = false;
@@ -470,6 +472,8 @@ void OpTester::Run(
           execution_provider = DefaultBrainSliceExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
+        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+          execution_provider = DefaultOpenVINOExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -483,13 +487,21 @@ void OpTester::Run(
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
-          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider)
+          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider || provider_type == onnxruntime::kOpenVINOExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
           if (!kci) {
             valid = false;
-            break;
+            for (auto& custom_session_registry : custom_session_registries_) {
+              if (custom_session_registry->GetKernelRegistry()->TryFindKernel(node, execution_provider->Type())) {
+                valid = true;
+                break;
+              }
+            }
+
+            if (!valid)
+              break;
           }
         }
 

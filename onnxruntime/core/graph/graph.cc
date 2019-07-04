@@ -1630,7 +1630,9 @@ Status Graph::VerifyNodeAndOpMatch() {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
 
-  LexicalScopeContext lsc{resolve_context_.inputs_and_initializers};
+  LexicalScopeContext lsc;
+  lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
+                          resolve_context_.inputs_and_initializers.cend());
 
   // technically we could add values from Node.GetDefinitions().implicit_input_defs on a per-node basis inside
   // the below loop so that we only check against the specific outer dependencies of the node.

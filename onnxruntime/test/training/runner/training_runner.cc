@@ -5,7 +5,7 @@
 #include <memory>
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/training/training_optimizer.h"
 #include "core/training/weight_updater.h"
 #include "test/training/runner/training_runner.h"
@@ -29,6 +29,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
+    -1,                                //session_log_severity_level
     0,                                 //session_log_verbosity_level
     5,                                 //max_num_graph_transformation_steps
     TransformerLevel::Level1,          //graph_optimization_level

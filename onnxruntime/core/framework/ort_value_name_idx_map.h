@@ -11,11 +11,11 @@
 // This class is not thread-safe
 // TODO: this is a static hash lookup, it's easy to do it better
 namespace onnxruntime {
-class MLValueNameIdxMap {
+class OrtValueNameIdxMap {
  public:
   using const_iterator = typename std::unordered_map<std::string, int>::const_iterator;
 
-  MLValueNameIdxMap() = default;
+  OrtValueNameIdxMap() = default;
 
   // Add OrtValue name to map and return index associated with it.
   // If entry already existed the existing index value is returned.
@@ -60,11 +60,11 @@ class MLValueNameIdxMap {
   const_iterator end() const noexcept { return map_.cend(); }
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MLValueNameIdxMap);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueNameIdxMap);
 
   int ort_value_max_idx_ = 0;
   std::unordered_map<std::string, int> map_;
   std::unordered_map<int, std::string> idx_name_map_;
 };
-using OrtValueNameIdxMap = MLValueNameIdxMap;
+using OrtValueNameIdxMap = OrtValueNameIdxMap;
 }  // namespace onnxruntime

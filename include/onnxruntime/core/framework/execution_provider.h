@@ -28,7 +28,7 @@ typedef std::map<int, AllocatorPtr> AllocatorMap;
 // if we are export the fused function to dll, the function will still in the same binary as lotus
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
-using ComputeFunc = std::function<int(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
+using ComputeFunc = std::function<Status(FunctionState, const OrtCustomOpApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
 
 struct NodeComputeInfo {
@@ -82,7 +82,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
 	Get the device id of current excution provider

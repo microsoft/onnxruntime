@@ -24,7 +24,7 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
 
 static std::unordered_set<NodeIndex> CalculateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs,
                                                                 const GraphViewer& graph_viewer,
-                                                                const MLValueNameIdxMap& mlvalue_name_idxs) {
+                                                                const OrtValueNameIdxMap& mlvalue_name_idxs) {
   // Get the nodes generating the fetches.
   std::vector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
@@ -67,7 +67,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     // TODO: This information could be potentially stored in a limited size cache.
     to_be_executed_nodes = CalculateToBeExecutedNodes(fetch_mlvalue_idxs,
                                                       *session_state.GetGraphViewer(),
-                                                      session_state.GetMLValueNameIdxMap());
+                                                      session_state.GetOrtValueNameIdxMap());
     VLOGS(logger, 1) << to_be_executed_nodes.size() << " nodes to be executed\n";
   }
 
@@ -139,6 +139,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#endif
+
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_before",
@@ -200,6 +204,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
+
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
 
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();

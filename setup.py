@@ -3,14 +3,20 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from setuptools import setup, find_packages
-from os import path, getcwd
+from setuptools import setup, find_packages, Extension
+from distutils import log as logger
+from distutils.command.build_ext import build_ext as _build_ext
+from glob import glob
+from os import path, getcwd, environ, remove
+from shutil import copyfile
 import platform
+import subprocess
 import sys
 import datetime
 
 nightly_build = False
 package_name = 'onnxruntime'
+
 if '--use_tensorrt' in sys.argv:
     package_name = 'onnxruntime-gpu-tensorrt'
     sys.argv.remove('--use_tensorrt')
@@ -29,17 +35,77 @@ elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
 
+elif '--use_openvino' in sys.argv:
+    package_name = 'onnxruntime-openvino'
+
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
     nightly_build = True
     sys.argv.remove('--nightly_build')
+
+is_manylinux2010 = False
+if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64':
+    is_manylinux2010 = True
+
+
+class build_ext(_build_ext):
+    def build_extension(self, ext):
+        dest_file = self.get_ext_fullpath(ext.name)
+        logger.info('copying %s -> %s', ext.sources[0], dest_file)
+        copyfile(ext.sources[0], dest_file)
+
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
-            self.root_is_pure = False
+            if not is_manylinux2010:
+                self.root_is_pure = False
+
+        def _rewrite_ld_preload(self, to_preload):
+            with open('onnxruntime/capi/_ld_preload.py', 'rt') as f:
+                ld_preload = f.read().splitlines()
+            with open('onnxruntime/capi/_ld_preload.py', 'wt') as f:
+                for line in ld_preload:
+                    f.write(line)
+                    f.write('\n')
+                    if 'LD_PRELOAD_BEGIN_MARK' in line:
+                        break
+                if len(to_preload) > 0:
+                    f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
+                    for library in to_preload:
+                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+
+        def run(self):
+            if is_manylinux2010:
+                source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
+                dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'
+                logger.info('copying %s -> %s', source, dest)
+                copyfile(source, dest)
+                result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so']
+                to_preload = []
+                args = ['patchelf', '--debug']
+                for line in result.stdout.split('\n'):
+                    for dependency in cuda_dependencies:
+                        if dependency in line:
+                            to_preload.append(line)
+                            args.extend(['--remove-needed', line])
+                args.append(dest)
+                if len(to_preload) > 0:
+                    subprocess.run(args, check=True, stdout=subprocess.PIPE)
+                self._rewrite_ld_preload(to_preload)
+            _bdist_wheel.run(self)
+            if is_manylinux2010:
+                file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
+                logger.info('repairing %s for manylinux2010', file)
+                try:
+                    subprocess.run(['auditwheel', 'repair', '--plat', 'manylinux2010_x86_64', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                finally:
+                    logger.info('removing %s', file)
+                    remove(file)
+
 except ImportError:
     bdist_wheel = None
 
@@ -53,7 +119,24 @@ elif platform.system() == "Darwin":
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
 
-data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
+if is_manylinux2010:
+    data = []
+    ext_modules = [
+        Extension(
+            'onnxruntime.capi.onnxruntime_pybind11_state',
+            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'],
+        ),
+    ]
+else:
+    data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
+    ext_modules = []
+
+
+python_modules_list = list()
+if '--use_openvino' in sys.argv:
+  #Adding python modules required for openvino ep
+  python_modules_list.extend(['openvino_mo', 'openvino_emitter'])
+  sys.argv.remove('--use_openvino')
 
 # Additional examples
 examples_names = ["mul_1.pb", "logreg_iris.onnx", "sigmoid.onnx"]
@@ -88,7 +171,7 @@ setup(
     long_description=long_description,
     author='Microsoft Corporation',
     author_email='onnx@microsoft.com',
-    cmdclass={'bdist_wheel': bdist_wheel},
+    cmdclass={'bdist_wheel': bdist_wheel, 'build_ext': build_ext},
     license="MIT License",
     packages=['onnxruntime',
               'onnxruntime.backend',
@@ -96,9 +179,11 @@ setup(
               'onnxruntime.datasets',
               'onnxruntime.tools',
               ],
+    ext_modules=ext_modules,
     package_data={
         'onnxruntime': data + examples + extra,
     },
+    py_modules=python_modules_list,
     extras_require={
         'backend': ['onnx>=1.2.3'],
         'numpy': ['numpy>=1.15.0']

@@ -300,23 +300,33 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal static NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
         {
-            var valueType = NativeMethods.OrtOnnxTypeFromTypeInfo(typeInfo);
+            OnnxValueType valueType;
+            unsafe
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtOnnxTypeFromTypeInfo(typeInfo, new IntPtr(&valueType)));
+            }
             if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
                 return new NodeMetadata(valueType, new int[] { }, typeof(NamedOnnxValue));
             }
 
-            IntPtr tensorInfo = NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo); //(IntPtr)(int)(uint)
+            IntPtr tensorInfo;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo, out tensorInfo)); //(IntPtr)(int)(uint)
             // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo*
 
             if (tensorInfo == IntPtr.Zero)
                 return null;
 
-            TensorElementType type = NativeMethods.OrtGetTensorElementType(tensorInfo);
+            TensorElementType type;
+            unsafe
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, new IntPtr(&type)));
+            }
             Type dotnetType = null;
             int width = 0;
             TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width);
-            var numDimensions = NativeMethods.OrtGetDimensionsCount(tensorInfo);
+            UIntPtr numDimensions;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(tensorInfo, out numDimensions));
             long[] dimensions = new long[(int)numDimensions];
             NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions);
             int[] intDimensions = new int[(int)numDimensions];

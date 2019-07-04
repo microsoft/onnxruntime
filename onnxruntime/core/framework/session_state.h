@@ -65,8 +65,8 @@ class SessionState {
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
-  const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
-  MLValueNameIdxMap& GetMLValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
+  const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
+  OrtValueNameIdxMap& GetOrtValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
 
   // initialized tensors
   /**
@@ -79,7 +79,7 @@ class SessionState {
   /**
    * Gets the list of all initialized tensors (weights) so that it can be used by the
    * execution frame to setup the appropriate OrtValue vectors.
-   * The lifetime of returned MLValues are limited by this SessionState object.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
    */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
 
@@ -199,7 +199,7 @@ class SessionState {
   std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
-  MLValueNameIdxMap ort_value_name_idx_map_;
+  OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensorset
   std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index

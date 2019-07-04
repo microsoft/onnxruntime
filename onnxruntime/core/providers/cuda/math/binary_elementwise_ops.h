@@ -213,6 +213,15 @@ class Greater final : public CudaKernel {
 };
 
 template <typename T>
+class Equal final : public CudaKernel {
+ public:
+  Equal(const OpKernelInfo& info) : CudaKernel(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+
+template <typename T>
 class Max final : public CudaKernel {
  public:
   Max(const OpKernelInfo& info) : CudaKernel(info) {

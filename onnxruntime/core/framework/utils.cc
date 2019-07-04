@@ -3,6 +3,8 @@
 
 #include "core/framework/utils.h"
 
+#include <iomanip>
+
 #include "core/graph/graph_viewer.h"
 
 #include "core/framework/execution_frame.h"
@@ -565,6 +567,133 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 
   return Status::OK();
 }
+
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+std::ostream& operator<<(std::ostream& out, const BFloat16& value) {
+  return out << value.ToFloat();
+}
+
+std::ostream& operator<<(std::ostream& out, const MLFloat16& value) {
+  return out << value.val;
+}
+
+template <typename T>
+static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
+  auto num_items = shape.Size();
+
+  if (num_items == 0) {
+    std::cout << "no data";
+    return;
+  }
+
+  size_t num_dims = shape.NumDimensions();
+  size_t num_rows = 1;
+  if (num_dims > 1) {
+    num_rows = static_cast<size_t>(shape[0]);
+  }
+
+  size_t row_size = num_items / num_rows;
+
+  auto data = tensor.DataAsSpan<T>();
+
+  auto print_val = [](const T& value) {
+    if (std::is_floating_point_v<T>)
+      std::cout << std::setprecision(8) << value;
+    else
+      std::cout << value;
+  };
+
+  for (int row = 0; row < num_rows; ++row) {
+    print_val(data[row * row_size]);
+    for (int i = 1; i < row_size; ++i) {
+      std::cout << ", ";
+      print_val(data[row * row_size + i]);
+    }
+    std::cout << "\n";
+  }
+
+  std::cout << std::endl;
+}
+
+void DumpNodeInputs(const OpKernelContext& context, const Node& node) {
+  std::cout << "-----------\n";
+  std::cout << node.OpType() << " node: " << node.Name() << "\n";
+
+  const auto& input_defs = node.InputDefs();
+
+  for (auto i = 0, end = context.InputCount(); i < end; ++i) {
+    if (input_defs[i]->Exists()) {
+      std::cout << "Input " << i << " Name: " << input_defs[i]->Name();
+
+      const auto* type = context.InputType(i);
+
+      if (type) {
+        if (type->IsTensorType()) {
+          const auto& tensor = *context.Input<Tensor>(i);
+          const auto& shape = tensor.Shape();
+
+          std::cout << " Shape: " << shape << "\n";
+        } else {
+          std::cout << " is non-tensor type.\n";
+        }
+      } else {
+        // should never happen...
+        std::cout << " was missing data type\n";
+      }
+    } else {
+      std::cout << "Input " << i << " is optional and was not provided.\n";
+    }
+  }
+}
+
+void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state) {
+  std::cout << "-----------\n";
+  const auto& output_defs = node.OutputDefs();
+
+  const auto& execution_providers = session_state.GetExecutionProviders();
+  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+
+  for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
+    if (output_defs[i]->Exists()) {
+      std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
+
+      const auto* type = context.OutputType(i);
+
+      if (type) {
+        if (type->IsTensorType()) {
+          const auto& tensor = *context.Output<Tensor>(i);
+          const auto data_type = tensor.DataType();
+          const auto& shape = tensor.Shape();
+
+          std::cout << " Shape: " << shape << "\n";
+
+          // check tensor is on CPU before dumping it
+          auto& tensor_location = tensor.Location();
+          auto* provider = execution_providers.Get(tensor_location);
+          if (!provider) {
+            provider = cpu_execution_provider;
+          }
+
+          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
+            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
+          } else {
+            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+          }
+        } else {
+          std::cout << " is non-tensor type.\n";
+        }
+      } else {
+        // should never happen...
+        std::cout << "missing data type\n";
+      }
+    } else {
+      std::cout << "Output " << i << " is optional and was not produced.\n";
+    }
+
+    std::cout << std::endl;
+  }
+}
+#endif
 
 }  // namespace utils
 }  // namespace onnxruntime

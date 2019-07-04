@@ -56,7 +56,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
-  MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
+  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
   mlvalue_name_idx_map.Add("X");
   mlvalue_name_idx_map.Add("Y");
 
@@ -139,7 +139,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
-  MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
+  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
   auto x_idx = mlvalue_name_idx_map.Add("X");
   auto y_idx = mlvalue_name_idx_map.Add("Y");
 
@@ -191,7 +191,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
-  MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
+  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
 
   auto x1_idx = mlvalue_name_idx_map.Add("X1");
   auto x2_idx = mlvalue_name_idx_map.Add("X2");
