@@ -399,46 +399,78 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
-bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
-  const onnx::TensorProto* initializer = nullptr;
-  bool is_local_initializer = graph.GetInitializedTensor(initializer_name, initializer);
-
-  // if we know it's an initializer we assume it's constant initially.
-  // otherwise it's not an initializer so can't be a constant initializer by definition.
-  bool constant_initializer = is_local_initializer;
-
-  if (is_local_initializer) {
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
+                                                          bool check_outer_scope) {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (graph.GetInitializedTensor(initializer_name, initializer)) {
     if (graph.CanOverrideInitializer()) {
       const auto& graph_inputs = graph.GetInputsIncludingInitializers();
-      constant_initializer = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
-                                          [&initializer_name](const NodeArg* input) {
-                                            return input->Name() == initializer_name;
-                                          });
+      bool is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                      [&initializer_name](const NodeArg* input) {
+                                        return input->Name() == initializer_name;
+                                      });
+
+      if (!is_constant) {
+        initializer = nullptr;
+      }
+    } else if (check_outer_scope && graph.IsSubgraph()) {
+      initializer = GetConstantInitializer(*graph.ParentGraph(), initializer_name);
     }
-  } else if (check_outer_scope && graph.IsSubgraph()) {
-    constant_initializer = IsConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
   }
 
-  return constant_initializer;
+  return initializer;
+}
+
+bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
+  const onnx::TensorProto* initializer = GetConstantInitializer(graph, initializer_name, check_outer_scope);
+  return initializer != nullptr;
 }
 
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   return IsConstantInitializer(graph, node_arg.Name(), true);
 }
 
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs) {
+  // only initializers can be constant, and there's no edge from a node to an initializer
+  // so the input edges count must be 0
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
+
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
-    // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should
+    // because it can be overridden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
-    if (!NodeArgIsConstant(graph, *input_def)) {
+    const ONNX_NAMESPACE::TensorProto* initializer = GetConstantInitializer(graph, input_def->Name(), true);
+    if (initializer) {
+      constant_inputs.insert({input_def->Name(), initializer});
+    } else {
+      constant_inputs.clear();
       return false;
     }
   }
+
   return true;
+}
+
+bool ReplaceInitializer(Graph& graph, const std::string& original_name, ONNX_NAMESPACE::TensorProto& initializer,
+                        bool check_outer_scope) {
+  bool replaced = false;
+  const ONNX_NAMESPACE::TensorProto* old_initializer = nullptr;
+  if (graph.GetInitializedTensor(original_name, old_initializer)) {
+    // TODO: Be conservative and only remove if the name matches. Graph::CleanupUnusedInitializers can take care
+    // of removing anything unused after optimization
+    if (original_name == initializer.name()) {
+      graph.RemoveInitializedTensor(original_name);
+    }
+    graph.AddInitializedTensor(initializer);
+    replaced = true;
+
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    replaced = ReplaceInitializer(*graph.MutableParentGraph(), original_name, initializer, check_outer_scope);
+  }
+
+  return replaced;
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {

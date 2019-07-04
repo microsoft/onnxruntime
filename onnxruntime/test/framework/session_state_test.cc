@@ -125,7 +125,7 @@ TEST(SessionStateTest, TestInitializerProcessing) {
         bool found = initialized_tensors.find(idx) != initialized_tensors.cend();
         ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state initialized tensors";
 
-        if (graph_utils::IsConstantInitializer(graph, entry.first, true)) {
+        if (graph_utils::IsConstantInitializer(graph, entry.first, false)) {
           found = const_initialized_tensors.find(idx) != const_initialized_tensors.cend();
           ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state const initialized tensors";
         }

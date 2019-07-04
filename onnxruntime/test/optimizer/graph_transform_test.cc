@@ -308,9 +308,10 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
 
   // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
+  // Unsqueeze is also not eliminated as the initializer that is its input is also not constant
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] != 0);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {

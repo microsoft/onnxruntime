@@ -39,15 +39,29 @@ bool IsOutputUsed(const Node& node, int index);
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
 /** returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
-@param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
+@param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
-bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope);
+bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope = true);
 
-/** Checks if the given node has only constant inputs (initializers). */
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
+/** returns the initializer's TensorProto if 'name' is an initializer, and is constant and 
+cannot be overridden at runtime. If the initializer is not found or is not constant a nullptr is returned.
+@param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
+*/
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
+                                                          bool check_outer_scope = true);
+
+/** Find the initializer called 'original_name' in 'graph', or its ancestors if check_outer_scope is true, 
+    and replace wtih 'initializer' in the correct graph.
+    Returns true if initializer was replaced. */
+bool ReplaceInitializer(Graph& graph, const std::string& original_name, ONNX_NAMESPACE::TensorProto& initializer,
+                        bool check_outer_scope = true);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
+
+/** Checks if the given node has only constant inputs (initializers) and if so returns them in constant_inputs as they
+may come from outer scope. */
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs);
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
