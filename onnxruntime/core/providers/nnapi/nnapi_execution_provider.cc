@@ -57,7 +57,6 @@ std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  const auto graph_outputs = graph.GetOutputs();
   ONNX_NAMESPACE::ModelProto model_proto;
   *model_proto.mutable_graph() = graph.ToGraphProto();
 
