@@ -367,6 +367,10 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
+  common::Status CheckShapes(const std::string& input_name,
+                             const TensorShape& input_shape,
+                             const std::vector<int64_t>& expected_shape);
+
   common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
 
   common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
@@ -413,7 +417,16 @@ class InferenceSession {
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
-  std::unordered_map<std::string, const NodeArg*> input_def_map_;
+
+  struct InputDefMetaData {
+    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, const std::vector<int64_t>& tensor_shape0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(tensor_shape0) {
+    }
+    const NodeArg* node_arg;
+    MLDataType ml_data_type;
+    std::vector<int64_t> tensor_shape;  // not applicable if the input is non-tensor type
+  };
+  std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
   // Threadpool for this session

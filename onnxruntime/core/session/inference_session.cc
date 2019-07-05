@@ -542,11 +542,10 @@ int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
 
-static common::Status CheckShapes(const std::string& input_name,
-                                  const TensorShape& input_shape,
-                                  const TensorShapeProto& expected_shape_proto) {
+common::Status InferenceSession::CheckShapes(const std::string& input_name,
+                                             const TensorShape& input_shape,
+                                             const std::vector<int64_t>& expected_shape) {
   auto input_shape_sz = input_shape.NumDimensions();
-  auto expected_shape = utils::GetTensorShapeFromTensorShapeProto(expected_shape_proto);
   auto expected_shape_sz = expected_shape.size();
   if (input_shape_sz != expected_shape_sz) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for input: ",
@@ -626,7 +625,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                                                      : ".");
     }
 
-    auto expected_type = utils::GetMLDataType(*iter->second);
+    auto expected_type = iter->second.ml_data_type;
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
       // check for type
@@ -640,10 +639,10 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
 
       // check for shape
-      auto expected_shape_proto = iter->second->Shape();
-      if (expected_shape_proto) {
+      const auto& expected_shape = iter->second.tensor_shape;
+      if (!expected_shape.empty()) {
         const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
-        ORT_RETURN_IF_ERROR(CheckShapes(feed_name, input_shape, *expected_shape_proto));
+        ORT_RETURN_IF_ERROR(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else {
       auto input_type = input_ml_value.Type();
@@ -918,7 +917,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   auto add_inputs = [this](const InputDefList& inputs) {
     input_def_map_.reserve(inputs.size());
     for (auto elem : inputs) {
-      input_def_map_.insert({elem->Name(), elem});
+      auto elem_type = utils::GetMLDataType(*elem);
+      auto elem_shape_proto = elem->Shape();
+      input_def_map_.insert({elem->Name(), InputDefMetaData(elem,
+                                                            elem_type,
+                                                            elem_shape_proto
+                                                                ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto)
+                                                                : std::vector<int64_t>())});
     }
   };
 
