@@ -90,6 +90,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.SetThreadPoolSize(performance_test_config.run_config.session_thread_pool_size);
   // Set optimization level.
   session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
+  session_options.SetOptimizedModelFilePath(L"temp-optimized-model.onnx");
+
   if (!performance_test_config.run_config.profile_file.empty())
     session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);

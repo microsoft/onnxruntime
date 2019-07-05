@@ -656,6 +656,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
+        private void TestModelSerialization()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            // Set the optimized model file path to assert that no exception are thrown.
+            SessionOptions options = new SessionOptions();
+            options.SetOptimizedModelFilePath(Path.Combine(Directory.GetCurrentDirectory(), "squeezenet-Transform1.onnx"));
+            options.SetSessionGraphOptimizationLevel(1);
+            var session = new InferenceSession(modelPath, options);
+        }
+
         [GpuFact]
         private void TestGpu()
         {
@@ -696,7 +708,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtEnableSequentialExecution","OrtDisableSequentialExecution","OrtEnableProfiling","OrtDisableProfiling",
             "OrtEnableMemPattern","OrtDisableMemPattern","OrtEnableCpuMemArena","OrtDisableCpuMemArena",
             "OrtSetSessionLogId","OrtSetSessionLogVerbosityLevel","OrtSetSessionThreadPoolSize","OrtSetSessionGraphOptimizationLevel",
-            "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
+            "OrtSetOptimizedModelFilePath", "OrtSessionOptionsAppendExecutionProvider_CPU","OrtCreateAllocatorInfo","OrtCreateCpuAllocatorInfo",
             "OrtCreateDefaultAllocator","OrtAllocatorFree","OrtAllocatorGetInfo",
             "OrtCreateTensorWithDataAsOrtValue","OrtGetTensorMutableData", "OrtReleaseAllocatorInfo",
             "OrtCastTypeInfoToTensorInfo","OrtGetTensorTypeAndShape","OrtGetTensorElementType","OrtGetDimensionsCount",
