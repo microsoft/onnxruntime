@@ -27,24 +27,40 @@ using namespace std;
 
 using namespace onnxruntime;
 
-const static int NUM_OF_EPOCH = 2;
 const static float LEARNING_RATE = 0.1f;
-const static int BATCH_SIZE = 10;
 const static int NUM_CLASS = 10;
 const static int NUM_SAMPLES_FOR_EVALUATION = 10;
 const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("bert_data/train");
 const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("bert_data/test");
 
-int validate_params(int argc, char* args[]) {
-  if (argc < 2) {
+struct TrainingConfig {
+  TrainingConfig() : model_name(""), num_of_epoch(0), num_of_training_samples(0), num_of_testing_samples(0), batch_size(1), use_cuda(false) {}
+  std::string model_name;
+  int num_of_epoch;
+  int num_of_training_samples;
+  int num_of_testing_samples;
+  int batch_size;
+  bool use_cuda;
+};
+
+int validate_params(int argc, char* args[], TrainingConfig& config) {
+  if (argc < 6) {
     printf("Incorrect command line for %s\n", args[0]);
 #ifdef USE_CUDA
-    printf("usage: exe_name model_name [gpu] [optional:world_rank]\n");
+    printf("usage: exe_name model_name num_of_epoch num_of_training_samples num_of_testing_samples batch_size [gpu] [optional:world_rank]\n");
 #else
     printf("usage: exe_name model_name\n");
 #endif
     return -1;
   }
+  config.model_name = args[1];
+  config.num_of_epoch = stoi(args[2]);
+  config.num_of_training_samples = stoi(args[3]);
+  config.num_of_testing_samples = stoi(args[4]);
+  config.batch_size = stoi(args[5]);
+#ifdef USE_CUDA
+  config.use_cuda = (argc > 6 && string(args[6]) == "gpu");
+#endif
   return 0;
 }
 
@@ -79,14 +95,13 @@ void shutdown_horovod() {
 // NOTE: these variables need to be alive when the error_function is called.
 int true_count = 0;
 float total_loss = 0.0f;
-
-void setup_training_params(std::string& model_name, TrainingRunner::Parameters& params) {
-  params.model_path_ = model_name + ".onnx";
-  params.model_with_loss_func_path_ = model_name + "_with_cost.onnx";
-  params.model_with_training_graph_path_ = model_name + "_bw.onnx";
-  params.model_actual_running_graph_path_ = model_name + "_bw_running.onnx";
-  params.model_trained_path_ = model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path_ = model_name + "_with_cost_trained.onnx";
+void setup_training_params(const TrainingConfig& config, TrainingRunner::Parameters& params) {
+  params.model_path_ = config.model_name + ".onnx";
+  params.model_with_loss_func_path_ = config.model_name + "_with_cost.onnx";
+  params.model_with_training_graph_path_ = config.model_name + "_bw.onnx";
+  params.model_actual_running_graph_path_ = config.model_name + "_bw_running.onnx";
+  params.model_trained_path_ = config.model_name + "_trained.onnx";
+  params.model_trained_with_loss_func_path_ = config.model_name + "_with_cost_trained.onnx";
   params.model_prediction_name_ = "output13";
   params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain),
                                             "loss",
@@ -102,13 +117,14 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
 
-  params.batch_size_ = BATCH_SIZE;
-  params.num_of_epoch_ = NUM_OF_EPOCH;
-  //params.in_graph_optimizer_name_ = "SGDOptimizer";
+  params.batch_size_ = config.batch_size;
+  params.num_of_epoch_ = config.num_of_epoch;
+
 #ifdef USE_CUDA
+  params.use_cuda_ = config.use_cuda;
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
-  params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+  params.learning_rate_ = LEARNING_RATE / params.batch_size_;
   params.in_graph_optimizer_name_ = params.use_cuda_ ? "SGDOptimizer" : "";
 #else
   params.learning_rate_ = LEARNING_RATE;
@@ -158,7 +174,8 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
 }
 
 int main(int argc, char* args[]) {
-  if (validate_params(argc, args) == -1) return -1;
+  TrainingConfig config;
+  if (validate_params(argc, args, config) == -1) return -1;
 
   // setup logger
   string default_logger_id{"Default"};
@@ -174,11 +191,7 @@ int main(int argc, char* args[]) {
 
   // setup training params
   TrainingRunner::Parameters params;
-  std::string model_name = args[1];
-#ifdef USE_CUDA
-  params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
-#endif
-  setup_training_params(model_name, params);
+  setup_training_params(config, params);
 
   int device_id = 0, device_count = 1;
 #ifdef USE_CUDA
@@ -207,7 +220,7 @@ int main(int argc, char* args[]) {
   // input3 : int64[batch,max_seq_len_in_batch], what's the sementic of input 3???
   // labels: float32[batch,768]
   int batch_size = static_cast<int>(params.batch_size_);
-  int max_seq_len_in_batch = 128;
+  int max_seq_len_in_batch = 512;
   std::vector<std::string> tensor_names = {"input1", "input2", "input3", "labels"};
   std::vector<TensorShape> tensor_shapes = {{batch_size, max_seq_len_in_batch},
                                             {max_seq_len_in_batch},
@@ -217,8 +230,8 @@ int main(int argc, char* args[]) {
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_FLOAT};
-  RandomDataSet trainingData(10000, tensor_names, tensor_shapes, tensor_types);
-  RandomDataSet testData(10000, tensor_names, tensor_shapes, tensor_types);
+  RandomDataSet trainingData(config.num_of_training_samples, tensor_names, tensor_shapes, tensor_types);
+  RandomDataSet testData(config.num_of_testing_samples, tensor_names, tensor_shapes, tensor_types);
 
   // start training session
   TrainingRunner runner(trainingData, testData, params);

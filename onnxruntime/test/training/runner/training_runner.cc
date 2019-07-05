@@ -127,6 +127,7 @@ Status TrainingRunner::TrainingLoop() {
   vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
   vector<string> feed_names = training_data_.TensorNames();
 
+  double total_time{0};
   for (size_t epoch = 0; epoch < params_.num_of_epoch_; ++epoch) {
     // Shuffle the data for each epoch
     training_data_.RandomShuffle();
@@ -135,12 +136,18 @@ Status TrainingRunner::TrainingLoop() {
     for (size_t batch = 0; batch < training_data_.TotalBatch(params_.batch_size_); ++batch) {
       std::vector<MLValue> feeds = training_data_.GetKthBatch(params_.batch_size_, batch);
       vector<MLValue> gradient_fetches;
+
+      std::chrono::duration<double> duration_seconds;
+      auto start = std::chrono::high_resolution_clock::now();
+      auto end = start;
       ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                        feed_names,
                                        feeds,
                                        training_output_names,
                                        &gradient_fetches));
-
+      end = std::chrono::high_resolution_clock::now();
+      duration_seconds = end - start;
+      total_time += duration_seconds.count();
       NameMLValMap grad;
       for (size_t i = 0; i < training_output_names.size(); i++) {
         if (training_output_names[i] == params_.loss_func_info_.loss_name ||
@@ -166,6 +173,10 @@ Status TrainingRunner::TrainingLoop() {
       ORT_RETURN_IF_ERROR(Evaluate(session_));
     }
   }
+  auto total_iterations = params_.num_of_epoch_ * training_data_.TotalBatch(params_.batch_size_);
+  std::cout << "Total running time:" << total_time << " seconds" << std::endl
+            << "Average running time per iteration:" << total_time / total_iterations * 1000 << " ms" << std::endl
+            << "Throughput: " << params_.batch_size_ * total_iterations / total_time << " Examples / second" << std::endl;
 
   return Status::OK();
 }
