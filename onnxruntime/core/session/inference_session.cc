@@ -542,7 +542,42 @@ int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();
 }
 
-common::Status InferenceSession::CheckTypes(MLDataType actual, MLDataType expected) {
+static common::Status CheckShapes(const std::string& input_name,
+                                  const TensorShape& input_shape,
+                                  const TensorShapeProto& expected_shape_proto) {
+  auto input_shape_sz = input_shape.NumDimensions();
+  auto expected_shape = utils::GetTensorShapeFromTensorShapeProto(expected_shape_proto);
+  auto expected_shape_sz = expected_shape.size();
+  if (input_shape_sz != expected_shape_sz) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for input: ",
+                           input_name,
+                           " Got: ", input_shape_sz, " Expected: ", expected_shape_sz);
+  }
+
+  std::vector<int> invalid_dim_indices;
+  for (size_t i = 0; i < input_shape_sz; ++i) {
+    if (expected_shape[i] == -1) {
+      continue;  // this represents a symbolic shape dimension
+    }
+    if (input_shape[i] != expected_shape[i]) {
+      invalid_dim_indices.push_back(i);
+    }
+  }
+
+  if (!invalid_dim_indices.empty()) {
+    std::ostringstream ostr;
+    ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
+    for (int i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
+      int idx = invalid_dim_indices[i];
+      ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
+    }
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  }
+
+  return Status::OK();
+}
+
+static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
   if (actual == expected) {
     return Status::OK();
   }
@@ -594,9 +629,22 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto expected_type = utils::GetMLDataType(*iter->second);
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
+      // check for type
+      if (!expected_type->IsTensorType()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ",
+                               feed_name, " is not expected to be of type tensor.");
+      }
+
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR(CheckTypes(input_element_type, expected_element_type));
+
+      // check for shape
+      auto expected_shape_proto = iter->second->Shape();
+      if (expected_shape_proto) {
+        const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
+        ORT_RETURN_IF_ERROR(CheckShapes(feed_name, input_shape, *expected_shape_proto));
+      }
     } else {
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));

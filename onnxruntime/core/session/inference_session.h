@@ -367,8 +367,6 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  static common::Status CheckTypes(MLDataType actual, MLDataType expected);
-
   common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
 
   common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
