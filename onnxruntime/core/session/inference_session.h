@@ -369,11 +369,11 @@ class InferenceSession {
 
   common::Status CheckShapes(const std::string& input_name,
                              const TensorShape& input_shape,
-                             const std::vector<int64_t>& expected_shape);
+                             const std::vector<int64_t>& expected_shape) const;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds) const;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches) const;
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 

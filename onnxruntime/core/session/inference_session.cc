@@ -544,7 +544,7 @@ int InferenceSession::GetCurrentNumRuns() const {
 
 common::Status InferenceSession::CheckShapes(const std::string& input_name,
                                              const TensorShape& input_shape,
-                                             const std::vector<int64_t>& expected_shape) {
+                                             const std::vector<int64_t>& expected_shape) const {
   auto input_shape_sz = input_shape.NumDimensions();
   auto expected_shape_sz = expected_shape.size();
   if (input_shape_sz != expected_shape_sz) {
@@ -555,7 +555,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
 
   std::vector<int> invalid_dim_indices;
   for (size_t i = 0; i < input_shape_sz; ++i) {
-    if (expected_shape[i] == -1) {
+    if (expected_shape[i] < 0) {
       continue;  // this represents a symbolic shape dimension
     }
     if (input_shape[i] != expected_shape[i]) {
@@ -587,7 +587,7 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
-                                                const std::vector<OrtValue>& feeds) {
+                                                const std::vector<OrtValue>& feeds) const {
   if (feed_names.size() != feeds.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Size mismatch: feed_names has ",
@@ -679,7 +679,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 }
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
-                                                 const std::vector<OrtValue>* p_fetches) {
+                                                 const std::vector<OrtValue>* p_fetches) const {
   if (!p_fetches) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
