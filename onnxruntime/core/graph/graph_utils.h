@@ -50,12 +50,8 @@ cannot be overridden at runtime. If the initializer is not found or is not const
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
                                                           bool check_outer_scope = true);
 
-/** Find the initializer called 'original_name' in 'graph', or its ancestors if check_outer_scope is true, 
-    and replace with 'initializer' in the current graph. 
-    Does NOT look in any subgraphs. Requires original_name to match an initializer.
-    */
-void ReplaceInitializer(Graph& graph, const std::string& original_name, const ONNX_NAMESPACE::TensorProto& initializer,
-                        bool check_outer_scope = true);
+/** Add a new initializer that will replace an existing one, and return a NodeArg for the new initializer. */
+NodeArg& AddReplacementInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
@@ -86,15 +82,28 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   return false;
 }
 
-/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
+/** Check if it will be possible to remove a node.
     We support the removal of the Node as long as the following conditions hold:
-    - There should be no implicit inputs.
+    - The node should not produce a graph output.
     - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
-    - If the Node has a single incoming node (and possibly multiple initializers), we can remove the Node and
-      connect its incoming node to its outgoing nodes.
-    - If the Node has a single initializer as input, we remove the Node and feed the initializer as input to its
-      output nodes. */
-bool RemoveNode(Graph& graph, Node& node);
+    - If the Node has a single incoming node, we can remove the Node and connect its incoming node to its 
+      outgoing nodes, if doing so does not clash with any values in any relevant subgraphs. 
+    - If the Node output will be replaced by replacement_output_name, we can remove the node if the new output name 
+      does not clash with any values in any relevant subgraphs.  
+@param replacement_output_name 
+  If a new NodeArg will be created to replace the node's output (e.g. creating new initializer) 
+  provide the new name that will be used by the NodeArg.
+  If nullptr, the node must have one input edge, and the name from that edge will be used in the checks. 
+*/
+bool CanRemoveNode(const Graph& graph, const Node& node, const std::string* replacement_output_name = nullptr);
+
+/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
+See CanRemoveNode for details on when removal is allowed.
+@param replacement_output If we are not connecting the single incoming node with the downstream node/s
+                          provide the NodeArg that will replace the output from 'node' and be connected 
+                          with the downstream node/s.
+*/
+bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_output = nullptr);
 
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */

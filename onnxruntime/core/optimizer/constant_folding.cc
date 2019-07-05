@@ -75,6 +75,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     // Remove the output edges of the constant node and then remove the node itself.
     graph_utils::RemoveNodeOutputEdges(graph, *node);
+
+    // we can directly remove the node instead of using graph_utils::RemoveNode as all the node's outputs
+    // are now initializers
     graph.RemoveNode(node->Index());
 
     // The output nodes already have the right input arg, since we used the same name in the initializer.
@@ -84,6 +87,5 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   }
 
   return Status::OK();
-}  // namespace onnxruntime
-
+}
 }  // namespace onnxruntime

@@ -2091,6 +2091,12 @@ bool Graph::RemoveNode(NodeIndex p_index) {
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
+
+  // Remove all output edges
+  for (auto& output_edge : node->GetRelationships().output_edges) {
+    RemoveEdge(p_index, output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+  }
+
   return ReleaseNode(p_index);
 }
 

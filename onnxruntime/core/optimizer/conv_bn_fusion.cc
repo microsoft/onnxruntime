@@ -133,7 +133,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
   // Remove BN node.
   auto* bn_node_to_remove = graph.GetNode(bn_node.Index());
-  if (graph_utils::RemoveNode(graph, *bn_node_to_remove)) {
+  if (graph_utils::RemoveNodeAndUpdateEdges(graph, *bn_node_to_remove)) {
     rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
   }
 
@@ -161,6 +161,11 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[2]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[3]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[4])) {
+    return false;
+  }
+
+  // check nothing else depends on the Conv node so we know we can fuse it
+  if (!graph_utils::CanRemoveNode(graph, node)) {
     return false;
   }
 

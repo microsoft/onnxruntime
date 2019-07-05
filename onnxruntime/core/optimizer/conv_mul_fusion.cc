@@ -123,6 +123,11 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node) const
     return false;
   }
 
+  // make sure nothing else depends on the Conv output
+  if (!graph_utils::CanRemoveNode(graph, node)) {
+    return false;
+  }
+
   return true;
 }
 

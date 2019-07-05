@@ -45,6 +45,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   graph_utils::RemoveNodeOutputEdges(graph, node);
 
   if (graph.RemoveNode(node.Index())) {
+    FIXME
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
     graph.AddInitializedTensor(shape_initializer_proto);
   }

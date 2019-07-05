@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/conv_add_fusion.h"
+
+#include "core/common/logging/logging.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/conv_add_fusion.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -36,9 +38,11 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   } else {
     return Status::OK();
   }
+
   if (add_B_tensor_proto->dims(axis) != conv_W_tensor_proto->dims(0)) {
     return Status::OK();
   }
+
   // The dimensions of add_B should be equal to 1 except axis dimension.
   for (int i = 0; i < add_B_tensor_proto->dims_size(); i++) {
     if (i != axis && add_B_tensor_proto->dims(i) != 1) {
@@ -47,7 +51,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   }
 
   if (conv_inputs.size() == 3) {
-    const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
+    const auto& B_input_name = conv_inputs[2]->Name();
+    const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, B_input_name);
     ORT_ENFORCE(conv_B_tensor_proto);
 
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
@@ -63,6 +68,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     if (conv_B->size() != add_B->size()) {
       return Status::OK();
     }
+
     // Calculate new value of initializers of conv node
     conv_B->add(*add_B);
 
@@ -70,8 +76,11 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
     conv_B->ToProto(&new_conv_B_tensor_proto);
 
-    // Replace initializers of conv node
-    graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
+    auto new_name = graph.GenerateNodeArgName("ConvAddFusion_B_" + B_input_name);
+    new_conv_B_tensor_proto.set_name(new_name);
+
+    conv_node.MutableInputDefs()[2] = &graph_utils::AddReplacementInitializer(graph, new_conv_B_tensor_proto);
+
   } else {
     NodeArg* add_B_node_arg = graph.GetNodeArg(add_B_tensor_proto->name());
     if (add_B_node_arg == nullptr) {
@@ -84,20 +93,20 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     new_conv_B_tensor_proto.clear_dims();
     new_conv_B_tensor_proto.add_dims(dim);
 
-    graph_utils::ReplaceInitializer(graph, add_B_tensor_proto->name(), new_conv_B_tensor_proto);
+    auto new_name = graph.GenerateNodeArgName("ConvAddFusion_Add_B_" + add_B_tensor_proto->name());
+    new_conv_B_tensor_proto.set_name(new_name);
 
-    // Update shape of NodeArg
-    TensorShapeProto shape;
-    shape.add_dim()->set_dim_value(dim);
-    add_B_node_arg->SetShape(shape);
+    NodeArg& new_add_B_node_arg = graph_utils::AddReplacementInitializer(graph, new_conv_B_tensor_proto);
 
-    conv_node.MutableInputDefs().push_back(add_B_node_arg);
+    conv_node.MutableInputDefs().push_back(&new_add_B_node_arg);
     conv_node.MutableInputArgsCount()[2] = 1;
   }
 
   // Remove Add node.
-  auto* add_node_to_remove = graph.GetNode(add_node.Index());
-  if (graph_utils::RemoveNode(graph, *add_node_to_remove)) {
+FIXME:
+  I think we should be updating the Conv node to use the output defs from the Add node instead of wiring
+      the Conv output into the downstream nodes.auto* add_node_to_remove = graph.GetNode(add_node.Index());
+  if (graph_utils::RemoveNodeAndUpdateEdges(graph, *add_node_to_remove)) {
     modified = RewriteRuleEffect::kModifiedRestOfGraph;
   }
 
@@ -112,7 +121,7 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
 
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
@@ -122,6 +131,11 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
       (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+    return false;
+  }
+
+  // make sure nothing else depends on the Conv output
+  if (!graph_utils::CanRemoveNode(graph, node)) {
     return false;
   }
 

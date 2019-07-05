@@ -154,6 +154,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
     for (auto i : removed_nodes) {
       graph.RemoveNode(i);
+      FIXME
     }
 
     modified = modified || !removed_nodes.empty();

@@ -110,6 +110,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
   for (auto node : removed_nodes) {
     graph.RemoveNode(node);
+    FIXME
   }
 
   if (!removed_nodes.empty()) {
