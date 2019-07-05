@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
@@ -87,6 +88,10 @@ bool RemoveNode(Graph& graph, Node& node);
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+ONNX_NAMESPACE::ModelProto GetModelProto(const onnxruntime::GraphViewer& graph);
+
+ONNX_NAMESPACE::ModelProto GetModelProto(const onnxruntime::Function& func_body);
 
 }  // namespace graph_utils
 

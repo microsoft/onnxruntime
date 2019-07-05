@@ -448,6 +448,22 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
+ONNX_NAMESPACE::ModelProto GetModelProto(const onnxruntime::GraphViewer& graph) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  *model_proto.mutable_graph() = graph.ToGraphProto();
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  return model_proto;
+}
+
+ONNX_NAMESPACE::ModelProto GetModelProto(const onnxruntime::Function& func_body) {
+  // Reconstruct graph proto from fused node's function body
+  const Graph& graph_body = func_body.Body();
+  ONNX_NAMESPACE::ModelProto model_proto;
+  *model_proto.mutable_graph() = graph_body.ToGraphProto();
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  return model_proto;
+}
+
 }  // namespace graph_utils
 
 }  // namespace onnxruntime

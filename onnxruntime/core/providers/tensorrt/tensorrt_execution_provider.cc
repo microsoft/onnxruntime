@@ -14,6 +14,7 @@
 #include "onnx/shape_inference/implementation.h"
 #include "cuda_runtime_api.h"
 #include "gsl/pointers"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
 
@@ -219,32 +220,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
-  onnxruntime::Graph& graph_build = model.MainGraph();
-  for (const auto& node : graph.Nodes()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
-    for (auto input : node.InputDefs()) {
-      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
-    }
-    for (auto output : node.OutputDefs()) {
-      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  }
-
-  //Add initializer to graph
-  const auto& init_tensors = graph.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    graph_build.AddInitializedTensor(*(tensor.second));
-  }
-
-  auto status = graph_build.Resolve();
-  ORT_ENFORCE(status.IsOK(), status);
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ONNX_NAMESPACE::ModelProto model_proto = graph_utils::GetModelProto(graph);
 
   // Serialize modelproto to string
   string string_buf;
@@ -317,11 +293,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
-    const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
-    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
-    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    ONNX_NAMESPACE::ModelProto model_proto = graph_utils::GetModelProto(*func_body);
     string string_buf;
     model_proto.SerializeToString(&string_buf);
 

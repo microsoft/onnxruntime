@@ -6,6 +6,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "ngraph_execution_provider.h"
@@ -494,37 +495,7 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 }
 
 static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
-  const auto& attributes = fused_node->GetAttributes();
-  const auto& initializers = attributes.at("initializers").tensors();
-
-  ONNX_NAMESPACE::ModelProto model_proto;
-  auto graph_proto = model_proto.mutable_graph();
-  const auto& fused_graph = fused_node->GetFunctionBody()->Body();
-
-  for (const auto& node : fused_graph.Nodes()) {
-    node.ToProto(*(graph_proto->add_node()));
-  }
-
-  for (const auto& input : fused_node->InputDefs()) {
-    auto valueInfoProto = graph_proto->add_input();
-    *valueInfoProto = input->ToProto();
-  }
-
-  for (const auto& output : fused_node->OutputDefs()) {
-    auto valueInfoProto = graph_proto->add_output();
-    *valueInfoProto = output->ToProto();
-  }
-
-  for (const auto& initializer : initializers) {
-    graph_proto->add_initializer()->CopyFrom(initializer);
-  }
-
-  auto opset = model_proto.add_opset_import();
-  opset->set_domain(kOnnxDomain);
-  opset->set_version(fused_graph.DomainToVersionMap().at(kOnnxDomain));
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  return model_proto;
+  return graph_utils::GetModelProto(*fused_node->GetFunctionBody());
 }
 
 Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,

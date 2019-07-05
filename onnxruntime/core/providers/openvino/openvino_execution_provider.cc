@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensorprotoutils.h"
@@ -31,36 +32,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderIn
 
   DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(OPENVINO, OrtDeviceAllocator, 0, OrtMemTypeDefault)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
-}
-
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::GraphViewer& graph_viewer) {
-  ONNX_NAMESPACE::ModelProto model_proto;
-  auto graph_proto = model_proto.mutable_graph();
-
-  for (const auto& node : graph_viewer.Nodes()) {
-    node.ToProto(*(graph_proto->add_node()));
-  }
-
-  for (const auto& input : graph_viewer.GetInputs()) {
-    auto valueInfoProto = graph_proto->add_input();
-    *valueInfoProto = input->ToProto();
-  }
-
-  for (const auto& output : graph_viewer.GetOutputs()) {
-    auto valueInfoProto = graph_proto->add_output();
-    *valueInfoProto = output->ToProto();
-  }
-
-  for (const auto& initializer : graph_viewer.GetAllInitializedTensors()) {
-    graph_proto->add_initializer()->CopyFrom(*initializer.second);
-  }
-
-  auto opset = model_proto.add_opset_import();
-  opset->set_domain(kOnnxDomain);
-  opset->set_version(graph_viewer.DomainToVersionMap().at(kOnnxDomain));
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  return model_proto;
 }
 
 //Gets the input count of given node
@@ -208,19 +179,19 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
 
   auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
 
-  auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+  ONNX_NAMESPACE::ModelProto model_proto = graph_utils::GetModelProto(graph_viewer);
+  const auto &graph_proto = model_proto.graph();
 
-  auto graph_proto = model_proto.mutable_graph();
   int input_dims = 0;
   int output_dims = 0;
   int num_inputs = graph_viewer.GetInputs().size();
   int num_outputs = graph_viewer.GetOutputs().size();
 
   if (num_inputs != 0)
-    input_dims = graph_proto->input(0).type().tensor_type().shape().dim_size();
+    input_dims = graph_proto.input(0).type().tensor_type().shape().dim_size();
 
   if (num_outputs != 0)
-    output_dims = graph_proto->output(0).type().tensor_type().shape().dim_size();
+    output_dims = graph_proto.output(0).type().tensor_type().shape().dim_size();
 
   //GPU Plugin does not support single dimensional input and 5 dimensional input
   if (dev_id == "GPU") {
@@ -451,7 +422,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   int counter = 0;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
-  auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
+  ONNX_NAMESPACE::ModelProto model_proto = graph_utils::GetModelProto(graph_viewer);
 
   std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 

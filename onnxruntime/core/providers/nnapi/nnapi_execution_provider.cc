@@ -5,6 +5,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "dnnlibrary/ModelBuilder.h"
 #include "dnnlibrary/OnnxReader.h"
@@ -57,8 +58,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  ONNX_NAMESPACE::ModelProto model_proto;
-  *model_proto.mutable_graph() = graph.ToGraphProto();
+  ONNX_NAMESPACE::ModelProto model_proto = graph_utils::GetModelProto(graph);
 
   const auto supported_nodes_vector = GetSupportedNodes(model_proto);
 
@@ -204,12 +204,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
-    const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(),
-                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
-    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
-    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    ONNX_NAMESPACE::ModelProto model_proto = graph_utils::GetModelProto(*func_body);
 
     dnn::OnnxReader onnx_reader;
     dnn::ModelBuilder model_builder;
