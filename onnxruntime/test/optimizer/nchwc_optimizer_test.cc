@@ -155,7 +155,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  auto run_model = [&](NchwcTestHelper& helper, TransformerLevel level, std::vector<OrtValue>& fetches) {
+  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches) {
     SessionOptions session_options;
     session_options.graph_optimization_level = level;
     session_options.session_logid = "NchwcOptimizerTests";
@@ -172,10 +172,10 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   };
 
   std::vector<OrtValue> level2_fetches;
-  run_model(helper, TransformerLevel::Level2, level2_fetches);
+  run_model(TransformerLevel::Level2, level2_fetches);
 
   std::vector<OrtValue> level3_fetches;
-  run_model(helper, TransformerLevel::Level3, level3_fetches);
+  run_model(TransformerLevel::Level3, level3_fetches);
 
   size_t num_outputs = level2_fetches.size();
   ASSERT_TRUE(num_outputs == level3_fetches.size());
@@ -366,23 +366,30 @@ TEST(NchwcOptimizerTests, ConvPointwise) {
 TEST(NchwcOptimizerTests, ConvClip) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
     auto* input_arg = helper.MakeInput({1, 3, 28, 28});
-    auto* conv_output_arg = helper.MakeIntermediate();
     auto* output_arg = helper.MakeOutput();
 
+    auto* conv_output_arg = helper.MakeIntermediate();
     helper.AddConvNode(input_arg, conv_output_arg, {128, 3, 1, 1});
 
-    auto& clip_node = helper.AddNode("Clip", {conv_output_arg}, {output_arg});
+    auto* clip_output_arg = helper.MakeIntermediate();
+    auto& clip_node = helper.AddNode("Clip", {conv_output_arg}, {clip_output_arg});
     clip_node.AddAttribute("min", 0.0f);
     clip_node.AddAttribute("max", 6.0f);
+
+    helper.AddConvNode(clip_output_arg, output_arg, {192, 128, 1, 1});
   };
 
   auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
     auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
     EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
     EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Clip"], 1);
   };
 
+  // Verify that using Clip with an NCHWc input does not cause unnecessary
+  // reorder nodes to be added. Clip can consume and produce NCHWc as it is an
+  // elementwise operation.
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
@@ -724,29 +731,31 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     auto* input_arg = helper.MakeInput({1, 3, 50, 100}, type_proto);
     auto* output_arg = helper.MakeOutput();
 
+    // With these padding and kernel arguments, the shape along each spatial
+    // dimension is unchanged.
     auto* conv1_output_arg = helper.MakeIntermediate();
     auto& conv1_node = helper.AddConvNode(input_arg, conv1_output_arg, {48, 3, 3, 3});
     conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-    auto* conv2_output_arg = helper.MakeIntermediate();
-    auto& conv2_node = helper.AddConvNode(conv1_output_arg, conv2_output_arg, {64, 48, 3, 3});
-    conv2_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    auto* pool2a_output_arg = helper.MakeIntermediate();
+    auto& pool2a_node = helper.AddNode("MaxPool", {conv1_output_arg}, {pool2a_output_arg});
+    pool2a_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    pool2a_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-    auto* conv3_output_arg = helper.MakeIntermediate();
-    auto& conv3_node = helper.AddConvNode(conv1_output_arg, conv3_output_arg, {64, 48, 3, 3});
-    conv3_node.AddAttribute("auto_pad", "SAME_UPPER");
+    auto* pool2b_output_arg = helper.MakeIntermediate();
+    auto& pool2b_node = helper.AddNode("MaxPool", {conv1_output_arg}, {pool2b_output_arg});
+    pool2b_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    pool2b_node.AddAttribute("auto_pad", "SAME_LOWER");
 
-    auto* pool1_output_arg = helper.MakeIntermediate();
-    auto& pool1_node = helper.AddNode("MaxPool", {conv2_output_arg}, {pool1_output_arg});
-    pool1_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
-    pool1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    auto* conv3a_output_arg = helper.MakeIntermediate();
+    auto& conv3a_node = helper.AddConvNode(pool2a_output_arg, conv3a_output_arg, {64, 48, 3, 3});
+    conv3a_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-    auto* pool2_output_arg = helper.MakeIntermediate();
-    auto& pool2_node = helper.AddNode("MaxPool", {conv3_output_arg}, {pool2_output_arg});
-    pool2_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
-    pool2_node.AddAttribute("auto_pad", "SAME_LOWER");
+    auto* conv3b_output_arg = helper.MakeIntermediate();
+    auto& conv3b_node = helper.AddConvNode(pool2b_output_arg, conv3b_output_arg, {64, 48, 3, 3});
+    conv3b_node.AddAttribute("auto_pad", "SAME_UPPER");
 
-    helper.AddNode("Add", {pool1_output_arg, pool2_output_arg}, {output_arg});
+    helper.AddNode("Add", {conv3a_output_arg, conv3b_output_arg}, {output_arg});
   };
 
   auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
@@ -755,10 +764,14 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     EXPECT_EQ(op_to_count["nchwc.MaxPool"], 2);
     EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
     EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Add"], 0);
   };
 
   // The NCHWc optimizer does a limited amount of symbolic shape inferencing to
-  // handle models such as YoloV3 which can handle variable height/width.
+  // handle models such as YoloV3 which can handle variable height/width. Without
+  // shape inferencing, the transformer would be unable to detect that the inputs
+  // to the Add node have identical shapes and thus is eligble for Conv/Add
+  // fusion.
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
