@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
   auto& conv_node = node;
-  const auto& add_node = *conv_node.OutputNodesBegin();
+  auto& add_node = *graph.GetNode((*conv_node.OutputNodesBegin()).Index());  // get mutable next node
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& add_inputs = add_node.InputDefs();
 
@@ -82,12 +82,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     conv_node.MutableInputDefs()[2] = &graph_utils::AddReplacementInitializer(graph, new_conv_B_tensor_proto);
 
   } else {
-    NodeArg* add_B_node_arg = graph.GetNodeArg(add_B_tensor_proto->name());
-    if (add_B_node_arg == nullptr) {
-      return Status::OK();
-    }
-
-    // Update shape of tensor proto
+    // Create new tensor proto and update shape
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*add_B_tensor_proto);
     int64_t dim = conv_W_tensor_proto->dims(0);
     new_conv_B_tensor_proto.clear_dims();
@@ -102,13 +97,12 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     conv_node.MutableInputArgsCount()[2] = 1;
   }
 
-  // Remove Add node.
-FIXME:
-  I think we should be updating the Conv node to use the output defs from the Add node instead of wiring
-      the Conv output into the downstream nodes.auto* add_node_to_remove = graph.GetNode(add_node.Index());
-  if (graph_utils::RemoveNodeAndUpdateEdges(graph, *add_node_to_remove)) {
-    modified = RewriteRuleEffect::kModifiedRestOfGraph;
-  }
+  // move the output definition and edges from the add_node to the conv_node now that they're fused
+  graph_utils::DisconnectNodes(graph, conv_node, add_node, 0);
+  graph_utils::MoveOutput(graph, add_node, conv_node);
+
+  // directly remove the Add node
+  graph.RemoveNode(add_node.Index());
 
   return Status::OK();
 }
@@ -134,8 +128,7 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
     return false;
   }
 
-  // make sure nothing else depends on the Conv output
-  if (!graph_utils::CanRemoveNode(graph, node)) {
+  if (graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 

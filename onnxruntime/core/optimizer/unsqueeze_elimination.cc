@@ -34,7 +34,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     return Status(ONNXRUNTIME, FAIL, "index out of range");
   }
 
-  // for simplicity we will add the replacement initializer in this graph, even if the original came from an ancestor
+  // for simplicity we will add the replacement initializer in this graph, even if the original came from an ancestor,
   // so generate a replacement node arg name for this graph. use a prefix to minimize the chance of any naming
   // clash with values in a subgraph
   auto new_name = graph.GenerateNodeArgName("UnsqueezeElimination_" + input_def.Name());
@@ -68,10 +68,9 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 
   auto& new_node_arg = graph_utils::AddReplacementInitializer(graph, new_tensor_proto);
 
-  // Remove Unsqueeze node.
-  if (graph_utils::RemoveNode(graph, node, &new_node_arg)) {
-    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
-  }
+  // Remove Unsqueeze node and update the downstream nodes to use the new NodeArg
+  graph_utils::RemoveNodeAndUpdateEdges(graph, node, &new_node_arg);
+  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   return Status::OK();
 }

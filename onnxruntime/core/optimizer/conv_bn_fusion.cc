@@ -113,29 +113,31 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   }
 
   // Replace initializers of conv node
-  graph_utils::ReplaceInitializer(graph, conv_W_tensor_proto->name(), new_conv_W_tensor_proto);
+  auto new_W_name = graph.GenerateNodeArgName("ConvBnFusion_W_" + conv_W_tensor_proto->name());
+  auto new_B_name = graph.GenerateNodeArgName("ConvBnFusion_BN_B_" + bn_B_tensor_proto->name());
+
+  new_conv_W_tensor_proto.set_name(new_W_name);
+  new_conv_B_tensor_proto.set_name(new_B_name);
+
+  conv_node.MutableInputDefs()[1] = &graph_utils::AddReplacementInitializer(graph, new_conv_W_tensor_proto);
+  auto& new_conv_B_node_arg = graph_utils::AddReplacementInitializer(graph, new_conv_B_tensor_proto);
 
   if (conv_inputs.size() == 3) {
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6011)  // Not deferencing null pointer. conv_B_tensor_proto is set on line 93
-#endif
-    graph_utils::ReplaceInitializer(graph, conv_B_tensor_proto->name(), new_conv_B_tensor_proto);
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
+    conv_node.MutableInputDefs()[2] = &new_conv_B_node_arg;
   } else {
-    graph_utils::ReplaceInitializer(graph, bn_B_tensor_proto->name(), new_conv_B_tensor_proto);
-    conv_node.MutableInputDefs().push_back(bn_B_node_arg);
+    conv_node.MutableInputDefs().push_back(&new_conv_B_node_arg);
     conv_node.MutableInputArgsCount()[2] = 1;
   }
 
-  // Remove BN node.
-  auto* bn_node_to_remove = graph.GetNode(bn_node.Index());
-  if (graph_utils::RemoveNodeAndUpdateEdges(graph, *bn_node_to_remove)) {
-    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
-  }
+  Node& mutable_bn_node = *graph.GetNode(bn_node.Index());
+
+  // Move the output definition and edges from the BN node to the Conv node
+  graph_utils::DisconnectNodes(graph, conv_node, bn_node, 0);
+  graph_utils::MoveOutput(graph, mutable_bn_node, conv_node);
+
+  graph.RemoveNode(bn_node.Index());
+
+  rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
 
   return Status::OK();
 }
@@ -164,8 +166,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
     return false;
   }
 
-  // check nothing else depends on the Conv node so we know we can fuse it
-  if (!graph_utils::CanRemoveNode(graph, node)) {
+  if (graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 

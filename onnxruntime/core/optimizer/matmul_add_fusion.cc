@@ -87,26 +87,31 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       gemm_input_defs.push_back(add_input_defs[0]);
     }
 
-    if (graph_utils::CanRemoveNode(graph, matmul_node) &&
-        graph_utils::CanRemoveNode(graph, add_node)) {
-      Node& gemm_node = graph.AddNode(graph.GenerateNodeName("gemm"),
-                                      "Gemm",
-                                      "fused Matmul and Add " + add_node.OpType(),
-                                      gemm_input_defs,
-                                      add_node.MutableOutputDefs());
-
-      // Assign provider to this new node. Provider should be same as the provider for old node.
-      gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
-
-      removed_nodes.push_front(matmul_node.Index());
-      removed_nodes.push_front(add_node.Index());
+    if (graph.IsNodeOutputsInGraphOutputs(node)) {
+      continue;
     }
+
+    Node& gemm_node = graph.AddNode(graph.GenerateNodeName("gemm"),
+                                    "Gemm",
+                                    "fused Matmul and Add " + add_node.OpType(),
+                                    gemm_input_defs,
+                                    add_node.MutableOutputDefs());
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
+
+    // move edges
+    const bool move_definition = false;  // we created the new node with the output def from add_node
+    graph_utils::DisconnectNodes(graph, matmul_node, add_node, 0);
+    graph_utils::MoveOutput(graph, add_node, gemm_node, move_definition);
+
+    removed_nodes.push_front(matmul_node.Index());
+    removed_nodes.push_front(add_node.Index());
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode
   for (onnxruntime::NodeIndex removed_node : removed_nodes) {
     graph.RemoveNode(removed_node);
-    FIXME
   }
 
   if (!removed_nodes.empty()) {

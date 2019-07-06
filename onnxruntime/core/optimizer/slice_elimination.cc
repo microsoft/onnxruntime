@@ -9,7 +9,7 @@
 namespace onnxruntime {
 
 Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
-  if (graph_utils::RemoveNode(graph, node)) {
+  if (graph_utils::RemoveNodeAndUpdateEdges(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
@@ -22,7 +22,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1})) {
     return false;
   }
-  
+
   if (!graph_utils::IsSingleInSingleOutNode(node) ||
       graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
@@ -50,6 +50,10 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
     if (starts[i] != 0 || ends[i] < INT64_MAX) {
       return false;
     }
+  }
+
+  if (!graph_utils::CanRemoveNode(graph, node)) {
+    return false;
   }
 
   return true;

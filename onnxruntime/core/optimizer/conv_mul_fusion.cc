@@ -66,6 +66,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
         conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
+
     conv_B = std::make_unique<Initializer>(conv_B_tensor_proto);
   }
 
@@ -84,20 +85,29 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
   ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
   conv_W->ToProto(&new_conv_W_tensor_proto);
 
+  auto new_W_name = graph.GenerateNodeArgName("ConvMulFusion_W_" + conv_W_tensor_proto->name());
+  new_conv_W_tensor_proto.set_name(new_W_name);
+
   // Replace initializers of conv node
-  graph_utils::ReplaceInitializer(graph, conv_inputs[1]->Name(), new_conv_W_tensor_proto);
+  conv_node.MutableInputDefs()[1] = &graph_utils::AddReplacementInitializer(graph, new_conv_W_tensor_proto);
 
   if (is_3d) {
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*conv_B_tensor_proto);
     conv_B->ToProto(&new_conv_B_tensor_proto);
-    graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
+
+    auto new_B_name = graph.GenerateNodeArgName("ConvMulFusion_Mul_B_" + mul_B_tensor_proto->name());
+    new_conv_B_tensor_proto.set_name(new_B_name);
+
+    conv_node.MutableInputDefs()[2] = &graph_utils::AddReplacementInitializer(graph, new_conv_B_tensor_proto);
   }
 
-  // Remove Mul node.
-  auto* mul_node_to_remove = graph.GetNode(mul_node.Index());
-  if (graph_utils::RemoveNode(graph, *mul_node_to_remove)) {
-    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
-  }
+  // Move output name and edges from Mul node to Conv node and remove Mul node.
+  Node& mutable_mul_node = *graph.GetNode(mul_node.Index());
+  graph_utils::DisconnectNodes(graph, conv_node, mul_node, 0);
+  graph_utils::MoveOutput(graph, mutable_mul_node, conv_node);
+  graph.RemoveNode(mul_node.Index());
+
+  rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
 
   return Status::OK();
 }
@@ -123,8 +133,7 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node) const
     return false;
   }
 
-  // make sure nothing else depends on the Conv output
-  if (!graph_utils::CanRemoveNode(graph, node)) {
+  if (graph.IsNodeOutputsInGraphOutputs(node)) {
     return false;
   }
 

@@ -82,17 +82,18 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   return false;
 }
 
-/** Check if it will be possible to remove a node.
+/** Check if it will be possible to remove or fuse a node.
     We support the removal of the Node as long as the following conditions hold:
-    - The node should not produce a graph output.
+    - The node should not produce a graph output unless replacement_output_name provides that output.
     - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
     - If the Node has a single incoming node, we can remove the Node and connect its incoming node to its 
       outgoing nodes, if doing so does not clash with any values in any relevant subgraphs. 
-    - If the Node output will be replaced by replacement_output_name, we can remove the node if the new output name 
-      does not clash with any values in any relevant subgraphs.  
+    - If the Node output will be replaced by replacement_output_name, we can remove or fuse the node 
+      if the new output name does not clash with any values in any relevant subgraphs.  
 @param replacement_output_name 
   If a new NodeArg will be created to replace the node's output (e.g. creating new initializer) 
   provide the new name that will be used by the NodeArg.
+  If the node is being fused provide the 
   If nullptr, the node must have one input edge, and the name from that edge will be used in the checks. 
 */
 bool CanRemoveNode(const Graph& graph, const Node& node, const std::string* replacement_output_name = nullptr);
@@ -108,6 +109,12 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+/** Remove any edge between two nodes */
+void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node, int output_idx);
+
+/** Move the output edges and optionally the output definition as well from src_node to target_node.*/
+void MoveOutput(Graph& graph, Node& src_node, Node& target_node, bool move_definition = true);
 
 }  // namespace graph_utils
 
