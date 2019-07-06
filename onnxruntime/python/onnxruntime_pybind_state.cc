@@ -292,12 +292,16 @@ void addGlobalMethods(py::module& m) {
       },
       "Return a vector of OpSchema all registed operators");
   m.def(
-    "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
+      "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
       std::vector<onnxruntime::KernelDef> result;
       std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
-        // onnxruntime::CreateExecutionProviderFactory_CPU(0),
-        // onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+        onnxruntime::CreateExecutionProviderFactory_CPU(0),
+#ifdef USE_CUDA
+        onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+#endif
+#ifdef USE_MKLDNN
         onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
+#endif
         // onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
         // onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
         // onnxruntime::CreateExecutionProviderFactory_Tensorrt()
@@ -335,8 +339,31 @@ void addOpKernelSubmodule(py::module& m){
   py::class_<onnxruntime::KernelDef> kernel_def(opkernel, "KernelDef");
   kernel_def.def_property_readonly("op_name", &onnxruntime::KernelDef::OpName)
             .def_property_readonly("domain", &onnxruntime::KernelDef::Domain)
-            .def_property_readonly("provider", &onnxruntime::KernelDef::Provider);
-             
+            .def_property_readonly("provider", &onnxruntime::KernelDef::Provider)
+            .def_property_readonly("version_range", 
+              [](const onnxruntime::KernelDef& kernelDef) -> std::pair<int, int> {
+                return kernelDef.onnxruntime::KernelDef::SinceVersion();
+              })
+            .def_property_readonly("type_constraints", 
+              [](const onnxruntime::KernelDef& kernelDef) -> std::unordered_map<std::string, std::vector<std::string> > {
+                std::unordered_map<std::string, std::vector<std::string> > result;
+                const auto& tempResult = kernelDef.TypeConstraints();
+                for (const auto& tc: tempResult){
+                  result[tc.first] = std::vector<std::string>();
+                  for (const auto& dt: tc.second){
+                    result[tc.first].emplace_back(onnxruntime::DataTypeImpl::ToString(dt));  
+                  }
+                }
+                return result;
+              })
+            ;
+
+  // py::class_<onnxruntime::DataTypeImpl> dataTypeImpl(opkernel, "DataTypeImpl");
+  // dataTypeImpl.def_property_readonly("string", 
+  //               [](const std::shared_ptr<onnxruntime::DataTypeImpl* self) -> std::string {
+  //                 return std::string(onnxruntime::DataTypeImpl::ToString(self));  
+  //               });
+
 }
 
 
