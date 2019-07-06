@@ -37,6 +37,7 @@ class TensorShape : private std::vector<int64_t> {
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
 
   TensorShape(const std::vector<int64_t>& dims);
+  TensorShape(std::vector<int64_t>&& dims);
 
   TensorShape(const std::initializer_list<int64_t>& dims);
 
