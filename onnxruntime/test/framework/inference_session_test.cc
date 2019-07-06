@@ -333,7 +333,8 @@ TEST(InferenceSessionTests, DisableCPUArena) {
 }
 
 TEST(InferenceSessionTests, TestModelSerialization) {
-  // Load model with level1 tranform level and serialize model the after transformation.
+  // Load model with level1 transform level as session options 
+  // and serialize the model after transformation.
   SessionOptions so;
   const string test_model = "testdata/transform/abs-id-max.onnx";
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
