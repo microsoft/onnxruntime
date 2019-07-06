@@ -41,8 +41,8 @@ void ComputeShareSoftmaxCrossEntropyCPU(const int n,
 
 ONNX_OPERATOR_KERNEL_EX(
     SoftmaxCrossEntropy,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    9,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SoftmaxCrossEntropy<float>);
@@ -56,7 +56,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   const TensorShape label_shape{label.Shape()};
 
   ORT_ENFORCE(label_shape == logits_shape, "The shape in logits and labels is not identical");
-  
+
   int64_t N = logits_shape.SizeToDimension(logits_shape.NumDimensions() - 1);
   int64_t D = logits_shape.SizeFromDimension(logits_shape.NumDimensions() - 1);
 
@@ -103,8 +103,8 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_KERNEL_EX(
     SoftmaxCrossEntropyGrad,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    9,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SoftmaxCrossEntropyGrad<float>);
@@ -158,8 +158,8 @@ Status SoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_KERNEL_EX(
     SparseSoftmaxCrossEntropy,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    9,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SparseSoftmaxCrossEntropy<float>);
@@ -176,7 +176,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   for (size_t i = 0; i < label_shape.NumDimensions(); i++) {
     ORT_ENFORCE(label_shape[i] == logit_shape[i], "The shape in logits and labels does not match");
   }
-  
+
   int64_t N = label_shape.Size();
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
 
@@ -195,7 +195,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   std::vector<float> shifted_logits(nd);
   std::vector<float> exp_shifted_logits(nd);
   std::vector<float> sum_exp(n);
-  
+
   ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
                                      shifted_logits.data(),
                                      exp_shifted_logits.data(),
@@ -204,7 +204,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // log(sum(exp(logits - max_logits)))
   std::vector<float>& log_sum_exp = sum_exp;
   math::Log<float, CPUMathUtil>(n, sum_exp.data(), log_sum_exp.data(), nullptr);
-  
+
   std::vector<float> loss_sample(n);
 
   if (OpKernel::Node().InputDefs().size() == 3) {
@@ -229,8 +229,8 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_KERNEL_EX(
     SparseSoftmaxCrossEntropyGrad,
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    9,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SparseSoftmaxCrossEntropyGrad<float>);
@@ -248,7 +248,7 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
   for (size_t i = 0; i < label_shape.NumDimensions(); i++) {
     ORT_ENFORCE(label_shape[i] == logit_shape[i], "The shape in logits and labels does not match");
   }
-  
+
   int64_t N = label_shape.Size();
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
 

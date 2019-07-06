@@ -108,12 +108,13 @@ Status TrainingRunner::Run() {
   }
 
   // Test the original model.
-  //printf("Before training \n");
-  //ORT_RETURN_IF_ERROR(Evaluate(session_, true /*use full test set*/));
+  printf("Before training \n");
+  ORT_RETURN_IF_ERROR(Evaluate(session_, true /*use full test set*/));
 
   ORT_RETURN_IF_ERROR(TrainingLoop());
 
-  return EndTraining();
+  ORT_RETURN_IF_ERROR(EndTraining());
+  return Status::OK();
 }
 
 Status TrainingRunner::TrainingLoop() {
@@ -148,6 +149,7 @@ Status TrainingRunner::TrainingLoop() {
       end = std::chrono::high_resolution_clock::now();
       duration_seconds = end - start;
       total_time += duration_seconds.count();
+
       NameMLValMap grad;
       for (size_t i = 0; i < training_output_names.size(); i++) {
         if (training_output_names[i] == params_.loss_func_info_.loss_name ||
@@ -170,6 +172,7 @@ Status TrainingRunner::TrainingLoop() {
       if (params_.in_graph_optimizer_name_.empty()) {
         weight_updater.Update(grad, params_.batch_size_);
       }
+
       ORT_RETURN_IF_ERROR(Evaluate(session_));
     }
   }
@@ -207,6 +210,11 @@ Status TrainingRunner::EndTraining() {
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session, bool use_full_set) {
+  if (params_.skip_evaluation) {
+    printf("Skipping evaluation...\n");
+    return Status::OK();
+  }
+
   if (params_.world_rank_ != 0) {
     printf("Skipping evaluation on Device #%d, as it's not the root.\n", params_.world_rank_);
     return Status::OK();
@@ -271,7 +279,12 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
 
   if (use_in_graph_optimizer) {
-    in_graph_optimizer::OptimizerInfo opt_info{params_.in_graph_optimizer_name_, params_.learning_rate_, {}};
+    in_graph_optimizer::OptimizerInfo opt_info{
+        params_.in_graph_optimizer_name_,
+        params_.learning_rate_,
+        params_.world_rank_,
+        params_.world_size_,
+        {}};
 
     if (params_.in_graph_optimizer_name_ == "AdamOptimizer") {
       opt_info.attributes_["alpha"] = params_.adam_opt_params_.alpha_;

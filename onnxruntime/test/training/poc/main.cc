@@ -88,7 +88,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   params.model_trained_path_ = model_name + "_trained.onnx";
   params.model_trained_with_loss_func_path_ = model_name + "_with_cost_trained.onnx";
   params.model_prediction_name_ = "predictions";
-  params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain),
+  params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
   //params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};

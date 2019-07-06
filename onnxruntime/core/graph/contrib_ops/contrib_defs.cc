@@ -1325,8 +1325,8 @@ Example 4:
 
   // TODO: push this to ONNX
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropy)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
       .Input(0, "logits", "Unscaled log probabilities, N-D input of shape (-1, num_classes).", "T")
       .Input(1, "label", "The onehot label is N-D input with the same shape as logits.", "T")
       .Output(0, "Y", "loss.", "T")
@@ -1337,8 +1337,8 @@ Example 4:
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "logits", "Unscaled log probabilities, N-D input of shape (-1, num_classes).", "T")
       .Input(2, "label", "The onehot label is N-D input with the same shape as logits.", "T")
@@ -1451,8 +1451,8 @@ Example 4:
         The resizing is corner aligned.)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
       .Input(0, "logits", "Unscaled log probabilities, (N+1)-D input of shape (-1, num_classes).", "T")
       .Input(1, "label", "label is N-D input whose shape should match that of logits. "
              "It is a tensor of nonnegative integers, "
@@ -1469,8 +1469,8 @@ Example 4:
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropyGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "logits", "Unscaled log probabilities, (N+1)-D input of shape (batch_size).", "T")
       .Input(2, "label", "label is N-D input whose shape should match that of logits. "

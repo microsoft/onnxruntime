@@ -888,53 +888,53 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 }
 
 //Ratio 0
-TEST(GradientCheckerTest, TrainableDropout1) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropout1) {
   TensorShape x_shape({2, 2, 2, 2});
   TestDropoutOp(0.0f, x_shape, false);
 }
 //Ratio 0.2, 3D
-TEST(GradientCheckerTest, TrainableDropout2) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropout2) {
   TensorShape x_shape({4, 2, 2});
   TestDropoutOp(0.2f, x_shape, false);
 }
 //Ratio 0.4, 2D
-TEST(GradientCheckerTest, TrainableDropout3) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropout3) {
   TensorShape x_shape({4, 4});
   TestDropoutOp(0.4f, x_shape, false);
 }
 
 //Default ratio, 1D
-TEST(GradientCheckerTest, TrainableDropout4) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropout4) {
   TensorShape x_shape({16});
   TestDropoutOp(0.2f, x_shape, true);
 }
 
 //Ratio 0
-TEST(GradientCheckerTest, TrainableDropoutGrad1) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad1) {
   TensorShape x_shape({8, 2});
   TestDropoutGradOp(0.0f, x_shape);
 }
 
 //Ratio 0.2, 1D
-TEST(GradientCheckerTest, TrainableDropoutGrad2) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad2) {
   TensorShape x_shape({16});
   TestDropoutGradOp(0.2f, x_shape, false);
 }
 
 //Ratio 0.3, 2D
-TEST(GradientCheckerTest, TrainableDropoutGrad3) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad3) {
   TensorShape x_shape({8, 2});
   TestDropoutGradOp(0.3f, x_shape, false);
 }
 
 //Ratio 0.4, 3D
-TEST(GradientCheckerTest, TrainableDropoutGrad4) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad4) {
   TensorShape x_shape({2, 4, 2});
   TestDropoutGradOp(0.4f, x_shape, false);
 }
 
 //default Ratio, 4D
-TEST(GradientCheckerTest, TrainableDropoutGrad5) {
+TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad5) {
   TensorShape x_shape({2, 4, 2});
   TestDropoutGradOp(0.6f, x_shape);
 }
@@ -942,7 +942,7 @@ TEST(GradientCheckerTest, TrainableDropoutGrad5) {
 TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"SoftmaxCrossEntropy", kMSDomain};
+  OpDef op_def{"SoftmaxCrossEntropy"};
   const int64_t D = 11;
 
   {
@@ -973,7 +973,7 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
 TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"SparseSoftmaxCrossEntropy", kMSDomain};
+  OpDef op_def{"SparseSoftmaxCrossEntropy"};
 
   const TensorShape N_1d({5});
   const TensorShape N_3d({2, 3, 2});

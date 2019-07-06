@@ -76,6 +76,11 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   auto mask = context->Output(1, shape);
   auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
 
+  // TODO(zuowei): fix dropout impl
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->Size()));
+
+/*
   //Get the ratio_data
   float ratio_data = default_ratio_;
   auto ratio = context->MutableInput<Tensor>(1);
@@ -105,6 +110,7 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
 
     s_.Release();
   }
+  */
   return Status::OK();
 }
 
@@ -129,9 +135,18 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* dY = context->Input<Tensor>(0);
-  Tensor* mask = context->MutableInput<Tensor>(1);
+  auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
   const TensorShape& shape = dY->Shape();
+
   Tensor* dX = context->Output(0, shape);
+  auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
+
+  // TODO(zuowei): fix dropout impl
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dY->Size(), cudaMemcpyDeviceToDevice));
+
+/*
+  Tensor* mask = context->MutableInput<Tensor>(1);
+  auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
 
   auto* ratio = context->MutableInput<Tensor>(2);
   float ratio_data = default_ratio_;
@@ -143,9 +158,6 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
   s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
 
   //Start computing
-  auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
-  auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
-  auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
 
   //TODO: Should it be mutex guarded? Pytorch doesn't, is it correct?
   CUDNN_RETURN_IF_ERROR(cudnnDropoutBackward(
@@ -158,6 +170,7 @@ Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const 
       mask_data,
       s_.dropout_reserve_size));
   s_.Release();
+  */
   return Status::OK();
 }
 }  // namespace cuda

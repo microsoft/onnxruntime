@@ -4,7 +4,12 @@ from onnx import TensorProto
 import numpy as np
 from onnx import numpy_helper
 
-model = onnx.load('bert_to_fix.onnx')
+input_model_name = 'bert_L-24_H-1024_A-16.onnx'
+output_model_name = input_model_name[:-5] + '_optimized.onnx'
+# Also need to set following line differently for differnt verison of bert
+# expand_out.name = '412'
+
+model = onnx.load(input_model_name)
 
 def add_name(model):
     i = 0
@@ -150,7 +155,7 @@ def fix_expand(model):
     min_node.output.extend(['from_min_01'])
     cast_2 = add_cast(model, 'new_cast_02', min_node.output[0], 'to_slice_01', 7)
     #insert slice
-    position = numpy_helper.from_array(np.arange(512, dtype=np.int64))
+    position = numpy_helper.from_array(np.expand_dims(np.arange(512, dtype=np.int64), axis=0))
     position_node = add_const(model, 'position_01_node', 'position_01', position)
     start_extend = numpy_helper.from_array(np.asarray([0, 0], dtype=np.int64), 'start_expand_10')
     start_extend_node = add_const(model, 'start_expand_10_node', 'start_expand_10', start_extend)
@@ -268,7 +273,7 @@ def process_dropout(model):
 
 def add_expand_shape(model):
     expand_out = model.graph.value_info.add()
-    expand_out.name = '220'
+    expand_out.name = '412'
     expand_out.type.CopyFrom(model.graph.input[0].type)
 
 #add name to nodes
@@ -288,6 +293,6 @@ add_expand_shape(model)
 #set opset version to 10
 model.opset_import[0].version = 10
 
-f = open("bert_1.onnx", "wb")
+f = open(output_model_name, "wb")
 f.write(model.SerializeToString())
 f.close()

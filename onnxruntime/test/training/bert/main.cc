@@ -25,11 +25,9 @@ using namespace onnxruntime;
 using namespace onnxruntime::training;
 using namespace std;
 
-using namespace onnxruntime;
-
 const static float LEARNING_RATE = 0.1f;
 const static int NUM_CLASS = 10;
-const static int NUM_SAMPLES_FOR_EVALUATION = 10;
+const static int NUM_SAMPLES_FOR_EVALUATION = 1;
 const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("bert_data/train");
 const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("bert_data/test");
 
@@ -95,6 +93,7 @@ void shutdown_horovod() {
 // NOTE: these variables need to be alive when the error_function is called.
 int true_count = 0;
 float total_loss = 0.0f;
+
 void setup_training_params(const TrainingConfig& config, TrainingRunner::Parameters& params) {
   params.model_path_ = config.model_name + ".onnx";
   params.model_with_loss_func_path_ = config.model_name + "_with_cost.onnx";
@@ -103,20 +102,23 @@ void setup_training_params(const TrainingConfig& config, TrainingRunner::Paramet
   params.model_trained_path_ = config.model_name + "_trained.onnx";
   params.model_trained_with_loss_func_path_ = config.model_name + "_with_cost_trained.onnx";
   params.model_prediction_name_ = "output13";
-  params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain),
-                                            "loss",
-                                            {params.model_prediction_name_, "labels"});
-
+  params.loss_func_info_ = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                                            "total_loss",
+                                            {/*prediction_masked_lm*/ "output1",
+                                             /*prediction_next_sentence*/ "output2",
+                                             /*masked_lm_ids*/ "masked_lm_ids",
+                                             /*next_sentence_labels*/ "next_sentence_labels"});
+  params.model_prediction_name_ = "output1";  //"output2";
   params.weights_not_to_train_ = {
-      "209",                  // Slice's dat input
-      "shape_min_expand_10",  //op_min_ends_expand_10
+      "position_01",           // Slice's dat input
+      "op_min_ends_expand_10"  //op_min_ends_expand_10
   };
   params.immutable_weigths_ = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
-
+  params.in_graph_optimizer_name_ = "SGDOptimizer";
   params.batch_size_ = config.batch_size;
   params.num_of_epoch_ = config.num_of_epoch;
 
@@ -125,11 +127,11 @@ void setup_training_params(const TrainingConfig& config, TrainingRunner::Paramet
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   params.learning_rate_ = LEARNING_RATE / params.batch_size_;
-  params.in_graph_optimizer_name_ = params.use_cuda_ ? "SGDOptimizer" : "";
 #else
   params.learning_rate_ = LEARNING_RATE;
 #endif
   params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
+  params.skip_evaluation = true;
 
   params.error_function_ = [](const MLValue& predict, const MLValue& label, const MLValue& loss) {
     const Tensor& predict_t = predict.Get<Tensor>();
@@ -202,6 +204,7 @@ int main(int argc, char* args[]) {
 
   params.learning_rate_ /= device_count;
   params.world_rank_ = device_id;
+  params.world_size_ = device_count;
   if (params.use_cuda_) {
     printf("Using cuda device #%d \n", params.world_rank_);
   }
@@ -221,15 +224,17 @@ int main(int argc, char* args[]) {
   // labels: float32[batch,768]
   int batch_size = static_cast<int>(params.batch_size_);
   int max_seq_len_in_batch = 512;
-  std::vector<std::string> tensor_names = {"input1", "input2", "input3", "labels"};
+  std::vector<std::string> tensor_names = {"input1", "input2", "input3", "masked_lm_ids", "next_sentence_labels"};
   std::vector<TensorShape> tensor_shapes = {{batch_size, max_seq_len_in_batch},
-                                            {max_seq_len_in_batch},
                                             {batch_size, max_seq_len_in_batch},
-                                            {batch_size, 768}};
+                                            {batch_size, max_seq_len_in_batch},
+                                            {batch_size, max_seq_len_in_batch},
+                                            {batch_size}};
   std::vector<onnx::TensorProto_DataType> tensor_types = {onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_FLOAT};
+                                                          onnx::TensorProto_DataType_INT32,
+                                                          onnx::TensorProto_DataType_INT32};
   RandomDataSet trainingData(config.num_of_training_samples, tensor_names, tensor_shapes, tensor_types);
   RandomDataSet testData(config.num_of_testing_samples, tensor_names, tensor_shapes, tensor_types);
 

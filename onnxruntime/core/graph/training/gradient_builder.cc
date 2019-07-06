@@ -892,7 +892,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef{"SoftmaxCrossEntropyGrad", kMSDomain},
+      NodeDef(OpDef{"SoftmaxCrossEntropyGrad"},
               {GO(0), I(0), I(1)},
               {GI(0)})};
 }
@@ -900,12 +900,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
   if (GetSrcNodeInputSize() == 2) {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad", kMSDomain},
+        NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
                 {GO(0), I(0), I(1)},
                 {GI(0)})};
   } else if (GetSrcNodeInputSize() == 3) {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad", kMSDomain},
+        NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
                 {GO(0), I(0), I(1), I(2)},
                 {GI(0)})};
   } else {

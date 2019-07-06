@@ -76,6 +76,9 @@ class TrainingRunner {
 #endif
 
     int world_rank_ = 0;
+    int world_size_ = 1;
+
+    bool skip_evaluation = false;
   };
 
   TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params);

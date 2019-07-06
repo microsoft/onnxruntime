@@ -8,7 +8,7 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(Class, T, version)                                \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Class,                                                                    \
-      kMSDomain,                                                                \
+      kOnnxDomain,                                                                \
       version,                                                                  \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
@@ -18,7 +18,7 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, version)                     \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                                \
       Class,                                                                        \
-      kMSDomain,                                                                    \
+      kOnnxDomain,                                                                    \
       version,                                                                      \
       T, Tin,                                                                       \
       kCudaExecutionProvider,                                                       \
@@ -212,17 +212,17 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
   REGISTER_KERNEL_TYPED(Class, T, version)     \
   template Status Class<T>::ComputeInternal(OpKernelContext* ctx) const;
 
-SPECIALIZED_COMPUTE(SoftmaxCrossEntropy, float, 1)
-SPECIALIZED_COMPUTE(SoftmaxCrossEntropyGrad, float, 1)
+SPECIALIZED_COMPUTE(SoftmaxCrossEntropy, float, 9)
+SPECIALIZED_COMPUTE(SoftmaxCrossEntropyGrad, float, 9)
 
 #define SPECIALIZED_COMPUTE_SPARSE(Class, T, Tin, version) \
   REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, version)  \
   template Status Class<T, Tin>::ComputeInternal(OpKernelContext* ctx) const;
 
-SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int32_t, 1)
-SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int64_t, 1)
-SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, 1)
-SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int64_t, 1)
+SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int32_t, 9)
+SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int64_t, 9)
+SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, 9)
+SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int64_t, 9)
 
 }  // namespace cuda
 }  // namespace onnxruntime

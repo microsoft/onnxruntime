@@ -13,6 +13,8 @@ namespace in_graph_optimizer {
 struct OptimizerInfo {
   std::string name_;
   float learning_rate;
+  int world_rank;
+  int world_size;
   std::unordered_map<std::string, float> attributes_;
 };
 
@@ -25,7 +27,7 @@ inline void SetTypedDataToTensor(T val, TensorProto& tensor, int64_t count);
 template <>
 inline void SetTypedDataToTensor<float>(float val, TensorProto& tensor, int64_t count) {
   for (int64_t i = 0; i < count; i++) {
-      tensor.add_float_data(val);
+    tensor.add_float_data(val);
   }
 }
 
@@ -75,6 +77,7 @@ class OptimizerBuilder {
     }
 
     // outputs: aggregated grads
+    agg_grads.clear();
     for (const auto& grad : gradients) {
       std::string output_name = grad + "_AllReduce_Out";
       agg_grads.emplace_back(output_name, nullptr);

@@ -94,6 +94,13 @@ std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /
 
       std::vector<int64_t> temp(shape.Size(), 0);
       memcpy(buffer, temp.data(), buffer_size);
+    } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT32) {
+      element_type = NonOnnxType<int32_t>::Type();
+      size_t buffer_size = sizeof(int) * shape.Size();
+      buffer = alloc->Alloc(buffer_size);
+
+      std::vector<int32_t> temp(shape.Size(), 0);
+      memcpy(buffer, temp.data(), buffer_size);
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_FLOAT) {
       element_type = NonOnnxType<float>::Type();
       size_t buffer_size = sizeof(float) * shape.Size();

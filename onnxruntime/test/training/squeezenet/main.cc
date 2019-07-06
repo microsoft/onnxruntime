@@ -56,7 +56,7 @@ int main(int /*argc*/, char* /*args*/[]) {
   params.model_trained_path_ = TRAINED_MODEL_PATH;
   params.model_trained_with_loss_func_path_ = TRAINED_MODEL_WITH_COST_PATH;
   params.model_prediction_name_ = "pool10_1_reshaped";
-  params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain),
+  params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
   //params.weights_not_to_train_ = {"pool10_1_shape"};  // Use not-to-train list
