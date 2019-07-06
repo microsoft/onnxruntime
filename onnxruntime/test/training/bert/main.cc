@@ -32,7 +32,7 @@ const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("bert_data/train");
 const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("bert_data/test");
 
 struct TrainingConfig {
-  TrainingConfig() : model_name(""), num_of_epoch(0), num_of_training_samples(0), num_of_testing_samples(0), batch_size(1), use_cuda(false) {}
+  TrainingConfig() : model_name(""), num_of_epoch(0), num_of_training_samples(0), num_of_testing_samples(0), batch_size(4), use_cuda(false) {}
   std::string model_name;
   int num_of_epoch;
   int num_of_training_samples;
