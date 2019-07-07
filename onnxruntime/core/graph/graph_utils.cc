@@ -399,9 +399,31 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
-bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
+bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
   const onnx::TensorProto* initializer = nullptr;
-  return graph.GetInitializedTensor(node_arg.Name(), initializer) && !IsGraphInput(graph, &node_arg);
+  bool is_local_initializer = graph.GetInitializedTensor(initializer_name, initializer);
+
+  // if we know it's an initializer we assume it's constant initially.
+  // otherwise it's not an initializer so can't be a constant initializer by definition.
+  bool constant_initializer = is_local_initializer;
+
+  if (is_local_initializer) {
+    if (graph.CanOverrideInitializer()) {
+      const auto& graph_inputs = graph.GetInputsIncludingInitializers();
+      constant_initializer = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                          [&initializer_name](const NodeArg* input) {
+                                            return input->Name() == initializer_name;
+                                          });
+    }
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    constant_initializer = IsConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
+  }
+
+  return constant_initializer;
+}
+
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
+  return IsConstantInitializer(graph, node_arg.Name(), true);
 }
 
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {

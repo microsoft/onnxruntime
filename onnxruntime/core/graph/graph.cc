@@ -2286,7 +2286,7 @@ Status Graph::SetGraphInputsOutputs() {
     }
 
     // Set graph outputs.
-    // Graph outputs specified in the model must be nodes' outputs, initailizer or graph inputs.
+    // Graph outputs specified in the model must be nodes' outputs, initializer or graph inputs.
     for (auto& graph_output : graph_proto_->output()) {
       auto& graph_output_name = graph_output.name();
       auto iter = nodes_outputs.find(graph_output_name);
@@ -2355,31 +2355,39 @@ Status Graph::SetGraphInputsOutputs() {
 
         auto output_arg_iter = output_name_to_node_arg_index.find(input_arg->Name());
         if (output_name_to_node_arg_index.end() == output_arg_iter) {
-          // This input arg should be fed when running evaluation.
-          // it should be a graph input.
+          // This input arg is not the output of another node so must come from either a graph input or an initializer.
           const std::string& name = input_arg->Name();
+
           if (added_input_names.end() == added_input_names.find(name)) {
             // This graph input has not been added into <graph_inputs_>.
+            bool is_initializer = name_to_initial_tensor_.find(name) != name_to_initial_tensor_.end();
+
             if (!graph_inputs_manually_set_) {
-              graph_inputs_including_initializers_.push_back(input_arg);
+              // if IR version < 4 all initializers must have a matching graph input
+              // (even though the graph input is not allowed to override the initializer).
+              // if IR version >= 4 initializers are not required to have a matching graph input.
+              // any graph inputs that are to override initializers must be specified by calling SetInputs.
+              if (!is_initializer || ir_version_ < 4) {
+                graph_inputs_including_initializers_.push_back(input_arg);
+              }
             } else {
+              // graph_inputs_including_initializers_ has been manually populated by SetInputs.
               // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
-              auto& inputs = GetInputsIncludingInitializers();
-              auto iter = std::find(inputs.begin(), inputs.end(), input_arg);
-              if (inputs.end() == iter) {
-                // it's not in graph inputs.
-                auto initializers = GetAllInitializedTensors();
-                if (initializers.end() == initializers.find(input_arg->Name())) {
-                  // It's not in graph initializers.
-                  return Status(ONNXRUNTIME, FAIL, input_arg->Name() + " must be either specified in graph inputs or graph initailizers.");
+              if (!is_initializer) {
+                const auto& inputs = graph_inputs_including_initializers_;
+                bool in_inputs = std::find(inputs.begin(), inputs.end(), input_arg) != inputs.end();
+                if (!in_inputs) {
+                  return Status(ONNXRUNTIME, FAIL,
+                                name + " must be either specified in graph inputs or graph initializers.");
                 }
               }
             }
-            if (name_to_initial_tensor_.find(name) == name_to_initial_tensor_.end()) {
+
+            if (!is_initializer) {
               graph_inputs_excluding_initializers_.push_back(input_arg);
             }
 
-            added_input_names.insert(input_arg->Name());
+            added_input_names.insert(name);
           }
         } else if (graph_output_args.erase(output_arg_iter->first) >= 1) {
           // Remove the output arg name from graph outputs since it's

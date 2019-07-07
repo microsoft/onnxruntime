@@ -5,10 +5,15 @@
 #include "http_server.h"
 #include "predict_request_handler.h"
 #include "server_configuration.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/sink.h>
+#include <spdlog/sinks/stdout_sinks.h>
+#include <spdlog/sinks/syslog_sink.h>
+#include <spdlog/fmt/ostr.h>
 
 #define VALUE_TO_STRING(x) #x
 #define VALUE(x) VALUE_TO_STRING(x)
-#define VAR_NAME_VALUE(var) #var "="  VALUE(var)
+#define VAR_NAME_VALUE(var) #var "=" VALUE(var)
 
 #define LOCAL_BUILD_VERSION "local_build"
 #if !defined(SRV_VERSION)
@@ -30,12 +35,12 @@ int main(int argc, char* argv[]) {
   // Here we use std::cout print out the version and latest commit id,
   // to make sure in case even logger has problem, we still have the version information and commit id.
   std::string version = SRV_VERSION;
-  if (version.empty()){
+  if (version.empty()) {
     version = LOCAL_BUILD_VERSION;
   }
 
   std::string commit_id = LATEST_COMMIT_ID;
-  if (commit_id.empty()){
+  if (commit_id.empty()) {
     commit_id = DEFAULT_COMMIT_ID;
   }
 
@@ -52,25 +57,16 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level);
+  const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level, spdlog::sinks_init_list{std::make_shared<spdlog::sinks::stdout_sink_mt>(), std::make_shared<spdlog::sinks::syslog_sink_mt>()});
   auto logger = env->GetAppLogger();
-  LOGS(logger, VERBOSE) << "Logging manager initialized.";
-  LOGS(logger, INFO) << "Model path: " << config.model_path;
+  logger->info("Model path: {}", config.model_path);
 
-  auto status = env->InitializeModel(config.model_path);
-  if (!status.IsOK()) {
-    LOGS(logger, FATAL) << "Initialize Model Failed: " << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
+  try {
+    env->InitializeModel(config.model_path);
+    logger->debug("Initialize Model Successfully!");
+  } catch (const Ort::Exception& ex) {
+    logger->critical("Initialize Model Failed: {} ---- Error: [{}]", ex.GetOrtErrorCode(), ex.what());
     exit(EXIT_FAILURE);
-  } else {
-    LOGS(logger, VERBOSE) << "Initialize Model Successfully!";
-  }
-
-  status = env->GetSession()->Initialize();
-  if (!status.IsOK()) {
-    LOGS(logger, FATAL) << "Session Initialization Failed:" << status.Code() << " ---- Error: [" << status.ErrorMessage() << "]";
-    exit(EXIT_FAILURE);
-  } else {
-    LOGS(logger, VERBOSE) << "Initialize Session Successfully!";
   }
 
   auto const boost_address = boost::asio::ip::make_address(config.address);
@@ -79,15 +75,14 @@ int main(int argc, char* argv[]) {
   app.RegisterStartup(
       [&env](const auto& details) -> void {
         auto logger = env->GetAppLogger();
-        LOGS(logger, INFO) << "Listening at: "
-                           << "http://" << details.address << ":" << details.port;
+        logger->info("Listening at: http://{}:{}", details.address.to_string(), details.port);
       });
 
   app.RegisterError(
       [&env](auto& context) -> void {
         auto logger = env->GetLogger(context.request_id);
-        LOGS(*logger, VERBOSE) << "Error code: " << context.error_code;
-        LOGS(*logger, VERBOSE) << "Error message: " << context.error_message;
+        logger->debug("Error code: {}", context.error_code);
+        logger->debug("Error message: {}", context.error_message);
 
         context.response.result(context.error_code);
         context.response.insert("Content-Type", "application/json");
