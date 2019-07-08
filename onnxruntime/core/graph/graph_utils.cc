@@ -348,10 +348,36 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. */
+static bool IsOnlyOneOutputUsed(const Node& node) {
+  if (node.GetOutputEdgesCount() > 1) {
+    const int unassigned = -1;
+    int first_output = unassigned;
+    for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+      if (first_output == unassigned) {
+        first_output = it->GetSrcArgIndex();
+      } else if (first_output != it->GetSrcArgIndex()) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsOutputUsed(const Node& node, int index) {
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (it->GetSrcArgIndex() == index) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool RemoveNode(Graph& graph, Node& node) {
-  // Cannot remove a node with implicit inputs, with multiple output NodeArgs (multiple output edges is fine),
-  // or whose output is also a graph output.
-  if (!node.ImplicitInputDefs().empty() || node.OutputDefs().size() != 1 || graph.IsNodeOutputsInGraphOutputs(node)) {
+  // Cannot remove a node with implicit inputs, whose output is also a graph output,
+  // or with more than one of its outputs as input to downstream Operators.
+  if (!node.ImplicitInputDefs().empty() ||
+      graph.IsNodeOutputsInGraphOutputs(node) || !IsOnlyOneOutputUsed(node)) {
     return false;
   }
 
@@ -373,16 +399,42 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
+bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
+  const onnx::TensorProto* initializer = nullptr;
+  bool is_local_initializer = graph.GetInitializedTensor(initializer_name, initializer);
+
+  // if we know it's an initializer we assume it's constant initially.
+  // otherwise it's not an initializer so can't be a constant initializer by definition.
+  bool constant_initializer = is_local_initializer;
+
+  if (is_local_initializer) {
+    if (graph.CanOverrideInitializer()) {
+      const auto& graph_inputs = graph.GetInputsIncludingInitializers();
+      constant_initializer = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                          [&initializer_name](const NodeArg* input) {
+                                            return input->Name() == initializer_name;
+                                          });
+    }
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    constant_initializer = IsConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
+  }
+
+  return constant_initializer;
+}
+
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
+  return IsConstantInitializer(graph, node_arg.Name(), true);
+}
+
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
-  const onnx::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
-    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || IsGraphInput(graph, input_def)) {
+    if (!NodeArgIsConstant(graph, *input_def)) {
       return false;
     }
   }

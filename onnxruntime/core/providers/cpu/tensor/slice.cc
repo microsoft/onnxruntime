@@ -32,35 +32,6 @@ ADD_TYPED_SLICE_V9_OP(MLFloat16);
 ADD_TYPED_SLICE_V9_OP(bool);
 ADD_TYPED_SLICE_V9_OP(string);
 
-#ifndef DISABLE_CONTRIB_OPS
-namespace contrib {
-#define ADD_TYPED_DYNAMIC_SLICE_OP(data_type)                                               \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
-      DynamicSlice,                                                                         \
-      1,                                                                                    \
-      data_type,                                                                            \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())      \
-                        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),    \
-                                                 DataTypeImpl::GetTensorType<int64_t>()}),  \
-      Slice<data_type, true>);
-
-ADD_TYPED_DYNAMIC_SLICE_OP(uint8_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(uint16_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(uint32_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(uint64_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(int8_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(int16_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(int32_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(int64_t);
-ADD_TYPED_DYNAMIC_SLICE_OP(float);
-ADD_TYPED_DYNAMIC_SLICE_OP(double);
-ADD_TYPED_DYNAMIC_SLICE_OP(MLFloat16);
-ADD_TYPED_DYNAMIC_SLICE_OP(bool);
-ADD_TYPED_DYNAMIC_SLICE_OP(string);
-
-}  // namespace contrib
-#endif
-
 #define ADD_TYPED_SLICE_V10_OP(data_type)                                                   \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
       Slice,                                                                                \
@@ -221,9 +192,9 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
                                      std::vector<int64_t>& input_steps) const {
-  const Tensor* start_tensor = context->Input<Tensor>(1);
-  const Tensor* ends_tensor = context->Input<Tensor>(2);
-  const Tensor* axes_tensor = context->Input<Tensor>(3);
+  const auto* start_tensor = context->Input<Tensor>(1);
+  const auto* ends_tensor = context->Input<Tensor>(2);
+  const auto* axes_tensor = context->Input<Tensor>(3);
   const Tensor* steps_tensor = nullptr;
   // check if this is Slice V10 - only Slice V10 has this optional input
   if (context->InputCount() == 5)
@@ -299,7 +270,7 @@ Status SliceImpl(OpKernelContext* ctx,
 
 template <typename T, bool dynamic>
 Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
-  const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
+  const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Missing input tensor to be processed");
   const auto& input_tensor = *input_tensor_ptr;
   const auto& input_dimensions = input_tensor.Shape().GetDims();

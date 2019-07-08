@@ -9,17 +9,21 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) {
+Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
   auto& conv_node = node;
   const auto& add_node = *conv_node.OutputNodesBegin();
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& add_inputs = add_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto);
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
+    return Status::OK();
+  }
 
   const ONNX_NAMESPACE::TensorProto* add_B_tensor_proto = nullptr;
-  graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto);
+  if (!graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto)) {
+    return Status::OK();
+  }
 
   // Currently, fusion is only supported for float or double data type.
   if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
@@ -49,7 +53,9 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (conv_inputs.size() == 3) {
-    graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto);
+    if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto)) {
+      return Status::OK();
+    }
 
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
@@ -107,16 +113,28 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   return Status::OK();
 }
 
-bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) {
+bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-           next_node.GetExecutionProviderType() != node.GetExecutionProviderType() ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node));
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
+      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+      // Make sure the two nodes do not span execution providers.
+      next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    return false;
+  }
+
+  // Check that the appropriate inputs to the Conv and Add nodes are constants.
+  if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
+      (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
+      !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace onnxruntime

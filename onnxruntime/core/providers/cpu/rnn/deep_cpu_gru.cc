@@ -268,9 +268,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   const Tensor& R = *context.Input<Tensor>(2);  // recurrence weights. [num_directions, 3*hidden_size, hidden_size]
 
   // optional
-  const Tensor* B = context.Input<Tensor>(3);              // bias. [num_directions, 6*hidden_size]
-  const Tensor* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
-  const Tensor* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
+  const auto* B = context.Input<Tensor>(3);              // bias. [num_directions, 6*hidden_size]
+  const auto* sequence_lens = context.Input<Tensor>(4);  // [batch_size]
+  const auto* initial_h = context.Input<Tensor>(5);      // initial hidden. [num_directions, batch_size, hidden_size]
 
   auto& X_shape = X.Shape();
 
@@ -800,6 +800,20 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
+    }
+  }
+
+  // zero any values beyond the evaluated steps
+  if (output_sequence && max_sequence_length < seq_length_) {
+    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+      const auto span_to_zero = outputs.subspan(
+          max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
+      std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+    } else {
+      for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
+        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+      }
     }
   }
 

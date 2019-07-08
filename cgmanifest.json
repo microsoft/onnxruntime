@@ -48,9 +48,9 @@
       {
          "component":{
             "type":"git",
-            "git":{
-               "commitHash":"7d7bc83d29a328233d3e8affa4c4ea8b3e3599ef",
-               "repositoryUrl":"https://github.com/onnx/onnx.git"
+            "git": {
+              "commitHash": "d94f99d21a9a0820d58966410ceaf525132f85f1",
+              "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
       },
@@ -103,8 +103,8 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"c2b36154778503a509a70a3b5309b201969eccab",
-               "repositoryUrl":"https://github.com/dmlc/tvm.git"
+               "commitHash":"fd4801612817f96e890058656834deb925fc064a",
+               "repositoryUrl":"https://github.com/microsoft/onnxruntime-tvm.git"
             }
          }
       },
@@ -232,7 +232,7 @@
                "commitHash":"7389dbac82d362f296dc2746f10e43ffa1615660",
                "repositoryUrl":"https://github.com/scikit-learn/scikit-learn.git"
             }
-         }    
+         }
       },
       {
          "component":{
@@ -298,7 +298,17 @@
                "repositoryUrl":"https://github.com/NervanaSystems/ngraph.git"
             }
          }
-      }
+      },
+      {
+         "component":{
+            "Type":"other",
+            "Other":{
+               "Name":"Boost",
+               "Version":"1.69.0",
+               "DownloadUrl":"http://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.bz2"
+            }
+         }
+      },
    ],
    "Version":1
 }

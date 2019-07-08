@@ -285,7 +285,6 @@ TEST(NGraphExecutionProviderTest, InOut_isAlso_GraphOut) {
   RunTest("testdata/ngraph/InOut_isAlso_GraphOut.onnx", feeds, {"Y", "Z"}, expected_shapes, expected_values);
 }
 
-
 /*
     (A)    (A)
       \    /

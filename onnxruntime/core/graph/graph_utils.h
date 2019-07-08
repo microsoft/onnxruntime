@@ -32,11 +32,22 @@ bool IsSupportedProvider(const Node& node,
     fed to multiple downstream operators, i.e., it can have multiple output edges. */
 bool IsSingleInSingleOutNode(const Node& node);
 
+/** Checks if the output at the specified index is input to downstream Nodes. */
+bool IsOutputUsed(const Node& node, int index);
+
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
+/** returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+@param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
+*/
+bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope);
+
 /** Checks if the given node has only constant inputs (initializers). */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
+
+/** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
@@ -64,8 +75,9 @@ Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> f
 Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
 /** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
-    We support the removal of the Node if it has no implicit inputs and a single output (but it can have multiple
-    output edges). As for the Node's inputs, we support the following cases:
+    We support the removal of the Node as long as the following conditions hold:
+    - There should be no implicit inputs.
+    - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
     - If the Node has a single incoming node (and possibly multiple initializers), we can remove the Node and
       connect its incoming node to its outgoing nodes.
     - If the Node has a single initializer as input, we remove the Node and feed the initializer as input to its

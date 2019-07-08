@@ -211,8 +211,8 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   }
 
   if (is_string_type) {
-    const std::string* input_data = input.template Data<std::string>();
-    std::string* output_data = output.template MutableData<std::string>();
+    const auto* input_data = input.template Data<std::string>();
+    auto* output_data = output.template MutableData<std::string>();
     if (1 == prefix_blocksize) {
       DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
     } else if (1 == suffix_blocksize) {
@@ -223,8 +223,8 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
                       input_data, output_data);
     }
   } else {
-    const uint8_t* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
-    uint8_t* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
+    const auto* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
+    auto* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
     if (1 == prefix_blocksize) {
       DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, element_size);
     } else if (1 == suffix_blocksize) {
@@ -257,7 +257,7 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
 
 Status Transpose::Compute(OpKernelContext* ctx) const {
   // Get input and output:
-  const Tensor* input_tensor_ptr = ctx->Input<Tensor>(0);
+  const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& X = *input_tensor_ptr;
   const TensorShape& input_shape = X.Shape();

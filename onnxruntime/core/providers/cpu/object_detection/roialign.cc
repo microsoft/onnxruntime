@@ -27,8 +27,6 @@
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
-const int64_t EXPECTED_NUM_ROI_DIMS = 2;
-const int64_t EXPECTED_SECOND_ROI_DIM = 4;
 
 #define ADD_TYPED_ROIALIGN_OP(data_type)                                 \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
@@ -109,8 +107,8 @@ void pre_calc_for_bilinear_interpolate(
             x = 0;
           }
 
-          int64_t y_low = static_cast<int64_t>(y);
-          int64_t x_low = static_cast<int64_t>(x);
+          auto y_low = static_cast<int64_t>(y);
+          auto x_low = static_cast<int64_t>(x);
           int64_t y_high;
           int64_t x_high;
 
@@ -274,55 +272,64 @@ void RoiAlignForward(
 }
 }  // namespace
 
-template <typename T>
-Status RoiAlign<T>::Compute(OpKernelContext* context) const {
-  using namespace onnxruntime::common;
-
-  // X
-  const Tensor* X_ptr = context->Input<Tensor>(0);
+Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) {
+  const int64_t EXPECTED_NUM_ROI_DIMS = 2;
+  const int64_t EXPECTED_SECOND_ROI_DIM = 4;
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null input X ptr");
   }
-
-  // rois
-  const Tensor* rois_ptr = context->Input<Tensor>(1);
   if (!rois_ptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
   }
-
-  // batch indices
-  const Tensor* batch_indices_ptr = context->Input<Tensor>(2);
   if (!batch_indices_ptr) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null rois_ptr");
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Null batch_indices_ptr");
   }
 
-  const auto& x_dims = X_ptr->Shape();
   const auto& rois_dims = rois_ptr->Shape();
   const auto& batch_indices_dims = batch_indices_ptr->Shape();
 
   if (batch_indices_dims.NumDimensions() != 1) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Number of dimensions for batch indices should be exactly 1");
   }
 
   // validate rois_dims
   if (rois_dims.NumDimensions() != EXPECTED_NUM_ROI_DIMS) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Number of dimensions for rois should be exactly " + std::to_string(EXPECTED_NUM_ROI_DIMS));
   }
   if (rois_dims[1] != EXPECTED_SECOND_ROI_DIM) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Second dimension for rois should be exactly " + std::to_string(EXPECTED_SECOND_ROI_DIM));
   }
 
+  // first dimension of batch_indices and rois should match
+  if (batch_indices_dims[0] != rois_dims[0]) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "First dimension (num_rois) of batch_indices and rois don't match");
+  }
+  return Status::OK();
+}
+
+template <typename T>
+Status RoiAlign<T>::Compute(OpKernelContext* context) const {
+  // X
+  const auto* X_ptr = context->Input<Tensor>(0);
+  // rois
+  const auto* rois_ptr = context->Input<Tensor>(1);
+  // batch indices
+  const auto* batch_indices_ptr = context->Input<Tensor>(2);
+
+  const auto& x_dims = X_ptr->Shape();
+  const auto& rois_dims = rois_ptr->Shape();
+  const auto& batch_indices_dims = batch_indices_ptr->Shape();
+
   auto num_rois = batch_indices_dims[0];
-  auto num_rois_from_rois = rois_dims[0];
   auto num_roi_cols = rois_dims[1];
 
-  // first dimension of batch_indices and rois should match
-  if (num_rois != num_rois_from_rois) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "First dimension (num_rois) of batch_indices and rois don't match");
+  auto status = CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr);
+  if (status != Status::OK()) {
+    return status;
   }
 
   auto& Y = *context->Output(0, {num_rois, x_dims[1], output_height_, output_width_});

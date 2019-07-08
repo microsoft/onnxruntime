@@ -16,7 +16,7 @@ namespace onnxruntime {
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set) {
   // Create CPU execution provider
-  // For now, CPU execution provider will be created every time when initilizing Info.
+  // For now, CPU execution provider will be created every time when initializing Info.
   // Later, it will be changed to pass by Info ctor.
   cpu_execution_provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   allocator_ptr_ = cpu_execution_provider_->GetAllocator(device_id_, mem_type_);
@@ -90,11 +90,18 @@ AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtAllocatorInfo& i
 // This method is not thread safe!
 // Return S_OK and nullptr if index map to an value that is an unused optional input/output
 Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx,
-                                                            const TensorShape* shape) {
+                                                            const TensorShape* shape, size_t nnz) {
   const DataTypeImpl* ml_type = utils::GetMLDataType(*(info_.GetMLValueIdxNodeArgMap().at(ort_value_idx)));
   if (ml_type == nullptr)
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_idx));
+  if (ml_type->IsSparseTensorType()) {
+    auto element_type = ml_type->AsSparseTensorType()->GetElementType();
+    auto container_type = DataTypeImpl::GetType<SparseTensor>();
+    auto sparse = std::make_unique<SparseTensor>(element_type, *shape, nnz, info_.GetAllocator());
+    ort_value.Init(sparse.release(), container_type, container_type->GetDeleteFunc());
+    return Status::OK();
+  }
   if (!ml_type->IsTensorType()) {
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);
     auto creator = non_tensor_type->GetCreateFunc();

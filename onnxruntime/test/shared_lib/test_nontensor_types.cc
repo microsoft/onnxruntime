@@ -8,8 +8,6 @@
 #include "test_allocator.h"
 #include <iostream>
 
-using namespace onnxruntime;
-
 template <typename T>
 struct RelAllocations {
   RelAllocations(std::function<void(T*)> f) : relf(f) {}

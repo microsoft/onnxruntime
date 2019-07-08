@@ -18,8 +18,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
   class Info {
    public:
-    Info(const std::vector<const Node*>& nodes,
-         const InitializedTensorSet& initialized_tensor_set);
+    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
@@ -33,7 +32,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return allocator_ptr_;
     }
 
-    const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
+    const OrtValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
     const std::unordered_map<int, const NodeArg*>& GetMLValueIdxNodeArgMap() const noexcept {
       return ort_value_idx_nodearg_map_;
     }
@@ -57,11 +56,11 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     AllocatorPtr allocator_ptr_;
 
     // MLValues for optimizer
-    MLValueNameIdxMap ort_value_name_idx_map_;
+    OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
     std::unordered_map<int, OrtValue> initializers_;
     std::unordered_map<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
-    // This data structure is for unintializing string tensors and
+    // This data structure is for uninitializing string tensors and
     // munmap memory region and close file descriptor
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
@@ -79,7 +78,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerExecutionFrame);
 
   AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
-  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape) override;
+
+  Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
 
   const Info& info_;
 };

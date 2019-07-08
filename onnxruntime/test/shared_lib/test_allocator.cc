@@ -12,7 +12,9 @@ TEST_F(CApiTest, allocation_info) {
   OrtAllocatorInfo *info1, *info2;
   ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtArenaAllocator, 0, OrtMemTypeDefault, &info1));
   ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
-  ASSERT_EQ(0, OrtCompareAllocatorInfo(info1, info2));
+  int result;
+  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  ASSERT_EQ(0, result);
   OrtReleaseAllocatorInfo(info1);
   OrtReleaseAllocatorInfo(info2);
 }
@@ -25,5 +27,7 @@ TEST_F(CApiTest, DefaultAllocator) {
   default_allocator.Free(p);
   const OrtAllocatorInfo* info1 = default_allocator.GetInfo();
   const OrtAllocatorInfo* info2 = static_cast<OrtAllocator*>(default_allocator)->Info(default_allocator);
-  ASSERT_EQ(0, OrtCompareAllocatorInfo(info1, info2));
+  int result;
+  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  ASSERT_EQ(0, result);
 }

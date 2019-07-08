@@ -96,14 +96,15 @@ static int read_png_file(const char* input_file, size_t* height, size_t* width, 
  */
 static int write_tensor_to_png_file(OrtValue* tensor, const char* output_file) {
   struct OrtTensorTypeAndShapeInfo* shape_info;
-  ORT_ABORT_ON_ERROR(OrtGetTensorShapeAndType(tensor, &shape_info));
-  size_t dim_count = OrtGetDimensionsCount(shape_info);
+  ORT_ABORT_ON_ERROR(OrtGetTensorTypeAndShape(tensor, &shape_info));
+  size_t dim_count;
+  ORT_ABORT_ON_ERROR(OrtGetDimensionsCount(shape_info, &dim_count));
   if (dim_count != 4) {
     printf("output tensor must have 4 dimensions");
     return -1;
   }
   int64_t dims[4];
-  OrtGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0]));
+  ORT_ABORT_ON_ERROR(OrtGetDimensions(shape_info, dims, sizeof(dims) / sizeof(dims[0])));
   if (dims[0] != 1 || dims[1] != 3) {
     printf("output tensor shape error");
     return -1;
@@ -154,14 +155,17 @@ int run_inference(OrtSession* session, const char* input_file, const char* outpu
   OrtValue* input_tensor = NULL;
   ORT_ABORT_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, model_input, model_input_len, input_shape, input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
   assert(input_tensor != NULL);
-  assert(OrtIsTensor(input_tensor));
+  int is_tensor;
+  ORT_ABORT_ON_ERROR(OrtIsTensor(input_tensor, &is_tensor));
+  assert(is_tensor);
   OrtReleaseAllocatorInfo(allocator_info);
   const char* input_names[] = {"inputImage"};
   const char* output_names[] = {"outputImage"};
   OrtValue* output_tensor = NULL;
   ORT_ABORT_ON_ERROR(OrtRun(session, NULL, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor));
   assert(output_tensor != NULL);
-  assert(OrtIsTensor(output_tensor));
+  ORT_ABORT_ON_ERROR(OrtIsTensor(output_tensor, &is_tensor));
+  assert(is_tensor);
   int ret = 0;
   if (write_tensor_to_png_file(output_tensor, output_file) != 0) {
     ret = -1;
@@ -181,8 +185,8 @@ void verify_input_output_count(OrtSession* session) {
 }
 
 #ifdef USE_CUDA
-void enable_cuda(OrtSessionOptions* session_option) {
-  ORT_ABORT_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
+void enable_cuda(OrtSessionOptions* session_options) {
+  ORT_ABORT_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 }
 #endif
 
@@ -196,15 +200,16 @@ int main(int argc, char* argv[]) {
   char* output_file = argv[3];
   OrtEnv* env;
   ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
-  OrtSessionOptions* session_option = OrtCreateSessionOptions();
+  OrtSessionOptions* session_options;
+  ORT_ABORT_ON_ERROR(OrtCreateSessionOptions(&session_options));
 #ifdef USE_CUDA
-  enable_cuda(session_option);
+  enable_cuda(session_options);
 #endif
   OrtSession* session;
-  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_option, &session));
+  ORT_ABORT_ON_ERROR(OrtCreateSession(env, model_path, session_options, &session));
   verify_input_output_count(session);
   int ret = run_inference(session, input_file, output_file);
-  OrtReleaseSessionOptions(session_option);
+  OrtReleaseSessionOptions(session_options);
   OrtReleaseSession(session);
   OrtReleaseEnv(env);
   if (ret != 0) {

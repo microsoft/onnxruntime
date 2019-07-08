@@ -50,11 +50,6 @@ class CPUExecutionProvider : public IExecutionProvider {
     return Status(common::ONNXRUNTIME, common::FAIL, "Shouldn't reach here. CPUExecutionProvider doesn't support CopyTensor");
   }
 
-  const void* GetExecutionHandle() const noexcept override {
-    // The CPU interface does not return anything interesting.
-    return nullptr;
-  }
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
 
