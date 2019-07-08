@@ -234,6 +234,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     y_alloc_data = GetScratchBuffer<T>(output_size);
     y_data = y_alloc_data.get();
   }
+  // Cudnn library doesn't guarantee the data beyond the shorter sequence will be initialized to 0, so we need to do it manually.
   cudaMemset(y_data, 0, output_size * byte_size);
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
