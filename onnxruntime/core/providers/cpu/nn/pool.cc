@@ -4,7 +4,6 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/nn/pool.h"
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
 
 using namespace ::onnxruntime::common;
 
