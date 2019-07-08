@@ -1,5 +1,4 @@
 parameters:
-  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
   DoCompliance: 'false'
   BuildCommand: ''
@@ -17,7 +16,6 @@ parameters:
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
-  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
