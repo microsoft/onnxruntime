@@ -26,15 +26,11 @@ def format_version_range(v):
         return '['+str(v[0])+', '+str(v[1])+']'    
 
 def format_type_constraints(tc):
-#    tcplit = tc.split('[,]')
     counter = 0
     tcstr = ''
     firsttcitem = True
     for tcitem in tc:
         counter += 1
-        if (counter > 3):
-            counter = 0
-            tcstr += ''#<br>'
         if firsttcitem:
             firsttcitem = False
         else:
@@ -50,53 +46,58 @@ def main(args):  # type: (Type[Args]) -> None
             "            [def files](/onnxruntime/core/providers/cpu/cpu_execution_provider.cc) via [this script](/tools/python/gen_opkernel_doc.py).\n"
             "            Do not modify directly and instead edit operator definitions.*\n")
 
-        # domain -> support level -> name -> [schema]
-        index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # type: Dict[Text, Dict[int, Dict[Text, List[OpSchema]]]]
-        #idict = dict()
+        index = defaultdict(lambda: defaultdict(lambda: defaultdict(list))) 
         for op in rtpy.get_all_opkernel_def():
             domain = op.domain
             if (domain == ''):
                 domain = 'ai.onnx.ml'
             index[op.provider][domain][op.op_name].append(op)
+
                
         fout.write('\n')
         for provider, domainmap in sorted(index.items()):
             fout.write('## Operators implemented by '+provider+'\n\n')
-            fout.write('|Op Name | OpSet Versions | Parameter | Types  Supported|\n')
-            fout.write('|--------|--------------------|-----------|-----------------|\n')
+            fout.write('| Op Name | OpSet Versions | Parameter | Types  Supported |\n')
+            fout.write('|---------|----------------|-----------|------------------|\n')
             for domain, namemap in sorted(domainmap.items()):
                 fout.write('**Operator Domain:** *'+domain+'*\n')
                 for name, ops in sorted(namemap.items()):
-                    namefirsttime = True
+                    print(name+', count of tclist = ', len(ops))
                     last_version = (0,0)
+                    version_type_index = defaultdict(lambda: defaultdict(set))
                     for op in ops: 
-                        if (namefirsttime):
-                            fout.write('|'+name+'|')
-                            namefirsttime = False
-                        else:
-                            fout.write('| |')
-                        if (op.version_range[0] != last_version[0] or op.version_range[1] != last_version[1]):
-                            fout.write(format_version_range(op.version_range)+'|')
-                            last_version = op.version_range
-                        else:
-                            fout.write(' | ')    
-                        typeindex = defaultdict(list)
+                        formatted_version_range = format_version_range(op.version_range)
+                        print('\tcount of tcitems = ',len(op.type_constraints), ',', formatted_version_range, ', ', op.type_constraints) 
                         for tname,tclist in op.type_constraints.items():
                             for c in tclist:
-                                typeindex[tname].append(c)
-                        firsttname = True        
-                        for tname,tclist in sorted(typeindex.items()):    
-                            if firsttname:
-                                firsttname = False
-                            else: 
-                                fout.write('| | | ')
+                                version_type_index[formatted_version_range][tname].add(c)
+
+                    namefirsttime = True
+                    for version, typemap in sorted(version_type_index.items()):
+                        versionfirsttime = True
+                        for tname, tcset in sorted(typemap.items()):
+                            if (namefirsttime):
+                                fout.write('|'+name+'|')
+                                namefirsttime = False
+                            else:
+                                fout.write('| |')
+                            if (versionfirsttime):
+                                versionfirsttime = False
+                                fout.write(version+'|')
+                            else:
+                                fout.write('|')
+
+                            tclist = []
+                            for tc in tcset:
+                                tclist.append(tc)
                             fout.write(tname+'|'+format_type_constraints(tclist)+'|\n')
+                        
                 fout.write('| |\n| |\n')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ONNX Runtime Operator Documentation Generator')
     parser.add_argument('--output_path', help='output markdown file path', 
-                        default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'OperatorKernel.md')
+                        default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'OperatorKernels.md')
                        )
     args = parser.parse_args()
 
