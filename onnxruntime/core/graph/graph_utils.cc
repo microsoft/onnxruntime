@@ -178,7 +178,7 @@ bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
   return true;
 }
 
-/** Removes a node with a single incoming node and replace this node's output with the incoming node's output. */
+/** Removes a node with a single incoming node and replace its output with the incoming node's output. */
 static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
   // Store info for input and output edges.
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
@@ -343,8 +343,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const std::string* repl
   bool can_remove = false;
   const std::string* new_name = nullptr;
 
-  // if new_input_name is provided, it will replace all the work the node does so the number of inputs
-  // to the node doesn't matter.
+  // if replacement_for_node_output is provided, it will replace all the work the node does
   if (replacement_for_node_output) {
     new_name = replacement_for_node_output;
   } else if (node.GetInputEdgesCount() == 1) {
@@ -372,7 +371,7 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
     return false;
   }
 
-  // explicit value
+  // replace node with explicit value
   if (replacement_output) {
     return ReplaceNodeWithNodeArg(graph, node, *replacement_output);
   }
@@ -383,7 +382,7 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
     return RemoveNodeWithSingleNodeIn(graph, node);
   }
 
-  // single input def so replace node with that (e.g. DropoutElimination)
+  // single input def so replace node with that
   if (node.InputDefs().size() == 1) {
     return ReplaceNodeWithNodeArg(graph, node, *node.MutableInputDefs()[0]);
   }
