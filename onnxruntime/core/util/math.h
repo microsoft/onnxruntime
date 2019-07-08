@@ -1,8 +1,4 @@
 /**
-* Derived from caffe2, need copyright announcement here.
-*/
-
-/**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,122 +52,27 @@ void Exp(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Log(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Cos(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void Sin(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void SinCos(int N, const T* x, T* ys, T* yc, Provider* provider);
-template <typename T, class Provider>
-void Abs(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
 void Sqrt(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void InvSqrt(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
-void Not(int N, const T* x, T* y, Provider* provider);
-
-template <typename T, class Provider>
 void Powx(int N, const T* a, T b, T* y, Provider* provider);
-
-#define DECLARE_BINARY_OP_BINARY_RESULT(name)                            \
-  template <typename T, class Provider>                                  \
-  void name(int N, const T* a, const T* b, bool* y, Provider* provider); \
-  template <typename T, class Provider>                                  \
-  void name##ToRow(int M, int N, const T* a, const T* b, bool* y, Provider* provider);
-
-DECLARE_BINARY_OP_BINARY_RESULT(LT);
-DECLARE_BINARY_OP_BINARY_RESULT(LE);
-DECLARE_BINARY_OP_BINARY_RESULT(GT);
-DECLARE_BINARY_OP_BINARY_RESULT(GE);
-
-DECLARE_BINARY_OP_BINARY_RESULT(And);
-DECLARE_BINARY_OP_BINARY_RESULT(Or);
-DECLARE_BINARY_OP_BINARY_RESULT(Xor);
-
-#undef DECLARE_BINARY_OP_BINARY_RESULT
 
 #define DECLARE_BINARY_OP(name)                                                     \
   template <typename T, class Provider>                                             \
-  void name(int N, const T* a, const T* b, T* y, Provider* provider);               \
-  template <typename T, class Provider>                                             \
-  void name##ToRow(int M, int N, const T* a, const T* b, T* y, Provider* provider); \
-  template <typename T, class Provider>                                             \
-  void name##ToRow(int M, int N, const T* x, T* y, Provider* provider);             \
-  template <typename T, class Provider>                                             \
-  void name##ToCol(int M, int N, const T* x, T* y, Provider* provider);
+  void name(int N, const T* a, const T* b, T* y, Provider* provider);
 
 DECLARE_BINARY_OP(Add);
-DECLARE_BINARY_OP(Sub);
 DECLARE_BINARY_OP(Mul);
-DECLARE_BINARY_OP(Div);
 
 #undef DECLARE_BINARY_OP
-
-template <typename T, class Provider>
-void ReduceMin(
-    int N,
-    const T* x,
-    T* y,
-    Tensor* scratch_ptr,
-    Provider* provider);
-template <typename T, class Provider>
-void ReduceMax(
-    int N,
-    const T* x,
-    T* y,
-    Tensor* scratch_ptr,
-    Provider* provider);
-
-// Adds batch sub-tensors elementwise to output. Stripe is the stripe length
-// and N is the number of elements to add (size of Y).
-template <typename T, class Provider>
-void AddStripedBatch(
-    int N,
-    const T* first,
-    T* y,
-    int stripe,
-    int batch,
-    Provider* provider);
-
-// Compute the row-wise sum of a N*D matrix X, and write it to a N
-// dimensional vector y.
-template <typename T, class Provider>
-void RowwiseSum(int N, int D, const T* x, T* y,
-                Provider* provider);
-
-// Compute the column-wise sum of a N*D matrix X, and write it to a D
-// dimensional vector y.
-template <typename T, class Provider>
-void ColwiseSum(int N, int D, const T* x, T* y,
-                Provider* provider);
 
 // Compute the row-wise max of a N*D matrix X, and write it to a N
 // dimensional vector y.
 template <typename T, class Provider>
 void RowwiseMax(int N, int D, const T* x, T* y,
                 Provider* provider);
-
-// Compute the column-wise max of a N*D matrix X, and write it to a D
-// dimensional vector y.
-template <typename T, class Provider>
-void ColwiseMax(int N, int D, const T* x, T* y,
-                Provider* provider);
-
-// Elemwise maximum of vector x and vector y. z[i] = max(x[i], y[i])
-template <typename T, class Provider>
-void ElemwiseMax(int N, const T* x, const T* y, T* z, Provider* provider);
-
-// Elemwise maximum of vector x and scalar alpha. y[i] = max(x[i], alpha)
-template <typename T, class Provider>
-void Maximum(
-    int N,
-    float alpha,
-    const T* x,
-    T* y,
-    Provider* provider);
 
 // Decaf gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -248,57 +149,9 @@ void Gemv(
     T* y,
     Provider* provider,
     MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
+
 template <typename T, class Provider>
 void Set(int64_t N, T alpha, T* X, Provider* provider);
-
-template <typename T, class Provider>
-void RandUniform(int n, T a, T b, const T* r, Provider* provider);
-
-template <typename T, class Provider>
-void RandUniformUnique(
-    size_t n,
-    T a,
-    T b,
-    T* r,
-    size_t m,
-    const T* avoid,
-    Provider* provider);
-
-template <typename T, class Provider>
-void RandGaussian(int n, T mean, T std, const T* r, Provider* provider);
-
-// Dot matrix of vector a and b, and writes the result to a single value y.
-template <typename T, class Provider>
-void Dot(int N, const T* a, const T* b, T* y, Provider* provider);
-
-// Sum of vector x, and writes the result to a single value y.
-template <typename T, class Provider>
-void Sum(int N, const T* x, T* y, Provider* provider,
-         Tensor* scratch_ptr = nullptr);
-
-// Sum of squares of vector x, and writes the result to a single value y.
-template <typename T, class Provider>
-void SumSqr(
-    int N,
-    const T* x,
-    T* y,
-    Provider* provider,
-    Tensor* scratch_ptr = nullptr);
-
-// Select does index selection of the rows a N*D matrix x, and gives the N
-// dimensional vector y that contains the selected data.
-template <typename T, class Provider>
-void Select(int N, int D, const T* x, const int* idx, T* y,
-            Provider* provider);
-
-template <typename T, class Provider>
-void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
-
-// Different from the Scale function above, if alpha is passed in
-// as a pointer, we will assume that it lives on the correct execution provider,
-// for example on GPU.
-template <typename T, class Provider>
-void Scale(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
@@ -308,15 +161,6 @@ void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
 // for example on GPU.
 template <typename T, class Provider>
 void Axpy(int N, const float* alpha, const T* x, T* y, Provider* provider);
-
-template <typename T, class Provider>
-void Axpby(
-    int N,
-    float alpha,
-    const T* x,
-    T b,
-    T* y,
-    Provider* provider);
 
 template <typename T, class Provider, int order>
 struct Im2colNd {
@@ -478,8 +322,6 @@ void CopyMatrix(
 
 template <typename T, class Provider>
 void CopyVector(int N, const T* A, T* B, Provider* provider);
-
-uint32_t randomNumberSeed();
 
 // Function uses casting from int64_t to uint64_t to compare if value of
 // parameter a is greater or equal to zero and lower than value of
