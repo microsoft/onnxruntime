@@ -63,7 +63,7 @@
   ```
 
 ## TensorRT Version (Preview)
-#### Linux 16.04, TensorRT 5.1.2
+#### Linux 16.04, TensorRT 5.0.2
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
