@@ -25,7 +25,11 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
   std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
-    auto& node = *graph.GetNode(index);
+    auto* node_ptr = graph.GetNode(index);
+    if (!node_ptr)
+      continue;  // node was removed
+
+    auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9}) ||

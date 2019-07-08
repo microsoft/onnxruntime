@@ -15,7 +15,12 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
   for (auto node_index : node_topology_list) {
-    auto& node = *graph.GetNode(node_index);
+    auto* node_ptr = graph.GetNode(node_index);
+    if (!node_ptr)
+      continue;  // node was removed
+
+    auto& node = *node_ptr;
+
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9}) ||

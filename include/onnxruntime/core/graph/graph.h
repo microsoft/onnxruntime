@@ -241,10 +241,6 @@ class Node {
   /** Gets the number of output edges from this Node */
   size_t GetOutputEdgesCount() const noexcept { return relationships_.output_edges.size(); }
 
-  EdgeSet OutputNodes() noexcept {
-    return relationships_.output_edges;
-  }
-
   /** Add an attribute to this Node with specified attribute name and value. */
   void AddAttribute(const std::string& attr_name, const ONNX_NAMESPACE::AttributeProto& value);
 

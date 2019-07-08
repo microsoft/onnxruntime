@@ -212,7 +212,6 @@ static bool ReplaceNodeWithNodeArg(Graph& graph, Node& node, NodeArg& replacemen
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node itself (this will remove its input edge too).
-  // RemoveGraphEdges(graph, output_edges);
   graph.RemoveNode(node.Index());
 
   // Add the replacement value as input to the outgoing nodes of the node that we removed.
@@ -378,7 +377,7 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
     return ReplaceNodeWithNodeArg(graph, node, *replacement_output);
   }
 
-  // single input node (possible multiple inputs - e.g. fusion moves the work this node is doing to the previous one)
+  // If there is a single input edge from another node (initializers are not connected with edges to nodes).
   if (node.GetInputEdgesCount() == 1) {
     // remove the node and wire its incoming node to its outgoing node/s
     return RemoveNodeWithSingleNodeIn(graph, node);
@@ -482,7 +481,7 @@ void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_no
   auto idx2 = second_node.Index();
   std::vector<std::pair<int, int>> edge_indexes;
 
-  // we can't remove the edge while iterating them, so collect the info for all edges between the nodes
+  // we can't remove an edge while iterating the edges, so collect the matching edge info first
   for (auto edge = first_node.OutputEdgesBegin(), end = first_node.OutputEdgesEnd(); edge != end; ++edge) {
     if (&edge->GetNode() == &second_node) {
       edge_indexes.push_back({edge->GetSrcArgIndex(), edge->GetDstArgIndex()});
@@ -499,8 +498,8 @@ void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_no
 
 void MoveOutput(Graph& graph, Node& src_node, Node& target_node, bool move_definition) {
   if (move_definition) {
-    assert(src_node.OutputDefs().size() == 1);
-    assert(target_node.OutputDefs().size() == 1);
+    ORT_ENFORCE(src_node.OutputDefs().size() == 1);
+    ORT_ENFORCE(target_node.OutputDefs().size() == 1);
     target_node.MutableOutputDefs()[0] = src_node.MutableOutputDefs()[0];
   }
 

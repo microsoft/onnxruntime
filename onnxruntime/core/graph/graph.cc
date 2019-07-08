@@ -2079,9 +2079,7 @@ Node& Graph::AddNode(const std::string& name,
 
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
-  if (nullptr == node /*|| 0 != node->GetRelationships().output_edges.size()*/) {
-    // Node should be removed after all out edges are removed.
-    // TODO: add the check commented out back.
+  if (nullptr == node) {
     return false;
   }
 
@@ -2092,7 +2090,6 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
-  // Remove all output edges
   for (auto& output_edge : node->GetRelationships().output_edges) {
     RemoveEdge(p_index, output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }

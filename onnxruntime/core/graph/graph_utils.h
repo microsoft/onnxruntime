@@ -89,12 +89,13 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
     - If the Node has a single incoming node, we can remove the Node and connect its incoming node to its 
       outgoing nodes, if doing so does not clash with any values in any relevant subgraphs. 
     - If the Node output will be replaced by replacement_output_name, we can remove or fuse the node 
-      if the new output name does not clash with any values in any relevant subgraphs.  
+      if replacement_output_name does not clash with any values in any relevant subgraphs.  
 @param replacement_output_name 
   If a new NodeArg will be created to replace the node's output (e.g. creating new initializer) 
   provide the new name that will be used by the NodeArg.
-  If the node is being fused provide the 
-  If nullptr, the node must have one input edge, and the name from that edge will be used in the checks. 
+  If the node is being fused provide the output name from the last node being fused.
+  If nullptr: If the node has one input edge the name from that edge will be used in the checks, 
+              otherwise the node must have one input definition and the name from that will be used in the checks.
 */
 bool CanRemoveNode(const Graph& graph, const Node& node, const std::string* replacement_output_name = nullptr);
 

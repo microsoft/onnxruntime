@@ -137,13 +137,10 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           num_child++;
         }
 
-        if (child_removed) {
-          for (size_t end = nodes_to_remove.size(), idx = end - child_removed; idx < end; ++idx) {
-            Node& node_to_remove = nodes_to_remove[idx];
-            // remove the node and replace the remove node's output with 'input'
-            graph_utils::RemoveNodeAndUpdateEdges(graph, node_to_remove, input);
-            modified = true;
-          }
+        for (auto& node_to_remove : nodes_to_remove) {
+          // remove the node and replace the remove node's output with 'input'
+          graph_utils::RemoveNodeAndUpdateEdges(graph, node_to_remove, input);
+          modified = true;
         }
 
         if (child_removed == num_child && child_removed > 0 &&
