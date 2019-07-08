@@ -70,7 +70,8 @@ option(onnxruntime_USE_NUPHAR "Build with Nupha" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" ON)
-option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
+option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime. 64-bit ARM assumed, unless CROSS_COMPILING_32 is set." OFF)
+option(onnxruntime_CROSS_COMPILING_32 "Cross compiling onnx runtime. 32-bit ARM only." OFF)
 option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -132,8 +133,11 @@ add_definitions(-DEIGEN_MPL2_ONLY)
 
 if(onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
-  #string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
-  #string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
+  # required for 32-bit ARM only. 64-bit is an error.
+  if(onnxruntime_CROSS_COMPILING_32)
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
+    string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
+  endif()
 endif()
 
 #must after OpenMP settings
