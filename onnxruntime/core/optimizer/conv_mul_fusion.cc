@@ -103,7 +103,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
 
   // Move output name and edges from Mul node to Conv node and remove Mul node.
   Node& mutable_mul_node = *graph.GetNode(mul_node.Index());
-  graph_utils::DisconnectNodes(graph, conv_node, mul_node, 0);
+  graph_utils::DisconnectNodes(graph, conv_node, mul_node);
   graph_utils::MoveOutput(graph, mutable_mul_node, conv_node);
   graph.RemoveNode(mul_node.Index());
 

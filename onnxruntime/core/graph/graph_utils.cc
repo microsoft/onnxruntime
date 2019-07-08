@@ -212,10 +212,10 @@ static bool ReplaceNodeWithNodeArg(Graph& graph, Node& node, NodeArg& replacemen
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node itself (this will remove its input edge too).
-  RemoveGraphEdges(graph, output_edges);
+  // RemoveGraphEdges(graph, output_edges);
   graph.RemoveNode(node.Index());
 
-  // Add the incoming initializer as input to the outgoing nodes of the node that we removed.
+  // Add the replacement value as input to the outgoing nodes of the node that we removed.
   for (auto& output_edge : output_edges) {
     // Take care of subgraph inputs.
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
@@ -224,7 +224,7 @@ static bool ReplaceNodeWithNodeArg(Graph& graph, Node& node, NodeArg& replacemen
                                         replacement.Name());
     }
 
-    // Replace outgoing node's input to use the initializer.
+    // Replace outgoing node's input.
     auto output_node = graph.GetNode(output_edge.dst_node);
     ORT_ENFORCE(output_node, "Outgoing node could not be found.");
 
@@ -477,20 +477,24 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
-void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node, int output_idx) {
+void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node) {
   auto idx1 = first_node.Index();
   auto idx2 = second_node.Index();
+  std::vector<std::pair<int, int>> edge_indexes;
 
-  int input_idx = -1;
+  // we can't remove the edge while iterating them, so collect the info for all edges between the nodes
   for (auto edge = first_node.OutputEdgesBegin(), end = first_node.OutputEdgesEnd(); edge != end; ++edge) {
     if (&edge->GetNode() == &second_node) {
-      input_idx = edge->GetDstArgIndex();
+      edge_indexes.push_back({edge->GetSrcArgIndex(), edge->GetDstArgIndex()});
     }
   }
 
-  ORT_ENFORCE(input_idx >= 0, "Failed to find edge between nodes.");
+  ORT_ENFORCE(!edge_indexes.empty(),
+              "Failed to find edge between nodes ", first_node.Name(), " and ", second_node.Name());
 
-  graph.RemoveEdge(idx1, idx2, output_idx, input_idx);
+  for (auto pair : edge_indexes) {
+    graph.RemoveEdge(idx1, idx2, pair.first, pair.second);
+  }
 }
 
 void MoveOutput(Graph& graph, Node& src_node, Node& target_node, bool move_definition) {

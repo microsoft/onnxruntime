@@ -13,7 +13,6 @@ namespace onnxruntime {
 Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
@@ -56,6 +55,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     if (nullptr == matmul_a_shape || nullptr == matmul_b_shape) {
       continue;
     }
+
     if (1 == matmul_a_shape->dim_size() && 2 == matmul_b_shape->dim_size()) {
       // MatMul has shape [K] * [K, N], reset it to [1, K] * [K, N], so that it can work for Gemm
       auto mutable_matmul_a_shape = const_cast<ONNX_NAMESPACE::TensorShapeProto*>(matmul_a_shape);
@@ -64,6 +64,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       (*dim_1) = (*dim_0);
       dim_0->set_dim_value(1);
     }
+
     if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
       // Gemm only support Matrix
       continue;
@@ -100,21 +101,13 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
-    // move edges
-    const bool move_definition = false;  // we created the new node with the output def from add_node
-    graph_utils::DisconnectNodes(graph, matmul_node, add_node, 0);
+    // we created the new node with the output def from add_node so we don't need to move it
+    const bool move_definition = false;
+    graph_utils::DisconnectNodes(graph, matmul_node, add_node);
     graph_utils::MoveOutput(graph, add_node, gemm_node, move_definition);
 
-    removed_nodes.push_front(matmul_node.Index());
-    removed_nodes.push_front(add_node.Index());
-  }
-
-  // Have to remove node in reversed order for now to walk around the issue in RemoveNode
-  for (onnxruntime::NodeIndex removed_node : removed_nodes) {
-    graph.RemoveNode(removed_node);
-  }
-
-  if (!removed_nodes.empty()) {
+    graph.RemoveNode(matmul_node.Index());
+    graph.RemoveNode(add_node.Index());
     modified = true;
   }
 

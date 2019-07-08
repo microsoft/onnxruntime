@@ -98,11 +98,12 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   }
 
   // move the output definition and edges from the add_node to the conv_node now that they're fused
-  graph_utils::DisconnectNodes(graph, conv_node, add_node, 0);
+  graph_utils::DisconnectNodes(graph, conv_node, add_node);
   graph_utils::MoveOutput(graph, add_node, conv_node);
 
-  // directly remove the Add node
   graph.RemoveNode(add_node.Index());
+
+  modified = RewriteRuleEffect::kModifiedRestOfGraph;
 
   return Status::OK();
 }

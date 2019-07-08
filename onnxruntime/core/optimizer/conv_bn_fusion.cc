@@ -132,7 +132,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   Node& mutable_bn_node = *graph.GetNode(bn_node.Index());
 
   // Move the output definition and edges from the BN node to the Conv node
-  graph_utils::DisconnectNodes(graph, conv_node, bn_node, 0);
+  graph_utils::DisconnectNodes(graph, conv_node, bn_node);
   graph_utils::MoveOutput(graph, mutable_bn_node, conv_node);
 
   graph.RemoveNode(bn_node.Index());

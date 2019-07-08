@@ -111,7 +111,7 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
 /** Remove any edge between two nodes */
-void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node, int output_idx);
+void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node);
 
 /** Move the output edges and optionally the output definition as well from src_node to target_node.*/
 void MoveOutput(Graph& graph, Node& src_node, Node& target_node, bool move_definition = true);

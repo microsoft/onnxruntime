@@ -24,9 +24,12 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
-    auto node = graph.GetNode(index);
+    auto* node = graph.GetNode(index);
+    // check that node hasn't already been removed
+    if (!node)
+      continue;
+
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1}) ||
@@ -69,23 +72,14 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     }
 
-    // move edges
-    const bool move_definition = false;  // we created the new node with the output def from act_node
-    graph_utils::DisconnectNodes(graph, conv_node, act_node, 0);
+    // we created the new node with the output def from act_node so we don't need to move the definition from act_node
+    const bool move_definition = false;
+    graph_utils::DisconnectNodes(graph, conv_node, act_node);
     graph_utils::MoveOutput(graph, act_node, fused_conv, move_definition);
 
-    removed_nodes.push_front(conv_node.Index());
-    removed_nodes.push_front(act_node.Index());
-  }
+    graph.RemoveNode(conv_node.Index());
+    graph.RemoveNode(act_node.Index());
 
-  for (auto node : removed_nodes) {
-    // we can directly remove the nodes as
-    // a) we checked nothing else depended on the Conv node; and
-    // b) we are creating output with the same name as the activation name output and already moved the edges
-    graph.RemoveNode(node);
-  }
-
-  if (!removed_nodes.empty()) {
     modified = true;
   }
 
