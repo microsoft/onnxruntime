@@ -2,7 +2,7 @@
 The Python Operator provides the capability to easily invoke any custom Python code within a single node of an ONNX graph using ONNX Runtime. This can be useful for quicker experimentation when a model requires operators that are not officially supported in ONNX and ONNX Runtime, particularly if there is already a Python implementation for the required functionality. This should be used with discretion in production scenarios, and all security or other risks should be considered.
 
 ## Design Overview
-The feature can be found under [onnxruntime/core/language_interop_ops](onnxruntime/core/language_interop_ops).
+The feature can be found under [onnxruntime/core/language_interop_ops](../onnxruntime/core/language_interop_ops).
 All Python C API dependent code are compiled into a dynamic linked library named pywrapper.
 Before calling into Python script, pywrapper will convert onnxruntime tensor(s) to numpy(s), which is converted back when completed.
 <p>Here is a chart illustrating the calling sequence:
