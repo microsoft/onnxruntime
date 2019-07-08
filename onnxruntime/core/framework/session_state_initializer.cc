@@ -13,6 +13,7 @@
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/graph/graph_utils.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -109,8 +110,8 @@ common::Status SessionStateInitializer::InitializeAndSave(
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
       env, graph_loc_, graph_, execution_providers_, ort_value_name_idx_map, tensor_allocator_.get(),
-      [this](int idx, const OrtValue& value, const OrtCallback& d) -> Status {
-        return session_state_.AddInitializedTensor(idx, value, &d);
+      [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
+        return session_state_.AddInitializedTensor(idx, value, &d, constant);
       },
       logger_, session_state_.GetDataTransferMgr()));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
@@ -281,7 +282,8 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
       return Status(st.Category(), st.Code(), oss.str());
     }
 
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter));
+    bool constant = graph_utils::IsConstantInitializer(graph, name, /* check_outer_scope */ false);
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }

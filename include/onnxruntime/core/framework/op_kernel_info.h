@@ -25,7 +25,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   explicit OpKernelInfo(const onnxruntime::Node& node,
                         const KernelDef& kernel_def,
                         const IExecutionProvider& execution_provider,
-                        const std::unordered_map<int, OrtValue>& initialized_tensors,
+                        const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const FuncManager& funcs_mgr,
                         const DataTransferManager& data_transfer_mgr);
@@ -59,7 +59,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   // For non cpu/cuda case, this pointer should be set so that function kernel
   // will delegate kernel compute call to <execution_provider> compute call.
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
-  const std::unordered_map<int, OrtValue>& initialized_tensors_;
+  const std::unordered_map<int, OrtValue>& constant_initialized_tensors_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const FuncManager& funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;

@@ -72,16 +72,24 @@ class SessionState {
   /**
    * Adds an initialized tensor (weight) so that it can be used by the
    * execution frame to setup the appropriate OrtValue vectors.
-   * This function will take a shallow copy of d if d is not NULL
+   * This function will take a shallow copy of d if d is not NULL.
+   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
    */
-  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d);
+  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant);
 
   /**
-   * Gets the list of all initialized tensors (weights) so that it can be used by the
+   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
    * execution frame to setup the appropriate OrtValue vectors.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
+
+  /**
+   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant 
+   * and cannot be overridden at runtime. 
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
+  const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
@@ -194,9 +202,12 @@ class SessionState {
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
-  // initialized tensorset
+  // initialized tensors
   std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
-  // This data structure is for unintializing string tensors and
+  // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
+  std::unordered_map<int, OrtValue> constant_initialized_tensors_;
+
+  // This data structure is for uninitializing string tensors and
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::vector<BufferUniquePtr> weights_buffers_;

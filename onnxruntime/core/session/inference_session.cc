@@ -572,13 +572,34 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                            feeds.size(), " elements.");
   }
 
-  // More feeds are offered.
-  // In the case of overriding some initializers (which are also taken as graph inputs).
+  std::unordered_set<std::string> seen_names;
+  seen_names.reserve(feeds.size());
+  size_t seen_required_inputs = 0;
+  const Graph& graph = model_->MainGraph();
+
   for (size_t i = 0; i < feeds.size(); ++i) {
-    auto iter = input_def_map_.find(feed_names[i]);
+    const auto& feed_name = feed_names[i];
+
+    if (seen_names.insert(feed_name).second == false) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate name in feeds: ", feed_name);
+    }
+
+    auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
+      // if IR < 4 all initializers are required to have a matching graph input with the same name,
+      // however we disallow using that graph input to override the initializer, and treat the initializers as constant.
+      // check for this and output a nicer error message if that is the case.
+      // As we've already moved all initializers to SessionState we need to check if it's in the constant initializers there
+      int idx;
+      bool is_constant_initializer = session_state_.GetOrtValueNameIdxMap().GetIdx(feed_name, idx).IsOK() &&
+                                     session_state_.GetConstantInitializedTensors().find(idx) !=
+                                         session_state_.GetConstantInitializedTensors().cend();
+
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name:", feed_names[i]);
+                             "Invalid Feed Input Name:", feed_name,
+                             is_constant_initializer ? ". Initializers may not be overridden by feeds"
+                                                       " if model IR version is less than 4."
+                                                     : ".");
     }
 
     auto expected_type = utils::GetMLDataType(*iter->second);
@@ -591,6 +612,31 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
+
+    if (!graph.CanOverrideInitializer() ||  // all entries in input_def_map_ are required.
+        required_inputs_.find(feed_name) != required_inputs_.cend()) {
+      ++seen_required_inputs;
+    }
+  }
+
+  if (seen_required_inputs < required_inputs_.size()) {
+    std::ostringstream req_input_str;
+    auto cur = required_inputs_.cbegin(), end = required_inputs_.cend();
+    req_input_str << "Required inputs: ";
+    req_input_str << *(cur++);
+    while (cur != end) {
+      req_input_str << ", " << *(cur++);
+    }
+
+    req_input_str << " . Got: ";
+    for (size_t i = 0; i < feed_names.size(); ++i) {
+      if (i > 0)
+        req_input_str << ", ";
+      req_input_str << feed_names[i];
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "One or more missing required inputs. ",
+                           req_input_str.str());
   }
 
   return Status::OK();
@@ -738,7 +784,8 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
     }
   }
 
-  return std::make_pair(common::Status::OK(), &required_input_def_list_);
+  // return required inputs (excludes any inputs used for overriding initializers)
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
 }
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
@@ -827,15 +874,25 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   model_metadata_.custom_metadata_map = model.MetaData();
   model_metadata_.graph_name = graph.Name();
 
-  // save required inputs
-  const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
-  required_input_def_list_ = required_inputs;       // A direct copy of required inputs
+  for (auto input : graph.GetInputs()) {
+    required_inputs_.insert(input->Name());
+  }
 
-  // save all valid inputs
-  auto& all_inputs = graph.GetInputsIncludingInitializers();
-  input_def_map_.reserve(all_inputs.size());
-  for (auto elem : all_inputs) {
-    input_def_map_.insert({elem->Name(), elem});
+  auto add_inputs = [this](const InputDefList& inputs) {
+    input_def_map_.reserve(inputs.size());
+    for (auto elem : inputs) {
+      input_def_map_.insert({elem->Name(), elem});
+    }
+  };
+
+  if (graph.CanOverrideInitializer()) {
+    // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
+    // initializer is explicitly overridable.
+    add_inputs(graph.GetInputsIncludingInitializers());
+  } else {
+    // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
+    // the list of valid inputs by just using the GetInputs() list.
+    add_inputs(graph.GetInputs());
   }
 
   // save outputs

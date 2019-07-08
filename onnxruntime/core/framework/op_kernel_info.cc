@@ -11,7 +11,7 @@ namespace onnxruntime {
 OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const KernelDef& kernel_def,
                            const IExecutionProvider& execution_provider,
-                           const std::unordered_map<int, OrtValue>& initialized_tensors,
+                           const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const FuncManager& funcs_mgr,
                            const DataTransferManager& data_transfer_mgr)
@@ -19,14 +19,14 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       node_(node),
       kernel_def_(kernel_def),
       execution_provider_(&execution_provider),
-      initialized_tensors_(initialized_tensors),
+      constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       funcs_mgr_(funcs_mgr),
       data_transfer_mgr_(data_transfer_mgr),
       proto_helper_context_(node) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
-    : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.initialized_tensors_,
+    : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
                    other.ort_value_name_idx_map_, other.funcs_mgr_, other.data_transfer_mgr_) {}
 
 const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType mem_type) const {
@@ -65,14 +65,16 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
     return false;
   }
 
-  auto iter = initialized_tensors_.find(input_arg_index);
-  if (initialized_tensors_.end() == iter) {
+  auto iter = constant_initialized_tensors_.find(input_arg_index);
+  if (constant_initialized_tensors_.end() == iter) {
     return false;
   }
+
   if (!iter->second.IsTensor()) {
-    // Only constant Tensor input is support right now, since we're using initializers to store the data.
+    // Only constant Tensor input is supported right now, since we're using initializers to store the data.
     return false;
   }
+
   *constant_input_value = &iter->second.Get<Tensor>();
   return true;
 }
