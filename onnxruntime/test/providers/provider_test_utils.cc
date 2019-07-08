@@ -338,7 +338,8 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
         if (add_shape_to_tensor_data_) {
           auto out_shape_proto = expected_data.def_.Shape();
           EXPECT_TRUE(out_shape_proto != nullptr);
-          auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+          const auto& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+          const auto& inferred_dims = tensor_shape.GetDims();
           const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
           EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
           for (size_t d = 0; d < inferred_dims.size(); ++d) {
