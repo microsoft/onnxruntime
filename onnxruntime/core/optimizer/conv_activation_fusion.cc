@@ -74,7 +74,6 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     // we created the new node with the output def from act_node so we don't need to move the definition from act_node
     const bool move_definition = false;
-    graph_utils::DisconnectNodes(graph, conv_node, act_node);
     graph_utils::MoveOutput(graph, act_node, fused_conv, move_definition);
 
     graph.RemoveNode(conv_node.Index());

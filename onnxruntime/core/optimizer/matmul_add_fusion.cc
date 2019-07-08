@@ -108,7 +108,6 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     // we created the new node with the output def from add_node so we don't need to move it
     const bool move_definition = false;
-    graph_utils::DisconnectNodes(graph, matmul_node, add_node);
     graph_utils::MoveOutput(graph, add_node, gemm_node, move_definition);
 
     graph.RemoveNode(matmul_node.Index());

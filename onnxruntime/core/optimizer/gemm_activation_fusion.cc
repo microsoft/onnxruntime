@@ -74,7 +74,6 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     // move edges
     const bool move_definition = false;  // we created the new node with the output def from act_node
-    graph_utils::DisconnectNodes(graph, gemm_node, act_node);
     graph_utils::MoveOutput(graph, act_node, fused_gemm, move_definition);
 
     graph.RemoveNode(gemm_node.Index());
