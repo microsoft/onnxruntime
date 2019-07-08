@@ -259,10 +259,7 @@ class PlannerImpl {
         continue;  // same known dimension
       if (val1.has_dim_param() && val2.has_dim_param()) {
         const auto& val1_param = val1.dim_param();
-        // empty string is any cardinality, '*' is zero or more dimensions of unknown cardinality
-        // neither represent a known value so we can't consider the shapes equal if found
-        // see https://github.com/onnx/onnx/blob/master/docs/IR.md#tensor-shapes
-        if (val1_param == val2.dim_param() && !val1_param.empty() && val1_param != "*")
+        if (val1_param == val2.dim_param() && !val1_param.empty())
           continue;  // same unknown dimension
       }
       return false;
