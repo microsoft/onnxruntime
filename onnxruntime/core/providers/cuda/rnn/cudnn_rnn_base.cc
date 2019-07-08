@@ -220,6 +220,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     x_data = x_reversed_data.get();
   }
 
+  auto byte_size = X->DataType()->Size();
   const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->template Data<T>();
   const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->template Data<T>();
   T* y_h_data = (Y_h == nullptr) ? nullptr : Y_h->template MutableData<T>();
@@ -233,11 +234,11 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     y_alloc_data = GetScratchBuffer<T>(output_size);
     y_data = y_alloc_data.get();
   }
+  cudaMemset(y_data, 0, output_size * byte_size);
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
   size_t workspace_bytes;
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc_, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
-  workspace_bytes *= num_directions_;
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
   if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
