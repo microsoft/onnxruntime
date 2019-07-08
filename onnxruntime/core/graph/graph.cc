@@ -2083,14 +2083,16 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     return false;
   }
 
-  // Remove all input edges.
+  // Remove all input and output edges.
+  // Need to copy the edge info first so we can remove the real edges while iterating the copy of edge info.
   auto input_edges = node->GetRelationships().input_edges;
+  auto output_edges = node->GetRelationships().output_edges;
 
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
-  for (auto& output_edge : node->GetRelationships().output_edges) {
+  for (auto& output_edge : output_edges) {
     RemoveEdge(p_index, output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 

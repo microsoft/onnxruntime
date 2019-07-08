@@ -103,6 +103,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
 
     for (auto& node : graph.Nodes()) {
+      bool removed = false;
       if (node.OpType() == "Cast") {
         std::vector<std::reference_wrapper<Node>> nodes_to_remove;
 
@@ -146,10 +147,13 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         if (child_removed == num_child && child_removed > 0 &&
             graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
           graph.RemoveNode(node.Index());
+          removed = true;
         }
       }
 
-      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+      if (!removed) {
+        ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+      }
     }
 
     return Status::OK();
