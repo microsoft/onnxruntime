@@ -25,31 +25,17 @@ namespace onnxruntime {
 namespace math {
 
 // MatMul implementation purely based on Eigen.
-template <typename T>
-void MatMulEigen(int M, int N, int K, const T* A, const T* B, T* C) {
-  auto C_mat = EigenMatrixMap<T>(C, N, M);
-  C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M);
-}
+#define EIGEN_MATMUL_FUNCTION(T)                                                         \
+  template <>                                                                            \
+  void MatMul<T>(int M, int N, int K, const T* A, const T* B, T* C) {                    \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                             \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M); \
+  }
 
-template <>
-void MatMul<int32_t>(int M, int N, int K, const int32_t* A, const int32_t* B, int32_t* C) {
-  MatMulEigen<int32_t>(M, N, K, A, B, C);
-}
-
-template <>
-void MatMul<uint32_t>(int M, int N, int K, const uint32_t* A, const uint32_t* B, uint32_t* C) {
-  MatMulEigen<uint32_t>(M, N, K, A, B, C);
-}
-
-template <>
-void MatMul<int64_t>(int M, int N, int K, const int64_t* A, const int64_t* B, int64_t* C) {
-  MatMulEigen<int64_t>(M, N, K, A, B, C);
-}
-
-template <>
-void MatMul<uint64_t>(int M, int N, int K, const uint64_t* A, const uint64_t* B, uint64_t* C) {
-  MatMulEigen<uint64_t>(M, N, K, A, B, C);
-}
+EIGEN_MATMUL_FUNCTION(int32_t)
+EIGEN_MATMUL_FUNCTION(uint32_t)
+EIGEN_MATMUL_FUNCTION(int64_t)
+EIGEN_MATMUL_FUNCTION(uint64_t)
 
 ////////////////////////////////////////////////////////////////////////////////
 // BLAS alternatives.
@@ -91,10 +77,7 @@ void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C
   MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, nullptr);
 }
 
-template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C) {
-  MatMulEigen<double>(M, N, K, A, B, C);
-}
+EIGEN_MATMUL_FUNCTION(double)
 
 template <>
 void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
