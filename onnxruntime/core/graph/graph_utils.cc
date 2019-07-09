@@ -399,16 +399,42 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
+bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
+  const onnx::TensorProto* initializer = nullptr;
+  bool is_local_initializer = graph.GetInitializedTensor(initializer_name, initializer);
+
+  // if we know it's an initializer we assume it's constant initially.
+  // otherwise it's not an initializer so can't be a constant initializer by definition.
+  bool constant_initializer = is_local_initializer;
+
+  if (is_local_initializer) {
+    if (graph.CanOverrideInitializer()) {
+      const auto& graph_inputs = graph.GetInputsIncludingInitializers();
+      constant_initializer = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                          [&initializer_name](const NodeArg* input) {
+                                            return input->Name() == initializer_name;
+                                          });
+    }
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    constant_initializer = IsConstantInitializer(*graph.ParentGraph(), initializer_name, check_outer_scope);
+  }
+
+  return constant_initializer;
+}
+
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
+  return IsConstantInitializer(graph, node_arg.Name(), true);
+}
+
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node) {
   if (node.GetInputEdgesCount() > 0) {
     return false;
   }
-  const onnx::TensorProto* initializer = nullptr;
   for (const auto* input_def : node.InputDefs()) {
     // Important note: when an initializer appears in the graph's input, this input will not be considered constant,
     // because it can be overriden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
-    if (!graph.GetInitializedTensor(input_def->Name(), initializer) || IsGraphInput(graph, input_def)) {
+    if (!NodeArgIsConstant(graph, *input_def)) {
       return false;
     }
   }

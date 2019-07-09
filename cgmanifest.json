@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git": {
-              "commitHash": "ceaa5da720418b2b705f6066d82c38fe89694f12",
+              "commitHash": "d94f99d21a9a0820d58966410ceaf525132f85f1",
               "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -103,8 +103,8 @@
          "component":{
             "type":"git",
             "git":{
-               "commitHash":"c2b36154778503a509a70a3b5309b201969eccab",
-               "repositoryUrl":"https://github.com/dmlc/tvm.git"
+               "commitHash":"fd4801612817f96e890058656834deb925fc064a",
+               "repositoryUrl":"https://github.com/microsoft/onnxruntime-tvm.git"
             }
          }
       },

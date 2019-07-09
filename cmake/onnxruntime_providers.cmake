@@ -6,13 +6,23 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
-file(GLOB_RECURSE onnxruntime_contrib_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/contrib_kernels.cc"
+file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu_contrib_kernels.cc"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/attnlstm/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -40,15 +50,19 @@ if(onnxruntime_USE_OPENVINO)
   set(PROVIDERS_OPENVINO onnxruntime_providers_openvino)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
 endif()
+if(onnxruntime_USE_NNAPI)
+  set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
-source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_contrib_ops_srcs})
+source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
 
 # disable contrib ops conditionally
 if(onnxruntime_DISABLE_CONTRIB_OPS)
   add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_contrib_ops_srcs})
+  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
@@ -75,15 +89,21 @@ if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
   file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
-  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  
+  # disable contrib ops conditionally
+  if(onnxruntime_DISABLE_CONTRIB_OPS)
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  else()
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  endif()
+
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -103,6 +123,13 @@ if (onnxruntime_USE_CUDA)
         PROPERTIES
         COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
     endforeach()
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
+        set_source_files_properties(${src_file}
+          PROPERTIES
+          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
+      endforeach()
+    endif()
     set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
       PROPERTIES
       COMPILE_FLAGS "/Yccuda_pch.h"
@@ -250,6 +277,33 @@ if (onnxruntime_USE_OPENVINO)
   link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
   target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
+endif()
+
+if (onnxruntime_USE_NNAPI)
+  add_definitions(-DUSE_NNAPI=1)
+  option(DNN_READ_ONNX "" ON)
+  set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+  option(DNN_CMAKE_INSTALL "" OFF)
+  option(DNN_BUILD_BIN "" OFF)
+  add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
+  file(GLOB_RECURSE
+    onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
+  add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf-lite dnnlibrary::dnnlibrary)
+  target_link_libraries(onnxruntime_providers_nnapi dnnlibrary::dnnlibrary)
+  add_dependencies(onnxruntime_providers_nnapi
+    dnnlibrary::dnnlibrary
+    onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  # Header files of DNNLibrary requires C++17, fortunately, all modern Android NDKs support C++17
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD 17)
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_providers_nnapi PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

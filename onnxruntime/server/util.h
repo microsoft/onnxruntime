@@ -38,6 +38,7 @@ class MemBufferArray {
   }
 };
 
+google::protobuf::util::Status GenerateProtobufStatus(const int& onnx_status, const std::string& message);
 // Generate protobuf status from ONNX Runtime status
 google::protobuf::util::Status GenerateProtobufStatus(const onnxruntime::common::Status& onnx_status, const std::string& message);
 

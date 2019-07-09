@@ -117,6 +117,8 @@ set(onnxruntime_test_providers_src_patterns
   "${TEST_SRC_DIR}/providers/*.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
   "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
+  "${TEST_SRC_DIR}/framework/test_utils.cc"
+  "${TEST_SRC_DIR}/framework/test_utils.h"
   )
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_test_providers_src_patterns
@@ -136,6 +138,13 @@ if (onnxruntime_USE_NGRAPH)
     "${TEST_SRC_DIR}/providers/ngraph/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
+endif()
+
+if (onnxruntime_USE_NNAPI)
+  file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/nnapi/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
 endif()
 
 # tests from lowest level library up.
@@ -196,6 +205,10 @@ if(onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
 endif()
 
+if(onnxruntime_USE_NNAPI)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -218,6 +231,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -239,6 +253,13 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
+endif()
+
+if(onnxruntime_USE_NNAPI)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nnapi/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
 endif()
 
 if(WIN32)
@@ -407,6 +428,12 @@ if(WIN32)
       ${ngraph_LIBRARIES}/
       $<TARGET_FILE_DIR:${test_data_target}>
     )
+  endif()
+  if (onnxruntime_USE_TVM)
+    add_custom_command(
+      TARGET ${test_data_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
+      )
   endif()
 endif()
 
@@ -628,13 +655,13 @@ if (onnxruntime_BUILD_SERVER)
 
   add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
   onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock gsl onnx onnx_proto server_proto server_grpc_proto)
-  add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib server_grpc_proto Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT} )
+  add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core  ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT} )
   if(UNIX)
     target_compile_options(onnxruntime_test_utils_for_server PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
-  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} server_grpc_proto)
+  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} spdlog::spdlog server_grpc_proto)
 
 
   AddTest(

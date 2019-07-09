@@ -102,10 +102,12 @@ Fence_t OpKernelContext::OutputFence(int index) const {
   return p_ml_value ? p_ml_value->Fence() : nullptr;
 }
 
-Status OpKernelContext::GetOrCreateOutputMLValue(int index, OrtValue*& p_value) {
+OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
   auto output_arg_index = GetOutputArgIndex(index);
-  ORT_ENFORCE(execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, p_value).IsOK());
-  return Status::OK();
+  OrtValue* value = nullptr;
+  auto status = execution_frame_->GetOrCreateNodeOutputMLValue(output_arg_index, nullptr, value);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  return value;
 }
 
 int OpKernelContext::GetInputArgIndex(int index) const {

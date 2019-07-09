@@ -389,6 +389,8 @@ void addObjectMethods(py::module& m) {
 Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &SessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")
+      .def_readwrite("enable_mem_pattern", &SessionOptions::enable_mem_pattern,
+                     R"pbdoc(Enable the memory pattern optimization. Default is true.)pbdoc")
       .def_readwrite("enable_sequential_execution", &SessionOptions::enable_sequential_execution,
                      R"pbdoc(Enables sequential execution, disables parallel execution. Default is true.)pbdoc")
       .def_readwrite("max_num_graph_transformation_steps", &SessionOptions::max_num_graph_transformation_steps,
