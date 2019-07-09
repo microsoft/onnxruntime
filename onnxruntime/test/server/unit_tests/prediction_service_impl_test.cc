@@ -5,6 +5,7 @@
 #include "server/executor.h"
 #include "server/grpc/prediction_service_impl.h"
 #include "test/test_environment.h"
+#include "test_server_environment.h"
 #include "external/server_context_test_spouse.h"
 #include <grpcpp/impl/grpc_library.h>
 
@@ -28,16 +29,7 @@ PredictRequest GetRequest() {
 }
 
 std::shared_ptr<onnxruntime::server::ServerEnvironment> GetEnvironment() {
-  const static auto model_file = "testdata/mul_1.pb";
-
-  auto env = std::make_shared<onnxruntime::server::ServerEnvironment>(logging::Severity::kWARNING, logging::LoggingManager::InstanceType::Temporal, false);
-
-  auto status = env->InitializeModel(model_file);
-  EXPECT_TRUE(status.IsOK());
-
-  status = env->GetSession()->Initialize();
-  EXPECT_TRUE(status.IsOK());
-  return env;
+  return std::shared_ptr<onnxruntime::server::ServerEnvironment>(onnxruntime::server::test::ServerEnv(), [](onnxruntime::server::ServerEnvironment *){});
 }
 
 TEST(PredictionServiceImplTests, HappyPath) {

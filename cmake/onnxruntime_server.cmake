@@ -154,13 +154,8 @@ target_link_libraries(onnxruntime_server_http_core_lib PRIVATE
 add_library(onnxruntime_server_lib ${onnxruntime_server_lib_srcs})
 onnxruntime_add_include_to_target(onnxruntime_server_lib gsl onnx_proto server_proto)
 target_include_directories(onnxruntime_server_lib PRIVATE
-<<<<<<< HEAD
-  ${ONNXRUNTIME_ROOT}
-  ${CMAKE_CURRENT_BINARY_DIR}/onnx
-=======
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${ONNXRUNTIME_ROOT}/server
->>>>>>> master
   ${ONNXRUNTIME_ROOT}/server/http
   ${ONNXRUNTIME_ROOT}/server/logging
   ${ONNXRUNTIME_ROOT}/server/core

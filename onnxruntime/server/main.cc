@@ -76,8 +76,7 @@ int main(int argc, char* argv[]) {
 
   server::GRPCApp grpc_app{env, grpc_address, grpc_port};
 
-  LOGS(logger, INFO) << "GRPC Listening at: "
-                     << grpc_address << ":" << grpc_port;
+  logger->info("GRPC Listening at: {}:{}", grpc_address , grpc_port);
 
   //Setup HTTP Server
   auto const boost_address = boost::asio::ip::make_address(config.address);

@@ -27,7 +27,7 @@ std::string PredictionServiceImpl::SetRequestContext(::grpc::ServerContext* cont
   if (search != metadata.end()) {
     std::string id{search->second.data(), search->second.length()};
     context->AddInitialMetadata(util::MS_CLIENT_REQUEST_ID_HEADER, id);
-    LOGS(*logger, INFO) << util::MS_CLIENT_REQUEST_ID_HEADER << ": [" << id << "]";
+    logger->info("{}: [{}]", util::MS_CLIENT_REQUEST_ID_HEADER, id);
   }
 
   return request_id;
