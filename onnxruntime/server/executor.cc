@@ -62,7 +62,7 @@ protobufutil::Status Executor::SetNameMLValueMap(std::vector<std::string>& input
   auto ort_status = OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info);
 
   if (ort_status != nullptr || allocator_info == nullptr) {
-    LOGS(*logger, ERROR) << "OrtCreateCpuAllocatorInfo failed";
+    logger->error("OrtCreateCpuAllocatorInfo failed");
     return protobufutil::Status(protobufutil::error::Code::RESOURCE_EXHAUSTED, "OrtCreateCpuAllocatorInfo() failed");
   }
 
