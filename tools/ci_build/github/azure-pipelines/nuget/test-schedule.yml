@@ -1,0 +1,19 @@
+# Defined as pipeline variables
+# variables:
+#   AgentPoolWin : 'Win-CPU'
+#   AgentPoolLinux : 'Linux-CPU'
+#   AgentPoolMacOS : 'macOS-10.13'
+
+schedules:
+- cron: "0/5 * * * *"
+  displayName: Daily Build
+  branches:
+    include:
+    - master
+  always: true
+
+jobs: 
+- job: myjob
+  steps:
+    - script: |
+       echo hello
