@@ -51,6 +51,10 @@ function(AddTest)
       endif()
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
+    if (MSVC)
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    endif()
   else()
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"

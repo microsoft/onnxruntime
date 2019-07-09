@@ -219,7 +219,7 @@ if(CMAKE_CROSSCOMPILING)
 endif()
 
 #Need python to generate def file
-if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
+if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON OR onnxruntime_USE_OPENVINO)
   if(onnxruntime_ENABLE_PYTHON)
     find_package(PythonInterp 3.5 REQUIRED)
     find_package(PythonLibs 3.5 REQUIRED)
@@ -389,8 +389,6 @@ if (WIN32)
             " /wd6326 " # potential comparison of a constant with another constant
         )
     endif()
-
-    # set compile warning level to 3 on CUDA build but 4 on CPU-only build
     if(onnxruntime_USE_CUDA)
         #CMake hardcoded /W3 in its 'Windows-NVIDIA-CUDA.cmake'. We'd better keep consistent with it.
         #Change it to /W4 will result build failure
@@ -515,36 +513,36 @@ if(onnxruntime_USE_OPENVINO)
 
     add_definitions(-DUSE_OPENVINO=1)
 
-	if (onnxruntime_USE_OPENVINO_SOURCE)
-	  include(openvino)
-	  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
-	  link_directories(${OPENVINO_LIB_DIR})
-	  #TODO: set plugin path var
-	endif()
+    if (onnxruntime_USE_OPENVINO_SOURCE)
+      include(openvino)
+      list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_openvino)
+      link_directories(${OPENVINO_LIB_DIR})
+      #TODO: set plugin path var
+    endif()
 
-	if (onnxruntime_USE_OPENVINO_BINARY)
-	    #TODO: set plugin path var
-	endif()
+    if (onnxruntime_USE_OPENVINO_BINARY)
+        #TODO: set plugin path var
+    endif()
 
-	if(onnxruntime_USE_OPENVINO_MYRIAD)
-		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_MYRIAD)
+        add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
+    endif()
 
-	if(onnxruntime_USE_OPENVINO_GPU_FP32)
-		add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_GPU_FP32)
+        add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+    endif()
 
-	if(onnxruntime_USE_OPENVINO_GPU_FP16)
-		add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_GPU_FP16)
+        add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+    endif()
 
-	if(onnxruntime_USE_OPENVINO_CPU_FP32)
-		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_CPU_FP32)
+        add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+    endif()
 
-	if(onnxruntime_USE_OPENVINO_VAD_R)
-		add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_VAD_R)
+        add_definitions(-DOPENVINO_CONFIG_VAD_R=1)
+    endif()
 
 endif()
 
