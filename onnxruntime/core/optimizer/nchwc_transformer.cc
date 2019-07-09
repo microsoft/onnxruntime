@@ -24,6 +24,19 @@ class NchwcTransformerImpl {
   // Associate the following state with each created NCHWc output keyed off the
   // original NodeArg.
   struct NchwcArgument {
+    // Symbolic shape information for this NCHWc output. Each dimension stores
+    // the original NodeArg* that sourced the value.
+    //
+    // For example, the first Conv node that takes NCHW input will create a
+    // NchwcArgument with the shape referencing itself. Other NCHWc nodes that
+    // use this first Conv node then do a limited shape inference. The shape
+    // inference carries forward any of the first Conv node's dimensions that
+    // are unchanged or resets to the NodeArg* of the updated output node.
+    //
+    // The benefit of doing this is for models where the model inputs are not
+    // fixed. For example, The YoloV3 model has the image height and width as
+    // parameters. The model has branches that are candidates for Conv/Add
+    // fusion that can be detected using this additional shape hint.
     struct Shape {
       const NodeArg* dims_[kNchwcDims];
     };
@@ -649,9 +662,10 @@ void NchwcTransformerImpl::Transform(Node& node) {
     TransformPool(node);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
-    // been decremented to zero by earlier transforms. This is a quick check
-    // that all inputs are NCHWc candidates. Also, these transforms do not need
-    // to remove any input edges themselves.
+    // been decremented to zero by earlier transforms. This is a hint that the
+    // node may already have all inputs converted to NCHWc format and is not
+    // needed for correct operation. This avoids doing extra string checks for
+    // nodes unrelated to this transformer.
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8})) {
       TransformAdd(node);
@@ -663,6 +677,13 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformElementwise(node);
     }
   }
+
+  // The node may not match any of the checks above or may not have been
+  // transformed for other reasons such as unsupported attributes or alignment.
+  // However, the node may still use an input that has been produced by a NCHWc
+  // node. Finalize() walks through the list of NCHWc outputs and inserts the
+  // needed reorder operations to ensure that these inputs remain in NCHW
+  // format.
 }
 
 void NchwcTransformerImpl::Finalize(bool& modified) {

@@ -21,7 +21,7 @@ void convPoolShapeInference(
     int input1Idx,
     int input2Idx);
 void globalPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
-}
+}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 namespace contrib {
@@ -67,7 +67,10 @@ void RegisterNchwcSchemas() {
       .SetDoc(R"DOC(For internal use.)DOC")
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
-      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
+          "Constrain input and output types to float/quantized tensors")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderOutput)
@@ -81,7 +84,10 @@ void RegisterNchwcSchemas() {
           static_cast<int64_t>(0))
       .Input(0, "X", "", "T")
       .Output(0, "Y", "", "T")
-      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
+          "Constrain input and output types to float/quantized tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasNInputShapes(ctx, 1)) {
@@ -651,12 +657,16 @@ and op)DOC";
                   bottom_border = border[3];
 
           if (H < top_border + bottom_border)
-            fail_shape_inference("Input's height (", H, ") needs to be greater than or equal to "
-                                 "the top_border (", top_border, ") + bottom_border (", bottom_border, ")");
+            fail_shape_inference("Input's height (", H,
+                                 ") needs to be greater than or equal to "
+                                 "the top_border (",
+                                 top_border, ") + bottom_border (", bottom_border, ")");
 
           if (W < left_border + right_border)
-            fail_shape_inference("Input's width (", W, ") needs to be greater than or equal to "
-                                 "the left_border (", left_border, ") + right_border (", right_border, ")");
+            fail_shape_inference("Input's width (", W,
+                                 ") needs to be greater than or equal to "
+                                 "the left_border (",
+                                 left_border, ") + right_border (", right_border, ")");
 
           int64_t bottom_limit = H - bottom_border;
           int64_t right_limit = W - right_border;
