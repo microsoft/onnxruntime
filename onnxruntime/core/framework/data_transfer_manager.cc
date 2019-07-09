@@ -6,7 +6,7 @@
 namespace onnxruntime {
 using namespace common;
 
-common::Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer) {
+Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer) {
   if (nullptr == data_transfer) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "data_transfer registered is nullptr.");
   }
@@ -14,11 +14,11 @@ common::Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTr
   return Status::OK();
 }
 
-common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
+Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }
 
-common::Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
+Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
   if (src.Shape().Size() != dst.Shape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
   }
