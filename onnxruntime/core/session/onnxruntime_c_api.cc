@@ -181,23 +181,36 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator
 template <typename T>
 OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
-  size_t elem_count = 1;
-  std::vector<int64_t> shapes(shape_len);
-  for (size_t i = 0; i != shape_len; ++i) {
-    elem_count *= shape[i];
-    shapes[i] = shape[i];
+  TensorShape tensor_shape(shape, shape_len);
+  int64_t elem_count = tensor_shape.Size();
+  if (elem_count < 0 || static_cast<uint64_t>(elem_count) > std::numeric_limits<size_t>::max()) {
+    std::ostringstream oss;
+    oss << "Create tensor failed. Tensor shape:" << shape[0];
+    for (size_t i = 1; i != shape_len; ++i) {
+      oss << "," << shape[i];
+    }
+    oss << " is invalid";
+    return OrtCreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
 
   size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArray(sizeof(T), elem_count, &size_to_allocate)) {
+  if (!IAllocator::CalcMemSizeForArray(sizeof(T), static_cast<size_t>(elem_count), &size_to_allocate)) {
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, "size overflow");
   }
   if (size_to_allocate > p_data_len) {
     std::ostringstream oss;
-    oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
+    oss << "Create tensor failed. The preallocated buffer is not large enough: expected " << size_to_allocate
+        << " bytes, got " << p_data_len << ".";
+    if (shape_len > 0) {
+      oss << " Tensor shape: [" << shape[0];
+      for (size_t i = 1; i != shape_len; ++i) {
+        oss << "," << shape[i];
+      }
+      oss << "].";
+    }
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), p_data, *info);
+  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), tensor_shape, p_data, *info);
   return nullptr;
 }
 
