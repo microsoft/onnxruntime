@@ -118,15 +118,7 @@ class NchwcTransformerImpl {
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
   if (output_edges_count > 0) {
-    std::vector<Node::EdgeEnd> output_edges;
-    output_edges.reserve(output_edges_count);
-    for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
-      ORT_ENFORCE(it->GetSrcArgIndex() == 0);
-      output_edges.push_back(*it);
-    }
-    for (auto& edge : output_edges) {
-      graph_.RemoveEdge(node.Index(), edge.GetNode().Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
-    }
+    graph_utils::RemoveNodeOutputEdges(graph_, node);
   } else {
     // Bias the edge count to handle the case of a node that produces a graph
     // output.
