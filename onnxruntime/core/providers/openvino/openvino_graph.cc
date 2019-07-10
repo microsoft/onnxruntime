@@ -95,11 +95,32 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
     input_indexes_.push_back(index);
   }
 
-  // Create hardware agnostic OpenVINO network representation
+    // Create hardware agnostic OpenVINO network representation
   openvino_network_ = BuildOpenVINONetworkWithMO();
 
   // Create hardware specific OpenVINO network representation
-  infer_requests_ = GetExecutableHandle(openvino_network_, device_id_);
+  GetExecutableHandle(openvino_network_);
+
+  std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
+  plugin_path.push_back("");
+  plugin_ = InferenceEngine::PluginDispatcher(
+                                                plugin_path)
+                                                .getPluginByDevice(device_id_);
+
+  //Loading model to the plugin
+  InferenceEngine::ExecutableNetwork exeNetwork  = plugin_.LoadNetwork(*openvino_network_,{});
+
+  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
+
+  //Create infer request
+  for (size_t i = 0; i < num_inf_reqs_; i++) {
+
+      auto infRequest = exeNetwork.CreateInferRequestPtr();
+
+      infer_requests_.push_back(infRequest);
+  }
+  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
+
 }
 
 std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() const {
@@ -220,16 +241,8 @@ InferenceEngine::Precision OpenVINOGraph::ConvertPrecisionONNXToOpenVINO(
   }
 }
 
-std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHandle(
-    std::shared_ptr<InferenceEngine::CNNNetwork> network, const std::string& device) {
-
-
-  // Load Plugin for inference engine
-  std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
-  plugin_path.push_back("");
-  InferenceEngine::InferencePlugin plugin = InferenceEngine::PluginDispatcher(
-                                                plugin_path)
-                                                .getPluginByDevice(device);
+void OpenVINOGraph::GetExecutableHandle(
+    std::shared_ptr<InferenceEngine::CNNNetwork> network) {
 
   LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
 
@@ -302,21 +315,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
         throw "Invalid Dims type for output data map for: " + iter->first;
     }
   }
-
-  // Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exeNetwork = plugin.LoadNetwork(*network,
-                                                                     {});
-
-  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
-
-  // Create infer request
-  std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
-  for (size_t i = 0; i < num_inf_reqs_; i++) {
-    infer_requests.push_back(exeNetwork.CreateInferRequestPtr());
-  }
-  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
-
-  return infer_requests;
 }
 
 size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
@@ -435,6 +433,7 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   std::lock_guard<std::mutex> lock(compute_lock_);
+  std::cout << "OV" << std::endl;
 
   LOGS_DEFAULT(INFO) << log_tag << "Starting inference";
 
