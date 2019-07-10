@@ -17,11 +17,11 @@ namespace test {
 
 TEST_F(CApiTest, load_simple_float_tensor_not_enough_space) {
   // construct a tensor proto
-  ONNX_NAMESPACE::TensorProto p;
+  onnx::TensorProto p;
   p.mutable_float_data()->Add(1.0f);
   p.mutable_float_data()->Add(2.2f);
   p.mutable_dims()->Add(2);
-  p.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  p.set_data_type(onnx::TensorProto_DataType_FLOAT);
   std::string s;
   // save it to a buffer
   ASSERT_TRUE(p.SerializeToString(&s));
@@ -38,12 +38,12 @@ TEST_F(CApiTest, load_simple_float_tensor_not_enough_space) {
 
 TEST_F(CApiTest, load_simple_float_tensor) {
   // construct a tensor proto
-  ONNX_NAMESPACE::TensorProto p;
+  onnx::TensorProto p;
   p.mutable_float_data()->Add(1.0f);
   p.mutable_float_data()->Add(2.2f);
   p.mutable_float_data()->Add(3.5f);
   p.mutable_dims()->Add(3);
-  p.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  p.set_data_type(onnx::TensorProto_DataType_FLOAT);
   std::string s;
   // save it to a buffer
   ASSERT_TRUE(p.SerializeToString(&s));
@@ -76,13 +76,13 @@ static void run_external_data_test() {
   ASSERT_EQ(sizeof(test_data), fwrite(test_data, 1, sizeof(test_data), fp));
   ASSERT_EQ(0, fclose(fp));
   // construct a tensor proto
-  ONNX_NAMESPACE::TensorProto p;
-  ONNX_NAMESPACE::StringStringEntryProto* location = p.mutable_external_data()->Add();
+  onnx::TensorProto p;
+  onnx::StringStringEntryProto* location = p.mutable_external_data()->Add();
   location->set_key("location");
   location->set_value(ToMBString(filename));
   p.mutable_dims()->Add(3);
-  p.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-  p.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  p.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
+  p.set_data_type(onnx::TensorProto_DataType_FLOAT);
   std::string s;
   // save it to a buffer
   ASSERT_TRUE(p.SerializeToString(&s));
@@ -141,14 +141,14 @@ TEST_F(CApiTest, load_huge_tensor_with_external_data) {
   const size_t total_ele_count = 524288 * 1025;
   ASSERT_EQ(0, fclose(fp));
   // construct a tensor proto
-  ONNX_NAMESPACE::TensorProto p;
-  ONNX_NAMESPACE::StringStringEntryProto* location = p.mutable_external_data()->Add();
+  onnx::TensorProto p;
+  onnx::StringStringEntryProto* location = p.mutable_external_data()->Add();
   location->set_key("location");
   location->set_value(ToMBString(filename));
   p.mutable_dims()->Add(524288);
   p.mutable_dims()->Add(1025);
-  p.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-  p.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  p.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
+  p.set_data_type(onnx::TensorProto_DataType_INT32);
   std::string s;
   // save it to a buffer
   ASSERT_TRUE(p.SerializeToString(&s));
