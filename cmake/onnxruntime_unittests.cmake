@@ -623,7 +623,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
           protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
-  target_compile_definitions(onnxruntime_shared_lib_test PUBLIC "ONNX_NAMESPACE=onnx")
   #demo
   message("PNG Lib Dir = ${PNG_LIBRARIES}")
   message("PNG Include Dir = ${PNG_INCLUDE_DIRS}")
