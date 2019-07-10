@@ -975,6 +975,7 @@ class Graph {
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
 
+  // number of times Resolve has run.
   int num_resolves_ = 0;
 };
 
