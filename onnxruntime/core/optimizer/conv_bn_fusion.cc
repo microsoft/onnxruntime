@@ -11,7 +11,7 @@ namespace onnxruntime {
 
 Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
   auto& conv_node = node;
-  const Node& bn_node = *conv_node.OutputNodesBegin();
+  Node& bn_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());
 
   // Get value of attribute epsilon
   const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
@@ -129,13 +129,8 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     conv_node.MutableInputArgsCount()[2] = 1;
   }
 
-  Node& mutable_bn_node = *graph.GetNode(bn_node.Index());
-
-  // Move the output definition and edges from the BN node to the Conv node
-  graph_utils::DisconnectNodes(graph, conv_node, bn_node);
-  graph_utils::MoveOutput(graph, mutable_bn_node, conv_node);
-
-  graph.RemoveNode(bn_node.Index());
+  // Move the output definition and edges from the BN node to the Conv node and delete the BN node.
+  graph_utils::FinalizeNodeFusion(graph, conv_node, bn_node);
 
   rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
 

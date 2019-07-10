@@ -54,7 +54,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& fused_conv = graph.AddNode(graph.GenerateNodeName("fused " + conv_node.Name()), "FusedConv",
                                      "fused Conv " + conv_node.Name() + "with activation " + act_node.OpType(),
                                      conv_node.MutableInputDefs(),
-                                     act_node.MutableOutputDefs(),
+                                     {},
                                      &conv_node.GetAttributes(),
                                      "com.microsoft");
 
@@ -72,12 +72,8 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     }
 
-    // we created the new node with the output def from act_node so we don't need to move the definition from act_node
-    const bool move_definition = false;
-    graph_utils::MoveOutput(graph, act_node, fused_conv, move_definition);
-
-    graph.RemoveNode(conv_node.Index());
-    graph.RemoveNode(act_node.Index());
+    // move output definitions and edges from act_node to fused_conv. delete conv_node and act_node.
+    graph_utils::FinalizeNodeFusion(graph, conv_node, act_node, &fused_conv);
 
     modified = true;
   }

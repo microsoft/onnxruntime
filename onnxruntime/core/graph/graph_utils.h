@@ -111,11 +111,13 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-/** Remove any edge between two nodes */
-void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node);
-
-/** Move the output edges and optionally the output definition as well from src_node to target_node.*/
-void MoveOutput(Graph& graph, Node& src_node, Node& target_node, bool move_definition = true);
+/** Finalize the fusion of two nodes.
+If replacement_node is nullptr 
+  outputs and edges from second_node are moved to first_node. second_node is deleted.
+If replacement_node is provided 
+  the outputs and edges from second_node are moved to replacement_node. both first_node and second_node are deleted.
+*/
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node = nullptr);
 
 }  // namespace graph_utils
 

@@ -204,7 +204,7 @@ static bool RemoveNodeWithSingleNodeIn(Graph& graph, Node& node) {
   return true;
 }
 
-/** Remove a node and replace its output with the provided NodeArg.
+/** Remove a node with a single output, and replace its output with the provided NodeArg.
 @param replacement_output The NodeArg for the value replacing the output from 'node' so that 'node' can be removed.
 */
 static bool ReplaceNodeWithNodeArg(Graph& graph, Node& node, NodeArg& replacement) {
@@ -212,6 +212,7 @@ static bool ReplaceNodeWithNodeArg(Graph& graph, Node& node, NodeArg& replacemen
   std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node itself (this will remove its input edge too).
+  RemoveNodeOutputEdges(graph, node);
   graph.RemoveNode(node.Index());
 
   // Add the replacement value as input to the outgoing nodes of the node that we removed.
@@ -242,6 +243,20 @@ static bool ReplaceNodeWithNodeArg(Graph& graph, Node& node, NodeArg& replacemen
   }
 
   return true;
+}
+
+static void MoveOutput(Graph& graph, Node& src_node, Node& target_node) {
+  // copy the NodeArg*'s for all output defs.
+  target_node.MutableOutputDefs() = src_node.MutableOutputDefs();
+
+  auto src_idx = src_node.Index();
+  auto target_idx = target_node.Index();
+  auto output_edges = GetNodeOutputEdges(src_node);
+
+  for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
+    graph.AddEdge(target_idx, cur->dst_node, 0, cur->dst_arg_index);
+    graph.RemoveEdge(src_idx, cur->dst_node, 0, cur->dst_arg_index);
+  }
 }
 
 //----------------------------
@@ -475,40 +490,16 @@ size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
   return output_edges.size();
 }
 
-void DisconnectNodes(Graph& graph, const Node& first_node, const Node& second_node) {
-  auto idx1 = first_node.Index();
-  auto idx2 = second_node.Index();
-  std::vector<std::pair<int, int>> edge_indexes;
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node) {
+  graph_utils::RemoveNodeOutputEdges(graph, first_node);
+  graph_utils::MoveOutput(graph, second_node, replacement_node ? *replacement_node : first_node);
 
-  // we can't remove an edge while iterating the edges, so collect the matching edge info first
-  for (auto edge = first_node.OutputEdgesBegin(), end = first_node.OutputEdgesEnd(); edge != end; ++edge) {
-    if (&edge->GetNode() == &second_node) {
-      edge_indexes.push_back({edge->GetSrcArgIndex(), edge->GetDstArgIndex()});
-    }
-  }
+  // second node now has no output edges and can be removed
+  graph.RemoveNode(second_node.Index());
 
-  ORT_ENFORCE(!edge_indexes.empty(),
-              "Failed to find edge between nodes ", first_node.Name(), " and ", second_node.Name());
-
-  for (auto pair : edge_indexes) {
-    graph.RemoveEdge(idx1, idx2, pair.first, pair.second);
-  }
-}
-
-void MoveOutput(Graph& graph, Node& src_node, Node& target_node, bool move_definition) {
-  if (move_definition) {
-    ORT_ENFORCE(src_node.OutputDefs().size() == 1);
-    ORT_ENFORCE(target_node.OutputDefs().size() == 1);
-    target_node.MutableOutputDefs()[0] = src_node.MutableOutputDefs()[0];
-  }
-
-  auto src_idx = src_node.Index();
-  auto target_idx = target_node.Index();
-  auto output_edges = GetNodeOutputEdges(src_node);
-
-  for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
-    graph.AddEdge(target_idx, cur->dst_node, 0, cur->dst_arg_index);
-    graph.RemoveEdge(src_idx, cur->dst_node, 0, cur->dst_arg_index);
+  if (replacement_node) {
+    // first_node has no output edges and can be removed
+    graph.RemoveNode(first_node.Index());
   }
 }
 

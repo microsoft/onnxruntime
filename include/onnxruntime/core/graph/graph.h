@@ -197,7 +197,8 @@ class Node {
     void operator++();
     void operator--();
 
-    const Node& operator*();
+    const Node& operator*() const;
+    const Node* operator->() const;
 
    private:
     EdgeConstIterator m_iter;

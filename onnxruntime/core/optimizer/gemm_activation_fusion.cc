@@ -54,7 +54,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm",
                                      "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(),
                                      gemm_node.MutableInputDefs(),
-                                     act_node.MutableOutputDefs(),
+                                     {},
                                      &gemm_node.GetAttributes(),
                                      "com.microsoft");
 
@@ -72,12 +72,8 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     }
 
-    // move edges
-    const bool move_definition = false;  // we created the new node with the output def from act_node
-    graph_utils::MoveOutput(graph, act_node, fused_gemm, move_definition);
-
-    graph.RemoveNode(gemm_node.Index());
-    graph.RemoveNode(act_node.Index());
+    // move output definitions and edges from act_node to fused_gemm. delete gemm_node and act_node.
+    graph_utils::FinalizeNodeFusion(graph, gemm_node, act_node, &fused_gemm);
 
     modified = true;
   }

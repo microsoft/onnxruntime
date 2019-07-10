@@ -263,8 +263,12 @@ void Node::NodeConstIterator::operator--() {
   --m_iter;
 }
 
-const Node& Node::NodeConstIterator::operator*() {
+const Node& Node::NodeConstIterator::operator*() const {
   return (*m_iter).GetNode();
+}
+
+const Node* Node::NodeConstIterator::operator->() const {
+  return &(operator*());
 }
 
 NodeIndex Node::Index() const noexcept {
@@ -2083,17 +2087,20 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     return false;
   }
 
-  // Remove all input and output edges.
+  // Node must be disconnected from any downstream nodes before removal
+  ORT_ENFORCE(node->GetOutputEdgesCount() == 0, "Can't remove node ", node->Name(), " as it still has output edges.");
+
+  //if (!node->GetRelationships().output_edges.empty()) {
+  //  LOGS_DEFAULT(WARNING, "Can't remove node ", node->Name(), " as it still has output edges.");
+  //  return false;
+  //}
+
+  // Remove all input edges.
   // Need to copy the edge info first so we can remove the real edges while iterating the copy of edge info.
   auto input_edges = node->GetRelationships().input_edges;
-  auto output_edges = node->GetRelationships().output_edges;
 
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
-  }
-
-  for (auto& output_edge : output_edges) {
-    RemoveEdge(p_index, output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
   return ReleaseNode(p_index);

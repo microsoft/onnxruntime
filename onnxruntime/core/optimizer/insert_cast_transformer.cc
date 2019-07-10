@@ -139,7 +139,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         }
 
         for (auto& node_to_remove : nodes_to_remove) {
-          // remove the node and replace the remove node's output with 'input'
+          // remove the node and replace the removed node's output with 'input'
           graph_utils::RemoveNodeAndUpdateEdges(graph, node_to_remove, input);
           modified = true;
         }

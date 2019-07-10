@@ -101,17 +101,14 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
                                     "Gemm",
                                     "fused Matmul and Add " + add_node.OpType(),
                                     gemm_input_defs,
-                                    add_node.MutableOutputDefs());
+                                    {});
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
-    // we created the new node with the output def from add_node so we don't need to move it
-    const bool move_definition = false;
-    graph_utils::MoveOutput(graph, add_node, gemm_node, move_definition);
+    // move output definitions and edges from act_node to gemm_node. delete gemm_node and act_node.
+    graph_utils::FinalizeNodeFusion(graph, matmul_node, add_node, &gemm_node);
 
-    graph.RemoveNode(matmul_node.Index());
-    graph.RemoveNode(add_node.Index());
     modified = true;
   }
 

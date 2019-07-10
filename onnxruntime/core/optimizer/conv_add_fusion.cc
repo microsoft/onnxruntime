@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
   auto& conv_node = node;
-  auto& add_node = *graph.GetNode((*conv_node.OutputNodesBegin()).Index());  // get mutable next node
+  auto& add_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());  // get mutable next node
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& add_inputs = add_node.InputDefs();
 
@@ -97,11 +97,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     conv_node.MutableInputArgsCount()[2] = 1;
   }
 
-  // move the output definition and edges from the add_node to the conv_node now that they're fused
-  graph_utils::DisconnectNodes(graph, conv_node, add_node);
-  graph_utils::MoveOutput(graph, add_node, conv_node);
-
-  graph.RemoveNode(add_node.Index());
+  // move the output definition and edges from the add_node to the conv_node and delete the add_node
+  graph_utils::FinalizeNodeFusion(graph, conv_node, add_node);
 
   modified = RewriteRuleEffect::kModifiedRestOfGraph;
 
