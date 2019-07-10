@@ -42,7 +42,7 @@ void usage() {
       "\t\t0 -> Disable all optimizations\n"
       "\t\t1 -> Enable basic optimizations\n"
       "\t\t2 -> Enable extended optimizations\n"
-      "\t\t3 -> Enable layout optimizations\n"
+      "\t\t3 -> Enable extended+layout optimizations\n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",

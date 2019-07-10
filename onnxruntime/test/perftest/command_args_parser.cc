@@ -42,7 +42,7 @@ namespace perftest {
       "\t-v: Show verbose information.\n"
       "\t-x [thread_size]: Session thread pool size.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: 0: No transformer optimization, 1: basic optimization, 2: extended optimization, 3: layout optimization. \n"
+      "\t-o [optimization level]: 0: disable optimization, 1: basic optimization, 2: extended optimization, 3: extended+layout optimization. \n"
       "\t-h: help\n");
 }
 

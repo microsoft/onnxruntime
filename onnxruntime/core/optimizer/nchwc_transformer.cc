@@ -75,7 +75,6 @@ class NchwcTransformerImpl {
     }
   };
 
-  const ONNX_NAMESPACE::AttributeProto* GetAttribute(const Node& node, const char* attribute_name);
   size_t RemoveOutputEdges(Node& node);
   void CreateNchwcArgument(Node& node, Node& nchwc_node, int64_t channels, const NchwcArgument::Shape& shape);
   void FuseNchwcArgument(Node& node, const NchwcArgument& nchwc_arg);
@@ -115,16 +114,6 @@ class NchwcTransformerImpl {
   // NCHWc block size, so multiple nodes can share the NCHWc biases.
   std::unordered_map<NodeArg*, NodeArg*> aligned_biases_;
 };
-
-const ONNX_NAMESPACE::AttributeProto* NchwcTransformerImpl::GetAttribute(const Node& node, const char* attribute_name) {
-  auto& node_attributes = node.GetAttributes();
-  auto it = node_attributes.find(attribute_name);
-  if (it != node_attributes.end()) {
-    return &(it->second);
-  } else {
-    return nullptr;
-  }
-}
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
@@ -206,9 +195,9 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
   // Maintain the batch count dimension from the NCHWc input.
   output_shape.dims_[0] = input_shape.dims_[0];
 
-  const ONNX_NAMESPACE::AttributeProto* pads_attr = GetAttribute(node, "pads");
-  const ONNX_NAMESPACE::AttributeProto* strides_attr = GetAttribute(node, "strides");
-  const ONNX_NAMESPACE::AttributeProto* dilations_attr = GetAttribute(node, "dilations");
+  const ONNX_NAMESPACE::AttributeProto* pads_attr = graph_utils::GetNodeAttribute(node, "pads");
+  const ONNX_NAMESPACE::AttributeProto* strides_attr = graph_utils::GetNodeAttribute(node, "strides");
+  const ONNX_NAMESPACE::AttributeProto* dilations_attr = graph_utils::GetNodeAttribute(node, "dilations");
 
   if ((pads_attr != nullptr && pads_attr->ints_size() != kernel_size * 2) ||
       (strides_attr != nullptr && strides_attr->ints_size() != kernel_size) ||
@@ -220,13 +209,13 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
   // uses the weight tensor shape to derive the kernel shape.
   const ONNX_NAMESPACE::AttributeProto* kernel_shape_attr = nullptr;
   if (filter_shape == nullptr) {
-    kernel_shape_attr = GetAttribute(node, "kernel_shape");
+    kernel_shape_attr = graph_utils::GetNodeAttribute(node, "kernel_shape");
     if (kernel_shape_attr == nullptr || kernel_shape_attr->ints_size() != kernel_size) {
       return;
     }
   }
 
-  auto* auto_pad_attr = GetAttribute(node, "auto_pad");
+  auto* auto_pad_attr = graph_utils::GetNodeAttribute(node, "auto_pad");
   bool auto_pad_same_shape = false;
   if (auto_pad_attr != nullptr && auto_pad_attr->has_s()) {
     auto& auto_pad = auto_pad_attr->s();
@@ -281,7 +270,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   const int64_t input_channels = conv_W_tensor_proto->dims(1);
 
   int64_t group_count;
-  auto* group_attr = GetAttribute(node, "group");
+  auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
   if (group_attr != nullptr && group_attr->has_i()) {
     group_count = group_attr->i();
   } else {
@@ -551,7 +540,7 @@ void NchwcTransformerImpl::TransformAdd(Node& node) {
       if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
           (nchwc_input_defs.size() < 4) && (nchwc_input_args_count.size() < 4) &&
           (nchwc_input_n->starting_original_uses_ == 1) &&
-          (GetAttribute(nchwc_node, "activation") == nullptr)) {
+          (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
         // Feed the output of the other NCHWc node into the selected convolution
         // node.
         nchwc_input_defs.resize(4);
@@ -574,7 +563,7 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
   auto& output_defs = node.MutableOutputDefs();
 
   // Verify that this is a concatenation along the channel axis.
-  auto* axis_attr = GetAttribute(node, "axis");
+  auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
   if (axis_attr == nullptr || !axis_attr->has_i() || axis_attr->i() != 1) {
     return;
   }
@@ -629,7 +618,7 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
     auto& nchwc_node = nchwc_input->output_node_;
     if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
         (nchwc_input->starting_original_uses_ == 1) &&
-        (GetAttribute(nchwc_node, "activation") == nullptr)) {
+        (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
       FuseNchwcArgument(node, *nchwc_input);
       removed_nodes_.push_front(node.Index());
@@ -706,16 +695,6 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
   }
 
   for (auto index : removed_nodes_) {
-    auto& node = *graph_.GetNode(index);
-    std::vector<Node::EdgeEnd> input_edges;
-    input_edges.reserve(node.GetInputEdgesCount());
-    for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
-      input_edges.push_back(*it);
-    }
-    for (auto& edge : input_edges) {
-      graph_.RemoveEdge(edge.GetNode().Index(), node.Index(), edge.GetSrcArgIndex(), edge.GetDstArgIndex());
-    }
-
     graph_.RemoveNode(index);
   }
 

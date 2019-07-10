@@ -117,7 +117,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(std::make_unique<onnxruntime::NchwcTransformer>());
+        transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
 #endif
 

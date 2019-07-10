@@ -8,9 +8,15 @@
 
 namespace onnxruntime {
 
-class NchwcTransformer : public onnxruntime::GraphTransformer {
+/**
+@Class NchwcTransformer
+
+Transformer that optimizes the graph by using NCHWc nodes instead of NCHW nodes
+and inserts nodes to reorder tensors as needed.
+*/
+class NchwcTransformer : public GraphTransformer {
  public:
-  NchwcTransformer() noexcept : onnxruntime::GraphTransformer("NchwcTransformer") {}
+  NchwcTransformer() noexcept : GraphTransformer("NchwcTransformer") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
