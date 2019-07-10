@@ -715,10 +715,6 @@ class Graph {
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
 
-  Version IrVersion() const noexcept {
-    return ir_version_;
-  }
-
   /**
   Create a single Node that is the result of the a fusion of multiple nodes in this Graph.
   @param sub_graph A IndexSubGraph instance with details of the nodes to fuse.
@@ -797,6 +793,10 @@ class Graph {
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
+
+  Version IrVersion() const noexcept {
+    return ir_version_;
+  }
 
   Graph& GraphResolveNeeded(bool needed) noexcept {
     graph_resolve_needed_ = needed;

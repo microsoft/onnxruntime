@@ -102,10 +102,6 @@ class GraphViewer {
     return graph_->DomainToVersionMap();
   }
 
-  Version IrVersion() const noexcept {
-    return graph_->IrVersion();
-  }
-
   /** Check if this is a Subgraph */
   bool IsSubgraph() const;
 
