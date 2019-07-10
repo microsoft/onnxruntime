@@ -109,10 +109,7 @@
 1. Retrieve your docker image in one of the following ways.
 
    - Build the docker image from the DockerFile in this repository. Providing the argument device enables onnxruntime for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default values are http://github.com/microsoft/onnxruntime and repo is master
-        
-          ```
-          docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
-          ```
+      
      ```
      docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
      ```
@@ -178,4 +175,4 @@
   ```
   curl  -X POST -d "@request.json" -H "Content-Type: application/json" http://0.0.0.0:{your_local_port}/v1/models/mymodel/versions/3:predict  
   ```
->>>>>>> master
+
