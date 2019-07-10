@@ -56,8 +56,8 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 
     const int64_t src_offset_batch = batch * data_batch_bytes;
     const int64_t dst_offset_batch = batch * gathered_batch_bytes;
-    Tin converted_negtive_idx = indices_data[i] + static_cast<Tin>(input_data_shape[axis]);
-    Tin idx = indices_data[i] < 0 ? converted_negtive_idx : indices_data[i];
+    Tin idx = static_cast<Tin>(HandleNegativeAxis(indices_data[i], input_data_shape[axis]));
+
     const int64_t src_offset = src_offset_batch + idx * block_size;
     const int64_t dst_offset = dst_offset_batch + i * block_size;
 
