@@ -346,8 +346,8 @@ static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
     if (!x->Shape()) {
       continue;
     }
-    vector<int64_t> x_shape = utils::GetTensorShapeFromTensorShapeProto(*x->Shape());
-    vector<int64_t> y_shape = utils::GetTensorShapeFromTensorShapeProto(*y->Shape());
+    auto x_shape = utils::GetTensorShapeFromTensorShapeProto(*x->Shape());
+    auto y_shape = utils::GetTensorShapeFromTensorShapeProto(*y->Shape());
     if (x->Name() == y->Name() && x_shape == y_shape && *x->Type() == *y->Type()) {
       continue;
     }

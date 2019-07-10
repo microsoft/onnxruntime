@@ -1037,7 +1037,11 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
     if (!force_inside && (not_supported || force_outside)) {
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
-      LOGS_DEFAULT(WARNING) << "Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
+      if (not_supported) {
+        LOGS_DEFAULT(WARNING) << "CUDA kernel not supported. Fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
+      } else if (force_outside) {
+        LOGS_DEFAULT(INFO) << "Force fallback to CPU execution provider for Op type: " << node.OpType() << " node name: " << node.Name();
+      }
     } else {
       // for nodes placed on CUDA, check if its output is on CPU
       node.ForEachWithIndex(

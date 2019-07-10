@@ -192,7 +192,7 @@ ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* mod
                _In_ const OrtSessionOptions* options, _Out_ OrtSession** out);
 
 ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
-               _In_ const OrtRunOptions* run_options,
+               _In_opt_ const OrtRunOptions* run_options,
                _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
                _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
 
