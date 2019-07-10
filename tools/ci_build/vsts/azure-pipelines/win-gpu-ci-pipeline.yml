@@ -14,7 +14,6 @@ jobs:
         buildConfig: Release
 
   variables:
-  - group: AzureKeyVault # for $(AZURESASKEY)
   - name: CUDA_VERSION
     value: '10.0'
   - name: CUDA_PATH
@@ -66,7 +65,7 @@ jobs:
     displayName: 'Run build script'
     inputs:
       filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-      arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config $(buildConfig) --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe --skip_submodule_sync --use_cuda --cudnn_home   $(CUDNN_PATH) --cuda_home $(CUDA_PATH)  --use_mkldnn --use_mklml  --build_shared_lib --azure_sas_key="$(AZURESASKEY)" --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+      arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config $(buildConfig) --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe --skip_submodule_sync --use_cuda --cudnn_home   $(CUDNN_PATH) --cuda_home $(CUDA_PATH)  --use_mkldnn --use_mklml  --build_shared_lib  --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
 
   - task: PowerShell@1
     displayName: 'Clean up CUDA props files'

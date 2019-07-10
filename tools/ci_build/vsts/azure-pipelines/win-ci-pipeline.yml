@@ -16,7 +16,6 @@ jobs:
   variables:
   - name: buildDirectory # currently some csproj files depend on this variable - would be nice if they didn't
     value: $(Build.BinariesDirectory)
-  - group: AzureKeyVault # for $(AZURESASKEY)
 
   steps:
   - checkout: self
@@ -57,7 +56,7 @@ jobs:
     displayName: 'Run build script'
     inputs:
       filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-      arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config $(buildConfig) --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe --skip_submodule_sync --enable_pybind --use_mkldnn --use_mklml --use_tvm --build_shared_lib --enable_msinternal --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --azure_sas_key="$(AZURESASKEY)"'
+      arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config $(buildConfig) --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe --skip_submodule_sync --enable_pybind --use_mkldnn --use_mklml --use_tvm --build_shared_lib --enable_msinternal --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
