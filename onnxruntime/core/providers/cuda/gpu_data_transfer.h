@@ -23,6 +23,11 @@ class GPUDataTransfer : public IDataTransfer {
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 
+  cudaStream_t GetStream(int queue_id) const {
+    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
+    return streams_[queue_id];
+  }
+
  private:
   cudaStream_t streams_[kTotalCudaStreams];
 };

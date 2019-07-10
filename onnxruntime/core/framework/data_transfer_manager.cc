@@ -14,6 +14,18 @@ Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTransfer> 
   return Status::OK();
 }
 
+const IDataTransfer* DataTransferManager::GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  for (auto& data_transfer : datatransfers_) {
+    if (!data_transfer->CanCopy(src_device, dst_device)) {
+      continue;
+    }
+
+    return data_transfer.get();
+  }
+  return nullptr;
+}
+
+
 Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }

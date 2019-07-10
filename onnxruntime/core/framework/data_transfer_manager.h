@@ -18,6 +18,8 @@ class DataTransferManager {
 
   common::Status RegisterDataTransfer(std::unique_ptr<IDataTransfer> data_transfer);
 
+  const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const;
+
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
 

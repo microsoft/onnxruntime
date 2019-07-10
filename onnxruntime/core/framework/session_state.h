@@ -187,7 +187,6 @@ class SessionState {
   void SetDataTransferMgr(const DataTransferManager* data_transfer_mgr) { data_transfer_mgr_ = data_transfer_mgr; }
 
   std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
-
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 

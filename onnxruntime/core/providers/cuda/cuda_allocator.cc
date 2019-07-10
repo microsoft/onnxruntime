@@ -1,17 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cuda_common.h"
 #include "cuda_allocator.h"
+#include "cuda_common.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/session_state.h"
 #include "cuda_fence.h"
+#include "gpu_data_transfer.h"
 
 namespace onnxruntime {
 
-static const CUDAExecutionProvider* GetCUDAExecutionProvider(const SessionState* session_state) {
-  return dynamic_cast<const CUDAExecutionProvider*>(
-      session_state->GetExecutionProviders().Get(onnxruntime::kCudaExecutionProvider));
+static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_state) {
+  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
+  OrtDevice cpu_device;
+  return dynamic_cast<const GPUDataTransfer*>(session_state->GetDataTransferMgr().GetDataTransfer(gpu_device, cpu_device));
 }
 
 void CUDAAllocator::CheckDevice() const {
@@ -43,7 +45,7 @@ const OrtAllocatorInfo& CUDAAllocator::Info() const {
 }
 
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetCUDAExecutionProvider(session_state));
+  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }
 
 void* CUDAPinnedAllocator::Alloc(size_t size) {
@@ -64,7 +66,7 @@ const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetCUDAExecutionProvider(session_state));
+  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }
 
 }  // namespace onnxruntime
