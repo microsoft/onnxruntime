@@ -80,13 +80,13 @@ if [ -z "$NIGHTLY_BUILD" ]; then
 fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ]; then
-    ONNX_DOCKER=docker
+    RUNTIME=
 else
-    ONNX_DOCKER=nvidia-docker
+    RUNTIME="--runtime=nvidia"
 fi
 
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
-$ONNX_DOCKER run -h $HOSTNAME \
+docker run $RUNTIME -h $HOSTNAME \
     --name "onnxruntime-$BUILD_DEVICE" \
     --volume "$SOURCE_ROOT:/onnxruntime_src" \
     --volume "$BUILD_DIR:/build" \
