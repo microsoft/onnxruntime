@@ -23,7 +23,7 @@ AllocatorPtr GetAllocator() {
   return cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 }
 template <typename T>
-static void CreateMLValue(AllocatorPtr alloc,
+static void CreateMLValue(const AllocatorPtr& alloc,
                           const std::vector<int64_t>& dims,
                           const std::vector<T>& value,
                           MLValue* p_mlvalue) {

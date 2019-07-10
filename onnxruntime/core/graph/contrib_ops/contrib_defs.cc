@@ -1231,7 +1231,7 @@ Example 4:
             }
           }
         } else {
-          // Infer ouput shapes' rank in any case
+          // Infer output shapes' rank in any case
           auto* output_shape_0 = getOutputShape(ctx, 0);
           for (size_t i = 0; static_cast<int64_t>(i) < input_rank; ++i) {
             output_shape_0->add_dim();

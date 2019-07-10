@@ -15,7 +15,7 @@ struct OrtRunOptions {
   /// Default = -1 (use the log severity from the InferenceSession that the Run is for).
   int run_log_severity_level = -1;
   unsigned run_log_verbosity_level = 0;  ///< VLOG level if debug build and run_log_severity_level is 0 (VERBOSE).
-  std::string run_tag;                   ///< A tag for the Run() calls using this.
+  std::string run_tag = std::string();   ///< A tag for the Run() calls using this.
 
   // Set to 'true' to ensure the termination of all the outstanding Run() calls
   // that use this OrtRunOptions instance. Some of the outstanding Run() calls may

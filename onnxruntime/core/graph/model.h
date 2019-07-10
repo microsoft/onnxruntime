@@ -68,7 +68,7 @@ class Model {
   // Return null pointer if not specified.
   Version ModelVersion() const;
   // Set models' version.
-  void SetModelversion(onnxruntime::Version model_version);
+  void SetModelVersion(onnxruntime::Version model_version);
 
   // Get model's doc string.
   // Return null pointer if not specified.

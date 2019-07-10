@@ -77,8 +77,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
   // uncomment the line below to dump execution plan
-  //std::cout << std::make_pair(p_seq_exec_plan, &session_state) << "\n";
-
+  //std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+  
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
