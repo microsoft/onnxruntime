@@ -32,7 +32,13 @@ int main(int argc, char* argv[]) {
   // create session and load model into memory
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
+#ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
+#else
+  const char* model_path = "squeezenet.onnx";
+#endif
+
+  printf("Using Onnxruntime C++ API\n");
   Ort::Session session(env, model_path, session_options);
 
   //*************************************************************************
