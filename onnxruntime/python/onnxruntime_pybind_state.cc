@@ -105,6 +105,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 #pragma warning(disable : 4267 4996 4503 4003)
 #endif  // _MSC_VER
 
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+namespace {
+  std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> executionProviderFactories;
+}
+#endif 
+
 using namespace std;
 namespace onnxruntime {
 namespace python {
@@ -226,7 +232,11 @@ void InitializeSession(InferenceSession* sess) {
 
 #ifdef USE_TENSORRT
   {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt());
+    auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt();
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA    
+    executionProviderFactories.push_back(factory);
+#endif
+    RegisterExecutionProvider(sess, *factory);
   }
 #endif
 
@@ -239,7 +249,12 @@ void InitializeSession(InferenceSession* sess) {
 #ifdef USE_MKLDNN
   {
     const bool enable_cpu_mem_arena = true;
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0));
+    auto factory = onnxruntime::CreateExecutionProviderFactory_Mkldnn(enable_cpu_mem_arena ? 1 : 0);
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+    executionProviderFactories.push_back(factory);
+#endif
+
+    RegisterExecutionProvider(sess, *factory);
   }
 #endif
 
@@ -293,7 +308,18 @@ void addGlobalMethods(py::module& m) {
       "Return a vector of OpSchema all registed operators");
   m.def(
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
-      std::vector<onnxruntime::KernelDef> result;
+        std::vector<onnxruntime::KernelDef> result;
+
+        std::string default_logger_id{"FixtureDefaultLogger"};
+        std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager = 
+                  std::make_unique<LoggingManager>(
+                          std::unique_ptr<onnxruntime::logging::ISink>{ new onnxruntime::logging::CLogSink {}}, 
+                          onnxruntime::logging::Severity::kWARNING, 
+                          false,
+                          onnxruntime::logging::LoggingManager::InstanceType::Default, 
+                          &default_logger_id, 
+                          /*default_max_vlog_level*/ -1);
+     
       std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
         onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
@@ -306,6 +332,9 @@ void addGlobalMethods(py::module& m) {
         // onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
         // onnxruntime::CreateExecutionProviderFactory_Tensorrt()
       };
+
+      // executionProviderFactories.push_back(onnxruntime::CreateExecutionProviderFactory_CPU(0));
+      // std::cout << "number of factories = " << executionProviderFactories.size() << std::endl;
 
       for (auto& f: factories){
         for (auto& m: f->CreateProvider()

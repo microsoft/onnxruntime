@@ -52,22 +52,21 @@ def main(args):  # type: (Type[Args]) -> None
             if (domain == ''):
                 domain = 'ai.onnx.ml'
             index[op.provider][domain][op.op_name].append(op)
+            print(op.provider, op.op_name)
 
                
         fout.write('\n')
         for provider, domainmap in sorted(index.items()):
-            fout.write('## Operators implemented by '+provider+'\n\n')
-            fout.write('| Op Name | OpSet Versions | Parameter | Types  Supported |\n')
+            fout.write('\n\n## Operators implemented by '+provider+'\n\n')
+            fout.write('| Op Name | OpSet Versions | Parameter | Types Supported |\n')
             fout.write('|---------|----------------|-----------|------------------|\n')
             for domain, namemap in sorted(domainmap.items()):
                 fout.write('**Operator Domain:** *'+domain+'*\n')
                 for name, ops in sorted(namemap.items()):
-                    print(name+', count of tclist = ', len(ops))
                     last_version = (0,0)
                     version_type_index = defaultdict(lambda: defaultdict(set))
                     for op in ops: 
                         formatted_version_range = format_version_range(op.version_range)
-                        print('\tcount of tcitems = ',len(op.type_constraints), ',', formatted_version_range, ', ', op.type_constraints) 
                         for tname,tclist in op.type_constraints.items():
                             for c in tclist:
                                 version_type_index[formatted_version_range][tname].add(c)
@@ -93,6 +92,7 @@ def main(args):  # type: (Type[Args]) -> None
                             fout.write(tname+'|'+format_type_constraints(tclist)+'|\n')
                         
                 fout.write('| |\n| |\n')
+        
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='ONNX Runtime Operator Documentation Generator')

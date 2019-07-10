@@ -3,20 +3,22 @@
             [def files](/onnxruntime/core/providers/cpu/cpu_execution_provider.cc) via [this script](/tools/python/gen_opkernel_doc.py).
             Do not modify directly and instead edit operator definitions.*
 
+
+
 ## Operators implemented by CPUExecutionProvider
 
-| Op Name | OpSet Versions | Parameter | Types  Supported |
+| Op Name | OpSet Versions | Parameter | Types Supported |
 |---------|----------------|-----------|------------------|
 **Operator Domain:** *ai.onnx.ml*
-|Abs|6+|T|tensor(uint8), tensor(int32), tensor(uint32), tensor(float), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(int16), tensor(uint64)|
+|Abs|6+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(uint8), tensor(int32)|
 |Acos|7+|T|tensor(float)|
 |Acosh|9+|T|tensor(float)|
-|Add|7+|T|tensor(float), tensor(int32), tensor(int64)|
+|Add|7+|T|tensor(int32), tensor(int64), tensor(float)|
 |Affine|1+|T|tensor(float)|
 |And|7+|T|tensor(bool)|
-|ArgMax|1+|T|tensor(float), tensor(int32)|
-|ArgMin|1+|T|tensor(float), tensor(int32)|
-|ArrayFeatureExtractor|1+|T|tensor(int32), tensor(float), tensor(int64), tensor(string), tensor(double)|
+|ArgMax|1+|T|tensor(int32), tensor(float)|
+|ArgMin|1+|T|tensor(int32), tensor(float)|
+|ArrayFeatureExtractor|1+|T|tensor(int64), tensor(string), tensor(float), tensor(double), tensor(int32)|
 |Asin|7+|T|tensor(float)|
 |Asinh|9+|T|tensor(float)|
 |Atan|7+|T|tensor(float)|
@@ -30,19 +32,19 @@
 | ||var|tensor(float)|
 |Binarizer|1+|T|tensor(float)|
 |Cast|9+|T1|tensor(string)|
-| ||T2|tensor(uint32), tensor(int16), tensor(bool), tensor(int32), tensor(MLFloat16), tensor(float), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint8), tensor(uint64)|
-| |[6, 9]|T1|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| ||T2|tensor(uint32), tensor(int16), tensor(bool), tensor(int32), tensor(MLFloat16), tensor(float), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint8), tensor(uint64)|
+| ||T2|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(MLFloat16), tensor(bool), tensor(uint8), tensor(int32)|
+| |[6, 9]|T1|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(MLFloat16), tensor(bool), tensor(uint8), tensor(int32)|
+| ||T2|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(MLFloat16), tensor(bool), tensor(uint8), tensor(int32)|
 |CastMap|1+|T1|unknown|
-| ||T2|tensor(float), tensor(int64), tensor(string)|
-|CategoryMapper|1+|T1|tensor(int64), tensor(string)|
-| ||T2|tensor(int64), tensor(string)|
+| ||T2|tensor(int64), tensor(string), tensor(float)|
+|CategoryMapper|1+|T1|tensor(string), tensor(int64)|
+| ||T2|tensor(string), tensor(int64)|
 |Ceil|6+|T|tensor(float)|
 |Clip|6+|T|tensor(float)|
-|Compress|9+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|Concat|4+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Compress|9+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|Concat|4+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |ConstantOfShape|9+|T1|tensor(int64)|
-| ||T2|tensor(uint8), tensor(int32), tensor(uint32), tensor(bool), tensor(MLFloat16), tensor(float), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(int16), tensor(uint64)|
+| ||T2|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |Conv|1+|T|tensor(float)|
 |ConvInteger|10+|T1|tensor(uint8)|
 | ||T2|tensor(uint8)|
@@ -57,28 +59,28 @@
 | ||x_zero_point|unknown, tensor(uint8)|
 | ||y|tensor(float)|
 |DictVectorizer|1+|T1|unknown|
-| ||T2|tensor(float), tensor(int64), tensor(string), tensor(double)|
-|Div|7+|T|tensor(float), tensor(int32), tensor(int64), tensor(double)|
-|Dropout|10+|T|tensor(MLFloat16), tensor(float), tensor(double)|
+| ||T2|tensor(double), tensor(int64), tensor(string), tensor(float)|
+|Div|7+|T|tensor(double), tensor(int32), tensor(int64), tensor(float)|
+|Dropout|10+|T|tensor(double), tensor(MLFloat16), tensor(float)|
 | ||T1|tensor(bool)|
-| |[7, 9]|T|tensor(MLFloat16), tensor(float), tensor(double)|
-|DynamicSlice|1+|T|tensor(uint32), tensor(int16), tensor(bool), tensor(int32), tensor(MLFloat16), tensor(float), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint8), tensor(uint64)|
-| ||Tind|tensor(int32), tensor(int64)|
+| |[7, 9]|T|tensor(double), tensor(MLFloat16), tensor(float)|
+|DynamicSlice|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(bool), tensor(uint32), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||Tind|tensor(int64), tensor(int32)|
 |Elu|6+|T|tensor(float)|
-|Equal|7+|T|tensor(int32), tensor(int64), tensor(bool)|
+|Equal|7+|T|tensor(int64), tensor(bool), tensor(int32)|
 |Erf|9+|T|tensor(float)|
 |Exp|6+|T|tensor(float)|
-|Expand|8+|T|tensor(uint8), tensor(int32), tensor(uint32), tensor(bool), tensor(MLFloat16), tensor(float), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(int16), tensor(uint64)|
-|EyeLike|9+|T1|tensor(int32), tensor(float), tensor(int64), tensor(double), tensor(uint64)|
-| ||T2|tensor(int32), tensor(float), tensor(int64), tensor(double), tensor(uint64)|
-|FeatureVectorizer|1+|T1|tensor(float), tensor(int32), tensor(int64), tensor(double)|
-|Flatten|9+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| |[1, 8]|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Expand|8+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(MLFloat16), tensor(bool), tensor(uint8), tensor(int32)|
+|EyeLike|9+|T1|tensor(int64), tensor(float), tensor(double), tensor(uint64), tensor(int32)|
+| ||T2|tensor(int64), tensor(float), tensor(double), tensor(uint64), tensor(int32)|
+|FeatureVectorizer|1+|T1|tensor(double), tensor(int64), tensor(float), tensor(int32)|
+|Flatten|9+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| |[1, 8]|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |Floor|6+|T|tensor(float)|
-|GRU|7+|T|tensor(float), tensor(double)|
+|GRU|7+|T|tensor(double), tensor(float)|
 | ||T1|tensor(int32)|
-|Gather|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| ||Tind|tensor(int32), tensor(int64)|
+|Gather|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||Tind|tensor(int64), tensor(int32)|
 |Gemm|[7, 9]|T|tensor(float)|
 |GlobalAveragePool|1+|T|tensor(float)|
 |GlobalLpPool|2+|T|tensor(float)|
@@ -87,36 +89,36 @@
 | |[7, 9]|T|tensor(float)|
 |HardSigmoid|6+|T|tensor(float)|
 |Hardmax|1+|T|tensor(float)|
-|Identity|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Identity|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |If|1+|B|tensor(bool)|
-| ||V|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+| ||V|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |ImageScaler|1+|T|tensor(float)|
-|Imputer|1+|T|tensor(float), tensor(int64)|
+|Imputer|1+|T|tensor(int64), tensor(float)|
 |InstanceNormalization|6+|T|tensor(float)|
-|IsInf|10+|T1|tensor(float), tensor(double)|
+|IsInf|10+|T1|tensor(double), tensor(float)|
 | ||T2|tensor(bool)|
 |IsNaN|9+|T1|tensor(MLFloat16), tensor(float)|
 | ||T2|tensor(bool)|
 |LRN|1+|T|tensor(float)|
-|LSTM|7+|T|tensor(float), tensor(double)|
+|LSTM|7+|T|tensor(double), tensor(float)|
 | ||T1|tensor(int32)|
-|LabelEncoder|1+|T1|tensor(int64), tensor(string)|
-| ||T2|tensor(int64), tensor(string)|
+|LabelEncoder|1+|T1|tensor(string), tensor(int64)|
+| ||T2|tensor(string), tensor(int64)|
 |LeakyRelu|6+|T|tensor(float)|
 |Less|9+|T|tensor(int32)|
 | |[7, 9]|T|tensor(float)|
-|LinearClassifier|1+|T1|tensor(float), tensor(int32), tensor(int64), tensor(double)|
-| ||T2|tensor(int64), tensor(string)|
+|LinearClassifier|1+|T1|tensor(double), tensor(int32), tensor(int64), tensor(float)|
+| ||T2|tensor(string), tensor(int64)|
 |LinearRegressor|1+|T|tensor(float)|
 |Log|6+|T|tensor(float)|
 |LogSoftmax|1+|T|tensor(float)|
 |Loop|1+|B|tensor(bool)|
 | ||I|tensor(int64)|
-| ||V|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+| ||V|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |LpNormalization|1+|T|tensor(float)|
 |LpPool|2+|T|tensor(float)|
-|MatMul|[1, 9]|T|tensor(float), tensor(double)|
-| |[9, 9]|T|tensor(int32), tensor(uint32), tensor(uint64), tensor(int64)|
+|MatMul|[1, 9]|T|tensor(double), tensor(float)|
+| |[9, 9]|T|tensor(uint32), tensor(int64), tensor(uint64), tensor(int32)|
 |MatMulInteger|10+|T1|tensor(uint8)|
 | ||T2|tensor(uint8)|
 | ||T3|tensor(int32)|
@@ -137,18 +139,18 @@
 | |[1, 8]|T|tensor(float)|
 |Min|8+|T|tensor(float)|
 | |[6, 7]|T|tensor(float)|
-|Mod|10+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(MLFloat16), tensor(float), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|Mul|7+|T|tensor(float), tensor(int32), tensor(int64), tensor(double)|
+|Mod|10+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|Mul|7+|T|tensor(double), tensor(int32), tensor(int64), tensor(float)|
 |Multinomial|7+|T1|tensor(float)|
-| ||T2|tensor(int32), tensor(int64)|
-|Neg|6+|T|unknown, tensor(float), tensor(int32)|
-|NonZero|9+|T|tensor(float), tensor(int32), tensor(int64), tensor(bool)|
-|Normalizer|1+|T|tensor(float), tensor(int32), tensor(int64), tensor(double)|
+| ||T2|tensor(int64), tensor(int32)|
+|Neg|6+|T|unknown, tensor(int32), tensor(float)|
+|NonZero|9+|T|tensor(int32), tensor(int64), tensor(bool), tensor(float)|
+|Normalizer|1+|T|tensor(double), tensor(int32), tensor(int64), tensor(float)|
 |Not|1+|T|tensor(bool)|
-|OneHot|9+|T1|tensor(float), tensor(int64)|
-| ||T2|tensor(float), tensor(int64)|
-| ||T3|tensor(float), tensor(int32), tensor(int64), tensor(string)|
-|OneHotEncoder|1+|T|tensor(float), tensor(int64), tensor(string), tensor(double)|
+|OneHot|9+|T1|tensor(int64), tensor(float)|
+| ||T2|tensor(int64), tensor(float)|
+| ||T3|tensor(int32), tensor(int64), tensor(string), tensor(float)|
+|OneHotEncoder|1+|T|tensor(double), tensor(int64), tensor(string), tensor(float)|
 |Or|7+|T|tensor(bool)|
 |PRelu|[7, 9]|T|tensor(float)|
 |Pad|2+|T|tensor(float)|
@@ -166,109 +168,131 @@
 | ||y_zero_point|tensor(uint8)|
 |RNN|7+|T|tensor(float)|
 | ||T1|tensor(int32)|
-|RandomNormal|1+|T|tensor(float), tensor(double)|
-|RandomNormalLike|1+|T1|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| ||T2|tensor(float), tensor(double)|
-|RandomUniform|1+|T|tensor(float), tensor(double)|
-|RandomUniformLike|1+|T1|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| ||T2|tensor(float), tensor(double)|
+|RandomNormal|1+|T|tensor(double), tensor(float)|
+|RandomNormalLike|1+|T1|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||T2|tensor(double), tensor(float)|
+|RandomUniform|1+|T|tensor(double), tensor(float)|
+|RandomUniformLike|1+|T1|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||T2|tensor(double), tensor(float)|
 |Reciprocal|6+|T|tensor(float)|
-|ReduceL1|1+|T|tensor(float), tensor(int32)|
-|ReduceL2|1+|T|tensor(float), tensor(int32)|
-|ReduceLogSum|1+|T|tensor(float), tensor(int32)|
-|ReduceLogSumExp|1+|T|tensor(float), tensor(int32)|
-|ReduceMax|1+|T|tensor(float), tensor(int32)|
-|ReduceMean|1+|T|tensor(float), tensor(int32)|
-|ReduceMin|1+|T|tensor(float), tensor(int32)|
-|ReduceProd|1+|T|tensor(float), tensor(int32)|
-|ReduceSum|1+|T|tensor(float), tensor(int32)|
-|ReduceSumSquare|1+|T|tensor(float), tensor(int32)|
+|ReduceL1|1+|T|tensor(int32), tensor(float)|
+|ReduceL2|1+|T|tensor(int32), tensor(float)|
+|ReduceLogSum|1+|T|tensor(int32), tensor(float)|
+|ReduceLogSumExp|1+|T|tensor(int32), tensor(float)|
+|ReduceMax|1+|T|tensor(int32), tensor(float)|
+|ReduceMean|1+|T|tensor(int32), tensor(float)|
+|ReduceMin|1+|T|tensor(int32), tensor(float)|
+|ReduceProd|1+|T|tensor(int32), tensor(float)|
+|ReduceSum|1+|T|tensor(int32), tensor(float)|
+|ReduceSumSquare|1+|T|tensor(int32), tensor(float)|
 |Relu|6+|T|tensor(float)|
-|Reshape|5+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Reshape|5+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 | ||shape|tensor(int64)|
-|Reshape_1|[1, 4]|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|Resize|10+|T|tensor(float), tensor(int32), tensor(uint8)|
-|ReverseSequence|10+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|RoiAlign|10+|T|tensor(float), tensor(double)|
+|Reshape_1|[1, 4]|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|Resize|10+|T|tensor(int32), tensor(uint8), tensor(float)|
+|ReverseSequence|10+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|RoiAlign|10+|T|tensor(double), tensor(float)|
 | ||T2|tensor(int64)|
-|SVMClassifier|1+|T1|tensor(float), tensor(int32), tensor(int64), tensor(double)|
+|SVMClassifier|1+|T1|tensor(double), tensor(int32), tensor(int64), tensor(float)|
 | ||T2|tensor(int64), tensor(string)|
 |SVMRegressor|1+|T|tensor(float)|
 |Scale|1+|T|tensor(float)|
 |ScaledTanh|1+|T|tensor(float)|
-|Scaler|1+|T|tensor(float), tensor(int32), tensor(int64), tensor(double)|
+|Scaler|1+|T|tensor(double), tensor(int32), tensor(int64), tensor(float)|
 |Scan|9+|I|tensor(int64)|
-| ||V|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+| ||V|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 | |[8, 8]|I|tensor(int64)|
-| ||V|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|Scatter|9+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| ||Tind|tensor(int32), tensor(int64)|
+| ||V|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|Scatter|9+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||Tind|tensor(int64), tensor(int32)|
 |Selu|6+|T|tensor(float)|
-|Shape|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Shape|1+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 | ||T1|tensor(int64)|
-|Shrink|9+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Shrink|9+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |Sigmoid|6+|T|tensor(float)|
-|Sign|9+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Sign|9+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |Sin|7+|T|tensor(float)|
 |Sinh|9+|T|tensor(float)|
-|Size|1+|T|tensor(uint8), tensor(int32), tensor(uint32), tensor(bool), tensor(float), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(int16), tensor(uint64)|
-|Slice|10+|T|tensor(uint32), tensor(int16), tensor(bool), tensor(int32), tensor(MLFloat16), tensor(float), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint8), tensor(uint64)|
-| ||Tind|tensor(int32), tensor(int64)|
-| |[1, 9]|T|tensor(uint32), tensor(int16), tensor(bool), tensor(int32), tensor(MLFloat16), tensor(float), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint8), tensor(uint64)|
+|Size|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(uint8), tensor(int32)|
+|Slice|10+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(bool), tensor(uint32), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||Tind|tensor(int64), tensor(int32)|
+| |[1, 9]|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(bool), tensor(uint32), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |Softmax|1+|T|tensor(float)|
 |Softplus|1+|T|tensor(float)|
 |Softsign|1+|T|tensor(float)|
 |SpaceToDepth|1+|T|tensor(float)|
-|Split|2+|T|tensor(float), tensor(int32), tensor(string)|
+|Split|2+|T|tensor(int32), tensor(string), tensor(float)|
 |Sqrt|6+|T|tensor(float)|
-|Squeeze|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|Squeeze|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 |StringNormalizer|10+|T|tensor(string)|
-|Sub|7+|T|tensor(float), tensor(int32), tensor(int64), tensor(double)|
+|Sub|7+|T|tensor(double), tensor(int32), tensor(int64), tensor(float)|
 |Sum|8+|T|tensor(float)|
 | |[6, 7]|T|tensor(float)|
 |Tan|7+|T|tensor(float)|
 |Tanh|6+|T|tensor(float)|
-|TfIdfVectorizer|9+|T|tensor(int32), tensor(int64), tensor(string)|
+|TfIdfVectorizer|9+|T|tensor(string), tensor(int64), tensor(int32)|
 | ||T1|tensor(float)|
 |ThresholdedRelu|1+|T|tensor(float)|
 | |10+|T|tensor(float)|
-|Tile|6+|T|tensor(uint8), tensor(int32), tensor(uint32), tensor(bool), tensor(float), tensor(int64), unknown, tensor(uint16), tensor(double), tensor(int16), tensor(uint64)|
+|Tile|6+|T|tensor(int64), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(uint8), tensor(int32)|
 |TopK|10+|I|tensor(int64)|
 | ||T|tensor(float)|
 | |[1, 9]|I|tensor(int64)|
 | ||T|tensor(float)|
-|Transpose|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|TreeEnsembleClassifier|1+|T1|tensor(float), tensor(int32), tensor(int64), tensor(double)|
+|Transpose|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|TreeEnsembleClassifier|1+|T1|tensor(double), tensor(int32), tensor(int64), tensor(float)|
 | ||T2|tensor(int64), tensor(string)|
 |TreeEnsembleRegressor|1+|T|tensor(float)|
-|Unsqueeze|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-|Upsample|[7, 9]|T|tensor(float), tensor(int32), tensor(uint8)|
-|Where|9+|T|tensor(float), tensor(int32), tensor(string)|
+|Unsqueeze|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|Upsample|[7, 9]|T|tensor(int32), tensor(uint8), tensor(float)|
+|Where|9+|T|tensor(int32), tensor(string), tensor(float)|
 |Xor|7+|T|tensor(bool)|
 |ZipMap|1+|T|unknown|
 | |
 | |
 **Operator Domain:** *com.microsoft*
-|AttnLSTM|1+|T|tensor(float), tensor(double)|
+|AttnLSTM|1+|T|tensor(double), tensor(float)|
 | ||T1|tensor(int32)|
 |ConvTransposeWithDynamicPads|1+|T|tensor(float)|
 |CropAndResize|1+|T|tensor(float)|
 | ||T2|tensor(int32)|
-|ExpandDims|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
+|ExpandDims|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
 | ||axis|tensor(int32)|
 |FusedConv|1+|T|tensor(float)|
 |FusedGemm|1+|T|tensor(float)|
-|GatherND|1+|T|tensor(uint8), tensor(int32), tensor(int16), tensor(bool), tensor(MLFloat16), tensor(float), tensor(bfloat16), tensor(int64), tensor(string), unknown, tensor(uint16), tensor(double), tensor(uint32), tensor(uint64)|
-| ||Tind|tensor(int32), tensor(int64)|
+|GatherND|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+| ||Tind|tensor(int64), tensor(int32)|
 |MaxpoolWithMask|1+|X|tensor(float)|
-|MurmurHash3|1+|T1|tensor(int32), tensor(uint32), tensor(string)|
-| ||T2|tensor(int32), tensor(uint32)|
+|MurmurHash3|1+|T1|tensor(uint32), tensor(string), tensor(int32)|
+| ||T2|tensor(uint32), tensor(int32)|
 |Pad|1+|T|tensor(float)|
-|Range|1+|T|tensor(int32), tensor(float), tensor(int64), tensor(double), tensor(int16)|
+|Range|1+|T|tensor(int64), tensor(float), tensor(double), tensor(int16), tensor(int32)|
 |SampleOp|1+|T|tensor(float)|
 |Tokenizer|1+|T|tensor(string)|
 |Unique|1+|T|tensor(float)|
 |WordConvEmbedding|1+|T|tensor(int32)|
 | ||T1|tensor(float)|
+| |
+| |
+
+
+## Operators implemented by MKLDNNExecutionProvider
+
+| Op Name | OpSet Versions | Parameter | Types Supported |
+|---------|----------------|-----------|------------------|
+**Operator Domain:** *ai.onnx.ml*
+|AveragePool|[7, 8]|T|tensor(float)|
+|BatchNormalization|7+|T|tensor(float)|
+|Conv|1+|T|tensor(float)|
+|Gemm|7+|T|tensor(float)|
+|GlobalAveragePool|[1, 8]|T|tensor(float)|
+|GlobalMaxPool|[1, 8]|T|tensor(float)|
+|LRN|1+|T|tensor(float)|
+|MaxPool|[1, 7]|T|tensor(float)|
+| |[8, 8]|T|tensor(float)|
+|MemcpyFromHost|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|MemcpyToHost|1+|T|tensor(int64), tensor(string), tensor(uint16), tensor(float), tensor(double), tensor(uint64), unknown, tensor(int16), tensor(uint32), tensor(bool), tensor(bfloat16), tensor(MLFloat16), tensor(uint8), tensor(int32)|
+|Relu|6+|T|tensor(float)|
+|Sum|6+|T|tensor(float)|
 | |
 | |
