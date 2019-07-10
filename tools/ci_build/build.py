@@ -181,6 +181,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
     return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
 def update_submodules(source_dir):
+    run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
 def is_docker():
