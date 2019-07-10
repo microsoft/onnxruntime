@@ -186,7 +186,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
@@ -288,6 +288,22 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
                        {false, true, true, false,
                         true, true, false, true,
                         true, false, false, true});
+  test.Run();
+}
+
+TEST(GatherOpTest, Gather_negative_index) {
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<float>("data", {3, 4},
+                       {0.0f, 1.0f, 2.0f, 3.0f,
+                        4.0f, 5.0f, 6.0f, 7.0f,
+                        8.0f, 9.0f, 10.0f, 11.0f});
+  test.AddInput<int32_t>("indices", {2}, {0, -1});
+  test.AddOutput<float>("output", {3, 2},
+                        {0.0f, 3.0f,
+                         4.0f, 7.0f,
+                         8.0f, 11.0f});
+
   test.Run();
 }
 
