@@ -452,6 +452,11 @@ ONNX_NAMESPACE::ModelProto GetModelProto(const onnxruntime::GraphViewer& graph) 
   ONNX_NAMESPACE::ModelProto model_proto;
   *model_proto.mutable_graph() = graph.ToGraphProto();
   model_proto.set_ir_version(graph.IrVersion());
+  for (const auto &opset_import : graph.DomainToVersionMap()) {
+    auto *opset_import_add = model_proto.add_opset_import();
+    opset_import_add->set_domain(opset_import.first);
+    opset_import_add->set_version(opset_import.second);
+  }
   return model_proto;
 }
 
@@ -461,6 +466,11 @@ ONNX_NAMESPACE::ModelProto GetModelProto(const onnxruntime::Function& func_body)
   ONNX_NAMESPACE::ModelProto model_proto;
   *model_proto.mutable_graph() = graph_body.ToGraphProto();
   model_proto.set_ir_version(graph_body.IrVersion());
+  for (const auto &opset_import : graph_body.DomainToVersionMap()) {
+    auto *opset_import_add = model_proto.add_opset_import();
+    opset_import_add->set_domain(opset_import.first);
+    opset_import_add->set_version(opset_import.second);
+  }
   return model_proto;
 }
 
