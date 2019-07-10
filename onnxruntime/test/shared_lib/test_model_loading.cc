@@ -14,7 +14,7 @@ namespace {
 void WriteStringToTempFile(const char* test_data, std::basic_string<ORTCHAR_T>& filename) {
   int fd;
   CreateTestFile(fd, filename);
-  onnx::ModelProto mp;
+  ONNX_NAMESPACE::ModelProto mp;
   if (!google::protobuf::TextFormat::ParseFromString(test_data, &mp)) {
     throw std::runtime_error("protobuf parsing failed");
   }

@@ -400,7 +400,7 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
 }
 
 bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
-  const onnx::TensorProto* initializer = nullptr;
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   bool is_local_initializer = graph.GetInitializedTensor(initializer_name, initializer);
 
   // if we know it's an initializer we assume it's constant initially.
