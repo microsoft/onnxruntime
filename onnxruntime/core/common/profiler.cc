@@ -8,6 +8,7 @@ namespace profiling {
 using namespace std::chrono;
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
+  ORT_ENFORCE(enabled_);
   return std::chrono::high_resolution_clock::now();
 }
 
