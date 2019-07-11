@@ -887,56 +887,60 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
   test.Run();
 }
 
-//Ratio 0
-TEST(GradientCheckerTest, DISABLED_TrainableDropout1) {
-  TensorShape x_shape({2, 2, 2, 2});
-  TestDropoutOp(0.0f, x_shape, false);
-}
-//Ratio 0.2, 3D
-TEST(GradientCheckerTest, DISABLED_TrainableDropout2) {
-  TensorShape x_shape({4, 2, 2});
-  TestDropoutOp(0.2f, x_shape, false);
-}
-//Ratio 0.4, 2D
-TEST(GradientCheckerTest, DISABLED_TrainableDropout3) {
-  TensorShape x_shape({4, 4});
-  TestDropoutOp(0.4f, x_shape, false);
+TEST(GradientCheckerTest, TrainableDropout) {
+  {
+    //Ratio 0
+    TensorShape x_shape({2, 2, 2, 2});
+    TestDropoutOp(0.0f, x_shape, false);
+  }
+  //Ratio 0.2, 3D
+  {
+    TensorShape x_shape({4, 2, 2});
+    TestDropoutOp(0.2f, x_shape, false);
+  }
+  //Ratio 0.4, 2D
+  {
+    TensorShape x_shape({4, 4});
+    TestDropoutOp(0.4f, x_shape, false);
+  }
+
+  //Default ratio, 1D
+  {
+    TensorShape x_shape({16});
+    TestDropoutOp(0.2f, x_shape, true);
+  }
 }
 
-//Default ratio, 1D
-TEST(GradientCheckerTest, DISABLED_TrainableDropout4) {
-  TensorShape x_shape({16});
-  TestDropoutOp(0.2f, x_shape, true);
-}
+TEST(GradientCheckerTest, TrainableDropoutGrad) {
+  {
+    //Ratio 0
+    TensorShape x_shape({8, 2});
+    TestDropoutGradOp(0.0f, x_shape);
+  }
 
-//Ratio 0
-TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad1) {
-  TensorShape x_shape({8, 2});
-  TestDropoutGradOp(0.0f, x_shape);
-}
+  //Ratio 0.2, 1D
+  {
+    TensorShape x_shape({16});
+    TestDropoutGradOp(0.2f, x_shape, false);
+  }
 
-//Ratio 0.2, 1D
-TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad2) {
-  TensorShape x_shape({16});
-  TestDropoutGradOp(0.2f, x_shape, false);
-}
+  //Ratio 0.3, 2D
+  {
+    TensorShape x_shape({8, 2});
+    TestDropoutGradOp(0.3f, x_shape, false);
+  }
 
-//Ratio 0.3, 2D
-TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad3) {
-  TensorShape x_shape({8, 2});
-  TestDropoutGradOp(0.3f, x_shape, false);
-}
+  //Ratio 0.4, 3D
+  {
+    TensorShape x_shape({2, 4, 2});
+    TestDropoutGradOp(0.4f, x_shape, false);
+  }
 
-//Ratio 0.4, 3D
-TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad4) {
-  TensorShape x_shape({2, 4, 2});
-  TestDropoutGradOp(0.4f, x_shape, false);
-}
-
-//default Ratio, 4D
-TEST(GradientCheckerTest, DISABLED_TrainableDropoutGrad5) {
-  TensorShape x_shape({2, 4, 2});
-  TestDropoutGradOp(0.6f, x_shape);
+  //default Ratio, 4D
+  {
+    TensorShape x_shape({2, 4, 2});
+    TestDropoutGradOp(0.6f, x_shape);
+  }
 }
 
 TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {

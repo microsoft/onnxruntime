@@ -497,23 +497,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
-  // TODO: Add is_test to TrainableDropout Op Schema
-  bool is_test = false;
-  if (is_test) {
-    return std::vector<NodeDef>{
-        NodeDef("TrainableDropoutGrad",
-                {GO(0)},
-                {GI(0)})};
-  } else {
-    std::vector<NodeDef> result;
-    auto mask = O(1);
-
-    result.push_back(
-        NodeDef("TrainableDropoutGrad",
-                {GO(0), O(1), I(1)},
-                {GI(0)}));
-    return result;
-  };
+  return std::vector<NodeDef>{
+    NodeDef("TrainableDropoutGrad", 
+    {GO(0), O(1), I(1)},
+    {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {

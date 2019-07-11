@@ -25,7 +25,7 @@ const static string SGD_LEARNING_RATE_STRING = "learning_rate";
 static SessionOptions SESSION_OPTION = {
     true,                              //enable_sequential_execution
     false,                             //enable_profiling
-    false,                              //enable_mem_pattern
+    false,                             //enable_mem_pattern
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
@@ -129,6 +129,9 @@ Status TrainingRunner::TrainingLoop() {
   vector<string> feed_names = training_data_.TensorNames();
 
   double total_time{0};
+
+  //Set the first N batchs as warm-up iterations
+  size_t warm_up_iters = 10;
   for (size_t epoch = 0; epoch < params_.num_of_epoch_; ++epoch) {
     // Shuffle the data for each epoch
     training_data_.RandomShuffle();
@@ -146,9 +149,12 @@ Status TrainingRunner::TrainingLoop() {
                                        feeds,
                                        training_output_names,
                                        &gradient_fetches));
-      end = std::chrono::high_resolution_clock::now();
-      duration_seconds = end - start;
-      total_time += duration_seconds.count();
+      //Start counting after warm-up iterations
+      if (batch >= warm_up_iters || epoch > 0) {
+        end = std::chrono::high_resolution_clock::now();
+        duration_seconds = end - start;
+        total_time += duration_seconds.count();
+      }
 
       NameMLValMap grad;
       for (size_t i = 0; i < training_output_names.size(); i++) {
@@ -176,7 +182,7 @@ Status TrainingRunner::TrainingLoop() {
       ORT_RETURN_IF_ERROR(Evaluate(session_));
     }
   }
-  auto total_iterations = params_.num_of_epoch_ * training_data_.TotalBatch(params_.batch_size_);
+  auto total_iterations = params_.num_of_epoch_ * training_data_.TotalBatch(params_.batch_size_) - warm_up_iters;
   std::cout << "Total running time:" << total_time << " seconds" << std::endl
             << "Average running time per iteration:" << total_time / total_iterations * 1000 << " ms" << std::endl
             << "Throughput: " << params_.batch_size_ * total_iterations / total_time << " Examples / second" << std::endl;

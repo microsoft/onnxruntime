@@ -497,12 +497,16 @@ and op)DOC";
                   bottom_border = border[3];
 
           if (H < top_border + bottom_border)
-            fail_shape_inference("Input's height (", H, ") needs to be greater than or equal to "
-                                 "the top_border (", top_border, ") + bottom_border (", bottom_border, ")");
+            fail_shape_inference("Input's height (", H,
+                                 ") needs to be greater than or equal to "
+                                 "the top_border (",
+                                 top_border, ") + bottom_border (", bottom_border, ")");
 
           if (W < left_border + right_border)
-            fail_shape_inference("Input's width (", W, ") needs to be greater than or equal to "
-                                 "the left_border (", left_border, ") + right_border (", right_border, ")");
+            fail_shape_inference("Input's width (", W,
+                                 ") needs to be greater than or equal to "
+                                 "the left_border (",
+                                 left_border, ") + right_border (", right_border, ")");
 
           int64_t bottom_limit = H - bottom_border;
           int64_t right_limit = W - right_border;
@@ -1454,7 +1458,8 @@ Example 4:
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .Input(0, "logits", "Unscaled log probabilities, (N+1)-D input of shape (-1, num_classes).", "T")
-      .Input(1, "label", "label is N-D input whose shape should match that of logits. "
+      .Input(1, "label",
+             "label is N-D input whose shape should match that of logits. "
              "It is a tensor of nonnegative integers, "
              "where each element is the nonnegative integer label for the element of the batch.",
              "Tind")
@@ -1473,7 +1478,8 @@ Example 4:
       .SinceVersion(9)
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "logits", "Unscaled log probabilities, (N+1)-D input of shape (batch_size).", "T")
-      .Input(2, "label", "label is N-D input whose shape should match that of logits. "
+      .Input(2, "label",
+             "label is N-D input whose shape should match that of logits. "
              "It is a tensor of nonnegative integers, "
              "where each element is the nonnegative integer label for the element of the batch.",
              "Tind")
@@ -1500,16 +1506,20 @@ Example 4:
              "or if it was set to 0, the output would be a simple copy of the input. "
              "If it's non-zero, output will be a random dropout of input, which is typically "
              "the case during training.",
-             "T",
+             "T1",
              OpSchema::Optional)
       .Output(0, "output", "The output.", "T")
-      .Output(1, "mask", "The output mask.", "T1", OpSchema::Optional)
+      .Output(1, "mask", "The output mask.", "T2", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
+          {"tensor(float)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
           {"tensor(bool)"},
           "Constrain output 'mask' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1529,13 +1539,13 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "dy", "The gradient tensor from output.", "T")
       .Input(1, "mask",
-             "The mask tensor of the dropout. ", "T1")
+             "The mask tensor of the dropout. ", "T2")
       .Input(2, "ratio",
              "The ratio of random dropout, with value in [0, 1]. If this input was not set, "
              "or if it was set to 0, the output would be a simple copy of the input. "
              "If it's non-zero, output will be a random dropout of input, which is typically "
              "the case during training.",
-             "T",
+             "T1",
              OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
@@ -1544,6 +1554,10 @@ Example 4:
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "T1",
+          {"tensor(float)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
           {"tensor(bool)"},
           "Constrain 'mask' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

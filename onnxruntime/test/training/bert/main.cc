@@ -113,6 +113,7 @@ void setup_training_params(const TrainingConfig& config, TrainingRunner::Paramet
       "position_01",           // Slice's dat input
       "op_min_ends_expand_10"  //op_min_ends_expand_10
   };
+
   params.immutable_weigths_ = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},

@@ -7,51 +7,50 @@
 
 namespace onnxruntime {
 namespace cuda {
+DropoutBase::CudnnDropoutState::CudnnDropoutState(cudnnHandle_t handle) : ratio_(0.0f) {
+  CUDNN_CALL_THROW(cudnnCreateDropoutDescriptor(&dropout_desc));
+  CUDNN_CALL_THROW(cudnnCreateTensorDescriptor(&dropout_in_out_desc));
+  CUDNN_CALL_THROW(cudnnDropoutGetStatesSize(handle, &dropout_state_size));
+  //Allocate memory for states and reserve space
+  CUDA_CALL_THROW(cudaMalloc(&states, dropout_state_size));
+}
 
-Status CudnnDropoutState::Set(cudnnHandle_t handle, const TensorShape& shape, cudnnDataType_t type, float ratio) {
-  if (!dropout_desc) {
-    CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc));
-  }
-  if (!dropout_in_out_desc) {
-    CUDNN_RETURN_IF_ERROR(cudnnCreateTensorDescriptor(&dropout_in_out_desc));
-  }
-
+Status DropoutBase::CudnnDropoutState::Set(cudnnHandle_t handle, const TensorShape& shape, cudnnDataType_t type, float ratio) {
   CUDNN_RETURN_IF_ERROR(cudnnSetTensor4dDescriptor(dropout_in_out_desc,
                                                    CUDNN_TENSOR_NCHW,  //TODO: is this always true?
                                                    type,
                                                    static_cast<int>(shape.Size()), 1, 1, 1));
-
-  CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(handle, &dropout_state_size));
   CUDNN_RETURN_IF_ERROR(cudnnDropoutGetReserveSpaceSize(dropout_in_out_desc, &dropout_reserve_size));
 
-  //Allocate memory for states and reserve space
-  CUDA_RETURN_IF_ERROR(cudaMalloc(&states, dropout_state_size));
-
-  //TODO: How is the seed in schema applied here
-  {
-    std::lock_guard<OrtMutex> lock(mutex);
-    CUDNN_RETURN_IF_ERROR(cudnnSetDropoutDescriptor(dropout_desc, handle, ratio, states, dropout_state_size, /*seed*/ 0));
+  if (ratio != ratio_) {
+    ratio_ = ratio;
+    {
+      std::lock_guard<OrtMutex> lock(mutex);
+      //TODO: How is the seed in schema applied here
+      CUDNN_RETURN_IF_ERROR(cudnnSetDropoutDescriptor(dropout_desc, handle, ratio, states, dropout_state_size, /*seed*/ 0));
+    }
   }
   return Status::OK();
 }
 
-Status CudnnDropoutState::Release() {
-  CUDNN_RETURN_IF_ERROR(cudnnDestroyTensorDescriptor(dropout_in_out_desc));
-  CUDNN_RETURN_IF_ERROR(cudnnDestroyDropoutDescriptor(dropout_desc));
-  CUDA_RETURN_IF_ERROR(cudaFree(states));
-  return Status::OK();
+DropoutBase::CudnnDropoutState::~CudnnDropoutState() {
+  CUDNN_CALL_THROW(cudnnDestroyTensorDescriptor(dropout_in_out_desc));
+  CUDNN_CALL_THROW(cudnnDestroyDropoutDescriptor(dropout_desc));
+  CUDA_CALL_THROW(cudaFree(states));
 }
 
-#define REGISTER_KERNEL_TYPED(T)                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
-      TrainableDropout,                                          \
-      kOnnxDomain,                                               \
-      9,                                                         \
-      T,                                                         \
-      kCudaExecutionProvider,                                    \
-      KernelDefBuilder()                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),               \
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      TrainableDropout,                                               \
+      kOnnxDomain,                                                    \
+      9,                                                              \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
+          .InputMemoryType<OrtMemTypeCPUInput>(1),                    \
       TrainableDropout<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -76,16 +75,11 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   auto mask = context->Output(1, shape);
   auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
 
-  // TODO(zuowei): fix dropout impl
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->Size()));
-
-/*
   //Get the ratio_data
   float ratio_data = default_ratio_;
-  auto ratio = context->MutableInput<Tensor>(1);
+  auto ratio = context->Input<Tensor>(1);
   if (ratio) {
-    ratio_data = *reinterpret_cast<float*>(ratio->template MutableData<T>());
+    ratio_data = *(ratio->template Data<float>());
     ORT_ENFORCE(ratio_data >= 0 && ratio_data < 1);
   }
   bool is_test = (ratio_data == 0);
@@ -94,9 +88,11 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
     }
   } else {
-    s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
+    auto status = s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
+    if(status != Status::OK()){
+      return status;
+    }
     //Start computing
-
     //TODO: Should it be mutex guarded? Pytorch doesn't, is it correct?
     CUDNN_RETURN_IF_ERROR(cudnnDropoutForward(
         CudnnHandle(),
@@ -107,23 +103,22 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
         Y_data,
         mask_data,
         s_.dropout_reserve_size));
-
-    s_.Release();
   }
-  */
   return Status::OK();
 }
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
-      TrainableDropoutGrad,                                      \
-      kOnnxDomain,                                               \
-      9,                                                         \
-      T,                                                         \
-      kCudaExecutionProvider,                                    \
-      KernelDefBuilder()                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
-          .InputMemoryType<OrtMemTypeCPUInput>(2),               \
+#define REGISTER_GRADIENT_KERNEL_TYPED(T)                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      TrainableDropoutGrad,                                           \
+      kOnnxDomain,                                                    \
+      9,                                                              \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())  \
+          .InputMemoryType<OrtMemTypeCPUInput>(2),                    \
       TrainableDropoutGrad<T>);
 
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
@@ -134,43 +129,48 @@ template <typename T>
 Status TrainableDropoutGrad<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  const Tensor* dY = context->Input<Tensor>(0);
-  auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
+  auto dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
+  auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
 
-  Tensor* dX = context->Output(0, shape);
+  auto mask = context->MutableInput<Tensor>(1);
+
+  auto dX = context->Output(0, shape);
   auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
 
-  // TODO(zuowei): fix dropout impl
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dY->Size(), cudaMemcpyDeviceToDevice));
-
-/*
-  Tensor* mask = context->MutableInput<Tensor>(1);
-  auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
-
-  auto* ratio = context->MutableInput<Tensor>(2);
+  auto ratio = context->Input<Tensor>(2);
   float ratio_data = default_ratio_;
+
   if (ratio) {
-    ratio_data = *reinterpret_cast<float*>(ratio->template MutableData<T>());
+    ratio_data = *(ratio->template Data<float>());
     ORT_ENFORCE(ratio_data >= 0 && ratio_data < 1);
   }
 
-  s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
+  bool is_test = (ratio_data == 0);
+  if (is_test) {
+    if (dX_data != dY_data) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dX_data, dY_data, dX->Size(), cudaMemcpyDeviceToDevice));
+    }
+  } else {
+    auto status = s_.Set(CudnnHandle(), shape, CudnnTensor::GetDataType<CudaT>(), ratio_data);
+    if(status != Status::OK()){
+      return status;
+    }
 
-  //Start computing
+    //Start computing
+    auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
 
-  //TODO: Should it be mutex guarded? Pytorch doesn't, is it correct?
-  CUDNN_RETURN_IF_ERROR(cudnnDropoutBackward(
-      CudnnHandle(),
-      s_.dropout_desc,
-      s_.dropout_in_out_desc,
-      dY_data,
-      s_.dropout_in_out_desc,
-      dX_data,
-      mask_data,
-      s_.dropout_reserve_size));
-  s_.Release();
-  */
+    //TODO: Should it be mutex guarded? Pytorch doesn't, is it correct?
+    CUDNN_RETURN_IF_ERROR(cudnnDropoutBackward(
+        CudnnHandle(),
+        s_.dropout_desc,
+        s_.dropout_in_out_desc,
+        dY_data,
+        s_.dropout_in_out_desc,
+        dX_data,
+        mask_data,
+        s_.dropout_reserve_size));
+  }
   return Status::OK();
 }
 }  // namespace cuda

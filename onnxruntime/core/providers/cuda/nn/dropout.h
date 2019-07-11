@@ -11,24 +11,33 @@
 namespace onnxruntime {
 namespace cuda {
 
-struct CudnnDropoutState {
-  cudnnDropoutDescriptor_t dropout_desc = nullptr;
-  cudnnTensorDescriptor_t dropout_in_out_desc = nullptr;
-  size_t dropout_state_size;
-  size_t dropout_reserve_size;
-  void* states;
-  void* dropout_reserve_space;
+class DropoutBase : public CudaKernel {
+ protected:
+  struct CudnnDropoutState {
+    explicit CudnnDropoutState(cudnnHandle_t handle);
+    cudnnDropoutDescriptor_t dropout_desc;
+    cudnnTensorDescriptor_t dropout_in_out_desc;
+    size_t dropout_state_size;
+    size_t dropout_reserve_size;
+    void* states;
+    void* dropout_reserve_space;
+    OrtMutex mutex;
+    float ratio_;
+    Status Set(cudnnHandle_t handle, const TensorShape& shape, cudnnDataType_t type, float ratio);
+    ~CudnnDropoutState();
+  };
 
-  OrtMutex mutex;
-
-  Status Set(cudnnHandle_t handle, const TensorShape& shape, cudnnDataType_t type, float ratio);
-  Status Release();
+  DropoutBase(const OpKernelInfo& info) : CudaKernel{info}, s_(CudnnHandle()), default_ratio_(0.5) {}
+  ~DropoutBase() = default;
+  //TODO: We need to change this. The kernel should be stateless, which means we should not have mutable field.
+  mutable CudnnDropoutState s_;
+  const float default_ratio_;
 };
 
 template <typename T>
-class TrainableDropout final : public CudaKernel {
+class TrainableDropout final : public DropoutBase {
  public:
-  TrainableDropout(const OpKernelInfo& info) : CudaKernel{info} {
+  TrainableDropout(const OpKernelInfo& info) : DropoutBase{info} {
     info.GetAttrOrDefault("seed", &seed_, static_cast<float>(0.5));
   }
 
@@ -36,23 +45,15 @@ class TrainableDropout final : public CudaKernel {
 
  private:
   float seed_;
-  mutable CudnnDropoutState s_;
-  const float default_ratio_ = 0.5f;
 };
 
 template <typename T>
-class TrainableDropoutGrad final : public CudaKernel {
+class TrainableDropoutGrad final : public DropoutBase {
  public:
-  TrainableDropoutGrad(const OpKernelInfo& info) : CudaKernel{info} {
-    info.GetAttrOrDefault("seed", &seed_, static_cast<float>(0.5));
+  TrainableDropoutGrad(const OpKernelInfo& info) : DropoutBase{info} {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  float seed_;
-  mutable CudnnDropoutState s_;
-  const float default_ratio_ = 0.5f;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
