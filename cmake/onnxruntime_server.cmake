@@ -24,6 +24,11 @@ include(get_boost.cmake)
 set(re2_src ${REPO_ROOT}/cmake/external/re2)
 set(SPDLOG_BUILD_EXAMPLES OFF)
 add_subdirectory(${REPO_ROOT}/cmake/external/spdlog)
+# Prevent GTest/Gmock conflicts
+set(ENABLE_TESTING OFF)
+set(ENABLE_PUSH OFF)
+set(ENABLE_PULL OFF)
+add_subdirectory(${REPO_ROOT}/cmake/external/prometheus-cpp)
 
 # Setup source code
 set(onnxruntime_server_lib_srcs
@@ -64,9 +69,11 @@ target_include_directories(onnxruntime_server_http_core_lib
   ${Boost_INCLUDE_DIR}
   ${re2_src}
 )
+
 add_dependencies(onnxruntime_server_http_core_lib Boost)
 target_link_libraries(onnxruntime_server_http_core_lib PRIVATE
   ${Boost_LIBRARIES}
+  prometheus-cpp::core
 )
 
 # Server library
@@ -91,6 +98,7 @@ target_link_libraries(onnxruntime_server_lib PRIVATE
   protobuf::libprotobuf
   ${onnxruntime_EXTERNAL_DEPENDENCIES}
   spdlog::spdlog
+  prometheus-cpp::core
   onnxruntime
 )
 

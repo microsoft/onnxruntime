@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "session.h"
+#include "metric_registry.h"
+
+#include <prometheus/text_serializer.h>
 
 namespace onnxruntime {
 namespace server {
@@ -95,10 +98,21 @@ template <typename Body, typename Allocator>
 void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator> >&& req) {
   HttpContext context{};
   context.request = std::move(req);
+  // Log the requests path to save double handling and monitor
+  const auto path = std::string(context.request.target().to_string());
+  // Record how many total requests have been processed by this server
+  // this can be used to get QPS metrics
+  MetricRegistry::get().totalRequests->Add(
+      {{"component", "http"}, {"path", path}}).Increment();
 
   // Special handle the liveness probe endpoint for orchestration systems like Kubernetes.
-  if (context.request.method() == http::verb::get && context.request.target().to_string() == "/") {
+  if (context.request.method() == http::verb::get && path == "/") {
     context.response.body() = "Healthy";
+  } else if (context.request.method() == http::verb::get && path == "/metrics") {
+    const auto metricData = prometheus::TextSerializer().Serialize(
+        MetricRegistry::get().registry.Collect());
+    
+    context.response.body() = metricData;
   } else {
     auto status = ExecuteUserFunction(context);
 
@@ -130,12 +144,14 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
   auto status = routes_.ParseUrl(context.request.method(), path, model_name, model_version, action, func);
 
   if (status != http::status::ok) {
+    MetricRegistry::get().totalErrors->Add(
+      {{"path", path}, {"errorCode", std::to_string(static_cast<unsigned>(status))}}).Increment();
     context.error_code = status;
     context.error_message = std::string(http::obsolete_reason(status)) +
                             ". For HTTP method: " +
                             std::string(http::to_string(context.request.method())) +
                             " and request path: " +
-                            context.request.target().to_string();
+                            path;
     return status;
   }
 

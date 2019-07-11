@@ -38,3 +38,6 @@
 [submodule "cmake/external/spdlog"]
 	path = cmake/external/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "cmake/external/prometheus-cpp"]
+	path = cmake/external/prometheus-cpp
+	url = https://github.com/jupp0r/prometheus-cpp.git
