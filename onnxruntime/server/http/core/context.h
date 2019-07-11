@@ -3,8 +3,6 @@
 
 #pragma once
 
-
-
 #include <string>
 
 #include <boost/beast/http.hpp>

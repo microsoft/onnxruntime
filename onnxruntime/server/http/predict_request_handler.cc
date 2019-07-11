@@ -14,18 +14,18 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-#define GenerateErrorResponse(logger, error_code, message, context)                     \
-  {                                                                                     \
-    auto http_error_code = (error_code);                                                       \
+#define GenerateErrorResponse(logger, error_code, message, context)                              \
+  {                                                                                              \
+    auto http_error_code = (error_code);                                                         \
     (context).response.insert(util::MS_REQUEST_ID_HEADER, ((context).request_id));               \
-    if (!(context).client_request_id.empty()) {                                                \
+    if (!(context).client_request_id.empty()) {                                                  \
       (context).response.insert(util::MS_CLIENT_REQUEST_ID_HEADER, (context).client_request_id); \
-    }                                                                                          \
-    auto json_error_message = CreateJsonError(http_error_code, (message));                     \
-    logger->debug(json_error_message);                                                  \
-    (context).response.result(http_error_code);                                         \
-    (context).response.body() = json_error_message;                                     \
-    (context).response.set(http::field::content_type, "application/json");              \
+    }                                                                                            \
+    auto json_error_message = CreateJsonError(http_error_code, (message));                       \
+    logger->debug(json_error_message);                                                           \
+    (context).response.result(http_error_code);                                                  \
+    (context).response.body() = json_error_message;                                              \
+    (context).response.set(http::field::content_type, "application/json");                       \
   }
 
 static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type,

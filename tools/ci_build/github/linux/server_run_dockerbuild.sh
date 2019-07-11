@@ -28,8 +28,10 @@ EXIT_CODE=1
 PYTHON_VER=${PYTHON_VER:=3.5}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
+IMAGE=ubuntu16.04
+
 cd $SCRIPT_DIR/docker
-docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_server .
+docker build -t "onnxruntime-server-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_server .
 
 
 set +e
@@ -49,7 +51,7 @@ if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ]; then
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
         -e NIGHTLY_BUILD \
-        "onnxruntime-$IMAGE" \
+        "onnxruntime-server-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/server_run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
 else
@@ -62,7 +64,7 @@ else
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
         -e NIGHTLY_BUILD \
-        "onnxruntime-$IMAGE" \
+        "onnxruntime-server-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/server_run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
 fi

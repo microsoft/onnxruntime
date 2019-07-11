@@ -9,7 +9,7 @@ class GRPCApp {
  public:
   GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env, std::string host, const unsigned short port);
   ~GRPCApp() = default;
-  GRPCApp(const GRPCApp & other) = delete;
+  GRPCApp(const GRPCApp& other) = delete;
   GRPCApp(GRPCApp&& other) = default;
 
   //Block until the server shuts down.
