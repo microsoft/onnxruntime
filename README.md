@@ -26,6 +26,7 @@
 * [Extensibility Options](#extensibility-options)
 
 **[Contributions and Feedback](#contribute)**
+
 **[License](#license)**
 ***
 ## Key Features
@@ -72,7 +73,7 @@ Additional dockerfiles for some features can be found [here](https://github.com/
 * [Python](https://aka.ms/onnxruntime-python)
 * [C](docs/C_API.md)
 * [C#](docs/CSharp_API.md)
-* [C++](onnxruntime/core/session/inference_session.h)
+* [C++](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h)
 
 ### Official Builds
 | | CPU (MLAS+Eigen) | CPU (MKL-ML) | GPU (CUDA)
@@ -118,23 +119,28 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 ### Python
 * [Basic Inferencing Sample](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
 * [Inferencing (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
+* [Inferencing samples](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 * [Train, Convert, and Inference a SKL pipeline](https://microsoft.github.io/onnxruntime/auto_examples/plot_train_convert_predict.html#sphx-glr-auto-examples-plot-train-convert-predict-py)
 * [Convert and Inference a Keras model](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
+* [ONNX Runtime Server: SSD Single Shot MultiBox Detector](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb)
 * [Running ONNX model tests](https://github.com/microsoft/onnxruntime/blob/master/docs/Model_Test.md)
+
 
 **Deployment with AzureML**
 * Inferencing: [Inferencing Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb), [Inferencing MNIST Handwritten Digits](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb), [ Resnet50 Image Classification](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb), [TinyYolo](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-convert-aml-deploy-tinyyolo.ipynb)
 * [Train and Inference MNIST from Pytorch](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-train-pytorch-aml-deploy-mnist.ipynb)
 * [FER+ on Azure Kubernetes Service with TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
 
+
 ### C#
 * [Inferencing Tutorial](https://github.com/microsoft/onnxruntime/blob/master/docs/CSharp_API.md#getting-started)
 
-### C
-* [Inferencing (SqueezeNet)](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 
-### C++
-* [Inferencing (SqueezeNet)](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
+### C/C++
+* [Basic Inferencing (SqueezeNet) - C](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [Basic Inferencing (SqueezeNet) - C++](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
+* [Inferencing (MNIST) - C++](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx/MNIST)
+
 
 # Technical Design Details
 * [High level architectural design](docs/HighLevelDesign.md)
