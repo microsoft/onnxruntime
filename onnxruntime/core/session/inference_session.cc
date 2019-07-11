@@ -512,8 +512,8 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR(graph.Resolve());
 
     ORT_RETURN_IF_ERROR(session_initializer.CreatePlan(nullptr,
-                                                       nullptr, 
-                                                       session_options_.enable_sequential_execution, 
+                                                       nullptr,
+                                                       session_options_.enable_sequential_execution,
                                                        session_options_.only_execute_path_to_fetches));
     ORT_RETURN_IF_ERROR(session_initializer.InitializeAndSave(nullptr));
 
@@ -521,6 +521,7 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
 
     session_state_.CalculateNodeIndexInfo();
+    session_state_.ResolveMemoryPatternFlag();
 
     is_inited_ = true;
 

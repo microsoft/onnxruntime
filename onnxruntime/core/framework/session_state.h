@@ -136,6 +136,8 @@ class SessionState {
   */
   bool GetEnableMemoryPattern() const;
 
+  void ResolveMemoryPatternFlag();
+
   struct NodeInfo {
     /**
      *
@@ -193,6 +195,8 @@ class SessionState {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
+  Status GeneratePatternGroupCache(const std::vector<TensorShape>& input_shape, MemoryPatternGroup* output) const;
+
   // cache of the constructed kernels to avoid spending construction
   // time per executor
   std::unordered_map<NodeIndex, std::unique_ptr<OpKernel>> session_kernels_;
@@ -213,7 +217,7 @@ class SessionState {
   profiling::Profiler* profiler_ = nullptr;
 
   // switch for enable memory pattern optimization or not.
-  const bool enable_mem_pattern_;
+  bool enable_mem_pattern_;
   // lock for the mem_patterns_
   mutable OrtMutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.

@@ -25,7 +25,7 @@ const static string SGD_LEARNING_RATE_STRING = "learning_rate";
 static SessionOptions SESSION_OPTION = {
     true,                              //enable_sequential_execution
     false,                             //enable_profiling
-    false,                             //enable_mem_pattern
+    true,                              //enable_mem_pattern
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid

@@ -9,6 +9,8 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/utils.h"
+#include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/allocator.h"
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -93,13 +95,118 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes
   return key;
 }
 
+namespace {
+Status ResolveDimParams(const GraphViewer& graph, const std::vector<TensorShape>& input_shapes, std::unordered_map<std::string, int64_t>& out) {
+  for (size_t i = 0; i < graph.GetInputs().size(); ++i) {
+    auto* input = graph.GetInputs()[i];
+    auto* shape = input->Shape();
+    if (!shape || shape->dim_size() != static_cast<int>(input_shapes[i].NumDimensions()))
+      return Status(ONNXRUNTIME, FAIL);
+    for (int j = 0; j < shape->dim_size(); ++j) {
+      if (shape->dim()[j].has_dim_param()) {
+        out.insert({shape->dim()[j].dim_param(), input_shapes[i].GetDims()[j]});
+      }
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
+Status SessionState::GeneratePatternGroupCache(const std::vector<TensorShape>& input_shape, MemoryPatternGroup* output) const {
+  std::unordered_map<std::string, int64_t> map;
+  ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, input_shape, map));
+  auto* exe_plan = GetExecutionPlan();
+  ORT_ENFORCE(exe_plan);
+  OrtValuePatternPlanner mem_planner(*exe_plan);
+  auto& node_index_info = GetNodeIndexInfo();
+  for (auto& node_plan : exe_plan->execution_plan) {
+    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
+    auto* node = graph_viewer_->GetNode(node_plan.node_index);
+    int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
+    //allocate output
+    for (int i = 0; i < static_cast<int>(node->OutputDefs().size()); ++i) {
+      int ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
+        continue;
+      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+      if (!ml_type->IsTensorType())
+        continue;
+      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+      if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+          ml_data_type != DataTypeImpl::GetType<std::string>()) {
+        //calculate size
+        auto* arg = node->OutputDefs()[i];
+        if (!arg->Shape())
+          continue;
+        size_t size = 0;
+        int64_t len = 1;
+        for (auto& dim : arg->Shape()->dim()) {
+          if (dim.has_dim_param()) {
+            auto it = map.find(dim.dim_param());
+            if (it == map.end()) {
+              return Status(ONNXRUNTIME, FAIL, "Unknow shape found in memory pattern compute");
+            }
+            len *= it->second;
+          } else {
+            len *= dim.dim_value();
+          }
+        }
+        if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
+          return Status(ONNXRUNTIME, FAIL, "Size overflow");
+        }
+        mem_planner.TraceAllocation(ml_value_idx, size);
+      }
+    }
+    //release nodes
+    for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
+      auto ml_value_idx = exe_plan->to_be_freed[index];
+      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+      if (!ml_type->IsTensorType())
+        continue;
+      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+        mem_planner.TraceFree(ml_value_idx);
+      }
+    }
+  }
+
+  if (!mem_planner.GeneratePatterns(output).IsOK()) {
+    return Status(ONNXRUNTIME, FAIL, "Generate Memory Pattern failed");
+  }
+  return Status::OK();
+}
+
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const {
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
   auto it = mem_patterns_.find(key);
-  if (it == mem_patterns_.end()) return nullptr;
+  if (it == mem_patterns_.end()) {
+#ifdef ENABLE_TRAINING
+    auto mem_patterns = std::make_unique<MemoryPatternGroup>();
+    if (GeneratePatternGroupCache(input_shapes, mem_patterns.get()).IsOK()) {
+      key = CalculateMemoryPatternsKey(input_shapes);
+      auto ptr = mem_patterns.get();
+      mem_patterns_[key] = std::move(mem_patterns);
+      return ptr;
+    }
+    return nullptr;
+#else
+    return nullptr;
+#endif
+  }
 
   return it->second.get();
+}
+
+void SessionState::ResolveMemoryPatternFlag() {
+  if (enable_mem_pattern_) {
+    for (auto* input : graph_viewer_->GetInputs()) {
+      if (!input->Shape()) {
+        enable_mem_pattern_ = false;
+        break;
+      }
+    }
+  }
 }
 
 Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
