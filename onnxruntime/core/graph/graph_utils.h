@@ -51,9 +51,10 @@ const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, co
                                                           bool check_outer_scope = true);
 
 /** Find the initializer called 'original_name' in 'graph', or its ancestors if check_outer_scope is true, 
-    and replace wtih 'initializer' in the correct graph.
-    Returns true if initializer was replaced. */
-bool ReplaceInitializer(Graph& graph, const std::string& original_name, ONNX_NAMESPACE::TensorProto& initializer,
+    and replace with 'initializer' in the current graph. 
+    Does NOT look in any subgraphs. Requires original_name to match an initializer.
+    */
+void ReplaceInitializer(Graph& graph, const std::string& original_name, const ONNX_NAMESPACE::TensorProto& initializer,
                         bool check_outer_scope = true);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
@@ -84,9 +85,6 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   }
   return false;
 }
-
-Status ForAllMutableSubgraphs(Graph& main_graph, std::function<Status(Graph&)> func);
-Status ForAllSubgraphs(const Graph& main_graph, std::function<Status(const Graph&)> func);
 
 /** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
     We support the removal of the Node as long as the following conditions hold:
