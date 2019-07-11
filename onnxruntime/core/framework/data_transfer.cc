@@ -16,6 +16,12 @@ bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
 common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
+  if (src_data == dst_data) {
+    // no need copying as both pointers are referring to same piece of memory.
+    return Status::OK();
+  }
+  // Copying only happens between two same size tensors.
+  ORT_ENFORCE(src.Size() == dst.Size());
   memcpy(dst_data, src_data, src.Size());
   return Status::OK();
 }
