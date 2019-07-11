@@ -464,7 +464,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
   return true;
 }
 
-NodeArg& AddReplacementInitializer(Graph& graph, ONNX_NAMESPACE::TensorProto& new_initializer) {
+NodeArg& AddReplacementInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
   ORT_ENFORCE(!graph.GetInitializedTensor(new_initializer.name(), existing),
