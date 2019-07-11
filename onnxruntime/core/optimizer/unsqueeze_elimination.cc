@@ -66,7 +66,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     }
   }
 
-  auto& new_node_arg = graph_utils::AddReplacementInitializer(graph, new_tensor_proto);
+  auto& new_node_arg = graph_utils::AddConstantInitializer(graph, new_tensor_proto);
 
   // Remove Unsqueeze node and update the downstream nodes to use the new NodeArg
   graph_utils::RemoveNodeAndUpdateEdges(graph, node, &new_node_arg);

@@ -40,7 +40,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   shape_initializer_proto.set_raw_data(input_dims.data(),
                                        input_dims.size() * sizeof(decltype(input_dims)::value_type));
 
-  auto& new_node_arg = graph_utils::AddReplacementInitializer(graph, shape_initializer_proto);
+  auto& new_node_arg = graph_utils::AddConstantInitializer(graph, shape_initializer_proto);
 
   if (graph_utils::RemoveNodeAndUpdateEdges(graph, node, &new_node_arg)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;

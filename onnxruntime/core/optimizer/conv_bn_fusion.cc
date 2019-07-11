@@ -119,8 +119,8 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   new_conv_W_tensor_proto.set_name(new_W_name);
   new_conv_B_tensor_proto.set_name(new_B_name);
 
-  conv_node.MutableInputDefs()[1] = &graph_utils::AddReplacementInitializer(graph, new_conv_W_tensor_proto);
-  auto& new_conv_B_node_arg = graph_utils::AddReplacementInitializer(graph, new_conv_B_tensor_proto);
+  conv_node.MutableInputDefs()[1] = &graph_utils::AddConstantInitializer(graph, new_conv_W_tensor_proto);
+  auto& new_conv_B_node_arg = graph_utils::AddConstantInitializer(graph, new_conv_B_tensor_proto);
 
   if (conv_inputs.size() == 3) {
     conv_node.MutableInputDefs()[2] = &new_conv_B_node_arg;

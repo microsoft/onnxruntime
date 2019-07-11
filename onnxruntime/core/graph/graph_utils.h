@@ -50,8 +50,10 @@ cannot be overridden at runtime. If the initializer is not found or is not const
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
                                                           bool check_outer_scope = true);
 
-/** Add a new initializer that will replace an existing one, and return a NodeArg for the new initializer. */
-NodeArg& AddReplacementInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+/** Add a new constant initializer to 'graph'. Checks that new_initializer does not already exist in 'graph'. 
+@returns The NodeArg for the new initializer. 
+*/
+NodeArg& AddConstantInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
@@ -112,10 +114,10 @@ bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_out
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
 /** Finalize the fusion of two nodes.
-If replacement_node is nullptr 
-  outputs and edges from second_node are moved to first_node. second_node is deleted.
-If replacement_node is provided 
-  the outputs and edges from second_node are moved to replacement_node. both first_node and second_node are deleted.
+    If replacement_node is nullptr:
+      outputs and edges from second_node are moved to first_node. second_node is deleted.
+    If replacement_node is provided: 
+      the outputs and edges from second_node are moved to replacement_node. both first_node and second_node are deleted.
 */
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node = nullptr);
 
