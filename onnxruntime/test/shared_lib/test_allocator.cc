@@ -10,7 +10,7 @@ using namespace onnxruntime;
 
 TEST_F(CApiTest, allocation_info) {
   OrtAllocatorInfo *info1, *info2;
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtArenaAllocator, 0, OrtMemTypeDefault, &info1));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
   ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
   int result;
   ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
