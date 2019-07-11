@@ -8,6 +8,7 @@
 #include "core/training/training_session.h"
 #include "test/training/runner/training_util.h"
 #include "core/graph/training/in_graph_training_optimizer.h"
+#include "test/training/runner/data_loader.h"
 
 namespace onnxruntime {
 namespace training {
@@ -53,6 +54,9 @@ class TrainingRunner {
 
     TrainingSession::ImmutableWeights immutable_weigths_;
 
+    MapStringToString input_name_map_;
+
+    bool shuffle_data_;
     size_t batch_size_;
     size_t num_of_epoch_;
 
@@ -69,19 +73,27 @@ class TrainingRunner {
     // post_evaluation_callback_ is called when a batch of evaluation is done.
     std::function<void(size_t /*num_of_test_sample_run*/)> post_evaluation_callback_;
 
-#ifdef USE_CUDA
     // Use CUDA providers or not.
     // TODO: support a list of providers.
     bool use_cuda_ = false;
-#endif
 
     int world_rank_ = 0;
     int world_size_ = 1;
 
-    bool skip_evaluation = false;
+    bool skip_evaluation_ = false;
   };
 
-  TrainingRunner(DataSet& trainingData, DataSet& testData, const Parameters& params);
+  //TODO(bahuang): pass by shared_ptr, or refactor to make TrainingRunner own training(test)_data
+  TrainingRunner(DataSet* training_data, DataSet* test_data, const Parameters& params);
+
+  //TODO(bahuang): pass by shared_ptr, or refactor to make TrainingRunner own training(test)_data_loader
+  TrainingRunner(DataLoader* training_data_loader, DataLoader* test_data_loader, const Parameters& params)
+      : TrainingRunner(training_data_loader->MutableDataSet(),
+                       test_data_loader->MutableDataSet(),
+                       params) {
+    training_data_loader_ = training_data_loader;
+    test_data_loader_ = test_data_loader;
+  }
 
   common::Status Initialize();
 
@@ -90,13 +102,15 @@ class TrainingRunner {
  private:
   Status TrainingLoop();
   Status EndTraining();
-  Status Evaluate(InferenceSession& session, bool use_full_set = false);
+  Status Evaluate(InferenceSession& session);
   Status LoadAndEvaluate(const std::string& model_path);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& infos);
 
-  DataSet& training_data_;
-  DataSet& test_data_;
+  DataLoader* training_data_loader_ = nullptr;
+  DataLoader* test_data_loader_ = nullptr;
+  DataSet* training_data_;
+  DataSet* test_data_;
   Parameters params_;
   TrainingSession session_;
 };

@@ -33,7 +33,10 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Reshape", {1}},
         {"Expand", {1}},
         {"TrainableDropout", {1}},
-        {"Slice", {1, 2, 3, 4}}};
+        {"Slice", {1, 2, 3, 4}},
+        {"SparseSoftmaxCrossEntropy", {1, 2}},
+        {"ConstantOfShape", {0}},
+        {"Scatter", {1}}};
 
 class GradientGraphBuilder {
  public:

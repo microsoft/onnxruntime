@@ -2,13 +2,25 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_types.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/training/runner/training_util.h"
 
 using namespace std;
+
 namespace onnxruntime {
 namespace training {
 
 DataSet::DataSet(const vector<string>& tensor_names) : tensor_names_(tensor_names) {
+}
+
+DataSet::~DataSet() {
+  for (auto deleter : ortvalue_deleters_) {
+    if (deleter.f != nullptr) {
+      deleter.f(deleter.param);
+    }
+  }
+  ortvalue_buffers_.clear();
+  ortvalue_deleters_.clear();
 }
 
 const vector<string> DataSet::TensorNames() const {
@@ -24,16 +36,39 @@ common::Status DataSet::AddData(DataSet::SampleType&& single_sample) {
   return Status::OK();
 }
 
+common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& features) {
+  if (features.size() != NumInputs()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DataSet::AddData failed");
+  }
+
+  DataSet::SampleType sample = make_unique<vector<OrtValue>>();
+  for (const auto& tensor_proto : features) {
+    size_t cpu_tensor_length;
+    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
+    OrtValue ort_value;
+    OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    std::unique_ptr<char[]> buffer(new char[cpu_tensor_length]);
+    OrtCallback deleter;
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
+        Env::Default(), nullptr, tensor_proto, MemBuffer(buffer.get(), cpu_tensor_length, info), ort_value, deleter));
+
+    sample->push_back(ort_value);
+    ortvalue_buffers_.emplace_back(std::move(buffer));
+    if (deleter.f != nullptr) {
+      ortvalue_deleters_.emplace_back(deleter);
+    }
+  }
+
+  data_.emplace_back(move(sample));
+  return Status::OK();
+}
+
 size_t DataSet::TotalBatch(size_t batch_size) const {
   batch_size = min(batch_size, NumSamples());
   return NumSamples() / batch_size + ((NumSamples() % batch_size > 0) ? 1 : 0);
 }
 
 std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const {
-  if (batch_size == 1) {
-    return *data_[k_th];
-  }
-
   batch_size = min(batch_size, data_.size());
   AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
   auto location = alloc->Info();
@@ -43,8 +78,14 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
+
     TensorShape shape = first_tensor.Shape();
-    shape[0] = batch_size;
+    if (shape.Size() > 1) {
+      shape.insert(shape.begin(), batch_size);
+    } else {
+      shape.clear();
+      shape.emplace_back(batch_size);
+    }
 
     size_t memory_size_per_sample = first_tensor.Size();
     size_t buffer_size = memory_size_per_sample * batch_size;

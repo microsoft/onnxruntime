@@ -31,8 +31,8 @@ const static float LEARNING_RATE = .1f;
 const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
 const static int NUM_SAMPLES_FOR_EVALUATION = 100;
-const static vector<int64_t> IMAGE_DIMS = {1, 784};  //{1, 1, 28, 28} for mnist_conv
-const static vector<int64_t> LABEL_DIMS = {1, 10};
+const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
+const static vector<int64_t> LABEL_DIMS = {10};
 const static std::string MNIST_DATA_PATH = "mnist_data";
 
 int validate_params(int argc, char* args[]) {
@@ -94,6 +94,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   //params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};
   params.weights_not_to_train_ = {""};
   params.batch_size_ = BATCH_SIZE;
+  params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
   params.num_of_epoch_ = NUM_OF_EPOCH;
 #ifdef USE_CUDA
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
@@ -108,7 +109,6 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
 #else
   params.learning_rate_ = LEARNING_RATE;
 #endif
-  params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
 
   params.error_function_ = [](const MLValue& predict, const MLValue& label, const MLValue& loss) {
     const Tensor& predict_t = predict.Get<Tensor>();
@@ -197,7 +197,7 @@ int main(int argc, char* args[]) {
   PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData, device_id /* shard_to_load */, device_count /* total_shards */);
 
   // start training session
-  TrainingRunner runner(trainingData, testData, params);
+  TrainingRunner runner(&trainingData, &testData, params);
   RETURN_IF_FAIL(runner.Initialize());
   RETURN_IF_FAIL(runner.Run());
 

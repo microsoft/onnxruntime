@@ -76,7 +76,7 @@ struct TestOp {
 };
 
 // test that the status from TestOp is correctly returned from InferenceSession::Run
-TEST(ParallelExecutor, TestStatusPropagation) {
+TEST(ParallelExecutor, DISABLED_TestStatusPropagation) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<OpSchema> schemas{TestOp::OpSchema()};
   Status status;

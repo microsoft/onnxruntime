@@ -219,9 +219,9 @@ SPECIALIZED_COMPUTE(SoftmaxCrossEntropyGrad, float, 9)
   REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, version)  \
   template Status Class<T, Tin>::ComputeInternal(OpKernelContext* ctx) const;
 
-SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int32_t, 9)
+// SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int32_t, 9)
 SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropy, float, int64_t, 9)
-SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, 9)
+// SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int32_t, 9)
 SPECIALIZED_COMPUTE_SPARSE(SparseSoftmaxCrossEntropyGrad, float, int64_t, 9)
 
 }  // namespace cuda

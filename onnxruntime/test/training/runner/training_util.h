@@ -23,26 +23,27 @@ namespace training {
 // A class to hold a dataset.
 // which contains:
 // 1. tensor names, we make a simple assumption that the last one is the label !!!
-// 2. data samples: each sample contains ml_values for all the tensor names above.
+// 2. data samples: each sample contains ort_values for all the tensor names above.
 class DataSet {
  public:
-  typedef std::unique_ptr<std::vector<MLValue>> SampleType;
+  typedef std::unique_ptr<std::vector<OrtValue>> SampleType;
 
   typedef typename std::vector<SampleType>::const_iterator IteratorType;
 
   DataSet(const std::vector<std::string>& tensor_names);
 
-  virtual ~DataSet() {}
+  virtual ~DataSet();
 
   // Get all tensor names
   const std::vector<std::string> TensorNames() const;
 
   size_t NumInputs() const { return tensor_names_.size(); }
 
-  virtual size_t NumSamples() const { return data_.size(); }
-
-  // Add a data sample
   common::Status AddData(SampleType&& single_sample);
+
+  common::Status AddData(const std::vector<ONNX_NAMESPACE::TensorProto>& features);
+
+  virtual size_t NumSamples() const { return data_.size(); }
 
   // Given a batch_size, get the total num of batches.
   size_t TotalBatch(size_t batch_size) const;
@@ -56,8 +57,12 @@ class DataSet {
   std::vector<std::string> tensor_names_;
 
   // The data of multiple training samples.
-  // data_[i] points to a vector of MLValues, whose order matches the above names_.
+  // data_[i] points to a vector of ORTValues, whose order matches the above names_.
   std::vector<SampleType> data_;
+
+  std::vector<std::unique_ptr<char[]>> ortvalue_buffers_;
+
+  std::vector<OrtCallback> ortvalue_deleters_;
 };
 
 class RandomDataSet : public DataSet {

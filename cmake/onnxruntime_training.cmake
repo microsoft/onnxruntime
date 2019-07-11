@@ -62,6 +62,8 @@ set_target_properties(onnxruntime_training_poc PROPERTIES FOLDER "ONNXRuntimeTes
 
 
 # squeezenet
+# Disabling build for squeezenet, as no one is using this
+#[[
 file(GLOB_RECURSE training_squeezene_src
     "${ONNXRUNTIME_ROOT}/test/training/squeezenet/*.h"
     "${ONNXRUNTIME_ROOT}/test/training/squeezenet/*.cc"
@@ -76,7 +78,7 @@ endif()
 
 target_link_libraries(onnxruntime_training_squeezenet PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_squeezenet PROPERTIES FOLDER "ONNXRuntimeTest")
-
+]]
 
 # BERT
 file(GLOB_RECURSE training_bert_src

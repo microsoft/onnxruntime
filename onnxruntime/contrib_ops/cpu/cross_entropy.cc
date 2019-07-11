@@ -184,7 +184,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   Tensor* loss = context->Output(0, output_shape);
 
   const float* logit_data = logit.template Data<float>();
-  const int* label_data = label.template Data<int>();
+  const int64_t* label_data = label.template Data<int64_t>();
   float* loss_data = loss->template MutableData<float>();
 
   // computation begins here
@@ -256,7 +256,7 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
 
   const float* dY_data = dY.template Data<float>();
   const float* logit_data = logit.template Data<float>();
-  const int* label_data = label.template Data<int>();
+  const int64_t* label_data = label.template Data<int64_t>();
   float* d_logits_data = d_logits->template MutableData<float>();
 
   // computation begins here
@@ -284,7 +284,7 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
     ORT_ENFORCE(weight_shape == label_shape, "The shape in weights and labels is different");
     const float* weight_data = weight.template Data<float>();
     for (int i = 0; i < n; i++) {
-      int label_sample = label_data[i];
+      int64_t label_sample = label_data[i];
       float weight_smaple = weight_data[i] * (*dY_data);
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
@@ -293,7 +293,7 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
     }
   } else {
     for (int i = 0; i < n; i++) {
-      int idx = i * d + label_data[i];
+      int64_t idx = i * d + label_data[i];
       prob[idx] = prob[idx] - (float)1;
     }
     // d_logits = dY * backprop, dY is a scalar

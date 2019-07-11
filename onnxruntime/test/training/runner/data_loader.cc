@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/env.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/util/protobuf_parsing_utils.h"
-#include "onnx/onnx-ml.pb.h"
 #include "test/training/runner/data_loader.h"
 #include <fstream>
 
@@ -16,181 +14,94 @@ namespace training {
 using FileInputStream = google::protobuf::io::FileInputStream;
 using CodedInputStream = google::protobuf::io::CodedInputStream;
 
-//load tensors from a list of pb files.
-static Status LoadTensors(const vector<PATH_STRING_TYPE>& pb_files,
-                          vector<ONNX_NAMESPACE::TensorProto>& input_pbs) {
-  for (size_t i = 0; i != pb_files.size(); ++i) {
-    int tensor_fd;
-    auto st = Env::Default().FileOpenRd(pb_files.at(i), tensor_fd);
-    ORT_RETURN_IF_ERROR(st);
-    FileInputStream f(tensor_fd);
-    f.SetCloseOnDelete(true);
-    ONNX_NAMESPACE::TensorProto tensor;
-    if (!tensor.ParseFromZeroCopyStream(&f)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", ToMBString(pb_files.at(i)), "' failed");
-    }
-    input_pbs.emplace_back(tensor);
-  }
-  return Status::OK();
-}
-
-void GetDataFiles(const PATH_STRING_TYPE& dir_path, unordered_map<PATH_STRING_TYPE, vector<PATH_STRING_TYPE>>& sample_inputs_map) {
+vector<PATH_STRING_TYPE> GetAllDataFiles(const PATH_STRING_TYPE& dir_path) {
+  vector<PATH_STRING_TYPE> data_files;
   LoopDir(dir_path,
-          [&sample_inputs_map, &dir_path](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
+          [&data_files, &dir_path](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
             PATH_STRING_TYPE filename_str = filename;
             if (filename_str[0] == '.' ||
                 f_type != OrtFileType::TYPE_REG ||
                 !HasExtensionOf(filename_str, ORT_TSTR("pb"))) {
               return true;
             }
-            // Filename is like "<sample_name>_input_<count>.pb"
-            // e.g. xxxxx_input_0.pb
-            const PATH_STRING_TYPE delimiter = ORT_TSTR("_input_");
-            PATH_STRING_TYPE::size_type pos;
-            if ((pos = filename_str.find(delimiter)) != PATH_STRING_TYPE::npos) {
-              PATH_STRING_TYPE sample_name = filename_str.substr(0, pos);
-              PATH_STRING_TYPE::size_type count_start_pos = pos + delimiter.size();
-              PATH_STRING_TYPE::size_type count_end_pos;
-              if ((count_end_pos = filename_str.find('.', count_start_pos)) != PATH_STRING_TYPE::npos) {
-                auto count_str = filename_str.substr(count_start_pos, count_end_pos - count_start_pos);
-                int count = stoi(count_str);
-                auto& file_list = sample_inputs_map[sample_name];
-                if (static_cast<int>(file_list.size()) <= count) {
-                  file_list.resize(count + 1);
-                }
-                sample_inputs_map[sample_name][count] = ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str);
-              }
-            }
+            data_files.push_back(ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str));
             return true;
           });
+  return data_files;
 }
 
-Status DataLoader::AddData(const vector<ONNX_NAMESPACE::TensorProto>& inputs) {
-  DataSet::SampleType sample = make_unique<vector<MLValue>>();
+DataLoader::DataLoader(const MapStringToString& input_name_map,
+                       const PATH_STRING_TYPE& dir_path,
+                       size_t max_num_files_preload,
+                       size_t shard_index,
+                       size_t total_shard)
+    : input_name_map_(input_name_map),
+      active_data_set_index_(0),
+      max_num_files_preload_(max_num_files_preload) {
+  input_tensor_names_.reserve(input_name_map.size());
 
-  for (const auto& tensor_proto : inputs) {
-    size_t cpu_tensor_length;
-    ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
-    MLValue mlvalue;
-    OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-    std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
-    std::unique_ptr<Tensor> p_tensor;
-    OrtCallback deleter;
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
-        Env::Default(), nullptr, tensor_proto, MemBuffer(data.get(), cpu_tensor_length, info), mlvalue, deleter));
-
-    sample->push_back(mlvalue);
-    buffer_for_mlvalues_.emplace_back(std::move(data));
-    if (deleter.f != nullptr) {
-      deleter_for_mlvalues_.emplace_back(deleter);
-    }
+  size_t index = 0;
+  for (const auto& pair : input_name_map) {
+    input_tensor_names_.push_back(pair.second);
+    input_to_feature_index_map_[pair.first] = index++;
   }
 
-  // TODO: Initialize data_set_ in constructor
-  // Currently, we do it here because we need to know the names of tensors
-  if (data_set_ == nullptr) {
-    std::vector<std::string> tensor_names;
-    for (const auto& tensor_proto : inputs) {
-      tensor_names.push_back(tensor_proto.name());
-    }
-    data_set_ = std::make_unique<DataSet>(tensor_names);
-  }
-
-  return data_set_->AddData(std::move(sample));
-}
-
-Status DataLoader::Load(const PATH_STRING_TYPE& dir_path, size_t shard_index, size_t total_shard) {
-  unordered_map<PATH_STRING_TYPE, vector<PATH_STRING_TYPE>> sample_inputs_map;
-  GetDataFiles(dir_path, sample_inputs_map);
-
-  // If only need to load partial data for data-parallelism training
-  if (total_shard > 1) {
-    ORT_RETURN_IF_NOT(shard_index < total_shard, "shard_index must be 0~", total_shard - 1);
-
-    unordered_map<PATH_STRING_TYPE, vector<PATH_STRING_TYPE>> partial_inputs_map;
-    int count = 0;
-    for (const auto& kv : sample_inputs_map) {
-      if ((count++ % total_shard) == shard_index) {
-        partial_inputs_map[kv.first] = kv.second;
-      }
-    }
-    swap(partial_inputs_map, sample_inputs_map);
-  }
-
-  unordered_map<PATH_STRING_TYPE, vector<ONNX_NAMESPACE::TensorProto>> sample_tensor_map;
-  for (const auto& kv : sample_inputs_map) {
-    ORT_RETURN_IF_ERROR(LoadTensors(kv.second, sample_tensor_map[kv.first]));
-  }
-  ORT_RETURN_IF_NOT(!sample_tensor_map.empty());
-
-  // Set input names
-  vector<string> tensor_names;
-  for (const auto& tensor : sample_tensor_map.begin()->second) {
-    ORT_RETURN_IF_NOT(find(tensor_names.begin(), tensor_names.end(), tensor.name()) == tensor_names.end(),
-                      "Load data set error: input has duplicated names");
-    tensor_names.push_back(tensor.name());
-  }
-  data_set_ = make_unique<DataSet>(tensor_names);
-
-  // Set input MLValues
-  for (const auto& kv : sample_tensor_map) {
-    ORT_RETURN_IF_ERROR(AddData(kv.second));
-  }
-  return Status::OK();
-}
-
-DataLoader ::~DataLoader() {
-  for (OrtCallback& deleter : deleter_for_mlvalues_) {
-    deleter.f(deleter.param);
-  }
-}
-
-vector<PATH_STRING_TYPE> GetAllTrainingFiles(const PATH_STRING_TYPE& dir_path) {
-  vector<PATH_STRING_TYPE> training_files;
-  LoopDir(dir_path,
-          [&training_files, &dir_path](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
-            PATH_STRING_TYPE filename_str = filename;
-            if (filename_str[0] == '.' ||
-                f_type != OrtFileType::TYPE_REG ||
-                !HasExtensionOf(filename_str, ORT_TSTR("pb"))) {
-              return true;
-            }
-            training_files.push_back(ConcatPathComponent<PATH_CHAR_TYPE>(dir_path, filename_str));
-            return true;
-          });
-  return training_files;
-}
-
-Status BertDataLoader::Load(const PATH_STRING_TYPE& dir_path, size_t shard_index, size_t total_shard) {
-  vector<PATH_STRING_TYPE> training_files = GetAllTrainingFiles(dir_path);
+  data_files_ = GetAllDataFiles(dir_path);
   vector<PATH_STRING_TYPE> partial_training_files;
   // If only need to load partial data for data-parallelism training
   if (total_shard > 1) {
-    ORT_RETURN_IF_NOT(shard_index < total_shard, "shard_index must be 0~", total_shard - 1);
+    if (shard_index < total_shard) {
+      ORT_THROW("shard_index must be 0~", total_shard - 1);
+    }
+
     int count = 0;
-    for (const auto& file : training_files) {
+    for (const auto& file : data_files_) {
       if ((count++ % total_shard) == shard_index) {
         partial_training_files.push_back(file);
       }
     }
-    training_files = partial_training_files;
+    data_files_ = partial_training_files;
   }
-  for (auto file_path : training_files) {
-    ORT_RETURN_IF_ERROR(LoadFile(file_path));
+  data_sets_.resize(data_files_.size());
+}
+
+Status DataLoader::Load() {
+  for (size_t i = 0; i < max_num_files_preload_; ++i) {
+    ORT_RETURN_IF_ERROR(LoadFile(data_files_[i], data_sets_[i]));
   }
   return Status::OK();
 }
 
-Status BertDataLoader::LoadFile(const PATH_STRING_TYPE& file_path) {
+DataSet* DataLoader::NextShard() {
+  size_t last_active_index = active_data_set_index_;
+  active_data_set_index_ = (active_data_set_index_ + 1) % NumShards();
+
+  //TODO: Release and Load Next File in another thread
+  data_sets_[last_active_index].release();
+
+  size_t index_to_load = (active_data_set_index_ + max_num_files_preload_ - 1) % NumShards();
+  Status s = LoadFile(data_files_[index_to_load], data_sets_[index_to_load]);
+  if (!s.IsOK()) {
+    ORT_THROW("Error Loading file ", data_files_[index_to_load].c_str());
+  }
+
+  return MutableDataSet();
+}
+
+Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::unique_ptr<DataSet>& data_set) {
   int tensor_fd;
   ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(file_path, tensor_fd));
   FileInputStream f(tensor_fd);
   CodedInputStream coded_in(&f);
   f.SetCloseOnDelete(true);
 
+  if (data_set == nullptr) {
+    data_set = std::make_unique<DataSet>(input_tensor_names_);
+  }
+
   uint32_t sample_size;
   while (coded_in.ReadRaw(&sample_size, SIZEOF_UINT32)) {
-    Status s = LoadOneSample(coded_in, sample_size);
+    Status s = LoadOneSample(coded_in, sample_size, data_set);
     if (!s.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parse file '", ToMBString(file_path), "' failed");
     }
@@ -198,9 +109,12 @@ Status BertDataLoader::LoadFile(const PATH_STRING_TYPE& file_path) {
   return Status::OK();
 }
 
-Status BertDataLoader::LoadOneSample(CodedInputStream& coded_in, uint32_t sample_size) {
+Status DataLoader::LoadOneSample(CodedInputStream& coded_in,
+                                 uint32_t sample_size,
+                                 std::unique_ptr<DataSet>& data_set) {
   uint32_t read = 0;
-  std::vector<ONNX_NAMESPACE::TensorProto> features;
+  std::vector<ONNX_NAMESPACE::TensorProto> features(NumInputs());
+
   while (read < sample_size) {
     uint32_t feature_size;
     coded_in.ReadRaw(&feature_size, SIZEOF_UINT32);
@@ -212,11 +126,17 @@ Status BertDataLoader::LoadOneSample(CodedInputStream& coded_in, uint32_t sample
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse one TensoProto");
     }
 
-    features.emplace_back(tensor);
+    const std::string& input_name = tensor.name();
+    auto it = input_to_feature_index_map_.find(input_name);
+    if (it != input_to_feature_index_map_.end()) {
+      size_t idx = it->second;
+      features[idx] = tensor;
+    }
+
     read += SIZEOF_UINT32 + feature_size;
   }
 
-  ORT_RETURN_IF_ERROR(AddData(features));
+  ORT_RETURN_IF_ERROR(data_set->AddData(features));
 
   return Status::OK();
 }
