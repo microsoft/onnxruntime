@@ -219,10 +219,7 @@ Status GradientGraphBuilder::Build() {
       const auto& opt_info = opt_info_it->second;
       auto opt_builder = in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info.name_);
 
-      const TensorShapeProto* weight_shape = x_node_arg->Shape();
-      opt_builder->Build({weight_name},
-                         {weight_shape},
-                         {GradientBuilderBase::GradientName(weight_name)},
+      opt_builder->Build({x_node_arg},
                          opt_info,
                          gradient_graph_defs);
     }

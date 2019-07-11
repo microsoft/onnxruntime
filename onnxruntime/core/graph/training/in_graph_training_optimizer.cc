@@ -19,11 +19,14 @@ class SGDBuilder : public OptimizerBuilder {
  public:
   SGDBuilder() : OptimizerBuilder("SGDOptimizer") {}
 
-  Status Build(const std::vector<std::string>& weights,
-               const std::vector<const TensorShapeProto*>&,
-               const std::vector<std::string>& gradients,
+  Status Build(const std::vector<const NodeArg*> weight_args,
                const OptimizerInfo& opt_info,
                GraphAugmenter::GraphDefs& graph_defs) const override {
+    std::vector<std::string> gradients(weight_args.size());
+    for (size_t i = 0; i < weight_args.size(); ++i) {
+      gradients[i] = GradientBuilderBase::GradientName(weight_args[i]->Name());
+    }
+
     // Initialized tensor for Learning Rate
     TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_string_, opt_info.learning_rate);
     graph_defs.AddInitializers({lr_tensor_proto});
@@ -32,8 +35,8 @@ class SGDBuilder : public OptimizerBuilder {
     vector<ArgDef> input_args;
     input_args.emplace_back(learning_rate_string_);
 
-    for (const auto& weight : weights) {
-      input_args.emplace_back(weight);
+    for (const auto& weight_arg : weight_args) {
+      input_args.emplace_back(weight_arg->Name(), weight_arg->TypeAsProto());
     }
 
 #ifdef USE_HOROVOD
@@ -49,16 +52,16 @@ class SGDBuilder : public OptimizerBuilder {
       }
     }
 #else
-    for (const auto& grad : gradients) {
-      input_args.emplace_back(grad);
+    for (size_t i = 0; i < weight_args.size(); ++i) {
+      input_args.emplace_back(gradients[i], weight_args[i]->TypeAsProto());
     }
 #endif
 
     // outputs: new weights, also set as graph outputs
     vector<ArgDef> output_args;
-    for (const auto& weight : weights) {
-      string output_name = weight + "_SGD_out";
-      output_args.emplace_back(output_name);
+    for (const auto& weight_arg : weight_args) {
+      string output_name = weight_arg->Name() + "_SGD_out";
+      output_args.emplace_back(output_name, weight_arg->TypeAsProto());
       graph_defs.AddGraphOutputs({output_name});
     }
 
@@ -66,25 +69,28 @@ class SGDBuilder : public OptimizerBuilder {
                                     input_args,
                                     output_args,
                                     NodeAttributes(),
-                                    "SGDOptimizer_" + weights[0])});
+                                    "SGDOptimizer_" + weight_args[0]->Name())});
     return Status::OK();
   }
-};  // namespace in_graph_optimizer
+};
 
 class AdamOptimizerBuilder : public OptimizerBuilder {
  public:
   AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer") {}
 
-  Status Build(const std::vector<std::string>& weights,
-               const std::vector<const TensorShapeProto*>& weight_shapes,
-               const std::vector<std::string>& gradients,
+  Status Build(const std::vector<const NodeArg*> weight_args,
                const OptimizerInfo& opt_info,
                GraphAugmenter::GraphDefs& graph_defs) const override {
+    std::vector<std::string> gradients(weight_args.size());
+    for (size_t i = 0; i < weight_args.size(); ++i) {
+      gradients[i] = GradientBuilderBase::GradientName(weight_args[i]->Name());
+    }
+
     // Initialized tensor for Learning Rate
     TensorProto lr_tensor_proto = CreateTensorProto<float>(learning_rate_string_, opt_info.learning_rate);
 
     // The type proto initializer for Update Count
-    std::string update_count_string = "Update_Count" + ((weights.size() > 1) ? "" : "_" + weights[0]);  // per weight optimizer requires a per weight update count
+    std::string update_count_string = "Update_Count" + ((weight_args.size() > 1) ? "" : "_" + weight_args[0]->Name());  // per weight optimizer requires a per weight update count
     TensorProto uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
 
     // Add lr and uc tensorproto as initializers
@@ -95,8 +101,8 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
     input_args.emplace_back(learning_rate_string_);
     input_args.emplace_back(update_count_string);
 
-    for (const auto& weight : weights) {
-      input_args.emplace_back(weight);
+    for (const auto& weight_arg : weight_args) {
+      input_args.emplace_back(weight_arg->Name(), weight_arg->TypeAsProto());
     }
 
 #ifdef USE_HOROVOD
@@ -112,18 +118,18 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
       }
     }
 #else
-    for (const auto& grad : gradients) {
-      input_args.emplace_back(grad);
+    for (size_t i = 0; i < gradients.size(); ++i) {
+      input_args.emplace_back(gradients[i], weight_args[i]->TypeAsProto());
     }
 #endif
 
     // The tensor proto for first and second moments of grad
     vector<string> moments_strings({"Moment_1_", "Moment_2_"});
     for (auto moment_string : moments_strings) {
-      for (unsigned int i = 0; i < gradients.size(); i++) {
+      for (size_t i = 0; i < gradients.size(); i++) {
         std::string gradient_moment_name = moment_string + gradients[i];
         std::vector<int64_t> dims;
-        for (auto dim : weight_shapes[i]->dim()) {
+        for (auto dim : weight_args[i]->Shape()->dim()) {
           dims.push_back(dim.dim_value());
         }
         TensorProto moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, dims);
@@ -141,25 +147,29 @@ class AdamOptimizerBuilder : public OptimizerBuilder {
 
     // outputs: new weights, also set as graph outputs - This is not used currently
     vector<ArgDef> output_args;
-    for (const auto& weight : weights) {
-      string output_name = weight + "_Adam_out";
-      output_args.emplace_back(output_name);
+    for (const auto& weight_arg : weight_args) {
+      string output_name = weight_arg->Name() + "_Adam_out";
+      output_args.emplace_back(output_name, weight_arg->TypeAsProto());
       graph_defs.AddGraphOutputs({output_name});
     }
 
-    for (const auto& grad : gradients) {
-      string output_name = grad + "_Moment_1_Out";
-      output_args.emplace_back(output_name);
+    for (size_t i = 0; i < gradients.size(); ++i) {
+      string output_name = gradients[i] + "_Moment_1_Out";
+      output_args.emplace_back(output_name, weight_args[i]->TypeAsProto());
       graph_defs.AddGraphOutputs({output_name});
     }
 
-    for (const auto& grad : gradients) {
-      string output_name = grad + "_Moment_2_Out";
-      output_args.emplace_back(output_name);
+    for (size_t i = 0; i < gradients.size(); ++i) {
+      string output_name = gradients[i] + "_Moment_2_Out";
+      output_args.emplace_back(output_name, weight_args[i]->TypeAsProto());
       graph_defs.AddGraphOutputs({output_name});
     }
 
-    graph_defs.AddNodeDefs({NodeDef("AdamOptimizer", input_args, output_args, attr, "AdamOptimizer_" + weights[0])});
+    graph_defs.AddNodeDefs({NodeDef("AdamOptimizer",
+                                    input_args,
+                                    output_args,
+                                    attr,
+                                    "AdamOptimizer_" + weight_args[0]->Name())});
     return Status::OK();
   }
 };

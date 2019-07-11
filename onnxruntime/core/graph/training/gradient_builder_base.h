@@ -42,6 +42,10 @@ class GradientBuilderBase {
     return node_defs;
   }
 
+  static std::string GradientName(const std::string& name) {
+    return name + "_grad";
+  }
+
  protected:
   virtual GradientDef GetGradientDefsImpl() const = 0;
 
@@ -139,12 +143,6 @@ class GradientBuilderBase {
 
  private:
   friend class GradientGraphBuilder;
-
-  // Utility functions for gradient name computation. We don't expose them
-  // in order to discourage the use of such names explicitly.
-  static std::string GradientName(const std::string& name) {
-    return name + "_grad";
-  }
 
   std::string CreateUniqueNodePrefix() {
     ORT_ENFORCE(node_ != nullptr);

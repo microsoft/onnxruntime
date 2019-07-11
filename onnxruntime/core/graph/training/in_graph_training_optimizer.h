@@ -57,9 +57,7 @@ class OptimizerBuilder {
 
   virtual ~OptimizerBuilder() {}
 
-  virtual common::Status Build(const std::vector<std::string>& weights,
-                               const std::vector<const onnx::TensorShapeProto*>& weight_shapes,
-                               const std::vector<std::string>& gradients,
+  virtual common::Status Build(const std::vector<const NodeArg*> weight_args,
                                const OptimizerInfo& opt_info,
                                GraphAugmenter::GraphDefs& graph_defs) const = 0;
 

@@ -86,13 +86,12 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
 ONNX_OPERATOR_KERNEL_EX(
     AdamOptimizer,
     kOnnxDomain,
-    1,
+    9,
     kCudaExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AdamOptimizer);
 
 Status AdamOptimizer::ComputeInternal(OpKernelContext* ctx) const {
-
   const Tensor* eta_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(eta_tensor);
 

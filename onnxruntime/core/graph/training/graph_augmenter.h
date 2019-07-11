@@ -16,6 +16,7 @@ using ONNX_NAMESPACE::TypeProto;
 
 struct ArgDef {
   ArgDef(std::string name, const TypeProto* type = nullptr) : name(name), type_proto(type) {}
+
   std::string name;
   const TypeProto* type_proto;
 
