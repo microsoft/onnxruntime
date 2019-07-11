@@ -24,9 +24,12 @@ class KernelRegistry {
   // for its clients unless the factory is managing the lifecycle of the pointer
   // itself.
   // TODO(Task:132) Make usage of unique_ptr/shared_ptr as out param consistent
-  Status TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
+  Status TryCreateKernel(const onnxruntime::Node& node,
+                         const IExecutionProvider& execution_provider,
                          const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                         const OrtValueNameIdxMap& mlvalue_name_idx_map, const FuncManager& funcs_mgr,
+                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
+                         const FuncManager& funcs_mgr,
+                         const DataTransferManager& data_transfer_mgr,
                          std::unique_ptr<OpKernel>& op_kernel) const;
 
   // Check if an execution provider can create kernel for a node and return
