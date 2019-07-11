@@ -248,6 +248,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     dnn::OnnxReader onnx_reader;
     dnn::ModelBuilder model_builder;
     onnx_reader.ReadOnnx(model_proto, model_builder);
+    model_builder.AllowFp16(true);
     auto dnn_model = model_builder.Compile(model_builder.PREFERENCE_SUSTAINED_SPEED);
     dnn_models_.emplace(fused_node->Name(), std::move(dnn_model));
 
