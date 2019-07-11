@@ -249,7 +249,7 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
     os.makedirs(cache_dir, exist_ok=True)
     local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
     if not check_md5(local_zip_file, expected_md5):
-        log.info("Downloading test data")
+        log.info("Downloading test data from {}".format(src_url))
         if azure_sas_key:
             src_url += azure_sas_key
         # try to avoid logging azure_sas_key
@@ -266,8 +266,8 @@ def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
             import urllib.error
             try:
                 urllib.request.urlretrieve(src_url, local_zip_file)
-            except urllib.error.URLError:
-                raise BuildError("urllib.request.urlretrieve() failed.")
+            except urllib.error.URLError as exc:
+                raise BuildError("urllib.request.urlretrieve() failed with error {}".format(exc))
     models_dir = os.path.join(build_dir,'models')
     if os.path.exists(models_dir):
         log.info('deleting %s' % models_dir)
@@ -481,7 +481,7 @@ def setup_cuda_vars(args):
             with open(version_file) as f:
                 # First line of version file should have something like 'CUDA Version 9.2.148'
                 first_line = f.readline()
-                m = re.match("CUDA Version (\d+).(\d+)", first_line)
+                m = re.match(r"CUDA Version (\d+).(\d+)", first_line)
                 if not m:
                     raise BuildError("Couldn't read version from first line of " + version_file)
 
@@ -722,7 +722,7 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     os.makedirs(protoc_build_dir, exist_ok=True)
     # Generate step
     cmd_args = [cmake_path,
-                os.path.join(source_dir, 'cmake\external\protobuf\cmake'),
+                os.path.join(source_dir, 'cmake', 'external', 'protobuf', 'cmake'),
                 '-T',
                 'host=x64',
                 '-G',
