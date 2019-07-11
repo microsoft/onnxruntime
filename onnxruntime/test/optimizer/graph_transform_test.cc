@@ -28,6 +28,7 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/shape_to_initializer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -37,16 +38,6 @@ namespace test {
 
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
-// Returns a map with the number of occurrences of each operator in the graph.
-// Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
-  std::map<std::string, int> op_to_count;
-  for (auto& node : graph.Nodes()) {
-    op_to_count[node.OpType()] =
-        op_to_count.count(node.OpType()) == 0 ? 1 : ++op_to_count[node.OpType()];
-  }
-  return op_to_count;
-}
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -65,7 +56,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
-TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
+TEST(GraphTransformationTests, DropoutElimination) {
   string model_uri = MODEL_FOLDER + "dropout.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -107,7 +98,7 @@ TEST(GraphTransformationTests, SliceElimination) {
   ASSERT_TRUE(op_to_count["Slice"] == 4);
 }
 
-TEST(GraphTransformationTests, ConstantFolding1) {
+TEST(GraphTransformationTests, ConstantFolding) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -122,6 +113,28 @@ TEST(GraphTransformationTests, ConstantFolding1) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+TEST(GraphTransformationTests, ShapeToInitializer) {
+  string model_uri = MODEL_FOLDER + "shape-add.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 4);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(std::make_unique<ShapeToInitializer>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  // Two of the Shapes are not eliminated because:
+  // One includes a symbolic dimension.
+  // Another one includes a negative dimension
+  ASSERT_TRUE(op_to_count["Shape"] == 2);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -270,6 +283,33 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+// if IR version is 4 or higher the weights can be overridden if there's a matching graph input.
+// check that we don't fuse if that is the case
+TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
+  string model_uri = MODEL_FOLDER + "fusion/negative-fuse-conv-add-no-bias.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
+  rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+  // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] != 0);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 

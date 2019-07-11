@@ -3,11 +3,11 @@
 
 #include "test/tvm/tvm_demo/demo_compiler.h"
 
-#include "core/codegen/target/generic/scheduler/schedule_utils.h"
-#include "core/codegen/target/ort_tvm_utils.h"
-#include "core/codegen/target/tvm_ir_builder.h"
-#include "core/codegen/target/tvm_scheduler.h"
-#include "core/codegen/target/tvm_schedule_builder.h"
+#include "core/codegen/passes/scheduler/schedule_utils.h"
+#include "core/codegen/passes/utils/ort_tvm_utils.h"
+#include "core/codegen/passes/op_ir_creator/tvm_ir_builder.h"
+#include "core/codegen/passes/scheduler/tvm_scheduler.h"
+#include "core/codegen/passes/scheduler/tvm_schedule_builder.h"
 
 #include <tvm/tvm.h>
 #include <tvm/build_module.h>

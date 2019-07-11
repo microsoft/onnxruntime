@@ -4,7 +4,6 @@
 #include "core/codegen/mti/math/unary_ops.h"
 
 #include "core/codegen/common/settings.h"
-#include "core/codegen/mti/math/halide_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include <stdexcept>
 #include <topi/broadcast.h>
@@ -16,41 +15,6 @@ using namespace topi;
 
 namespace onnxruntime {
 namespace tvm_codegen {
-
-tvm::Expr exp(const tvm::Expr& x_full) {
-  // Only support f32 fast math now
-  if (x_full.type().element_of() == tvm::Float(32)) {
-    codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
-    if (settings.HasOption(codegen::CodeGenSettings::kCodeGenFastMath)) {
-      if (settings.OptionMatches(codegen::CodeGenSettings::kCodeGenFastMath,
-                                 codegen::CodeGenSettings::kCodeGenFastMath_Polynormial)) {
-        return halideir_exp(x_full);
-      } else if (settings.OptionMatches(codegen::CodeGenSettings::kCodeGenFastMath,
-                                        codegen::CodeGenSettings::kCodeGenFastMath_ShortPolynormial)) {
-        // TODO: implement fast_exp
-        return halideir_exp(x_full);
-      }
-    }
-  }
-  return tvm::exp(x_full);
-}
-
-tvm::Expr log(const tvm::Expr& x_full) {
-  // Only support f32 fast math now
-  if (x_full.type().element_of() == tvm::Float(32)) {
-    codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
-    if (settings.HasOption(codegen::CodeGenSettings::kCodeGenFastMath)) {
-      if (settings.OptionMatches(codegen::CodeGenSettings::kCodeGenFastMath,
-                                 codegen::CodeGenSettings::kCodeGenFastMath_Polynormial)) {
-        return halideir_log(x_full);
-      } else if (settings.OptionMatches(codegen::CodeGenSettings::kCodeGenFastMath,
-                                        codegen::CodeGenSettings::kCodeGenFastMath_ShortPolynormial)) {
-        return fast_log(x_full);
-      }
-    }
-  }
-  return tvm::log(x_full);
-}
 
 tvm::Tensor Abs(const tvm::Tensor& X, const std::string& name) {
   return abs(X, name);
@@ -82,7 +46,7 @@ tvm::Tensor Exp(const tvm::Tensor& X, const std::string& name) {
   return tvm::compute(
       X->shape,
       [&](const tvm::Array<tvm::Var>& indices) {
-        return tvm_codegen::exp(X(indices));
+        return tvm::exp(X(indices));
       },
       name);
 }
@@ -103,7 +67,7 @@ tvm::Tensor Log(const tvm::Tensor& X, const std::string& name) {
   return tvm::compute(
       X->shape,
       [&](const tvm::Array<tvm::Var>& indices) {
-        return tvm_codegen::log(X(indices));
+        return tvm::log(X(indices));
       },
       name);
 }
@@ -137,8 +101,8 @@ tvm::Tensor Sigmoid(const tvm::Tensor& X, const std::string& name) {
       X->shape,
       [&](const tvm::Array<tvm::Var>& indices) {
         return tvm::ir::Select::make(X(indices) > 0,
-                                     1 / (1 + tvm_codegen::exp(-X(indices))),
-                                     tvm_codegen::exp(X(indices)) / (tvm_codegen::exp(X(indices)) + 1));
+                                     1 / (1 + tvm::exp(-X(indices))),
+                                     tvm::exp(X(indices)) / (tvm::exp(X(indices)) + 1));
       },
       name);
 }
@@ -164,8 +128,8 @@ tvm::Tensor Tanh(const tvm::Tensor& X, const std::string& name) {
       X->shape,
       [&](const tvm::Array<tvm::Var>& indices) {
         return tvm::ir::Select::make(X(indices) < 0,
-                                     (tvm_codegen::exp(2 * X(indices)) - 1) / (tvm_codegen::exp(2 * X(indices)) + 1),
-                                     (1 - tvm_codegen::exp(-2 * X(indices))) / (1 + tvm_codegen::exp(-2 * X(indices))));
+                                     (tvm::exp(2 * X(indices)) - 1) / (tvm::exp(2 * X(indices)) + 1),
+                                     (1 - tvm::exp(-2 * X(indices))) / (1 + tvm::exp(-2 * X(indices))));
       },
       name);
 }

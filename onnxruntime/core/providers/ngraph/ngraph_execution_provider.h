@@ -33,8 +33,6 @@ class NGRAPHExecutionProvider : public IExecutionProvider {
   Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
  private:
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 };

@@ -22,8 +22,8 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   Status status;
   {
     for (auto& registry : custom_kernel_registries_) {
-      status = registry->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
-                                         session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+      status = registry->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
+                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
       if (status.IsOK()) {
         return status;
       }
@@ -34,8 +34,8 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   auto iter = provider_type_to_registry_.find(ptype);
   if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
-    status = p->TryCreateKernel(node, execution_provider, session_state.GetInitializedTensors(),
-                                session_state.GetMLValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+    status = p->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
+                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
     if (status.IsOK()) {
       return status;
     }
@@ -58,8 +58,7 @@ Status KernelRegistryManager::RegisterKernels(const ExecutionProviders& executio
 
     auto registry = provider->GetKernelRegistry();
     if (!registry) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider ", provider->Type(),
-                             "does not have a kernel registry.");
+      continue;
     }
 
     provider_type_to_registry_.insert(std::make_pair(provider->Type(), registry));

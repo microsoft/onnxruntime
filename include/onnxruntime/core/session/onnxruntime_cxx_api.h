@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <utility>
+#include <type_traits>
 
 namespace Ort {
 
@@ -254,7 +256,7 @@ struct CustomOpApi {
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
-  int64_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+  size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
   size_t GetDimensionCount(_In_ const OrtTensorTypeAndShapeInfo* info);
   void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
@@ -283,6 +285,8 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::CreateKernel = [](OrtCustomOp* this_, const OrtCustomOpApi* api, const OrtKernelInfo* info) { return static_cast<TOp*>(this_)->CreateKernel(*api, info); };
     OrtCustomOp::GetName = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetName(); };
 
+    OrtCustomOp::GetExecutionProviderType = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetExecutionProviderType(); };
+
     OrtCustomOp::GetInputTypeCount = [](OrtCustomOp* this_) { return static_cast<TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](OrtCustomOp* this_, size_t index) { return static_cast<TOp*>(this_)->GetInputType(index); };
 
@@ -292,6 +296,9 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
     OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };
   }
+
+  // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
+  const char* GetExecutionProviderType() const { return nullptr; }
 };
 
 }  // namespace Ort

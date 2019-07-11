@@ -5,7 +5,6 @@
 #include "core/framework/allocatormgr.h"
 #include <cstdlib>
 #include <sstream>
-#include <cstdlib>
 
 namespace onnxruntime {
 
@@ -14,10 +13,12 @@ void* CPUAllocator::Alloc(size_t size) {
     return nullptr;
   //default align to 64;
   void* p;
-#if defined(_WIN32) && !defined(_WIN64)
-  size_t alignment = 32;
-#else  
+#if defined(__AVX512F__)
   size_t alignment = 64;
+#elif defined(__AVX__)
+  size_t alignment = 32;
+#else
+  size_t alignment = 32; //Indeed, the default one(8 or 16) should be enough
 #endif
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
@@ -59,25 +60,27 @@ ORT_API(void, OrtReleaseAllocatorInfo, _Frees_ptr_opt_ OrtAllocatorInfo* p) {
   delete p;
 }
 
-ORT_API(const char*, OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->name;
+ORT_API_STATUS_IMPL(OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr, _Out_ const char** out) {
+  *out = ptr->name;
+  return nullptr;
 }
 
-ORT_API(int, OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->id;
+ORT_API_STATUS_IMPL(OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr, _Out_ int* out) {
+  *out = ptr->id;
+  return nullptr;
 }
 
-ORT_API(OrtMemType, OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->mem_type;
+ORT_API_STATUS_IMPL(OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtMemType* out) {
+  *out = ptr->mem_type;
+  return nullptr;
 }
 
-ORT_API(OrtAllocatorType, OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->type;
+ORT_API_STATUS_IMPL(OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out) {
+  *out = ptr->type;
+  return nullptr;
 }
 
-ORT_API(int, OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2) {
-  if (*info1 == *info2) {
-    return 0;
-  }
-  return -1;
+ORT_API_STATUS_IMPL(OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2, _Out_ int* out) {
+  *out = (*info1 == *info2) ? 0 : -1;
+  return nullptr;
 }

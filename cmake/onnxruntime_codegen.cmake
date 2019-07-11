@@ -9,8 +9,8 @@ file(GLOB_RECURSE onnxruntime_codegen_common_srcs
 file(GLOB_RECURSE onnxruntime_codegen_tvm_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/codegen/mti/*.h"
     "${ONNXRUNTIME_ROOT}/core/codegen/mti/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/codegen/target/*.h"
-    "${ONNXRUNTIME_ROOT}/core/codegen/target/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/codegen/passes/*.h"
+    "${ONNXRUNTIME_ROOT}/core/codegen/passes/*.cc"
 )
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_codegen_common_srcs} ${onnxruntime_codegen_tvm_srcs})

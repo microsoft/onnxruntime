@@ -11,6 +11,9 @@
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
+
+static const std::string MODEL_FOLDER = "testdata/transform/";
+
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 TEST(TransformerTest, InsertCastGPUTest) {
   auto model = std::make_shared<onnxruntime::Model>("test");
@@ -103,5 +106,32 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
     EXPECT_EQ((*it).OpType(), "Cast");
   }
 }
+
+// test that when there are 3 Cast ops in a row we remove the correct ones
+TEST(TransformerTest, ThreeInARowRemoval) {
+  std::string model_uri = MODEL_FOLDER + "triple-cast.onnx";
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(model_uri, model);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  // there are 3 in a row prior to a Transpose, and one post-Transpose.
+  // we want to remove 2 of the first 3
+  ASSERT_TRUE(op_to_count["Cast"] == 4);
+
+  InsertCastTransformer transformer("Test");
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified);
+  EXPECT_TRUE(status.IsOK()) << status;
+  EXPECT_TRUE(modified) << "Transformer should have removed some Cast nodes";
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status;
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 2);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

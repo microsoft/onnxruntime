@@ -22,14 +22,14 @@
 #include "core/graph/model.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
-#include "core/framework/environment.h"
+#include "core/session/environment.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_executor.h"
@@ -224,6 +224,12 @@ template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   model_location_ = ToWideString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_location_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
@@ -248,6 +254,12 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
@@ -256,6 +268,12 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(*p_model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
@@ -273,7 +291,12 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
-
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
+    }
+#endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
 
@@ -289,6 +312,12 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
+#ifdef ENABLE_LANGUAGE_INTEROP_OPS
+    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    for (const auto& domain : interop_domains_) {
+      AddCustomOpDomains({domain.get()});
+    }
+#endif
 
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
   };
@@ -367,6 +396,9 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
       subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
+
+      // Pass fused function manager to subgraph
+      subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
       // recurse
       ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(*subgraph, *subgraph_session_state));
@@ -529,13 +561,34 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                            feeds.size(), " elements.");
   }
 
-  // More feeds are offered.
-  // In the case of overriding some initializers (which are also taken as graph inputs).
+  std::unordered_set<std::string> seen_names;
+  seen_names.reserve(feeds.size());
+  size_t seen_required_inputs = 0;
+  const Graph& graph = model_->MainGraph();
+
   for (size_t i = 0; i < feeds.size(); ++i) {
-    auto iter = input_def_map_.find(feed_names[i]);
+    const auto& feed_name = feed_names[i];
+
+    if (seen_names.insert(feed_name).second == false) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate name in feeds: ", feed_name);
+    }
+
+    auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
+      // if IR < 4 all initializers are required to have a matching graph input with the same name,
+      // however we disallow using that graph input to override the initializer, and treat the initializers as constant.
+      // check for this and output a nicer error message if that is the case.
+      // As we've already moved all initializers to SessionState we need to check if it's in the constant initializers there
+      int idx;
+      bool is_constant_initializer = session_state_.GetOrtValueNameIdxMap().GetIdx(feed_name, idx).IsOK() &&
+                                     session_state_.GetConstantInitializedTensors().find(idx) !=
+                                         session_state_.GetConstantInitializedTensors().cend();
+
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name:", feed_names[i]);
+                             "Invalid Feed Input Name:", feed_name,
+                             is_constant_initializer ? ". Initializers may not be overridden by feeds"
+                                                       " if model IR version is less than 4."
+                                                     : ".");
     }
 
     auto expected_type = utils::GetMLDataType(*iter->second);
@@ -548,6 +601,31 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
+
+    if (!graph.CanOverrideInitializer() ||  // all entries in input_def_map_ are required.
+        required_inputs_.find(feed_name) != required_inputs_.cend()) {
+      ++seen_required_inputs;
+    }
+  }
+
+  if (seen_required_inputs < required_inputs_.size()) {
+    std::ostringstream req_input_str;
+    auto cur = required_inputs_.cbegin(), end = required_inputs_.cend();
+    req_input_str << "Required inputs: ";
+    req_input_str << *(cur++);
+    while (cur != end) {
+      req_input_str << ", " << *(cur++);
+    }
+
+    req_input_str << " . Got: ";
+    for (size_t i = 0; i < feed_names.size(); ++i) {
+      if (i > 0)
+        req_input_str << ", ";
+      req_input_str << feed_names[i];
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "One or more missing required inputs. ",
+                           req_input_str.str());
   }
 
   return Status::OK();
@@ -603,7 +681,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
     FeedsFetchesInfo info(feed_names, output_names);
-    ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetMLValueNameIdxMap()));
+    ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(session_state_.GetOrtValueNameIdxMap()));
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
     if (!run_options.run_tag.empty()) {
@@ -695,7 +773,8 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
     }
   }
 
-  return std::make_pair(common::Status::OK(), &required_input_def_list_);
+  // return required inputs (excludes any inputs used for overriding initializers)
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
 }
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
@@ -784,15 +863,25 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   model_metadata_.custom_metadata_map = model.MetaData();
   model_metadata_.graph_name = graph.Name();
 
-  // save required inputs
-  const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
-  required_input_def_list_ = required_inputs;       // A direct copy of required inputs
+  for (auto input : graph.GetInputs()) {
+    required_inputs_.insert(input->Name());
+  }
 
-  // save all valid inputs
-  auto& all_inputs = graph.GetInputsIncludingInitializers();
-  input_def_map_.reserve(all_inputs.size());
-  for (auto elem : all_inputs) {
-    input_def_map_.insert({elem->Name(), elem});
+  auto add_inputs = [this](const InputDefList& inputs) {
+    input_def_map_.reserve(inputs.size());
+    for (auto elem : inputs) {
+      input_def_map_.insert({elem->Name(), elem});
+    }
+  };
+
+  if (graph.CanOverrideInitializer()) {
+    // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
+    // initializer is explicitly overridable.
+    add_inputs(graph.GetInputsIncludingInitializers());
+  } else {
+    // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
+    // the list of valid inputs by just using the GetInputs() list.
+    add_inputs(graph.GetInputs());
   }
 
   // save outputs
@@ -826,14 +915,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
     run_log_id += run_options.run_tag;
 
-    if (run_options.run_log_verbosity_level > 0) {
-      new_run_logger = logging_manager_->CreateLogger(run_log_id,
-                                                      logging::Severity::kVERBOSE,
-                                                      false,
-                                                      run_options.run_log_verbosity_level);
+    logging::Severity severity = logging::Severity::kWARNING;
+
+    if (run_options.run_log_severity_level < 0) {
+      severity = session_logger_->GetSeverity();
     } else {
-      new_run_logger = logging_manager_->CreateLogger(run_log_id);
+      ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
+                      run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  run_options.run_log_severity_level);
+      severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
+
+    new_run_logger = logging_manager_->CreateLogger(run_log_id,
+                                                    severity,
+                                                    false,
+                                                    run_options.run_log_verbosity_level);
 
     run_logger = new_run_logger.get();
     VLOGS(*run_logger, 1) << "Created logger for run with id of " << run_log_id;
@@ -853,14 +950,21 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
                                     ? session_options_.session_logid
                                     : "InferenceSession";  // there's probably a better default...
 
-    if (session_options_.session_log_verbosity_level > 0) {
-      owned_session_logger_ = logging_manager->CreateLogger(session_logid,
-                                                            logging::Severity::kVERBOSE,
-                                                            false,
-                                                            session_options_.session_log_verbosity_level);
+    logging::Severity severity = logging::Severity::kWARNING;
+
+    if (session_options_.session_log_severity_level < 0) {
+      severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
-      owned_session_logger_ = logging_manager->CreateLogger(session_logid);
+      ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
+                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  session_options_.session_log_severity_level);
+      severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
+
+    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+                                                           session_options_.session_log_verbosity_level);
+
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();

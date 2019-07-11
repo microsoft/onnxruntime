@@ -51,18 +51,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Theory]
-        [InlineData(0, false)] 
+        [InlineData(0, true)]
+        [InlineData(0, false)]
+        [InlineData(2, true)]
         [InlineData(2, false)]
-        // General: Parallel Execution cannot terminate
-        // [InlineData(0, true)]
-        // [InlineData(2, true)]
         private void CanRunInferenceOnAModel(uint graphOptimizationLevel, bool disableSequentialExecution)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            Assert.True(options.SetSessionGraphOptimizationLevel(graphOptimizationLevel));
+            options.SetSessionGraphOptimizationLevel(graphOptimizationLevel);
             if(disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))
@@ -179,7 +178,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        [Fact(Skip = "General: MultiTheads test not terminate!")]
+        [Fact]
         private void TestMultiThreads()
         {
             var numThreads = 10;
@@ -209,7 +208,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        [Fact(Skip = "Skip to save ci buid time!")]
+        [x64Fact]
         private void TestPreTrainedModelsOpset7And8()
         {
             var skipModels = new List<String>() {
@@ -662,15 +661,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
+	    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+
             using (var session = tuple.Item1)
             {
                 var inputData = tuple.Item2;
                 var tensor = tuple.Item3;
                 var inputMeta = session.InputMetadata;
                 var container = new List<NamedOnnxValue>();
-                container.Add(NamedOnnxValue.CreateFromTensor<float>("input", tensor));
-                var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-                Assert.Contains("Missing Input", ex.Message);
+                container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
+                var res = session.Run(container);
+		var resultArray = res.First().AsTensor<float>().ToArray();
+                Assert.Equal(expectedOutput, resultArray, new floatComparer());
             }
         }
 
@@ -780,9 +782,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             public GpuFact()
             {
-                if (System.Environment.GetEnvironmentVariable("TESTONGPU") == null)
+		var testOnGpu = System.Environment.GetEnvironmentVariable("TESTONGPU");
+                if (testOnGpu == null || !testOnGpu.Equals("ON") )
                 {
                     Skip = "GPU testing not enabled";
+                }
+            }
+        }
+
+        private class x64Fact : FactAttribute
+        {
+            public x64Fact()
+            {
+                if (System.Environment.Is64BitProcess == false)
+                {
+                    Skip = "Not 64-bit process";
                 }
             }
         }
