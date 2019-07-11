@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_registry_manager.h"
@@ -182,8 +183,10 @@ class SessionState {
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
-  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
+  const DataTransferManager& GetDataTransferMgr() const { return *data_transfer_mgr_; }
+  void SetDataTransferMgr(const DataTransferManager* data_transfer_mgr) { data_transfer_mgr_ = data_transfer_mgr; }
 
+  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
@@ -232,6 +235,7 @@ class SessionState {
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
+  const DataTransferManager* data_transfer_mgr_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

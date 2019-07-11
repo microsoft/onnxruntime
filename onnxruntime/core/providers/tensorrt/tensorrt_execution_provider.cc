@@ -180,17 +180,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  return kernel_registry;
-}
-
-common::Status TensorrtExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  ORT_UNUSED_PARAMETER(src);
-  ORT_UNUSED_PARAMETER(dst);
-  return Status::OK();
-}
-
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {

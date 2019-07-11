@@ -9,6 +9,7 @@
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
 #include "core/framework/func_api.h"
+#include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -57,6 +58,16 @@ class IExecutionProvider {
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
   /**
+   * Returns a data transfer object that implements methods to copy to and
+   * from this device.
+   * If no copy is required for the successful operation of this provider,
+   * return a nullptr.
+   */
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
+
+  /**
      Get execution provider's capability for the specified <graph>.
      Return a bunch of IndexedSubGraphs <*this> execution provider can run if
      the sub-graph contains only one node or can fuse to run if the sub-graph
@@ -85,26 +96,14 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
 
   /**
-   * Copy tensor between execution providers.  It's always a deep copy
-   * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
-   */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const = 0;
-
-  /**
-   * Copy tensor between execution providers on specified exec queue
-   * It's always a deep copy
-   * Either src.location is CPU, or dst.location is CPU. They can't be both on CPU.
-   */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst,
-                                    int exec_queue_id) const;
-
-  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting
      QueryInterface to ID3D12GraphicsCommandList1.
   */
-  virtual const void* GetExecutionHandle() const noexcept = 0;
+  virtual const void* GetExecutionHandle() const noexcept {
+     return nullptr;
+  }
 
   /**
      @return type of the execution provider; should match that set in the node

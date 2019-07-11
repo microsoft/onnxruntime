@@ -34,12 +34,15 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   explicit MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info);
   virtual ~MKLDNNExecutionProvider();
 
+<<<<<<< HEAD
   Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
 
+=======
+>>>>>>> 3bf0e364... Move CopyTensor out of IExecutionProvider interface. (#1268)
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
   std::shared_ptr<mkldnn::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {
