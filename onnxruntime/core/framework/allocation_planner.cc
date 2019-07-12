@@ -51,6 +51,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   std::unordered_map<int, std::string> index_to_name;
 
   out << "Allocation Plan:\n";
+  out << "(ort_value_idx) output_name : <allocation plan>\n";
   auto plan_size = plan.allocation_plan.size();
 
   for (auto& name_index : session_state.GetOrtValueNameIdxMap()) {
@@ -256,8 +257,11 @@ class PlannerImpl {
       const auto& val2 = shape2.dim(i);
       if (val1.has_dim_value() && val2.has_dim_value() && (val1.dim_value() == val2.dim_value()))
         continue;  // same known dimension
-      if (val1.has_dim_param() && val2.has_dim_param() && (val1.dim_param() == val2.dim_param()))
-        continue;  // same unknown dimension
+      if (val1.has_dim_param() && val2.has_dim_param()) {
+        const auto& val1_param = val1.dim_param();
+        if (val1_param == val2.dim_param() && !val1_param.empty())
+          continue;  // same unknown dimension
+      }
       return false;
     }
     return true;
