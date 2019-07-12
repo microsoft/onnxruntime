@@ -255,52 +255,52 @@ int main(int argc, char* argv[]) {
 
   printf("Using cuda device #%d, world_size %d \n", params.world_rank_, params.world_size_);
 
-  const size_t max_num_files_preload = 2;
-  DataLoader training_data_loader(params.input_name_map_,
-                                  params.train_data_dir,
-                                  max_num_files_preload,
-                                  device_id,
-                                  device_count);
-  DataLoader test_data_loader(params.input_name_map_,
-                              params.test_data_dir,
-                              max_num_files_preload);
-  RETURN_IF_FAIL(training_data_loader.Load());
-  // Evaluation is only done in device #0
-  if (device_id == 0) {
-    RETURN_IF_FAIL(test_data_loader.Load());
-  }
-
-  // setup fake data
-  int batch_size = static_cast<int>(params.batch_size_);
-  int max_seq_len_in_batch = 512;
-  std::vector<std::string> tensor_names = {"input1",
-                                           "input2",
-                                           "input3",
-                                           "masked_lm_positions",
-                                           "masked_lm_ids",
-                                           "masked_lm_weights",
-                                           "next_sentence_labels"};
-  std::vector<TensorShape> tensor_shapes = {{batch_size, max_seq_len_in_batch},
-                                            {batch_size, max_seq_len_in_batch},
-                                            {batch_size, max_seq_len_in_batch},
-                                            {batch_size, 80},
-                                            {batch_size, 80},
-                                            {batch_size, 80},
-                                            {batch_size}};
-  std::vector<onnx::TensorProto_DataType> tensor_types = {onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_INT64,
-                                                          onnx::TensorProto_DataType_FLOAT,
-                                                          onnx::TensorProto_DataType_INT64};
-  RandomDataSet random_perf_data(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-
   // start training session
   std::unique_ptr<TrainingRunner> runner;
   if (params.is_perf_test) {
+    // setup fake data
+    int batch_size = static_cast<int>(params.batch_size_);
+    int max_seq_len_in_batch = 512;
+    std::vector<std::string> tensor_names = {"input1",
+                                             "input2",
+                                             "input3",
+                                             "masked_lm_positions",
+                                             "masked_lm_ids",
+                                             "masked_lm_weights",
+                                             "next_sentence_labels"};
+    std::vector<TensorShape> tensor_shapes = {{batch_size, max_seq_len_in_batch},
+                                              {batch_size, max_seq_len_in_batch},
+                                              {batch_size, max_seq_len_in_batch},
+                                              {batch_size, 80},
+                                              {batch_size, 80},
+                                              {batch_size, 80},
+                                              {batch_size}};
+    std::vector<onnx::TensorProto_DataType> tensor_types = {onnx::TensorProto_DataType_INT64,
+                                                            onnx::TensorProto_DataType_INT64,
+                                                            onnx::TensorProto_DataType_INT64,
+                                                            onnx::TensorProto_DataType_INT64,
+                                                            onnx::TensorProto_DataType_INT64,
+                                                            onnx::TensorProto_DataType_FLOAT,
+                                                            onnx::TensorProto_DataType_INT64};
+    RandomDataSet random_perf_data(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
+
     runner = std::make_unique<TrainingRunner>(&random_perf_data, nullptr, params);
   } else {
+    const size_t max_num_files_preload = 2;
+    DataLoader training_data_loader(params.input_name_map_,
+                                    params.train_data_dir,
+                                    max_num_files_preload,
+                                    device_id,
+                                    device_count);
+    DataLoader test_data_loader(params.input_name_map_,
+                                params.test_data_dir,
+                                max_num_files_preload);
+    RETURN_IF_FAIL(training_data_loader.Load());
+    // Evaluation is only done in device #0
+    if (device_id == 0) {
+      RETURN_IF_FAIL(test_data_loader.Load());
+    }
+
     runner = std::make_unique<TrainingRunner>(&training_data_loader, &test_data_loader, params);
   }
   RETURN_IF_FAIL(runner->Initialize());
