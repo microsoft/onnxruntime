@@ -235,6 +235,7 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
 
                 if(output_dims == 5)
                     return false;
+        }
     }
 
 
