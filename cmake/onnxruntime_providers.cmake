@@ -90,76 +90,6 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
 endif()
-
-if (onnxruntime_USE_CUDA)
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
-  )
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
-  )
-
-  if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/horovod_kernels.cc"
-    )
-  endif()
-
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
-
-  # disable contrib ops conditionally
-  if(onnxruntime_DISABLE_CONTRIB_OPS)
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  else()
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
-  endif()
-
-  if (UNIX)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-  endif()
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
-  add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
-  set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
-  set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
-
-  if (onnxruntime_USE_HOROVOD)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
-  endif()
-
-  if (WIN32)
-    # *.cu cannot use PCH
-    foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})
-      set_source_files_properties(${src_file}
-        PROPERTIES
-        COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-    endforeach()
-    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
-        set_source_files_properties(${src_file}
-          PROPERTIES
-          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-      endforeach()
-    endif()
-    set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-      PROPERTIES
-      COMPILE_FLAGS "/Yccuda_pch.h"
-    )
-    # disable a warning from the CUDA headers about unreferenced local functions
-    #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
-    if (onnxruntime_USE_TVM)
-      target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
-    endif()
-  endif()
-endif()
-
 if (onnxruntime_USE_MKLDNN)
   file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.h"
@@ -243,6 +173,88 @@ if (onnxruntime_USE_TENSORRT)
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4996)
+  endif()
+endif()
+
+
+if (onnxruntime_USE_CUDA)
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+  )
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
+  )
+
+  if (NOT onnxruntime_USE_HOROVOD)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/horovod_kernels.cc"
+    )
+  endif()
+
+  if (onnxruntime_USE_TENSORRT)
+    list(APPEND onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/trt_in_cuda/tensor_rt_compiler.h"
+	"${ONNXRUNTIME_ROOT}/core/providers/trt_in_cuda/tensor_rt_compiler.cc"
+    )
+  endif()
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+
+  # disable contrib ops conditionally
+  if(onnxruntime_DISABLE_CONTRIB_OPS)
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+  else()
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  endif()
+
+  if (UNIX)
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+  endif()
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  
+  if (onnxruntime_USE_TENSORRT)
+    target_link_libraries(onnxruntime_providers_cuda ${onnxparser_link_libs} ${trt_link_libs})
+  endif()
+
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
+  set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
+
+  if (onnxruntime_USE_HOROVOD)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
+  endif()
+
+  if (WIN32)
+    # *.cu cannot use PCH
+    foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})
+      set_source_files_properties(${src_file}
+        PROPERTIES
+        COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
+    endforeach()
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
+        set_source_files_properties(${src_file}
+          PROPERTIES
+          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
+      endforeach()
+    endif()
+    set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+      PROPERTIES
+      COMPILE_FLAGS "/Yccuda_pch.h"
+    )
+    # disable a warning from the CUDA headers about unreferenced local functions
+    #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
+    if (onnxruntime_USE_TVM)
+      target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
+    endif()
   endif()
 endif()
 

@@ -71,9 +71,14 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
   auto Y = context->Output(0, shape);
   auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->Size(), cudaMemcpyDeviceToDevice));
   //Get mask_data
   auto mask = context->Output(1, shape);
-  auto mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
+  CudaT* mask_data = nullptr;
+  if (mask){
+    mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->Size()));
+  }
 
   //Get the ratio_data
   float ratio_data = default_ratio_;
