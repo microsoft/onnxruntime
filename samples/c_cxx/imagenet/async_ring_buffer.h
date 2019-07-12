@@ -255,6 +255,7 @@ class AsyncRingBuffer {
     OrtReleaseValue(input_tensor);
   }
 
+ 
   /**
    * call this function when a download task is just finished or any buffer became FREE.
    * \return 0 EOF. No more download task to schedule
@@ -278,8 +279,12 @@ class AsyncRingBuffer {
           (*r->p_)(&s, d);
           r->OnDownloadFinished(pci, d);
         } catch (const std::exception& ex) {
+		  fprintf(stderr, "%s\n", ex.what());
           r->Fail(pci, ex.what());
-        }
+#ifdef _WIN32
+        
+#endif
+		}
       }
     };
 
