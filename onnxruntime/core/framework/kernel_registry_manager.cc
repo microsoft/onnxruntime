@@ -23,7 +23,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   {
     for (auto& registry : custom_kernel_registries_) {
       status = registry->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+                                         session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
       if (status.IsOK()) {
         return status;
       }
@@ -35,7 +35,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
   if (iter != provider_type_to_registry_.end()) p = iter->second.get();
   if (p != nullptr) {
     status = p->TryCreateKernel(node, execution_provider, session_state.GetConstantInitializedTensors(),
-                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), op_kernel);
+                                session_state.GetOrtValueNameIdxMap(), session_state.GetFuncMgr(), session_state.GetDataTransferMgr(), op_kernel);
     if (status.IsOK()) {
       return status;
     }
