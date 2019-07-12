@@ -16,7 +16,9 @@ void RunTest(std::initializer_list<T> input,
              std::initializer_list<int64_t> output_dims) {
   OpTester test("Tile");
   test.AddInput<T>("input", input_dims, input);
-  test.AddInput<int64_t>("repeats", repeat_dims, repeat);
+  // test repeats in initializer for float type
+  bool repeats_as_initializer = std::is_same<T, float>::value;
+  test.AddInput<int64_t>("repeats", repeat_dims, repeat, repeats_as_initializer);
   test.AddOutput<T>("output", output_dims, output);
   test.Run();
 }

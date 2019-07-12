@@ -112,9 +112,8 @@ def create_backend_test(testname=None):
 
         # Failing for Nuphar.
         if c2.supports_device('NUPHAR'):
-            current_failing_tests = current_failing_tests + ('|^test_operator_symbolic_override_nested_cpu.*',  #Nuphar: Same input used by multiple XP is not supported
-                                                             '|^test_scan_sum_cpu.*',                           #Nuphar: Graph output (sum_out) does not exist in the graph
-                                                             '|^test_scan9_sum_cpu.*',)                         #Nuphar: Graph output (sum_out) does not exist in the graph
+            current_failing_tests = current_failing_tests + ('^test_scan_sum_cpu.*',   #Nuphar: Graph output (sum_out) does not exist in the graph
+                                                             '^test_scan9_sum_cpu.*',) #Nuphar: Graph output (sum_out) does not exist in the graph
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \

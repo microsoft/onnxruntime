@@ -25,8 +25,9 @@ constexpr int COST_UPPER_BOUND = 180;
 
 // Here we use NodeUseCount as Cost to meet the criteria of the old greedy algorithm.
 // Note Cost function can use function, E.g. weight size or L2 pressure.
+// TODO replace NodeUseCount approximation
 int SubgraphPartitioner::Cost(const Node& node) const {
-  return codegen::Promote<codegen::SubgraphPartitionStats>(graph_stats_)->NodeUseCount(&node);
+  return Promote<SubgraphPartitionStats>(graph_stats_)->NodeUseCount(&node);
 }
 
 // Here we use linear summation for a Partition cost.
@@ -40,66 +41,22 @@ int SubgraphPartitioner::Cost(const Node& node, const std::vector<NodeIndex>& ca
 }
 
 // Node is always supported in SubgraphPartitioner, so always return true
-bool SubgraphPartitioner::IsNodeSupported(const Node&) {
+bool SubgraphPartitioner::IsNodeSupported(const Node&) const {
   return true;
 }
 
-// ForcePartition implements the logic equalivent to the old greedy algorithm using a merging algorith.
-// It first check whether it is a Scan node. If so, make it a single partition.
-// If not, check whether estimated cost is larger than an upperbound And current UseCount >= 2.
-// If so, merge candidates with the node, and then force a partition for the merged partitions.
-// If not, go the default process.
-bool SubgraphPartitioner::ForcePartition(
-    const NodeIndex& node_idx,
-    const int topology_idx,
-    const Node& node,
-    const std::vector<NodeIndex>& candidates,
-    const std::vector<NodeIndex>& rejected_partitions) {
-  if (IsRecurrentNode(node)) {
-    // a new partition
-    partitions_.insert(std::make_pair(node_idx, PartitionMeta(node_idx, topology_idx)));
-    PartitionMeta& part_meta = partitions_[node_idx];
-    // update cost
-    part_meta.cost = Cost(node, candidates);
-    // update frontier_nodes and rejected_nodes
-    UpdateNodesInPartitionMeta(part_meta, node);
-
-    // update rejected predomiate partitions, all candidates become its dominators
-    for (auto& id : candidates) {
-      part_meta.predominate_partitions.insert(id);
-    }
-
-    // update rejected partitions to predominate partitions
-    // rejected partitions' predominate parititions also to predominate partitions
-    for (auto& id : rejected_partitions) {
-      part_meta.predominate_partitions.insert(id);
-      for (auto& p : partitions_[id].predominate_partitions) {
-        part_meta.predominate_partitions.insert(p);
-      }
-    }
-
-    // all children of node become current partition's rejected_nodes
-    // to avoid any child be merged with the current partition in the future
-    for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
-      const Node& dst_node = it->GetNode();
-      if (part_meta.rejected_nodes.count(dst_node.Index()) == 0) {
-        part_meta.rejected_nodes.insert(dst_node.Index());
-      }
-    }
-
-    return true;
+void SubgraphPartitioner::SetSpecifiedNodeNames(const std::vector<std::string>& specified_names) {
+  for (const auto& name : specified_names) {
+    specified_names_.insert(name);
   }
+}
 
-  // estimated the cost < COST_UPPER_BOUND
-  if (Cost(node, candidates) < COST_UPPER_BOUND) {
-    return false;
-  }
-
-  int use_cnt = codegen::Promote<codegen::SubgraphPartitionStats>(graph_stats_)->NodeUseCount(&node);
-
-  if (use_cnt >= 2) {
+bool SubgraphPartitioner::SpecifiedNodePartition(const Node& node,
+                                                 const std::vector<NodeIndex>& candidates,
+                                                 const std::vector<NodeIndex>& rejected_partitions) {
+  if (specified_names_.count(node.Name()) > 0) {
     // Here the old algorithm-equalivent. Merge two partitions
-    MergePartitions(node_idx, topology_idx, node, candidates, rejected_partitions);
+    MergePartitions(node, candidates, rejected_partitions);
 
     PartitionMeta& part_meta = partitions_[candidates[0]];
 
@@ -107,8 +64,83 @@ bool SubgraphPartitioner::ForcePartition(
     // to avoid any child be merged with current partition
     for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
       const Node& dst_node = it->GetNode();
-      if (part_meta.rejected_nodes.count(dst_node.Index()) == 0) {
-        part_meta.rejected_nodes.insert(dst_node.Index());
+      part_meta.rejected_frontier_nodes.insert(dst_node.Index());
+    }
+    return true;
+  }
+
+  return false;
+}
+
+// ForcePartition implements the logic equalivent to the old greedy algorithm using a merging algorith.
+// It first check whether it is a Scan node. If so, make it a single partition.
+// If not, check whether estimated cost is larger than an upperbound And current UseCount >= 2.
+// If so, merge candidates with the node, and then force a partition for the merged partitions.
+// If not, go the default process.
+bool SubgraphPartitioner::ForcePartition(const Node& node,
+                                         const std::vector<NodeIndex>& candidates,
+                                         const std::vector<NodeIndex>& rejected_partitions) {
+  const NodeIndex node_idx = node.Index();
+  if (IsRecurrentNode(node) ||
+      node.OpType() == "Concat") {
+    // a new partition
+    partitions_.insert(std::make_pair(node_idx, PartitionMeta(node_idx)));
+    PartitionMeta& part_meta = partitions_[node_idx];
+    // update cost
+    part_meta.cost = Cost(node, candidates);
+    // update frontier_nodes and rejected_frontier_nodes
+    UpdateFrontiers(part_meta, node);
+
+    // update candidate's predecessor partitions, all candidates become its dominators
+    for (auto& id : candidates) {
+      UpdatePredecessors(part_meta, id);
+    }
+
+    // update rejected ones' predecessor partitions
+    for (auto& id : rejected_partitions) {
+      UpdatePredecessors(part_meta, id);
+    }
+
+    // all children of node become current partition's rejected_frontier_nodes
+    // to avoid any child be merged with the current partition in the future
+    for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
+      const Node& dst_node = it->GetNode();
+      if (part_meta.rejected_frontier_nodes.count(dst_node.Index()) == 0) {
+        part_meta.rejected_frontier_nodes.insert(dst_node.Index());
+      }
+    }
+
+    return true;
+  }
+
+  // add specified node support
+  if (SpecifiedNodePartition(node, candidates, rejected_partitions)) {
+    return true;
+  }
+
+  if (candidates.empty()) {
+    return false;
+  }
+
+  // estimated the cost < COST_UPPER_BOUND
+  if (Cost(node, candidates) < COST_UPPER_BOUND) {
+    return false;
+  }
+
+  int use_cnt = Promote<SubgraphPartitionStats>(graph_stats_)->NodeUseCount(&node);
+
+  if (use_cnt >= 2) {
+    // Here the old algorithm-equalivent. Merge two partitions
+    MergePartitions(node, candidates, rejected_partitions);
+
+    PartitionMeta& part_meta = partitions_[candidates[0]];
+
+    // all children of node become current partition's rejected_frontier_nodes
+    // to avoid any child be merged with current partition
+    for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
+      const Node& dst_node = it->GetNode();
+      if (part_meta.rejected_frontier_nodes.count(dst_node.Index()) == 0) {
+        part_meta.rejected_frontier_nodes.insert(dst_node.Index());
       }
     }
     return true;
@@ -120,7 +152,7 @@ bool SubgraphPartitioner::ForcePartition(
 Status SubgraphPartitioner::Partition(
     const Node& node,
     std::vector<NupharSubgraphUnit>& results,
-    const std::map<std::string, const Tensor*>& initializers) {
+    FindInitialzerFunc find_initializer_func) {
   const Graph* onnx_subgraph = GetSubgraph(node);
 
   // Handle single node
@@ -129,15 +161,23 @@ Status SubgraphPartitioner::Partition(
     // set node
     subgraph.nodes.push_back(&node);
 
-    for (const auto def : node.InputDefs()) {
-      auto iter = initializers.find(def->Name());
-      if (iter != initializers.end()) {
-        // set initializers
-        subgraph.initializers.emplace(iter->first, iter->second);
-      }
-      // set real inputs
-      subgraph.inputs.push_back(def);
-    }
+    node.ForEachWithIndex(
+        node.InputDefs(),
+        [&](const NodeArg& def, size_t i) {
+          const Tensor* t = find_initializer_func(def.Name());
+          bool unused_initializer = false;
+          if (t != nullptr) {
+            // note for Reshape and Tile, shape/repeats as initializer is not used at runtime
+            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1);
+
+            if (!unused_initializer)
+              subgraph.initializers.emplace(def.Name(), t);
+          }
+          // set real inputs
+          if (!unused_initializer)
+            subgraph.inputs.push_back(&def);
+          return Status::OK();
+        });
 
     // set real outputs
     for (const auto def : node.OutputDefs()) {
@@ -166,28 +206,45 @@ Status SubgraphPartitioner::Partition(
   ORT_RETURN_IF_ERROR(ShapeInference(graph_viewer, *whole_partition_shape_infer));
 
   // construct graph stats
-  graph_stats_ = std::make_unique<codegen::SubgraphPartitionStats>();
-  codegen::Promote<codegen::SubgraphPartitionStats>(graph_stats_)->SetShapeInference(whole_partition_shape_infer);
+  graph_stats_ = std::make_unique<SubgraphPartitionStats>();
+  Promote<SubgraphPartitionStats>(graph_stats_)->SetShapeInference(whole_partition_shape_infer);
   graph_stats_->Evaluate(graph_viewer);
 
   // perform partition
-  ORT_RETURN_IF_ERROR(Evaluate(graph_viewer));
+  ORT_RETURN_IF_ERROR(Evaluate(graph_viewer, false));
 
-  // A simplified group topology sort using max_topology_idx within each group
-  std::vector<std::pair<NodeIndex, int>> sorted_proxies;
-  for (const auto& iter : partitions_) {
-    sorted_proxies.push_back(std::make_pair(iter.first, iter.second.max_topology_index));
+  // A group topology sort using predecessor set
+  std::vector<NodeIndex> sorted_partitions;
+  bool sorted = true;
+  while (sorted) {
+    sorted = false;
+    for (const auto& iter : partitions_) {
+      if (std::find(sorted_partitions.begin(), sorted_partitions.end(), iter.first) != sorted_partitions.end())
+        continue;  // already sorted, skip
+
+      const auto& predecessor = iter.second.predecessor_partitions;
+      std::vector<int> result;
+      auto count_predecessor_not_sorted =
+          std::count_if(predecessor.begin(),
+                        predecessor.end(),
+                        [&sorted_partitions](NodeIndex idx) {
+                          return sorted_partitions.end() ==
+                                 std::find(sorted_partitions.begin(), sorted_partitions.end(), idx);
+                        });
+      if (0 == count_predecessor_not_sorted) {
+        // all predecessors are sorted, add it to sorted
+        sorted_partitions.push_back(iter.first);
+        sorted = true;
+        break;
+      }
+    }
   }
 
-  // call std::sort
-  std::sort(sorted_proxies.begin(), sorted_proxies.end(),
-            [](std::pair<NodeIndex, int> a, std::pair<NodeIndex, int> b) {
-              return a.second < b.second;
-            });
+  ORT_ENFORCE(sorted_partitions.size() == partitions_.size());
 
   // create results
-  for (const auto& proxy : sorted_proxies) {
-    const PartitionMeta& meta = partitions_.at(proxy.first);
+  for (const auto& partition : sorted_partitions) {
+    const PartitionMeta& meta = partitions_.at(partition);
 
     NupharSubgraphUnit subgraph;
     std::unordered_set<NodeIndex> node_indices;
@@ -205,18 +262,18 @@ Status SubgraphPartitioner::Partition(
       // handle current graph's inputs
       n->ForEachWithIndex(
           n->InputDefs(),
-          [&subgraph, &n, &node_indices, &initializers](const onnxruntime::NodeArg& def, size_t) {
+          [&](const onnxruntime::NodeArg& def, size_t) {
             const onnxruntime::Node* input_node = GetInputNode(*n, &def);
             bool input_from_subgraph = (nullptr != input_node && node_indices.count(input_node->Index()) > 0);
-            auto ini_iter = initializers.find(def.Name());
+            const Tensor* t = find_initializer_func(def.Name());
 
-            if (!input_from_subgraph && ini_iter == initializers.end()) {
+            if (!input_from_subgraph && t == nullptr) {
               // input is from weights or outside of graph
               subgraph.inputs.push_back(&def);
             }
 
-            if (ini_iter != initializers.end()) {
-              subgraph.initializers.emplace(ini_iter->first, ini_iter->second);
+            if (t != nullptr) {
+              subgraph.initializers.emplace(def.Name(), t);
 
               // a intializer is an input
               subgraph.inputs.push_back(&def);
@@ -287,10 +344,10 @@ Status SubgraphPartitioner::Partition(
         for (auto& nn : immediate_nested_subgraph->Nodes()) {
           nn.ForEachWithIndex(
               nn.InputDefs(),
-              [&subgraph, &initializers](const onnxruntime::NodeArg& def, size_t) {
-                auto ini_iter = initializers.find(def.Name());
-                if (ini_iter != initializers.end()) {
-                  subgraph.initializers.emplace(ini_iter->first, ini_iter->second);
+              [&](const onnxruntime::NodeArg& def, size_t) {
+                const Tensor* t = find_initializer_func(def.Name());
+                if (t != nullptr) {
+                  subgraph.initializers.emplace(def.Name(), t);
 
                   // an intializer is an input
                   subgraph.inputs.push_back(&def);
@@ -304,7 +361,7 @@ Status SubgraphPartitioner::Partition(
     // push back
     results.push_back(subgraph);
 
-    if (codegen::CodeGenSettings::Instance().HasOption(nuphar_codegen::kNupharDumpFusedNodes)) {
+    if (codegen::CodeGenSettings::Instance().HasOption(nuphar::kNupharDumpFusedNodes)) {
       std::ostringstream stream;
       stream << "[NUPHAR_DUMP_FUSED_NODES]" << std::endl;
       stream << "NupharSubgraphUnit of size " << results.back().nodes.size() << " [";

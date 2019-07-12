@@ -6,6 +6,8 @@
 #include <tvm/tvm.h>
 #include "core/framework/allocator.h"
 
+// TODO retire this
+
 namespace onnxruntime {
 
 constexpr const char* TVM_STACKVM = "TvmStackVm";

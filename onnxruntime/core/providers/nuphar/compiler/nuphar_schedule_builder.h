@@ -9,12 +9,12 @@
 
 // TODO change name space
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Traverse iterates tvm::Array<tvm::Tensor> a single node
 // and builds the whole schedule (in CodeGenContext)
 tvm::Schedule CreateSchedule(const tvm::Array<tvm::Tensor>& outs,
                              NupharCodeGenCtx& ctx_codegen);
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

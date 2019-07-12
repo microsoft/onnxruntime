@@ -7,7 +7,7 @@
 #include <tvm/ir.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 const char* gemv_update_func_name = "gemv_update";
 const char* gemv_reset_func_name = "gemv_reset";
@@ -99,5 +99,5 @@ const std::string NaiveLLVMExternGemvTensorization::LLVMImportDef() {
   return std::string(gemv_stubs_ir);
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

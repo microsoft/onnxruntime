@@ -6,11 +6,11 @@
 #include "core/providers/nuphar/mti_x86/math/softmax_internal.h"
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 tvm::Tensor Softmax(const tvm::Tensor& input, int64_t axis, const std::string& name) {
   return internal::SoftmaxInternal(input, axis, name, /*logarithmic*/ false);
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

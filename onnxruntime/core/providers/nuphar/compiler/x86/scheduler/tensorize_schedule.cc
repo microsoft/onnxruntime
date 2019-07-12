@@ -7,22 +7,19 @@
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_16bit.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_8bit.h"
-#include "core/codegen/target/generic/scheduler/schedule_utils.h"
+#include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/framework/op_kernel_info.h"
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 static Status IntMatMulTensorize16bit(const tvm::Tensor& tensor,
                                       const int64_t input_dim,
-                                      ScheduleContext& ctx) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
-
+                                      tvm_codegen::ScheduleContext& ctx) {
   // schedule for imatmul inputs
   InsertRootScheduleAndClosure(tensor, ctx);
-  InputRootScheduleWithVectorization(tensor, natural_vector_size, ctx);
+  InputRootScheduleWithVectorizationX86(tensor, ctx);
 
   // decide kernel shape
   std::vector<int32_t> kernel_shape;
@@ -52,13 +49,10 @@ static Status IntMatMulTensorize16bit(const tvm::Tensor& tensor,
 
 static Status IntMatMulTensorize8bit(const tvm::Tensor& tensor,
                                      const int64_t input_dim,
-                                     ScheduleContext& ctx) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
-
+                                     tvm_codegen::ScheduleContext& ctx) {
   // schedule for imatmul inputs
   InsertRootScheduleAndClosure(tensor, ctx);
-  InputRootScheduleWithVectorization(tensor, natural_vector_size, ctx);
+  InputRootScheduleWithVectorizationX86(tensor, ctx);
 
   // decide kernel shape
   std::vector<int32_t> kernel_shape;
@@ -88,21 +82,18 @@ static Status IntMatMulTensorize8bit(const tvm::Tensor& tensor,
   return Status::OK();
 }
 
-bool TVM_SCHEDULER_CLASS(MatMulInteger, NupharX86Tensorize)::Evaluate(
+static bool IntMatMulTensorize(
     const tvm::Tensor& tensor,
     const Node* node,
-    CodeGenContext& ctx_codegen,
-    ScheduleContext& ctx_sched) {
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);
 
   // schedule for MatMulInteger root: reshape
-  bool reused = codegen::Promote<codegen::CodeGenUnitStats>(ctx_nuphar->GetGraphStats())->NodeUseCount(node) > 1;
+  bool reused = Promote<CodeGenUnitStats>(ctx_nuphar->GetGraphStats())->NodeUseCount(node) > 1;
 
   if (reused) {
-    // TODO change it to the value from Target
-    int64_t natural_vector_size = 16;
-
-    TryVectorization(tensor, natural_vector_size, ctx_sched);
+    TryVectorizationX86(tensor, ctx_sched);
     InsertRootScheduleAndClosure(tensor, ctx_sched);
   } else {
     TryInlineSchedule(tensor, ctx_sched);
@@ -133,5 +124,21 @@ bool TVM_SCHEDULER_CLASS(MatMulInteger, NupharX86Tensorize)::Evaluate(
   return IntMatMulTensorize16bit(imatmul, input_dim, ctx_sched).IsOK();
 }
 
-}  // namespace tvm_codegen
+bool TVM_SCHEDULER_CLASS(MatMulInteger, NupharX86Tensorize)::Evaluate(
+    const tvm::Tensor& tensor,
+    const Node* node,
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  return IntMatMulTensorize(tensor, node, ctx_codegen, ctx_sched);
+}
+
+bool TVM_SCHEDULER_CLASS(MatMulInteger16, NupharX86Tensorize)::Evaluate(
+    const tvm::Tensor& tensor,
+    const Node* node,
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  return IntMatMulTensorize(tensor, node, ctx_codegen, ctx_sched);
+}
+
+}  // namespace nuphar
 }  // namespace onnxruntime

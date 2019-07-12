@@ -8,13 +8,13 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Evaluate of Softmax OpIRCreator
 Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Softmax)::Evaluate(
     const tvm::Array<tvm::Tensor>& inputs,
     const Node& node,
-    CodeGenContext&,
+    tvm_codegen::CodeGenContext&,
     tvm::Array<tvm::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
@@ -23,10 +23,10 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Softmax)::Evaluate(
   ORT_RETURN_IF_ERROR(info.GetAttr<int64_t>("axis", &axis_i64));
 
   axis_i64 = HandleNegativeAxis(axis_i64, gsl::narrow_cast<int64_t>(inputs[0]->shape.size()));
-  tvm::Tensor Y = nuphar_codegen::Softmax(inputs[0], axis_i64);
+  tvm::Tensor Y = Softmax(inputs[0], axis_i64);
   outputs.push_back(Y);
   return Status::OK();
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

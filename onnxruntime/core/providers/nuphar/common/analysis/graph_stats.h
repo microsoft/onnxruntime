@@ -14,7 +14,7 @@
 // GraphStatsBase can hold multiple analyses
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 template <typename INPUT_TYPE>
 class GraphStatsBase {
@@ -24,7 +24,7 @@ class GraphStatsBase {
 
   GraphStatsBase() {}
 
-  ~GraphStatsBase() = default;
+  virtual ~GraphStatsBase() = default;
 
   // Evaluate all passes
   virtual void Evaluate(INPUT_TYPE graph) {
@@ -72,5 +72,5 @@ using NupharSubgraphUnitStats = GraphStatsBase<const onnxruntime::nuphar::Nuphar
 DYNAMIC_PROMOTE(OrtGraphStats)
 DYNAMIC_PROMOTE(NupharSubgraphUnitStats)
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

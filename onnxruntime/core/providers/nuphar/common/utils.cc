@@ -5,7 +5,7 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 bool NodeArgShapeUnknownOnAxis(const NodeArg* def, int64_t axis) {
   auto shape = def->Shape();
@@ -16,7 +16,7 @@ bool NodeArgShapeUnknownOnAxis(const NodeArg* def, int64_t axis) {
 }
 
 bool HasUnknownShapeOnAxis(const ConstPointerContainer<std::vector<NodeArg*>>& defs, int64_t axis) {
-  for(const NodeArg* def : defs) {
+  for (const NodeArg* def : defs) {
     if (NodeArgShapeUnknownOnAxis(def, axis)) {
       return true;
     }
@@ -24,5 +24,5 @@ bool HasUnknownShapeOnAxis(const ConstPointerContainer<std::vector<NodeArg*>>& d
   return false;
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

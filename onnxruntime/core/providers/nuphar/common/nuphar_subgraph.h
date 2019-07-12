@@ -13,6 +13,8 @@
 namespace onnxruntime {
 namespace nuphar {
 
+using FindInitialzerFunc = std::function<const Tensor*(const std::string&)>;
+
 struct OrtSubgraphAllocationInfo {
   std::unordered_map<std::string, int> internal_allocator_offset;
   std::unordered_map<std::string, int> inputs;
@@ -50,6 +52,11 @@ struct OrtSubgraphAllocationInfo {
 // It is a customized data struct in nuphar
 // to enable concurrent function codegen within a Ort Kernel (which maps to an Ort Subgraph)
 struct NupharSubgraphUnit {
+  NupharSubgraphUnit() {
+    thread_local static int64_t counter = 0;
+    id_ = counter++;
+  }
+
   std::vector<const Node*> nodes;
 
   // inputs include each input of this NupharSubgraphUnit (input of Partition AND this NupharSubgraphUnit at the same time)
@@ -69,6 +76,13 @@ struct NupharSubgraphUnit {
   const std::string& Name() const {
     return nodes.front()->Name();
   }
+
+  std::string UniqueId() const {
+    return std::to_string(id_);
+  }
+
+ private:
+  int64_t id_;
 };
 
 }  // namespace nuphar

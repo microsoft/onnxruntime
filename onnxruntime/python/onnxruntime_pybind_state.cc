@@ -48,7 +48,11 @@
 #define BACKEND_OPENVINO ""
 #endif
 
-
+#ifdef USE_NUPHAR
+#define BACKEND_NUPHAR "-NUPHAR"
+#else
+#define BACKEND_NUPHAR ""
+#endif
 
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
@@ -56,13 +60,7 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#ifdef USE_NUPHAR
-#define BACKEND_NUPHAR "-NUPHAR"
-#else
-#define BACKEND_NUPHAR ""
-#endif
-
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"

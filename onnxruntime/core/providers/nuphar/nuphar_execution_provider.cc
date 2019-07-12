@@ -3,15 +3,15 @@
 
 #include "core/providers/nuphar/nuphar_execution_provider.h"
 
-#include "core/codegen/target/ort_tvm_utils.h"  // TODO remove this after removing tvm::runtime
+#include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO remove this after removing tvm::runtime
 #include "core/common/cpuid_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/shape_expr.h"  // TODO: remove this shape_expr after shape_infernece refinement
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
 #include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
+#include "core/providers/nuphar/kernel.h"
 #include "core/providers/nuphar/partition/graph_partitioner.h"
-#include "core/providers/nuphar/partition/kernel.h"
 
 #include <tvm/runtime/device_api.h>  // TODO remove this after removing tvm::runtime
 
@@ -27,17 +27,17 @@ thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExe
 NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderInfo& info)
     : IExecutionProvider(kNupharExecutionProvider) {
   // CodeGenSettings
-  nuphar_codegen::CreateNupharCodeGenSettings();
+  nuphar::CreateNupharCodeGenSettings();
 
   std::string target_str = info.target_str;
   if (target_str == "")
     target_str = default_nuphar_target_str;
   if (target_str == "llvm") {
     codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
-    if (settings.HasOption(nuphar_codegen::kNupharCodeGenTarget)) {
-      if (settings.OptionMatches(nuphar_codegen::kNupharCodeGenTarget, "avx2"))
+    if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+      if (settings.OptionMatches(nuphar::kNupharCodeGenTarget, "avx2"))
         codegen_target_ = CodeGenTarget_AVX2();
-      else if (settings.OptionMatches(nuphar_codegen::kNupharCodeGenTarget, "avx512"))
+      else if (settings.OptionMatches(nuphar::kNupharCodeGenTarget, "avx512"))
         codegen_target_ = CodeGenTarget_AVX512();
       else
         ORT_ENFORCE(false, "Target except avx2/avx512 are not supported!");
@@ -60,7 +60,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
   tvm_ctx_.device_id = info.device_id;
 
-  graph_stats_ = std::make_unique<codegen::SubgraphPartitionStats>();
+  graph_stats_ = std::make_unique<SubgraphPartitionStats>();
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
@@ -72,12 +72,11 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   InsertAllocator(CreateAllocator(allocator_info, tvm_ctx_.device_id));
 
   // TODO add multi-target support
-  tvm_codegen_manager_ = std::make_unique<tvm_codegen::TVMCodeGenManager>();
+  tvm_codegen_manager_ = std::make_unique<TVMCodeGenManager>();
 
   // Create codegen handle for one target for now
-  // TODO add multi-target support
   codegen_handles_.clear();
-  auto handle = std::make_unique<tvm_codegen::NupharCodeGenHandle>();
+  auto handle = std::make_unique<NupharCodeGenHandle>();
   tvm_codegen_manager_->Initialization();
   tvm_codegen_manager_->SetCodeGenHandle(handle.get());
   handle->allocator = GetAllocator(0, OrtMemTypeDefault);
@@ -97,8 +96,10 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   codegen_handles_.push_back(std::move(handle));
 
   // Runtime Handle
-  runtime_handle_ = std::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_, info.allow_unaligned_buffers);
+  runtime_handle_ = std::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
   runtime_handle_->allocator = GetAllocator(0, OrtMemTypeDefault);
+  runtime_handle_->allow_unaligned_buffers = info.allow_unaligned_buffers;
+  runtime_handle_->enable_model_parallelism = false;
 }
 
 Status NupharExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -146,9 +147,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        " has no output shape for ", def.Name());
             });
     if (!s.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Model shape inference incomplete, execution won't use nuphar provider.";
-      LOGS_DEFAULT(WARNING) << s.ErrorMessage();
-      return {};
+      LOGS_DEFAULT(INFO) << "Shape inference incomplete, node execution won't use nuphar provider.";
+      LOGS_DEFAULT(INFO) << s.ErrorMessage();
     }
   }
 
@@ -165,7 +165,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // construct graph stats
   // TODO remove
-  codegen::Promote<codegen::SubgraphPartitionStats>(graph_stats_)->SetShapeInference(whole_graph_shape_infer_);
+  Promote<SubgraphPartitionStats>(graph_stats_)->SetShapeInference(whole_graph_shape_infer_);
   graph_stats_->Evaluate(graph_viewer);
 
   std::set<NodeIndex> nodes_indexes;
@@ -175,13 +175,40 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   std::vector<std::unique_ptr<ComputeCapability>> results;
 
-  GraphPartitioner graph_partitioner([this](const Node& node) {
-    return GetKernelRegistry()->TryFindKernel(node, Type()) != nullptr;
-  });
+  auto is_supported_func = [&](const Node& node) {
+    bool all_shape_defined = true;
+    node.ForEachDef([&all_shape_defined](const NodeArg& def, bool /*is_input*/) {
+      if (def.Shape() == nullptr) {
+        all_shape_defined = false;
+      } else {
+        for (const auto& dim : def.Shape()->dim()) {
+          if (!((dim.has_dim_value() && dim.dim_value() > 0) || dim.has_dim_param()))
+            all_shape_defined = false;
+        }
+      }
+    });
 
-  ORT_ENFORCE(graph_partitioner.Partition(
-                                   graph_viewer, results)
-                  .IsOK());
+    if (!all_shape_defined || GetKernelRegistryInternal()->TryFindKernel(node, Type()) == nullptr)
+      return false;
+
+    const ONNX_NAMESPACE::TensorProto* tp = nullptr;
+    const auto& inputs = node.InputDefs();
+    if (node.OpType() == "Tile" && !graph_viewer.GetInitializedTensor(inputs[1]->Name(), tp))
+      return false;  // do not support tile that has dynamic repeats
+
+    if (node.OpType() == "Slice" && inputs.size() > 1) {
+      bool is_starts_dynamic = !graph_viewer.GetInitializedTensor(inputs[1]->Name(), tp);
+      bool is_ends_dynamic = !graph_viewer.GetInitializedTensor(inputs[2]->Name(), tp);
+      bool is_axes_dynamic = inputs.size() > 3 && !graph_viewer.GetInitializedTensor(inputs[3]->Name(), tp);
+      bool has_steps = inputs.size() > 4;
+      if (is_starts_dynamic || is_ends_dynamic || is_axes_dynamic || has_steps)
+        return false;
+    }
+    return true;
+  };
+  GraphPartitioner graph_partitioner(is_supported_func);
+
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, results).IsOK());
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo
@@ -202,7 +229,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   }
 
   if (results.empty()) {
-    LOGS_DEFAULT(WARNING) << "No node is claimed in nuphar provider.";
+    LOGS_DEFAULT(INFO) << "No node is claimed in nuphar provider.";
   }
 
   return results;
@@ -268,33 +295,17 @@ Status NupharExecutionProvider::SaveInitializer(
 Status NupharExecutionProvider::Compile(
     const std::vector<onnxruntime::Node*>& nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  // save a copy of fused_nodes pointers to make sure lambda capture is valid
-  size_t num_existing_nodes = compiled_nodes_.size();
-  compiled_nodes_.insert(compiled_nodes_.end(), nodes.begin(), nodes.end());
-
-  for (size_t i = num_existing_nodes; i < compiled_nodes_.size(); ++i) {
-    const auto& node = compiled_nodes_[i];
-
+  for (const auto* node : nodes) {
     NodeComputeInfo info;
 
     // Create state function
     // This is similar to the original OpKernel constructor
     // TODO move compilation part out of create_state_func to above
     info.create_state_func =
-        [&](ComputeContext* ctx, FunctionState* state) {
+        [&, node](ComputeContext* ctx, FunctionState* state) {
           std::unique_ptr<NupharKernelState> s =
               std::make_unique<NupharKernelState>(
                   *node,
-                  [this](const std::string& name, const Tensor** tensor) {
-                    auto iter = initializers_used_in_compiled_nodes_.find(name);
-                    if (iter == initializers_used_in_compiled_nodes_.end()) {
-                      *tensor = nullptr;
-                      return false;
-                    } else {
-                      *tensor = iter->second.get();
-                      return true;
-                    }
-                  },
                   *ctx,
                   this);
 
@@ -315,8 +326,7 @@ Status NupharExecutionProvider::Compile(
     info.compute_func =
         [](FunctionState state, const OrtCustomOpApi*, OrtKernelContext* op_kernel_context) {
           NupharKernelState* s = reinterpret_cast<NupharKernelState*>(state);
-          bool succeed = s->Compute(reinterpret_cast<OpKernelContext*>(op_kernel_context)).IsOK();
-          return succeed ? 0 : -1;
+          return s->Compute(reinterpret_cast<OpKernelContext*>(op_kernel_context));
         };
 
     node_compute_funcs.push_back(info);
@@ -339,6 +349,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxD
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Cast);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, Gather);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Scan);
 
 static void RegisterStandaloneNupharKernels(KernelRegistry& kernel_registry) {
@@ -358,10 +369,11 @@ static void RegisterStandaloneNupharKernels(KernelRegistry& kernel_registry) {
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Cast)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, Gather)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Scan)>());
 }
 
-std::shared_ptr<KernelRegistry> NupharExecutionProvider::GetKernelRegistry() const {
+std::shared_ptr<KernelRegistry> NupharExecutionProvider::GetKernelRegistryInternal() const {
   if (kernel_registry_ == nullptr) {
     kernel_registry_ = std::make_shared<KernelRegistry>();
     RegisterStandaloneNupharKernels(*kernel_registry_);

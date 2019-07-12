@@ -5,7 +5,7 @@
 #include "core/codegen/common/settings.h"
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 constexpr static const char* kNupharDumpPartition = "nuphar_dump_partition";
 constexpr static const char* kNupharDumpFusedNodes = "nuphar_dump_fused_nodes";
@@ -17,8 +17,13 @@ constexpr static const char* kNupharCacheModelChecksum = "nuphar_cache_model_che
 constexpr static const char* kNupharCacheForceNoJIT = "nuphar_cache_force_no_jit";
 
 constexpr static const char* kNupharMatMulExec_ExternCpu = "extern_cpu";
-constexpr static const char* kNupharSelectActivations_DeepCpu = "deep_cpu";
-constexpr static const char* kNupharSelectActivations_Legacy = "legacy";
+
+constexpr static const char* kNupharFastMath = "nuphar_fast_math";                         // fast math
+constexpr static const char* kNupharFastMath_Polynormial = "polynormial_math";             // generic polynormial fast math for exp and log
+constexpr static const char* kNupharFastMath_ShortPolynormial = "short_polynormial_math";  // generic shorter polynormial fast math for exp and log
+
+constexpr static const char* kNupharFastActivation = "nuphar_fast_activation";  // fast activation
+constexpr static const char* kNupharActivations_DeepCpu = "deep_cpu_activation";
 
 // Option to control nuphar code generation target (avx2 or avx512)
 constexpr static const char* kNupharCodeGenTarget = "nuphar_codegen_target";
@@ -34,5 +39,5 @@ constexpr static const char* kNupharCacheSoName_default = "jit.so";
 
 void CreateNupharCodeGenSettings();
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

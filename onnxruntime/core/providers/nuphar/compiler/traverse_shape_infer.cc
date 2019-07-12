@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "traverse_shape_infer.h"
+#include "core/providers/nuphar/compiler/traverse_shape_infer.h"
+
 #include "core/codegen/common/common.h"
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 
-// TODO analysis move to nuphar
+// TODO retire this file
+
 namespace onnxruntime {
+namespace nuphar {
 
 // local shape infernece function for input
 static bool CreateInput(const NodeArg* def,
@@ -49,7 +52,7 @@ static Status CreateOutputs(
         if (shape_proto) {
           TensorShape shape{utils::GetTensorShapeFromTensorShapeProto(*shape_proto)};
           ShapeExpr output_shape(shape.NumDimensions());
-          for (size_t d = 0; d < shape.NumDimensions(); ++d) {
+          for (int d = 0; d < gsl::narrow<int>(shape.NumDimensions()); ++d) {
             if (shape[d] > 0) {
               output_shape[d] = DimExpr(shape[d]);
             } else {
@@ -121,4 +124,5 @@ Status ShapeInference(
   return Status::OK();
 }
 
+}  // namespace nuphar
 }  // namespace onnxruntime

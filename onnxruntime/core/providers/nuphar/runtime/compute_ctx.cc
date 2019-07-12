@@ -4,7 +4,7 @@
 #include "core/providers/nuphar/runtime/compute_ctx.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 KernelComputeCtx::KernelComputeCtx(
     const nuphar::NupharRuntimeHandle* handle,
@@ -17,7 +17,7 @@ KernelComputeCtx::KernelComputeCtx(
   internal_ort_buffer_unique_ptrs_.resize(allocator_offset_count);
 }
 
-void KernelComputeCtx::CreateFuncComputeCtx(const NupharFuncInfo* func_info) {
+void KernelComputeCtx::CreateFuncComputeCtx(const NupharFuncInfo* func_info, bool with_update) {
   ORT_ENFORCE_DEBUG(nullptr != func_info);
 
   if (func_compute_ctx_map_.find(func_info) == func_compute_ctx_map_.end()) {
@@ -32,8 +32,12 @@ void KernelComputeCtx::CreateFuncComputeCtx(const NupharFuncInfo* func_info) {
   ort_input_data.resize(num_input);
   ort_input_shapes.resize(num_input);
 
-  UpdateFuncComputeCtx(func_info);
+  // with_update is set false to create a bunch of ctx in advance and then update later.
+  // e.g. in model_parallelism
+  if (with_update) {
+    UpdateFuncComputeCtx(func_info);
+  }
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -14,7 +14,7 @@
 // TODO change namespace from codegen to nuphar
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 class InternalUseCountAnalysis {
  public:
@@ -24,7 +24,7 @@ class InternalUseCountAnalysis {
 
   void Evaluate(const onnxruntime::GraphViewer& graph);
 
-  void Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit& graph);
+  void Evaluate(const NupharSubgraphUnit& graph);
 
   void IncrementCount(const onnxruntime::NodeArg* arg);
 
@@ -79,5 +79,5 @@ class NupharUseCountAnalysis : public NupharAnalysis {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NupharUseCountAnalysis);
 };
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

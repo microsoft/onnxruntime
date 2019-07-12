@@ -25,7 +25,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(NupharTest, PadTest) {
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR
 
   // This is a test with Pad->Add
   // Create Model

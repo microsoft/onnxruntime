@@ -17,11 +17,12 @@
 #include "gsl/gsl_util"
 
 #include <functional>
+#include <mutex>
 #include <vector>
 
 // TODO change name space from tvm_codegen to nuphar
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 class LoopExecCtx;
 
@@ -59,7 +60,7 @@ class KernelComputeCtx {
     op_kernel_ctx_ = op_kernel_ctx;
   }
 
-  void CreateFuncComputeCtx(const NupharFuncInfo* func_info);
+  void CreateFuncComputeCtx(const NupharFuncInfo* func_info, bool with_update = true);
 
   inline void UpdateFuncComputeCtx(const NupharFuncInfo* func_info) {
     ORT_ENFORCE_DEBUG(nullptr != func_info);
@@ -134,6 +135,72 @@ class KernelComputeCtx {
     return realized_dims_;
   }
 
+  inline bool IsInitialized(const NupharFuncInfo* func_info) const {
+    ORT_ENFORCE_DEBUG(nullptr != func_info);
+    return func_compute_ctx_map_.count(func_info) > 0;
+  }
+
+  // UpdateRealizedDims is used to sync realize dim
+  // Note insert_inclusive_axis is introduced to adjusted shape.
+  // It is commonly used in Scan or other subgraphs
+  // when Tensors' shapes in a subgraph are sliced from the main grahp.
+  // Using the sliced axis as insert_inclusive_axis can find the correct shape dim in the main graph
+  inline void UpdateRealizedDims(
+      const std::vector<std::pair<size_t, std::string>>& symbols,
+      const int64_t* input_shape,
+      size_t insert_inclusive_axis = 65535 /*minimal maximum of size_t*/) {
+    for (const auto& s_pair : symbols) {
+      size_t dim = s_pair.first;
+      size_t adjusted_dim = dim;
+      if (dim >= insert_inclusive_axis) {
+        adjusted_dim = dim + 1;
+      }
+
+      int64_t dim_size = input_shape[adjusted_dim];
+      const std::string& dim_param = s_pair.second;
+      auto dim_value_iter = realized_dims_.find(dim_param);
+
+      if (dim_value_iter == realized_dims_.end()) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        realized_dims_.insert(std::make_pair(dim_param, dim_size));  // update new symbol
+      } else if (dim_value_iter->second == Dimension_Unknown) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        dim_value_iter->second = dim_size;  // update for a symbol
+      } else {
+        std::lock_guard<std::mutex> lock(mutex_);
+        // a runtime error
+        ORT_ENFORCE(dim_value_iter->second == dim_size,
+                    "Input shape's symbolic dim mismatch.", dim_value_iter->second, "!=", dim_size);
+      }
+    }
+  }
+
+  // UpdateRealizedDims is used to sync realize dim
+  // Note insert_exclusive_axis is introduced to adjusted shape.
+  // It is commonly used in Scan or other subgraphs
+  // when Tensors' shapes in a subgraph are sliced from the main grahp.
+  // Using the sliced axis as insert_exclusive_axis can find the correct shape dim in the main graph
+  inline void UpdateRealizedDims(
+      const std::vector<std::pair<size_t, std::string>>& symbols,
+      std::vector<int64_t>& realized_output_shape,
+      size_t insert_exclusive_axis = 65535 /*minimal maximum of size_t*/) {
+    for (const auto& s_pair : symbols) {
+      size_t dim = s_pair.first;
+      size_t adjusted_dim = dim;
+      if (dim > insert_exclusive_axis) {
+        adjusted_dim = dim + 1;
+      }
+
+      const std::string& dim_param = s_pair.second;
+      auto dim_value_iter = realized_dims_.find(dim_param);
+      ORT_ENFORCE_DEBUG(dim_value_iter != realized_dims_.end());
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        realized_output_shape[adjusted_dim] = dim_value_iter->second;
+      }
+    }
+  }
+
  private:
   inline IAllocatorUniquePtr<void> AllocateDataUniquePtr(const TensorShape& shape, MLDataType dtype) {
     return IAllocator::MakeUniquePtr<void>(handle_->allocator, shape.Size() * dtype->Size());
@@ -156,7 +223,9 @@ class KernelComputeCtx {
   std::vector<InternalTensor> internal_ort_buffer_unique_ptrs_;
 
   std::map<const NupharFuncInfo*, FuncComputeCtx> func_compute_ctx_map_;
+
+  std::mutex mutex_;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

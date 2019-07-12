@@ -5,11 +5,11 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 bool NodeArgShapeUnknownOnAxis(const NodeArg* def, int64_t axis);
 
 bool HasUnknownShapeOnAxis(const ConstPointerContainer<std::vector<NodeArg*>>& def, int64_t axis);
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

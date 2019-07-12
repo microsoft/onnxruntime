@@ -8,9 +8,9 @@
 #include "core/providers/nuphar/common/nuphar_subgraph.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
-// Base class of Analysis
+// abstract class for Analysis
 template <typename INPUT_TYPE>
 class AnalysisBase {
  public:
@@ -19,7 +19,7 @@ class AnalysisBase {
   AnalysisBase(const std::string& name)
       : name_(name) {}
 
-  ~AnalysisBase() = default;
+  virtual ~AnalysisBase() = default;
 
   virtual void Evaluate(INPUT_TYPE) = 0;
 
@@ -41,5 +41,5 @@ using NupharAnalysis = AnalysisBase<const onnxruntime::nuphar::NupharSubgraphUni
 DYNAMIC_PROMOTE(OrtAnalysis)
 DYNAMIC_PROMOTE(NupharAnalysis)
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

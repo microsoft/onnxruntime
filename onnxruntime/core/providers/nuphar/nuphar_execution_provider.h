@@ -2,19 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/build_module.h>
 
 #include "nuphar_allocator.h"
-#include "core/providers/nuphar/common/analysis/graph_stats.h"
 #include "core/codegen/common/common.h"
-#include "core/providers/nuphar/compiler/traverse_shape_infer.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
-
-#include "core/providers/nuphar/compiler/tvm_manager.h"
-
+#include "core/providers/nuphar/common/analysis/graph_stats.h"
+#include "core/providers/nuphar/compiler/codegen_manager.h"
+#include "core/providers/nuphar/compiler/traverse_shape_infer.h"
 #include "core/providers/nuphar/runtime/handle.h"
+
+#include <tvm/build_module.h>
 
 namespace onnxruntime {
 
@@ -81,7 +80,13 @@ class NupharExecutionProvider : public IExecutionProvider {
     return Status::OK();
   }
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    // do not register individual kernels
+    return std::make_shared<KernelRegistry>();
+  }
+
+  // internal registry for checking if op is supported
+  std::shared_ptr<KernelRegistry> GetKernelRegistryInternal() const;
 
   const TVMContext& GetTVMContext() const {
     return tvm_ctx_;
@@ -95,8 +100,8 @@ class NupharExecutionProvider : public IExecutionProvider {
     return tvm_target_;
   }
 
-  // TODO remove
-  const std::shared_ptr<ShapeExprContext>& GetShapeInfernece() const {
+  // TODO retire this function
+  const std::shared_ptr<nuphar::ShapeExprContext>& GetShapeInfernece() const {
     return whole_graph_shape_infer_;
   }
 
@@ -105,9 +110,7 @@ class NupharExecutionProvider : public IExecutionProvider {
     return *(tls_realized_dims_.get());
   }
 
-  // TODO: refactor after adding multi-target
-  // TODO: rename
-  const tvm_codegen::NupharCodeGenHandle* GetNupharCodeGenHandle() const {
+  const nuphar::NupharCodeGenHandle* GetNupharCodeGenHandle() const {
     ORT_ENFORCE(codegen_handles_.size() > 0);
     return codegen_handles_.front().get();
   }
@@ -119,6 +122,13 @@ class NupharExecutionProvider : public IExecutionProvider {
   const int GetDomainVersion(const std::string& name) const {
     ORT_ENFORCE(domain_versions_.count(name));
     return domain_versions_[name];
+  }
+
+  const Tensor* GetInitializer(const std::string& name) const {
+    auto iter = initializers_used_in_compiled_nodes_.find(name);
+    if (iter == initializers_used_in_compiled_nodes_.end())
+      return nullptr;
+    return iter->second.get();
   }
 
  private:
@@ -138,29 +148,25 @@ class NupharExecutionProvider : public IExecutionProvider {
   TVMContext tvm_ctx_;
 
   // shape inference
-  std::shared_ptr<ShapeExprContext> whole_graph_shape_infer_;
+  std::shared_ptr<nuphar::ShapeExprContext> whole_graph_shape_infer_;
 
   // graph stats
-  std::unique_ptr<codegen::OrtGraphStats> graph_stats_;
+  std::unique_ptr<nuphar::OrtGraphStats> graph_stats_;
 
   // mapping from symbolic dimension to actual value
   static thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> tls_realized_dims_;
 
-  std::unique_ptr<tvm_codegen::TVMCodeGenManager> tvm_codegen_manager_;
+  std::unique_ptr<nuphar::TVMCodeGenManager> tvm_codegen_manager_;
 
   // codegen_handles_ holds a list of NupharCodeGenHandle .
   // Why a list? it is for multi-target support later
   // The current release supports one codegen target.
   // TODO: support multi-target support
-  std::vector<std::unique_ptr<tvm_codegen::NupharCodeGenHandle>> codegen_handles_;
+  std::vector<std::unique_ptr<nuphar::NupharCodeGenHandle>> codegen_handles_;
 
   std::unique_ptr<nuphar::NupharRuntimeHandle> runtime_handle_;
 
   mutable std::shared_ptr<KernelRegistry> kernel_registry_;
-
-  // a copy of Node to keep Node's life-time
-  // TODO: remove this after completely decoupling runtime and compiler
-  std::vector<onnxruntime::Node*> compiled_nodes_;
 
   mutable std::unordered_map<std::string, std::unique_ptr<Tensor>> initializers_used_in_compiled_nodes_;
   mutable std::unordered_map<std::string, int> domain_versions_;

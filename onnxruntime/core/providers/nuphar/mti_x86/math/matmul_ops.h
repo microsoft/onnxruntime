@@ -6,7 +6,7 @@
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a = false, bool trans_b = false, const std::string& name = "matmul2d");
 
@@ -20,5 +20,5 @@ bool MatMulExternCpu(
 
 tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string& name);
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -333,26 +333,6 @@ if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON)
     add_definitions(-DUSE_TVM_WITH_LLVM)
-
-    # patch for LLVM FCmp assert.
-    # it can be removed once a fix is available.
-    set(TVM_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/tvm/FCmp.patch)
-    execute_process(COMMAND ${TVM_PATCH_COMMAND1} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/external/tvm)
-    # patch for disabling the generation of TVM assert statements
-    set(TVM_PATCH_COMMAND2 git apply ${CMAKE_SOURCE_DIR}/patches/tvm/no_assert_stmt.patch)
-    execute_process(COMMAND ${TVM_PATCH_COMMAND2} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/external/tvm)
-    # patch for preventing tvm's Halide from applying distributive rule on floating values.
-    set(TVM_PATCH_COMMAND3 git apply ${CMAKE_SOURCE_DIR}/patches/tvm/halide_fp_simplify.patch)
-    execute_process(COMMAND ${TVM_PATCH_COMMAND3} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/HalideIR)
-    # Tensorization patch for export lookLLVMIntrinsic in tvm
-    set(TVM_PATCH_COMMAND4 git apply ${CMAKE_SOURCE_DIR}/patches/tvm/export_llvm_intrin.patch)
-    execute_process(COMMAND ${TVM_PATCH_COMMAND4} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/external/tvm/)
-    # Tensorization patch for export functions in tvm's Halide 
-    set(TVM_PATCH_COMMAND5 git apply ${CMAKE_SOURCE_DIR}/patches/tvm/halideIR.patch)
-    execute_process(COMMAND ${TVM_PATCH_COMMAND5} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/HalideIR)
-    # Tensorization patch for enabling llvm IR codegen
-    set(TVM_PATCH_COMMAND6 git apply ${CMAKE_SOURCE_DIR}/patches/tvm/llvm_codegen.patch)
-    execute_process(COMMAND ${TVM_PATCH_COMMAND6} WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/external/tvm)
   endif()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
@@ -376,6 +356,7 @@ if (onnxruntime_USE_TVM)
     endif()
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
+
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 

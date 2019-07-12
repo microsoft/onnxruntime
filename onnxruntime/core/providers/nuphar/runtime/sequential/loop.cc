@@ -9,21 +9,20 @@
 #include "core/providers/nuphar/runtime/control_flow/scan_exec_ctx.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 LoopExecBlock::LoopExecBlock(const NupharFuncInfo* func_info, const std::string& name)
     : ExecBlock(func_info, name, "LoopExecBlock") {}
 
-void LoopExecBlock::Run(KernelComputeCtx* partition_compute_ctx) {
-  if (!initialized_) {
-    partition_compute_ctx->CreateFuncComputeCtx(func_info_);
-    InitContext(partition_compute_ctx);
-    initialized_ = true;
+void LoopExecBlock::Run(KernelComputeCtx* kernel_compute_ctx) {
+  if (!kernel_compute_ctx->IsInitialized(func_info_)) {
+    kernel_compute_ctx->CreateFuncComputeCtx(func_info_);
+    InitContext(kernel_compute_ctx);
   } else {
-    partition_compute_ctx->UpdateFuncComputeCtx(func_info_);
-    UpdateContext(partition_compute_ctx);
+    kernel_compute_ctx->UpdateFuncComputeCtx(func_info_);
+    UpdateContext(kernel_compute_ctx);
   }
-  FuncComputeCtx& subgraph_compute_ctx = partition_compute_ctx->GetFuncComputeCtx(func_info_);
+  FuncComputeCtx& subgraph_compute_ctx = kernel_compute_ctx->GetFuncComputeCtx(func_info_);
 
   const tvm::runtime::PackedFunc& func = func_info_->packed_func;
   int num_func_args = gsl::narrow<int>(func_info_->func_input_count + func_info_->func_output_count);
@@ -36,8 +35,8 @@ void LoopExecBlock::Run(KernelComputeCtx* partition_compute_ctx) {
 
   // Do it sequentially sicne it is a sequential ExecBlock
   while (subgraph_compute_ctx.loop_cf_ctx->IsValid()) {
-    // Note FillTVMArgs would change values of std::vector<DLTensor> and std::vector<TVMValue>, not ptr.
-    subgraph_compute_ctx.loop_cf_ctx->FillTVMArgs(partition_compute_ctx, func_info_);
+    // Note InitIteration would change values of std::vector<DLTensor> and std::vector<TVMValue>, not ptr.
+    subgraph_compute_ctx.loop_cf_ctx->InitIteration(kernel_compute_ctx, func_info_);
 
     // Profiling event (no op for non-profiling build)
     CODEGEN_PROFILER_EVENT(loop_CallPacked);
@@ -46,10 +45,10 @@ void LoopExecBlock::Run(KernelComputeCtx* partition_compute_ctx) {
 
     subgraph_compute_ctx.loop_cf_ctx->Advance(func_info_->cf_info.get());
   }
-  subgraph_compute_ctx.loop_cf_ctx->LoopFinalize();
+  subgraph_compute_ctx.loop_cf_ctx->LoopFinalizer();
 }
 
-void LoopExecBlock::InitContext(KernelComputeCtx* kernel_compute_ctx) {
+void LoopExecBlock::InitContext(KernelComputeCtx* kernel_compute_ctx) const {
   FuncComputeCtx& subgraph_compute_ctx = kernel_compute_ctx->GetFuncComputeCtx(func_info_);
 
   ORT_ENFORCE_DEBUG(nullptr == subgraph_compute_ctx.loop_cf_ctx);
@@ -62,12 +61,12 @@ void LoopExecBlock::InitContext(KernelComputeCtx* kernel_compute_ctx) {
   subgraph_compute_ctx.loop_cf_ctx->InitContext(kernel_compute_ctx, func_info_);
 }
 
-void LoopExecBlock::UpdateContext(KernelComputeCtx* kernel_compute_ctx) {
+void LoopExecBlock::UpdateContext(KernelComputeCtx* kernel_compute_ctx) const {
   FuncComputeCtx& subgraph_compute_ctx = kernel_compute_ctx->GetFuncComputeCtx(func_info_);
 
   ORT_ENFORCE_DEBUG(nullptr != subgraph_compute_ctx.loop_cf_ctx);
   subgraph_compute_ctx.loop_cf_ctx->UpdateContext(kernel_compute_ctx, func_info_);
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

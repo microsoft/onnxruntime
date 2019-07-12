@@ -25,7 +25,7 @@ namespace onnxruntime {
 namespace test {
 // Nuphar Fused Op Test
 TEST(NupharTest, FuseAddTest) {
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR
   // Create Model
   onnxruntime::Model model("nuphar_fused_add_test");
   onnxruntime::Graph& graph = model.MainGraph();
@@ -125,7 +125,7 @@ TEST(NupharTest, FuseAddTest) {
 }
 
 TEST(NupharTest, FuseAddWithBroadcastTest) {
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR
   // Create Model
   onnxruntime::Model model("nuphar_fused_add_with_broadcast_test");
   onnxruntime::Graph& graph = model.MainGraph();
@@ -237,7 +237,7 @@ TEST(NupharTest, FuseAddWithBroadcastTest) {
 }
 
 TEST(NupharTest, FuseAddAndPadTest) {
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR
 
   // This is a test with Pad->Add
   // Create Model

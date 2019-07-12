@@ -10,15 +10,18 @@
 #include "core/providers/nuphar/runtime/exec_block.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
+// base class for Execution
 class ExecBlock {
  public:
   ExecBlock(
       const NupharFuncInfo* info,
       const std::string& name,
       const std::string& type)
-      : func_info_(info), initialized_(false), name_(name), type_(type) {}
+      : func_info_(info), name_(name), type_(type) {}
+
+  virtual ~ExecBlock() = default;
 
   const std::string& Name() const {
     return name_;
@@ -29,17 +32,23 @@ class ExecBlock {
   }
 
   virtual void Run(KernelComputeCtx* compute_ctx) = 0;
-  virtual void InitContext(KernelComputeCtx* compute_ctx) = 0;
-  virtual void UpdateContext(KernelComputeCtx* compute_ctx) = 0;
+  virtual void InitContext(KernelComputeCtx* compute_ctx) const = 0;
+  virtual void UpdateContext(KernelComputeCtx* compute_ctx) const = 0;
+  virtual void BlockFinalizer(KernelComputeCtx* kernel_compute_ctx) const {};
 
  protected:
   const NupharFuncInfo* func_info_;
-  bool initialized_;
   std::string name_;  // name_ is for debug
   std::string type_;  // type_ is for debug
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecBlock);
-};  // namespace tvm_codegen
+};
 
-}  // namespace tvm_codegen
+void CreateExecBlock(
+    std::vector<std::unique_ptr<ExecBlock>>& exec_blocks,
+    const NupharFuncInfo* info,
+    const NupharSubgraphUnit& subgraph,
+    bool enable_tiling = false);
+
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -16,14 +16,14 @@ namespace nuphar {
 struct PartitionMeta {
   std::vector<NodeIndex> nodes;
   std::unordered_set<NodeIndex> frontier_nodes;
-  std::unordered_set<NodeIndex> rejected_nodes;
-  std::unordered_set<NodeIndex> predominate_partitions;
+  std::unordered_set<NodeIndex> rejected_frontier_nodes;
+  std::unordered_set<NodeIndex> predecessor_partitions;
+  std::unordered_set<NodeIndex> immediate_predecessor_partitions;
   int cost;
-  int max_topology_index;  // topology_idx that helps sort
 
   PartitionMeta() {}
-  PartitionMeta(NodeIndex node, int topology_idx)
-      : max_topology_index(topology_idx) {
+
+  PartitionMeta(NodeIndex node) {
     nodes.push_back(node);
   }
 
@@ -40,20 +40,20 @@ class Partitioner {
  public:
   Partitioner() {}
 
+  virtual ~Partitioner() = default;
+
   // Main function to perform partiton
-  Status Evaluate(const onnxruntime::GraphViewer& graph);
+  Status Evaluate(const onnxruntime::GraphViewer& graph, bool distinguish_subgraph);
 
  protected:
   // Check whether a Node is included
-  virtual bool IsNodeSupported(const Node& node) = 0;
+  virtual bool IsNodeSupported(const Node& node) const = 0;
 
   // Force a Partition.
   // It returns false to perform default merge process.
   // Returning true avoid performing default process.
   // The customized process need to be implmented within this function
   virtual bool ForcePartition(
-      const NodeIndex& /*n_idx*/,
-      const int /*topology_idx*/,
       const Node& /*node*/,
       const std::vector<NodeIndex>& /*candidate_partitions*/,
       const std::vector<NodeIndex>& /*rejected_partitions*/) {
@@ -65,13 +65,13 @@ class Partitioner {
   virtual int Cost(const Node&, const std::vector<NodeIndex>&) const { return 0; };
 
   // Update PartitonMeta to include a node
-  void UpdateNodesInPartitionMeta(PartitionMeta& part_meta, const Node& node);
+  void UpdateFrontiers(PartitionMeta& part_meta, const Node& node);
+
+  void UpdatePredecessors(PartitionMeta& part_meta, const NodeIndex& node_id);
 
   // Merge at least two Partitions when they are connected by a node
-  void MergePartitions(const NodeIndex& node_idx,
-                       const int topology_idx,
-                       const Node& node,
-                       const std::vector<NodeIndex>& candiates,
+  void MergePartitions(const Node& node,
+                       const std::vector<NodeIndex>& candidates,
                        const std::vector<NodeIndex>& rejected_partitions);
 
   std::map<NodeIndex, PartitionMeta> partitions_;
@@ -83,8 +83,7 @@ class Partitioner {
 
   void AcceptNode(
       const onnxruntime::GraphViewer& graph,
-      const NodeIndex& node_idx,
-      const int topology_idx);
+      const NodeIndex& node_idx);
 
   void HandleSubgraph(const onnxruntime::GraphViewer& graph);
 

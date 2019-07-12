@@ -12,9 +12,13 @@
 namespace onnxruntime {
 namespace nuphar {
 
-bool GraphPartitioner::IsNodeSupported(const Node& node) {
-  auto subgraph = GetSubgraph(node);
+bool GraphPartitioner::IsNodeSupported(const Node& node) const {
+  const auto* subgraph = GetSubgraph(node);
   if (nullptr != subgraph) {
+    // for control flow ops, only support the ones registered
+    if (node.NodeType() != Node::Type::Fused && !is_op_type_supported_func_(node))
+      return false;
+
     if (subgraph->NumberOfNodes() == 1) {
       // In Ort, subgraph is processed before main graph
       // We only need to detect whether a subgraph is already fused to One node.
@@ -28,62 +32,67 @@ bool GraphPartitioner::IsNodeSupported(const Node& node) {
     return false;
   }
 
-  // currently, our tvm runtime has some issue for inferring the output shape
-  // of Concat if its input and output shapes are symbolic or unknown
-  if (node.OpType() == "Concat") {
-    const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
-    auto it = attrs.find("axis");
-    ORT_ENFORCE(it != attrs.end());
-    int64_t axis = it->second.i();
-
-    if (nuphar_codegen::HasUnknownShapeOnAxis(node.InputDefs(), axis) &&
-        nuphar_codegen::HasUnknownShapeOnAxis(node.OutputDefs(), axis)) {
-      for (auto iter = node.OutputNodesBegin(); iter != node.OutputNodesEnd(); ++iter) {
-        unsupported_nodes_.insert(GetKey(*iter));
-      }
-      return false;
-    }
-  }
-
-  if (unsupported_nodes_.count(GetKey(node)) > 0) {
-    return false;
-  }
   // check single node
-  return is_op_type_supported_func_(node);
+  if (is_op_type_supported_func_(node)) {
+    // currently, our tvm runtime has some issue for inferring the output shape
+    // that's computed from input dimensions. Mark those nodes are not supported
+    auto get_symbolic_dimensions = [](const Node& node, bool check_input) {
+      std::unordered_set<std::string> symbolic_dimensions;
+      node.ForEachDef([&](const NodeArg& def, bool is_input) {
+        if (is_input == check_input && def.Shape() != nullptr) {
+          for (const auto& dim : def.Shape()->dim()) {
+            if (dim.has_dim_param())
+              symbolic_dimensions.insert(dim.dim_param());
+            else
+              ORT_ENFORCE(dim.has_dim_value() && dim.dim_value() > 0);
+          }
+        }
+      });
+      return std::move(symbolic_dimensions);
+    };
+    auto input_sym = get_symbolic_dimensions(node, true);
+    auto output_sym = get_symbolic_dimensions(node, false);
+    if (input_sym != output_sym && output_sym.size() > 0)
+      return false;
+
+    return true;
+  }
+
+  return false;
 }
 
 // FORCE_ONE_SUBGRAPH is a marco to generate a single subgraph partition
 // It is mainly for debug and reproducing older version
 #ifdef FORCE_ONE_SUBGRAPH
 bool GraphPartitioner::ForcePartition(
-    const NodeIndex& node_idx, const int topology_idx,
     const Node& node, const std::vector<NodeIndex>& candiates,
     const std::vector<NodeIndex>& rejected_partitions) {
+  const NodeIndex node_idx = node.Index();
   if (IsRecurrentNode(node)) {
     // a new partition
     partitions_.insert(std::make_pair(node_idx, PartitionMeta(node_idx, topology_idx)));
     PartitionMeta& part_meta = partitions_[node_idx];
     // update cost
     part_meta.cost = Cost(node, candiates);
-    // update frontier_nodes and rejected_nodes
-    UpdateNodesInPartitionMeta(part_meta, node);
+    // update frontier_nodes and rejected_frontier_nodes
+    UpdateFrontiers(part_meta, node);
 
     // update rejected predomiate partitions, all candidates become its dominators
-    for (auto& id : candiates) {
-      part_meta.predominate_partitions.insert(id);
+    for (const auto& id : candiates) {
+      part_meta.predecessor_partitions.insert(id);
     }
 
     // update predomiate partitions, all rejected partitions become its dominators
-    for (auto& id : rejected_partitions) {
-      part_meta.predominate_partitions.insert(id);
+    for (const auto& id : rejected_partitions) {
+      UpdatePredecessors(part_meta, id);
     }
 
-    // all children of node become current partition's rejected_nodes
+    // all children of node become current partition's rejected_frontier_nodes
     // to avoid any child be merged with current partition
     for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
       const Node& dst_node = it->GetNode();
-      if (part_meta.rejected_nodes.count(dst_node.Index()) == 0) {
-        part_meta.rejected_nodes.insert(dst_node.Index());
+      if (part_meta.rejected_frontier_nodes.count(dst_node.Index()) == 0) {
+        part_meta.rejected_frontier_nodes.insert(dst_node.Index());
       }
     }
 
@@ -97,10 +106,12 @@ bool GraphPartitioner::ForcePartition(
 Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
                                    std::vector<std::unique_ptr<ComputeCapability>>& result) {
   // call partition
-  ORT_RETURN_IF_ERROR(Evaluate(graph));
+  ORT_RETURN_IF_ERROR(Evaluate(graph, /*distinguish_subgraph*/ true));
+
+  std::vector<NodeIndex> erase_partitions;
 
   // remove single alias node (aka isolated alias op)
-  std::vector<NodeIndex> erase_partitions;
+  // TODO: change this logic to removing a partition with only all alias ops
   for (const auto& iter : partitions_) {
     if (iter.second.nodes.size() == 1 &&
         IsAliasNode(*graph.GetNode(iter.second.nodes.front()))) {
@@ -120,7 +131,7 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
       partition->nodes.push_back(n);
     }
 
-    if (codegen::CodeGenSettings::Instance().HasOption(nuphar_codegen::kNupharDumpPartition)) {
+    if (codegen::CodeGenSettings::Instance().HasOption(kNupharDumpPartition)) {
       std::ostringstream stream;
       if (graph.IsSubgraph()) {
         stream << "[NUPHAR_DUMP_PARTITION] ## Subgraph ## " << std::endl;
@@ -130,7 +141,7 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
       stream << "Partition of size " << iter.second.nodes.size() << " [";
       for (const auto& node_index : partition->nodes) {
         const Node* node = graph.GetNode(node_index);
-        stream << "(" << node->Name() << ", " << node->OpType() << ") ";
+        stream << "(" << node->Name() << ", " << node->OpType() << ", " << node->Index() << ") ";
       }
       stream << "]";
       LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << stream.str();

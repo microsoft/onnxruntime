@@ -14,7 +14,7 @@
 const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 static void FillBasicFuncInfo(NupharFuncInfo* func_info,
                               nuphar::OrtSubgraphAllocationInfo* partition_info,
@@ -116,7 +116,7 @@ static void FillBasicFuncInfo(NupharFuncInfo* func_info,
       ort_output_allocator_index_is_external.push_back(false);
     }
 
-    const NodeArg* source_def = codegen::Promote<codegen::CodeGenUnitStats>(codegen_ctx.GetGraphStats())
+    const NodeArg* source_def = Promote<CodeGenUnitStats>(codegen_ctx.GetGraphStats())
                                     ->SourceDefOfOutputAlias(def);
 
     // Determine output alias
@@ -375,7 +375,7 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
   for (size_t ort_output_idx = gsl::narrow<size_t>(num_state_variables); ort_output_idx < num_variadic_outputs; ++ort_output_idx) {
     const NodeArg* def = subgraph->GetOutputs()[ort_output_idx];
     ORT_ENFORCE(nullptr != def);
-    const NodeArg* source_def = codegen::Promote<codegen::CodeGenUnitStats>(codegen_ctx.GetGraphStats())
+    const NodeArg* source_def = Promote<CodeGenUnitStats>(codegen_ctx.GetGraphStats())
                                     ->SourceDefOfOutputAlias(def);
     if (nullptr != source_def) {
       auto key = GetKey(source_def);
@@ -402,7 +402,7 @@ static void FillScanExecInfo(NupharFuncInfo* func_info,
 
     const NodeArg* def = subgraph->GetOutputs()[ort_output_idx];
     ORT_ENFORCE(nullptr != def);
-    const NodeArg* source_def = codegen::Promote<codegen::CodeGenUnitStats>(codegen_ctx.GetGraphStats())
+    const NodeArg* source_def = Promote<CodeGenUnitStats>(codegen_ctx.GetGraphStats())
                                     ->SourceDefOfOutputAlias(def);
 
     // Determine alias btw output and state output
@@ -479,5 +479,5 @@ void FillNupharFuncInfo(NupharFuncInfo* func_info,
   FillBasicFuncInfo(func_info, partition_info, subgraph, codegen_ctx, tvm_target, packed_func, name);
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

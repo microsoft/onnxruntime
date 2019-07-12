@@ -3,21 +3,19 @@
 
 #pragma once
 
-// TODO: clean header
-
-#include <tvm/tvm.h>
-#include "core/codegen/target/tvm_context.h"
 #include "core/codegen/common/common.h"
-#include "core/providers/nuphar/compiler/nuphar_handle.h"
-#include "core/providers/nuphar/compiler/tvm_initializer.h"
+#include "core/codegen/passes/utils/codegen_context.h"
 #include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/providers/nuphar/common/analysis/graph_stats.h"
-
 #include "core/providers/nuphar/common/nuphar_subgraph.h"
+#include "core/providers/nuphar/compiler/initializer_info.h"
+#include "core/providers/nuphar/compiler/nuphar_handle.h"
+
+#include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Nuphar Tensor Context
 struct TVMTensorCtx {
@@ -54,7 +52,7 @@ struct WeightLayoutCtx {
 };
 
 // NupharCodeGenCtx is Nuphar-specific CodeGenContext
-class NupharCodeGenCtx : public CodeGenContext {
+class NupharCodeGenCtx : public tvm_codegen::CodeGenContext {
  public:
   NupharCodeGenCtx(const Node& node,
                    const std::map<std::string, const Tensor*>& initializers,
@@ -67,7 +65,7 @@ class NupharCodeGenCtx : public CodeGenContext {
 
   virtual ~NupharCodeGenCtx() = default;
 
-  const codegen::NupharSubgraphUnitStats* GetGraphStats() const;
+  const NupharSubgraphUnitStats* GetGraphStats() const;
 
   bool IsInitializer(const std::string& name) const;
   const Tensor* GetOrtInitializerTensor(const std::string& name) const;
@@ -105,7 +103,7 @@ class NupharCodeGenCtx : public CodeGenContext {
   }
 
  private:
-  std::unique_ptr<codegen::NupharSubgraphUnitStats> graph_stats_;
+  std::unique_ptr<NupharSubgraphUnitStats> graph_stats_;
 
   const NupharCodeGenHandle* nuphar_handle_;
 
@@ -126,5 +124,5 @@ class NupharCodeGenCtx : public CodeGenContext {
   WeightLayoutCtx weight_layout_ctx_;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

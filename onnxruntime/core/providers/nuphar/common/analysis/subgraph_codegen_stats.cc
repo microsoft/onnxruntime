@@ -7,7 +7,7 @@
 #include "core/providers/nuphar/common/analysis/use_count_analysis.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 // CodeGenUnitStats has two analysis passes
 // The first pass, offset as 0,  is UseCountAnalysis
@@ -46,5 +46,5 @@ const onnxruntime::NodeArg* CodeGenUnitStats::SourceDefOfOutputAlias(const onnxr
   return Promote<OutputAliasAnalysis>(passes_[OutputAliasAnalysisOffset])->SourceDefOfOutputAlias(node);
 }
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

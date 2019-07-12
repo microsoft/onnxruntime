@@ -10,7 +10,7 @@
 #include <algorithm>  // for sort
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 using ReduceVFunc = tvm::Tensor (*)(const tvm::Tensor& X,
                                     const std::vector<int64_t>& axes,
@@ -138,23 +138,23 @@ class FuncReduceV {
   const NodeArg* def_;
 };
 
-#define REDUCE_V_OP(name)                                                                                            \
-  Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                         \
-      const tvm::Array<tvm::Tensor>& inputs,                                                                         \
-      const Node& node,                                                                                              \
-      CodeGenContext& ctx_codegen,                                                                                   \
-      tvm::Array<tvm::Tensor>& outputs) {                                                                            \
-    auto natural_vector = [&](int bits) {                                                                            \
-      return ctx_codegen.GetCodeGenHandle()->codegen_target->NaturalVectorWidth(bits);                               \
-    };                                                                                                               \
-    tvm::Tensor Y = FuncReduceV(node, &nuphar_codegen::name, natural_vector, node.InputDefs()[0], #name)(inputs[0]); \
-    outputs.push_back(Y);                                                                                            \
-    return Status::OK();                                                                                             \
+#define REDUCE_V_OP(name)                                                                                    \
+  Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(name)::Evaluate(                                                 \
+      const tvm::Array<tvm::Tensor>& inputs,                                                                 \
+      const Node& node,                                                                                      \
+      tvm_codegen::CodeGenContext& ctx_codegen,                                                              \
+      tvm::Array<tvm::Tensor>& outputs) {                                                                    \
+    auto natural_vector = [&](int bits) {                                                                    \
+      return ctx_codegen.GetCodeGenHandle()->codegen_target->NaturalVectorWidth(bits);                       \
+    };                                                                                                       \
+    tvm::Tensor Y = FuncReduceV(node, &nuphar::name, natural_vector, node.InputDefs()[0], #name)(inputs[0]); \
+    outputs.push_back(Y);                                                                                    \
+    return Status::OK();                                                                                     \
   }
 
 LIST_REDUCE_V_OPS()
 
 #undef REDUCE_V_OP
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

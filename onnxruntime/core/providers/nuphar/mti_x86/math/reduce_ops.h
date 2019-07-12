@@ -7,7 +7,7 @@
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 constexpr auto kNupharVReduce = "nuphar_v_reduce";
 
@@ -36,5 +36,5 @@ tvm::Tensor ReduceMin(const tvm::Tensor& X,
                       int32_t fuse_dim = 0,
                       const std::string& name = "reduce_min_v");
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

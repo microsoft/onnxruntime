@@ -224,7 +224,6 @@ if(onnxruntime_USE_NUPHAR)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
-  list(APPEND onnx_test_libs onnxruntime_providers_nuphar)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
@@ -239,6 +238,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
+    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     onnxruntime_optimizer
     onnxruntime_providers

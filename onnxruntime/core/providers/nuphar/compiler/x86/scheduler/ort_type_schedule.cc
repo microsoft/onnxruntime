@@ -5,33 +5,68 @@
 
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
-#include "core/codegen/target/generic/scheduler/schedule_utils.h"
+#include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_extern.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_ir.h"
 #include "core/framework/op_kernel_info.h"
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
+
+bool TryVectorizationX86(
+    const tvm::Tensor& tensor,
+    tvm_codegen::ScheduleContext& ctx) {
+  // TODO change it to the value from Target
+  int64_t natural_vector_size = 16;
+
+  return TryVectorization(tensor, natural_vector_size, ctx);
+}
+
+bool InputRootScheduleWithVectorizationX86(
+    const tvm::Tensor& tensor,
+    tvm_codegen::ScheduleContext& ctx) {
+  bool status = false;
+  for (auto& t : tensor->op->InputTensors()) {
+    if (t->op->InputTensors().size() > 0) {
+      bool status_vec = TryVectorizationX86(t, ctx);
+      bool status_root = InsertRootSchedule(t, ctx);
+      status = status || status_root || status_vec;
+    }
+  }
+  return status;
+}
 
 bool TVM_SCHEDULER_CLASS(Softmax, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    CodeGenContext&,
-    ScheduleContext& ctx_sched) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
-
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   // compute root the exp since it is reused more than once
   auto& tensor_exp = tensor->op->InputTensors()[0];
-  bool status_vec = TryVectorization(tensor_exp, natural_vector_size, ctx_sched);
+  bool status_vec = TryVectorizationX86(tensor_exp, ctx_sched);
   bool status_root = InsertRootSchedule(tensor_exp, ctx_sched);
   return status_vec || status_root;
 }
 
+bool TVM_SCHEDULER_CLASS(Split, NupharX86OrtOpType)::Evaluate(
+    const tvm::Tensor& tensor,
+    const Node*,
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  auto& tensor_split_input = tensor->op->InputTensors()[0];
+  // force inline for split since to avoid extra copy
+  bool status_split_itself = TryInlineSchedule(tensor, ctx_sched);
+
+  // add root for split's inputs to avoid inline of the inputs
+  bool status_vec = TryVectorizationX86(tensor_split_input, ctx_sched);
+  bool status_input_root = InsertRootSchedule(tensor_split_input, ctx_sched);
+  return status_split_itself || status_vec || status_input_root;
+}
+
 // Illustration purpose only for tensorization
 static Status MatMulTensorization(const tvm::Tensor& tensor,
-                                  ScheduleContext& ctx) {
+                                  tvm_codegen::ScheduleContext& ctx) {
   if (tensor->shape.size() != 2)
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm output shape should be 2D");
 
@@ -86,8 +121,8 @@ static Status MatMulTensorization(const tvm::Tensor& tensor,
 bool TVM_SCHEDULER_CLASS(Gemm, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node* node,
-    CodeGenContext&,
-    ScheduleContext& ctx_sched) {
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   ProtoHelperNodeContext ctx(*node);
   OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
   int64_t trans_A_64, trans_B_64;
@@ -105,7 +140,7 @@ bool TVM_SCHEDULER_CLASS(Gemm, NupharX86OrtOpType)::Evaluate(
 // OLD code from Conv schedule
 static Status ConvScheduleX86(const tvm::Tensor& tensor,
                               NupharCodeGenCtx& ctx_codegen,
-                              ScheduleContext& ctx_sched,
+                              tvm_codegen::ScheduleContext& ctx_sched,
                               int block_size) {
   if (tensor->shape.size() != 4)
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Conv output shape should be 4D");
@@ -153,8 +188,8 @@ static Status ConvScheduleX86(const tvm::Tensor& tensor,
 bool TVM_SCHEDULER_CLASS(Conv, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node* node,
-    CodeGenContext& ctx_codegen,
-    ScheduleContext& ctx_sched) {
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);
   return ConvScheduleX86(tensor, *ctx_nuphar, ctx_sched, 16).IsOK();
 }  // namespace tvm_codegen
@@ -163,7 +198,7 @@ bool TVM_SCHEDULER_CLASS(Conv, NupharX86OrtOpType)::Evaluate(
 static Status MatMul_2DWeight_Schedule(
     const tvm::Tensor& tensor_C,
     NupharCodeGenCtx& ctx_codegen,
-    ScheduleContext& ctx_sched,
+    tvm_codegen::ScheduleContext& ctx_sched,
     int block_size) {
   // implementation adapted from:
   // https://docs.tvm.ai/tutorials/optimize/opt_gemm.html#sphx-glr-tutorials-optimize-opt-gemm-py
@@ -219,8 +254,8 @@ static Status MatMul_2DWeight_Schedule(
 bool TVM_SCHEDULER_CLASS(MatMul, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node* node,
-    CodeGenContext& ctx_codegen,
-    ScheduleContext& ctx_sched) {
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);
 
   if (tensor->dtype != HalideIR::Float(32)) {
@@ -229,5 +264,5 @@ bool TVM_SCHEDULER_CLASS(MatMul, NupharX86OrtOpType)::Evaluate(
   return InsertRootSchedule(tensor, ctx_sched);
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

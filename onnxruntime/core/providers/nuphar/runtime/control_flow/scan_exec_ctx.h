@@ -6,7 +6,7 @@
 #include "core/providers/nuphar/runtime/control_flow/loop_exec_ctx.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Note ScanExecInfo have all ort related meta data
 struct ScanExecInfo : ControlFlowInfo {
@@ -35,10 +35,10 @@ class ScanExecCtx final : public LoopExecCtx {
                    const NupharFuncInfo* func_info) override;
   void UpdateContext(KernelComputeCtx* compute_ctx,
                      const NupharFuncInfo* func_info) override;
-  void FillTVMArgs(KernelComputeCtx* compute_ctx,
-                   const NupharFuncInfo* func_info) override;
+  void InitIteration(KernelComputeCtx* compute_ctx,
+                     const NupharFuncInfo* func_info) override;
 
-  void LoopFinalize() override;
+  void LoopFinalizer() override;
   void Advance(const ControlFlowInfo* cf_info) override;
 
  private:
@@ -82,5 +82,5 @@ class ScanExecCtx final : public LoopExecCtx {
   ;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -19,7 +19,7 @@
 namespace fs = std::experimental::filesystem;
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
   codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
@@ -141,6 +141,8 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   return func;
 }
 
+thread_local int saved_tvm_model_cnt = 0;
+
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module) {
   fs::path path;
 
@@ -148,10 +150,12 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
     return;
 
   static std::mutex save_cache_mutex;
+  static std::unordered_set<std::string> existing_files;
   std::lock_guard<std::mutex> lock(save_cache_mutex);
-
-  if (GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
-    path.append(filename + ".o");
+  if (existing_files.count(filename) == 0 &&
+      GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
+    existing_files.insert(filename);
+    path.append("cached_" + std::to_string(saved_tvm_model_cnt++) + ".o");
     if (fs::exists(path)) {
       LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
       return;
@@ -160,14 +164,9 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   }
 }
 
-std::string GetPackedFuncName(const Node& node, const CodeGenTarget& codegen_target) {
-  return NormalizeCppName(node.OpType() + std::to_string(node.Index()) + " " + codegen_target.GetTargetName());
-}
-
 std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target) {
-  const Node* node = subgraph.nodes.front();
-  return GetPackedFuncName(*node, codegen_target);
+  return NormalizeCppName(subgraph.UniqueId() + " " + codegen_target.GetTargetName());
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

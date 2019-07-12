@@ -1172,53 +1172,31 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   // now run the truncated model
   SessionOptions so;
   InferenceSession session_object(so);
-#ifdef USE_NUPHAR
-  session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider());
-#endif
   ASSERT_TRUE(session_object.Load(LSTM_MODEL_URI).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
 
-  std::vector<int64_t> X_dims = {5, 2, 3};
-  std::vector<float> X =
-      {0.5488135f, 0.71518934f, 0.60276335f, 0.0871293f, 0.0202184f, 0.83261985f,
-       0.5448832f, 0.4236548f, 0.6458941f, 0.77815676f, 0.87001216f, 0.9786183f,
-       0.4375872f, 0.891773f, 0.96366274f, 0.7991586f, 0.46147937f, 0.7805292f,
-       0.3834415f, 0.79172504f, 0.5288949f, 0.11827443f, 0.639921f, 0.14335328f,
-       0.56804454f, 0.92559665f, 0.07103606f, 0.9446689f, 0.5218483f, 0.41466194f};
+  std::vector<int64_t> X_dims = {5, 1, 3};
+  std::vector<float> X = {0.5488135f, 0.71518934f, 0.60276335f,
+                          0.5448832f, 0.4236548f, 0.6458941f,
+                          0.4375872f, 0.891773f, 0.96366274f,
+                          0.3834415f, 0.79172504f, 0.5288949f,
+                          0.56804454f, 0.92559665f, 0.07103606f};
 
-  std::vector<int64_t> Y_dims = {5, 2, 2};
-  std::vector<float> Y_data =
-      {6.0398843e-06f, -6.6051725e-06f, 8.2642844e-05f, -1.9715066e-04f,
-       4.2433250e-05f, -8.4586645e-05f, 2.4991285e-04f, -5.0720439e-04f,
-       1.3076456e-04f, -2.3880883e-04f, 4.6138719e-04f, -8.1633305e-04f,
-       2.5186839e-04f, -4.0652003e-04f, 6.2595634e-04f, -9.0851035e-04f,
-       3.3859906e-04f, -4.4644799e-04f, 6.8474811e-04f, -7.9168874e-04f};
+  std::vector<int64_t> Y_dims = {5, 1, 2};
+  std::vector<float> Y_data = {-1.1730184e-04f, -3.1204990e-04f,
+                               -2.9978977e-04f, -1.0602647e-03f,
+                               -3.8115133e-04f, -2.0684483e-03f,
+                               -2.5120965e-04f, -2.9920202e-03f,
+                               3.0980256e-05f, -3.5933927e-03f};
 
-  // initial value for init_c/h
-  std::vector<int64_t> init_dims = {2, 2};
-  std::vector<float> init_value(4, 0);
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &ml_value);
 
-  OrtValue X_ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &X_ml_value);
-
-  OrtValue init_ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), init_dims, init_value, &init_ml_value);
-
-  NameMLValMap feeds;
-  std::string input_name;
-  for (const auto graph_input : graph_proto.input()) {
-    const auto& shape = graph_input.type().tensor_type().shape();
-    const auto& name = graph_input.name();
-    if (shape.dim_size() == 3) {
-      feeds.emplace(name, X_ml_value);
-      input_name = name;
-    } else if (name.find("Constant") == 0) {
-      feeds.emplace(name, init_ml_value);
-    }
-  }
+  std::string input_name = "Input13165";
+  NameMLValMap feeds = {{input_name, ml_value}};
 
   // prepare outputs for whole sequence
   std::string final_output_name = "";
@@ -1271,14 +1249,6 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
         auto iter = init_state_map.find(output_names[i_output]);
         if (iter != init_state_map.end())
           truncated_feeds.insert(std::make_pair(iter->second, fetches[i_output]));
-      }
-    } else {
-      // feed init_c/h with zeros
-      for (const auto graph_input : graph_proto.input()) {
-        const auto& name = graph_input.name();
-        if (name.find("Constant") == 0) {
-          truncated_feeds.emplace(name, init_ml_value);
-        }
       }
     }
     std::vector<OrtValue> truncated_fetches;
@@ -1429,6 +1399,86 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 }
 
 #endif
+
+TEST(InferenceSessionTests, GRUBatchSeqLenIntTest) {
+  static const std::string GRU_MODEL_URI = "testdata/gru_batch_seq_len_imatmul.pb";
+  // This model is a GRU with batch and sequence length, with quantized MatMulInteger
+
+  SessionOptions so;
+  InferenceSession session_object(so);
+#ifdef USE_NUPHAR
+  session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider());
+#endif
+  ASSERT_TRUE(session_object.Load(GRU_MODEL_URI).IsOK());
+  ASSERT_TRUE(session_object.Initialize().IsOK());
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+
+  std::vector<int64_t> X_dims = {3, 3, 3};
+  std::vector<float> X =
+      {0, 1, 2, 3, 4, 5, 6, 7, 8,
+       9, 8, 7, 6, 5, 4, 0, 0, 0,
+       3, 2, 1, 0, 0, 0, 0, 0, 0};
+
+  std::vector<int64_t> seq_dims = {3};
+  std::vector<int32_t> seq = {3, 2, 1};
+
+  OrtValue X_ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &X_ml_value);
+
+  OrtValue seq_ml_value;
+  CreateMLValue<int32_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), seq_dims, seq, &seq_ml_value);
+
+  NameMLValMap feeds;
+  feeds.emplace("Input3", X_ml_value);
+  feeds.emplace("seq_len", seq_ml_value);
+
+  std::vector<std::string> output_names = {"Plus623_Output_0", "Hidden_output"};
+  std::vector<OrtValue> fetches;
+
+  // Now run the full sequence
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  ASSERT_EQ(2, fetches.size());
+
+  std::vector<int64_t> Y_dims = {3, 3, 2};
+  std::vector<float> Y_data =
+      {0.112073f, 0.463166f,
+       0.0613338f, 0.141461f,
+       0.0222765f, -0.00191399f,
+
+       0.283774f, 0.45093f,
+       0.400833f, 0.101056f,
+       0, 0,
+
+       0.513725f, 0.316251f,
+       0, 0,
+       0, 0};
+
+  std::vector<int64_t> Y_h_dims = {1, 3, 2};
+  std::vector<float> Y_h_data =
+      {0.513725f, 0.316251f,
+       0.400833f, 0.101056f,
+       0.0222765f, -0.00191399f};
+
+  const auto& Y_tensor = fetches[0].Get<Tensor>();
+  const float* Y_real_output = Y_tensor.template Data<float>();
+
+  const auto& Y_h_tensor = fetches[1].Get<Tensor>();
+  const float* Y_h_real_output = Y_h_tensor.template Data<float>();
+
+  ASSERT_EQ(TensorShape(Y_dims), Y_tensor.Shape());
+  for (size_t i = 0; i < Y_data.size(); ++i)
+    EXPECT_NEAR(Y_data[i], Y_real_output[i], 1e-3f);
+
+  ASSERT_EQ(TensorShape(Y_h_dims), Y_h_tensor.Shape());
+  for (size_t i = 0; i < Y_h_data.size(); ++i)
+    EXPECT_NEAR(Y_h_data[i], Y_h_real_output[i], 1e-3f);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

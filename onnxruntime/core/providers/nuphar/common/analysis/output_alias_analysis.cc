@@ -6,29 +6,35 @@
 #include "core/codegen/common/common.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 void OutputAliasAnalysis::Traverse(const std::vector<const Node*>& nodes,
+                                   const std::set<std::string>& graph_inputs,
                                    const std::set<std::string>& graph_outputs) {
   for (auto& node : nodes) {
     if (node->NodeType() == Node::Type::Fused) {
       // unboxing of fused node
       const auto& func_body = GraphViewer(node->GetFunctionBody()->Body());
-      Traverse(ConvertGraphNodesToNodePtrs(func_body.Nodes()), graph_outputs);
+      Traverse(ConvertGraphNodesToNodePtrs(func_body.Nodes()), graph_inputs, graph_outputs);
     } else {
       // TODO: change identity to other alias
       bool is_identity = (node->OpType() == "Identity");
       node->ForEachWithIndex(
           node->OutputDefs(),
-          [this, &graph_outputs, &node, &is_identity](const NodeArg& def, size_t) {
+          [&](const NodeArg& def, size_t) {
             if (graph_outputs.count(def.Name()) > 0) {
               NodeKey key = GetKey(node);
               output_nodes_.insert(key);
               if (is_identity) {
                 auto input_def = node->InputDefs()[0];
-                alias_use_defs_.insert(std::make_pair(key, input_def));
-                NodeKey input_key = GetKey(input_def);
-                output_nodes_.insert(input_key);
+                // regard as aliased if input_def is not graph input
+                // otherwise, we still generate Identity ops in TVM
+                // TODO: remove once we have a better solution for alias optimization
+                if (graph_inputs.count(input_def->Name()) == 0) {
+                  alias_use_defs_.insert(std::make_pair(key, input_def));
+                  NodeKey input_key = GetKey(input_def);
+                  output_nodes_.insert(input_key);
+                }
               }
             }
             return Status::OK();
@@ -45,27 +51,39 @@ void OutputAliasAnalysis::Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit
     auto subgraph = GetSubgraph(*node);
 
     if (nullptr != subgraph) {
+      std::set<std::string> graph_inputs;
       std::set<std::string> graph_outputs;
       const auto& graph_viewer = GraphViewer(*subgraph);
+      for (const auto* def : graph_viewer.GetInputs()) {
+        if (nullptr != def) {
+          graph_inputs.insert(def->Name());
+        }
+      }
       for (const auto* def : graph_viewer.GetOutputs()) {
         if (nullptr != def) {
           graph_outputs.insert(def->Name());
         }
       }
-      Traverse(ConvertGraphNodesToNodePtrs(graph_viewer.Nodes()), graph_outputs);
+      Traverse(ConvertGraphNodesToNodePtrs(graph_viewer.Nodes()), graph_inputs, graph_outputs);
     } else {
       NodeKey key = GetKey(node);
       output_nodes_.insert(key);
     }
   } else {
     // outputs names
+    std::set<std::string> graph_inputs;
     std::set<std::string> graph_outputs;
+    for (const auto* def : graph.inputs) {
+      if (nullptr != def) {
+        graph_inputs.insert(def->Name());
+      }
+    }
     for (const auto* def : graph.outputs) {
       if (nullptr != def) {
         graph_outputs.insert(def->Name());
       }
     }
-    Traverse(graph.nodes, graph_outputs);
+    Traverse(graph.nodes, graph_inputs, graph_outputs);
   }
 }
 
@@ -87,5 +105,5 @@ OutputAliasAnalysis::SourceDefOfOutputAlias(const onnxruntime::NodeArg* node) co
   return nullptr;
 }
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

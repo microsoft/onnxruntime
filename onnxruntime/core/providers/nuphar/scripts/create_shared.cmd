@@ -27,7 +27,7 @@ echo                       LPVOID lpReserved) >>%DLLMAIN_CC%
 echo {return TRUE;} >>%DLLMAIN_CC%
 
 REM skip checksum if no model file specified
-if NOT EXIST %MODEL_FILE% goto Compile
+if NOT EXIST "%MODEL_FILE%" goto Compile
 
 REM get checksum from the model file
 set CHECKSUM_CC=%CACHE_DIR%\checksum.cc

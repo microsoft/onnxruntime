@@ -13,7 +13,7 @@
 #include <topi/transform.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a, bool trans_b, const std::string& name) {
   tvm::Tensor Y;
@@ -24,7 +24,7 @@ tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a, b
 }
 
 TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.sgemm_cpu")
-    .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* ret) {
+    .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
       CODEGEN_PROFILER_EVENT(math_sgemm);
       // Explicitly construct TVMArgValue instead of calling operator[] on args for saving some cycles.
       DLTensor* A = tvm::runtime::TVMArgValue(args.values[0], args.type_codes[0]);
@@ -46,7 +46,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.sgemm_cpu")
 
       // compute default M by flatten A dims
       M = 1;
-      for (size_t d = 0; d < A->ndim - 1; ++d)
+      for (int d = 0; d < A->ndim - 1; ++d)
         M *= A->shape[d];
 
       if (A->ndim == 1) {
@@ -187,12 +187,12 @@ tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string
   int64_t b_rank = gsl::narrow_cast<int64_t>(B->shape.size());
   if (a_rank == 2 && b_rank == 2) {
     // 2-D X 2-D: call nuphar version which does special handling for 2D MatMul
-    return nuphar_codegen::MatMul2D(A, B);
+    return nuphar::MatMul2D(A, B, false, false, name);
   } else {
     // go through generic case otherwise
-    return tvm_codegen::MatMul(A, B);
+    return tvm_codegen::MatMul(A, B, name);
   }
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

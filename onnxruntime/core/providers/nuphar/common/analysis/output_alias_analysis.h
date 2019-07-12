@@ -8,7 +8,7 @@
 #include "core/providers/nuphar/common/analysis/analysis.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 class OutputAliasAnalysis : public NupharAnalysis {
  public:
@@ -32,11 +32,12 @@ class OutputAliasAnalysis : public NupharAnalysis {
   std::map<NodeKey, const onnxruntime::NodeArg*> alias_use_defs_;
 
   void Traverse(const std::vector<const Node*>& nodes,
+                const std::set<std::string>& graph_inputs,
                 const std::set<std::string>& graph_outputs);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OutputAliasAnalysis);
 };
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

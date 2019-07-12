@@ -8,7 +8,7 @@
 #include "core/providers/nuphar/compiler/traverse_shape_infer.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 // TODO: rename class name to more target-specific in the tvm refactoring
 // Maybe GraphPartitionStatsX86
@@ -27,5 +27,5 @@ class SubgraphPartitionStats : public OrtGraphStats {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SubgraphPartitionStats);
 };
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

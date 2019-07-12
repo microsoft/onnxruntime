@@ -5,9 +5,9 @@
 #include "tensorize_base.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 TENSORIZE_CLASS_WITH_LLVM_IMPORT(NaiveLLVMExternGemvTensorization)
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

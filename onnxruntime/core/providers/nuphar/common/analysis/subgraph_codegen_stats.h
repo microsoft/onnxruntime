@@ -8,7 +8,7 @@
 #include "core/providers/nuphar/common/nuphar_subgraph.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 class CodeGenUnitStats : public NupharSubgraphUnitStats {
  public:
@@ -28,5 +28,5 @@ class CodeGenUnitStats : public NupharSubgraphUnitStats {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CodeGenUnitStats);
 };
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

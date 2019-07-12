@@ -5,22 +5,25 @@
 #include "core/providers/nuphar/compiler/func_info.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 class KernelComputeCtx;
 
+// abstract class for loop
 class LoopExecCtx {
  public:
   LoopExecCtx() {}
+
+  virtual ~LoopExecCtx() = default;
 
   virtual void InitContext(KernelComputeCtx* compute_ctx,
                            const NupharFuncInfo* func_info) = 0;
   virtual void UpdateContext(KernelComputeCtx* compute_ctx,
                              const NupharFuncInfo* func_info) = 0;
-  virtual void FillTVMArgs(KernelComputeCtx* compute_ctx,
-                           const NupharFuncInfo* func_info) = 0;
+  virtual void InitIteration(KernelComputeCtx* compute_ctx,
+                             const NupharFuncInfo* func_info) = 0;
 
-  virtual void LoopFinalize() = 0;
+  virtual void LoopFinalizer() = 0;
   // Marching to next loop iteration
   virtual void Advance(const ControlFlowInfo* cf_info) = 0;
   virtual bool IsValid() {
@@ -36,5 +39,5 @@ class LoopExecCtx {
   int max_loop_step_;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

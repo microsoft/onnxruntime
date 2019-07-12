@@ -310,7 +310,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   test.AddOutput<float>("scan_output_2", output_shape, output_2);
   test.AddOutput<float>("scan_output_3", output_shape, output_3);
 
-  test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});  // Disable TensorRT because its parser failed
+  test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because its parser failed
 }
 
 static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_t input_size,
@@ -396,7 +396,6 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   test.AddOutput<float>("scan_output_2", calculate_output_shape(2), output_2);
   test.AddOutput<float>("scan_output_3", calculate_output_shape(3), output_3);
 
-  // disable TensorRT/Nuphar provider test on Scan, will re-enable once Nuphar supports no shape infer
   if (options.mixed_execution_providers) {
     // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
     // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
@@ -404,9 +403,9 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider, kNupharExecutionProvider}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider, kNupharExecutionProvider});
+    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider});// Disable TensorRT because its parser failed
   }
 }
 
@@ -890,7 +889,7 @@ TEST(Scan9, TransposeOutputDim2) {
   test.AddInput<float>("scan_input_1", input_shape, {1.0, 2.0});
   test.AddOutput<float>("scan_output_1", output_shape, {1.0, 2.0});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// Disable TensorRT on supported data types
 }
 
 static void InvalidInput(bool is_v8) {
@@ -1082,7 +1081,7 @@ void MixedTypeInputs(bool is_v8) {
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
   test.AddOutput<int64_t>("scan_output_2", seq_shape, {0, 1, 2});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// Disable TensorRT on unsupported data types
 }
 
 TEST_8_AND_9(MixedTypeInputs);
@@ -1147,10 +1146,67 @@ void UnknownDimInSubgraphOutput(bool is_v8) {
   test.AddOutput<float>("final_state_1", state_shape, {3.0});
   test.AddOutput<float>("scan_output_1", seq_shape, {0.0, 1.0, 2.0});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNupharExecutionProvider});  //Disable TensorRT/Nuphar on unknown dimension tests
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Disable TensorRT on unknown dimension tests
 }
 
 TEST_8_AND_9(UnknownDimInSubgraphOutput);
+
+void SimpleScanAdd(bool is_v8) {
+  Model model("ScanBody");
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& state_in = graph.GetOrCreateNodeArg("state_in", &float_tensor);
+  auto& scan_in = graph.GetOrCreateNodeArg("scan_in", &float_tensor);
+  auto& add_out = graph.GetOrCreateNodeArg("add_out", &float_tensor);
+  graph.AddNode("add", "Add", "Add state_in_1 and scan_in_1", {&state_in, &scan_in}, {&add_out});
+
+  auto& state_out = graph.GetOrCreateNodeArg("state_out", &float_tensor);
+  auto& scan_out = graph.GetOrCreateNodeArg("scan_out", &float_tensor);
+  graph.AddNode("id_node1", "Identity", "Copy add_out to scan_out", {&add_out}, {&scan_out});
+  graph.AddNode("id_node2", "Identity", "Copy add_out to state_out_1", {&add_out}, {&state_out});
+
+  graph.SetInputs({&state_in, &scan_in});
+  graph.SetOutputs({&state_out, &scan_out});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  auto& scan_body = graph.ToGraphProto();
+
+  // Construct and run scan test
+  ScanOpTester test{is_v8 ? 8 : 9};
+
+  int64_t batch_size = 1, sequence_len = 1, input_size = 1;
+  std::vector<int64_t> seq_shape{sequence_len, input_size};
+  std::vector<int64_t> state_shape{input_size};
+
+  if (is_v8) {
+    seq_shape.insert(seq_shape.begin(), batch_size);
+    state_shape.insert(state_shape.begin(), batch_size);
+
+    // in Scan-8, the first input sequence_lens is optional
+    test.AddMissingOptionalInput<int64_t>();
+  }
+
+  test.AddAttribute("body", scan_body);
+  test.AddAttribute<int64_t>("num_scan_inputs", 1);
+
+  test.AddInput<float>("initial_state", state_shape, {2.0}, /*is_initializer*/ true);
+  // symbolic shape dim in seq length dim for scan_input_1
+  test.AddShapeToTensorData(true, is_v8 ? 2 : 1);
+  test.AddInput<float>("scan_input", seq_shape, {3.0});
+
+  test.AddOutput<float>("final_state", state_shape, {5.0});
+  test.AddOutput<float>("scan_output", seq_shape, {5.0});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//Disable TensorRT on unknown dimension tests
+}
+
+TEST_8_AND_9(SimpleScanAdd);
 
 #ifdef USE_CUDA
 TEST(Scan, MixedExecutionProviders) {

@@ -282,7 +282,12 @@ static common::Status SetupFetchesForExecute(const SessionState& session_state,
         }
 
         auto tensor_provider_type = tensor_provider->Type();
-        if (node_provider_type == tensor_provider_type) {
+        if (node_provider_type == tensor_provider_type ||
+            // special case to avoid output copy for nuphar provider
+            // need this to pass test Scan8.UnknownDimInSubgraphOutput in Nuphar
+            // TODO: have a more standard handling for tensor zero-copy between devices
+            (tensor_provider_type == kCpuExecutionProvider && node_provider_type == kNupharExecutionProvider) ||
+            (tensor_provider_type == kNupharExecutionProvider && node_provider_type == kCpuExecutionProvider)) {
           new_fetches[idx] = fetches[idx];
           local_can_copy_flags[idx] = true;
           continue;

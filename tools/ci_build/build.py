@@ -223,6 +223,8 @@ def install_ubuntu_deps(args):
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
+    dep_packages.append('sympy>=1.1')
+    dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
 
 def check_md5(filename, expected_md5):
@@ -515,7 +517,7 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False, enable_nuphar = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -557,7 +559,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                     onnxml_test = False
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
-
+            if enable_nuphar and config != 'Debug':
+                # install onnx for shape inference in testing Nuphar scripts
+                # this needs to happen after onnx_test_data preparation which uses onnx 1.3.0
+                # remove onnx after the build to avoid next run to generate onnx_test_data from later onnx version
+                run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
+                run_subprocess([sys.executable, 'onnxruntime_test_python_nuphar.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, '-m', 'pip', 'uninstall', '-y', 'onnx'])
 
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
@@ -860,7 +868,7 @@ def main():
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind and not args.skip_onnx_tests,
-                              args.use_tvm, args.use_tensorrt, args.use_ngraph)
+                              args.use_tvm, args.use_tensorrt, args.use_ngraph, args.use_nuphar)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data

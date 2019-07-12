@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // BasicExecBlock is most common execuction block
 // It does not contain C++ control flow during execution
@@ -23,12 +23,12 @@ class BasicExecBlock : public ExecBlock {
       : ExecBlock(info, name, type) {}
 
   virtual void Run(KernelComputeCtx* compute_ctx) override;
-  void InitContext(KernelComputeCtx* compute_ctx) override;
-  void UpdateContext(KernelComputeCtx* compute_ctx) override;
+  void InitContext(KernelComputeCtx* compute_ctx) const override;
+  void UpdateContext(KernelComputeCtx* compute_ctx) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BasicExecBlock);
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -6,7 +6,7 @@
 #include "core/providers/nuphar/common/analysis/use_count_analysis.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 // TODO: Add memory analysis
 // SubgraphPartitionStats has one analysis pass
@@ -25,5 +25,5 @@ int SubgraphPartitionStats::NodeUseCount(const onnxruntime::Node* node) const {
   return Promote<OrtUseCountAnalysis>(passes_[UseCountAnalysisOffset])->NodeUseCount(node);
 }
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

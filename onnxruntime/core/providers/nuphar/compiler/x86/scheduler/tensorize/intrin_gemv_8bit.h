@@ -5,9 +5,9 @@
 #include "tensorize_base.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
-class Gemv8bitTensorization : public TensorizeBase {
+class Gemv8bitTensorization : public tvm_codegen::TensorizeBase {
  public:
   Gemv8bitTensorization(const std::string& name, const std::vector<int32_t>& vshape);
 
@@ -16,5 +16,5 @@ class Gemv8bitTensorization : public TensorizeBase {
   tvm::TensorIntrin CreateTensorIntrin() override;
 };
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

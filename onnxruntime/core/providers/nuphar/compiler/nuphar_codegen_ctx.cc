@@ -7,13 +7,13 @@
 #include "core/codegen/common/utils.h"
 #include "core/codegen/mti/mti_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
-#include "core/codegen/target/ort_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
-#include <tvm/build_module.h>                   // TODO: remove this after decoupling layout compile and run
+#include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
+#include <tvm/build_module.h>                         // TODO: remove this after decoupling layout compile and run
 
 #include "core/providers/nuphar/common/nuphar_tvm_utils.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 NupharCodeGenCtx::NupharCodeGenCtx(
     const Node& node,
@@ -25,7 +25,7 @@ NupharCodeGenCtx::NupharCodeGenCtx(
       initializers_(initializers),
       global_generated_initializers_(global_generated_initializers) {
   // construct graph_stats
-  graph_stats_ = std::make_unique<codegen::CodeGenUnitStats>(nuphar_handle_->shape_inference);
+  graph_stats_ = std::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
 }
 
 NupharCodeGenCtx::NupharCodeGenCtx(
@@ -36,14 +36,14 @@ NupharCodeGenCtx::NupharCodeGenCtx(
       nuphar_handle_(handle),
       initializers_(subgraph.initializers),
       global_generated_initializers_(global_generated_initializers) {
-  graph_stats_ = std::make_unique<codegen::CodeGenUnitStats>(nuphar_handle_->shape_inference);
-  codegen::Promote<codegen::CodeGenUnitStats>(graph_stats_)->Evaluate(subgraph);
+  graph_stats_ = std::make_unique<CodeGenUnitStats>(nuphar_handle_->shape_inference);
+  Promote<CodeGenUnitStats>(graph_stats_)->Evaluate(subgraph);
 }
 
 // This is a temp function before we decouple weight layout compilation and run
 // This will be moved.
 // TODO: remove this.
-static tvm::runtime::PackedFunc LowerLayoutFunc(const WeightLayout* layout) {
+static tvm::runtime::PackedFunc LowerLayoutFunc(const tvm_codegen::WeightLayout* layout) {
   tvm::Array<tvm::Tensor> inputs;
   tvm::Array<tvm::Tensor> outputs;
 
@@ -56,13 +56,13 @@ static tvm::runtime::PackedFunc LowerLayoutFunc(const WeightLayout* layout) {
 
   std::string func_name = layout->Name() + "_marshall";
 
-  tvm::runtime::PackedFunc cached_func = nuphar_codegen::LoadTVMPackedFuncFromCache(func_name);
+  tvm::runtime::PackedFunc cached_func = nuphar::LoadTVMPackedFuncFromCache(func_name);
 
   if (cached_func == nullptr) {
     auto lowered = tvm::lower(S, {inputs[0], outputs[0]}, func_name, {}, config);
     auto module = tvm::build(lowered, tvm::target::llvm(), tvm::Target(), config);
-    DumpTVMModuleToFile(func_name, module);
-    nuphar_codegen::SaveTVMModuleToCache(func_name, module);
+    tvm_codegen::DumpTVMModuleToFile(func_name, module);
+    nuphar::SaveTVMModuleToCache(func_name, module);
     cached_func = module.GetFunction(func_name);
   }
   return cached_func;
@@ -75,7 +75,7 @@ static const Tensor* Marshalling(
     const std::string& initializer_name,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>& global_generated_initializers,
     const Tensor* original_initializer,
-    const WeightLayout* layout_ptr,
+    const tvm_codegen::WeightLayout* layout_ptr,
     WeightLayoutCtx& ctx_layout,
     AllocatorPtr allocator) {
   tvm::runtime::PackedFunc packed_func;
@@ -190,7 +190,7 @@ tvm::Tensor NupharCodeGenCtx::ApplyWeightLayout(
   return layout_info->unmarshalled_tensor;
 }
 
-const codegen::NupharSubgraphUnitStats* NupharCodeGenCtx::GetGraphStats() const {
+const NupharSubgraphUnitStats* NupharCodeGenCtx::GetGraphStats() const {
   return graph_stats_.get();
 }
 
@@ -228,7 +228,7 @@ const std::map<std::string, std::unique_ptr<WeightLayoutCodegenInfo>>& NupharCod
 void NupharCodeGenCtx::RecordTensorToNode(const tvm::Tensor& t, const Node* node) {
   // Insert tvm::Tensor and Node to the lookup table
   // But bypass it when node is a output alias
-  if (!codegen::Promote<codegen::CodeGenUnitStats>(graph_stats_)->IsOutputAlias(node))
+  if (!Promote<CodeGenUnitStats>(graph_stats_)->IsOutputAlias(node))
     tvm_tensor_to_node_lookup_.insert(std::make_pair(t->op.get(), node));
 }
 
@@ -243,5 +243,5 @@ const NupharCodeGenHandle* NupharCodeGenCtx::GetCodeGenHandle() const {
   return nuphar_handle_;
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -7,21 +7,13 @@
 #include "core/providers/nuphar/nblas/nblas_igemv_mkl.h"
 
 // TODO: refactor the headers
-#include "core/codegen/mti/math/binary_ops.h"
-#include "core/codegen/mti/math/reduce_ops.h"
-#include "core/codegen/mti/math/unary_ops.h"
-#include "core/codegen/mti/tensor/reshape_ops.h"
-#include "core/codegen/mti/tensor/cast_ops.h"
-#include "core/codegen/mti/tensor/transpose.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "core/codegen/target/generic/weight_layout/transpose_2d.h"
+#include "core/codegen/passes/weight_layout/transpose_2d.h"
 #include "core/common/cpuid_info.h"
-#include "core/util/math_quantization.h"
 #include <topi/detail/extern.h>
-#include <topi/elemwise.h>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.qmatmulsymmetric.mkl")
     .set_body([](tvm::TVMArgs args, tvm::TVMRetValue* /*ret*/) {
@@ -74,10 +66,10 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.qmatmulsymmetric.avx2")
       }
     });
 
-tvm::Array<tvm::Tensor>
+tvm::Tensor
 QMatMulSymmetricMKL(const tvm::Tensor& transposed_quantized_param,
                     const tvm::Tensor& Q_X,
-                    const tvm::Expr& batch_seq_dim,
+                    const tvm::Array<tvm::Expr>& output_shape,
                     int input_dim,
                     int embed_dim,
                     const std::string& name) {
@@ -93,8 +85,13 @@ QMatMulSymmetricMKL(const tvm::Tensor& transposed_quantized_param,
   // TODO: instead of calling Promote, we may consider to expose
   // tvm::Tensor and tvm::Expr version of op from topi
   return topi::detail::make_extern(
-      {{batch_seq_dim, embed_dim}}, {tvm::Int(32)},
-      {transposed_quantized_param, Q_X, tvm_codegen::Promote(batch_seq_dim, {16}, name + "batch_symm")},
+      {output_shape}, {tvm::Int(32)},
+      tvm_codegen::MakeInputsForExtern(
+          {transposed_quantized_param,
+           Q_X,
+           tvm_codegen::Promote(tvm_codegen::SizeToDimension(output_shape, -1),
+                                {16},
+                                name + "batch_symm")}),
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
         return topi::detail::call_packed({tvm::Expr(func_str),
                                           topi::detail::pack_buffer(ins[0]),
@@ -104,16 +101,18 @@ QMatMulSymmetricMKL(const tvm::Tensor& transposed_quantized_param,
                                           input_dim,
                                           embed_dim});
       },
-      name, "", {});
+      name, "", {})[0];
 }
 
-tvm::Array<tvm::Tensor>
+tvm::Tensor
 QMatMulSymmetricAVX2(const tvm::Tensor& transposed_quantized_param,
                      const tvm::Tensor& Q_X,
-                     const tvm::Expr& batch_seq_dim,
+                     const tvm::Array<tvm::Expr>& output_shape,
                      int input_dim,
                      int embed_dim,
                      const std::string& name) {
+  tvm::Expr batch_seq_dim = tvm_codegen::SizeToDimension(output_shape, -1);
+
   // TODO remove this macro
 #ifdef NUPHAR_USE_TENSORIZE
   // Tensorization support Gemv with input_dim aligned for now
@@ -131,7 +130,7 @@ QMatMulSymmetricAVX2(const tvm::Tensor& transposed_quantized_param,
         gsl::narrow_cast<int>(*Q_X_dim1) == input_dim) {
       X = Q_X;
     } else {
-      X = Reshape(Q_X, {batch_seq_dim, input_dim}, name + "_reshape_X");
+      X = tvm_codegen::Reshape(Q_X, {batch_seq_dim, input_dim}, name + "_reshape_X");
     }
     auto Y = tvm::compute(
         {batch_seq_dim, embed_dim},
@@ -141,7 +140,7 @@ QMatMulSymmetricAVX2(const tvm::Tensor& transposed_quantized_param,
         },
         name + "_16bit_tensorization");
 
-    return {Y};
+    return Y;
   }
 #endif
 
@@ -155,8 +154,11 @@ QMatMulSymmetricAVX2(const tvm::Tensor& transposed_quantized_param,
   // TODO: instead of calling Promote, we may consider to expose
   // tvm::Tensor and tvm::Expr version of op from topi
   return topi::detail::make_extern(
-      {{batch_seq_dim, embed_dim}}, {tvm::Int(32)},
-      {transposed_quantized_param, Q_X, tvm_codegen::Promote(batch_seq_dim, {16}, name + "batch_symm")},
+      {output_shape}, {tvm::Int(32)},
+      tvm_codegen::MakeInputsForExtern(
+          {transposed_quantized_param,
+           Q_X,
+           tvm_codegen::Promote(batch_seq_dim, {16}, name + "batch_symm")}),
       [&](tvm::Array<tvm::Buffer> ins, tvm::Array<tvm::Buffer> outs) {
         return topi::detail::call_packed({tvm::Expr(func_str),
                                           topi::detail::pack_buffer(ins[0]),
@@ -166,8 +168,8 @@ QMatMulSymmetricAVX2(const tvm::Tensor& transposed_quantized_param,
                                           input_dim,
                                           embed_dim});
       },
-      name, "", {});
+      name, "", {})[0];
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -11,19 +11,19 @@
 #include "core/codegen/mti/tensor/cast_ops.h"                          // remove this after removing tvm core code out
 #include "core/codegen/mti/tensor/reshape_ops.h"                       // remove this after removing tvm core code out
 #include "core/codegen/mti/tensor/transpose.h"                         // remove this after removing tvm core code out
-#include "core/codegen/target/generic/weight_layout/transpose_2d.h"    // remove this after refactor layout
+#include "core/codegen/passes/weight_layout/transpose_2d.h"
 
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/common/cpuid_info.h"  // refactor this after move NUPHAR_USE_AVX2 common place
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
-// Evaluate of MatMulInteger OpIRCreator
-Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMulInteger)::Evaluate(
+// Evaluate of MatMulInteger or MatMulInteger16
+static Status EvaluateMatMul(
     const tvm::Array<tvm::Tensor>& inputs,
     const Node& node,
-    CodeGenContext& ctx_codegen,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm::Array<tvm::Tensor>& outputs) {
   NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);
 
@@ -49,47 +49,42 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMulInteger)::Evaluate(
       if (is16bitSymm || is8bitAsymm) {
         auto input_shape = lhs_tensor->shape;
         auto input_rank = gsl::narrow_cast<int>(input_shape.size());
-        // batch_seq_dim: batch * seq
-        auto batch_seq_dim = SizeToDimension(input_shape, input_rank - 1);
+
+        tvm::Array<tvm::Expr> output_shape;
+        for (int i = 0; i < input_rank - 1; ++i) {
+          output_shape.push_back(input_shape[i]);
+        }
+        output_shape.push_back(tvm::Expr(gsl::narrow_cast<int>(embed_dim)));
 
         auto quantized_param = rhs_tensor;
         tvm::Tensor quantized_marshalled;
         const std::string& quantized_param_name = node.InputDefs()[1]->Name();
 
         if (ctx_nuphar->IsInitializer(quantized_param_name)) {
-          auto layout_key = WeightLayoutTranspose2D::GetKey(TensorProtoDataType(node.InputDefs()[1]));
+          auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(node.InputDefs()[1]));
           quantized_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, quantized_param_name, quantized_param, true);
         } else {
-          quantized_marshalled = Transpose(quantized_param, {1, 0});
+          quantized_marshalled = tvm_codegen::Transpose(quantized_param, {1, 0});
         }
 
         // reserved_bits should be checked somewhere
         // int reserved_bits = 1;  // force it to use AVX2 when possible
         bool use_AVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
-        auto output_tensors =
-            is16bitSymm ? use_AVX2 ? nuphar_codegen::QMatMulSymmetricAVX2(quantized_marshalled, lhs_tensor,
-                                                                          batch_seq_dim, input_dim, embed_dim,
-                                                                          name + "_QMatMulSymmetricAVX2")
-                                   : nuphar_codegen::QMatMulSymmetricMKL(quantized_marshalled, lhs_tensor,
-                                                                         batch_seq_dim, input_dim, embed_dim,
-                                                                         name + "_QMatMulSymmetricMKL")
-                        : use_AVX2 ? nuphar_codegen::QMatMulAsymmetricAVX2(quantized_marshalled, lhs_tensor,
-                                                                           batch_seq_dim, input_dim, embed_dim,
-                                                                           name + "_QMatMulAsymmetricAVX2")
-                                   : nuphar_codegen::QMatMulAsymmetricMKL(quantized_marshalled, lhs_tensor,
-                                                                          batch_seq_dim, input_dim, embed_dim,
-                                                                          name + "_QMatMulAsymmetricMKL");
+        auto output_tensor =
+            is16bitSymm ? use_AVX2 ? QMatMulSymmetricAVX2(quantized_marshalled, lhs_tensor,
+                                                          output_shape, input_dim, embed_dim,
+                                                          name + "_QMatMulSymmetricAVX2")
+                                   : QMatMulSymmetricMKL(quantized_marshalled, lhs_tensor,
+                                                         output_shape, input_dim, embed_dim,
+                                                         name + "_QMatMulSymmetricMKL")
+                        : use_AVX2 ? QMatMulAsymmetricAVX2(quantized_marshalled, lhs_tensor,
+                                                           output_shape, input_dim, embed_dim,
+                                                           name + "_QMatMulAsymmetricAVX2")
+                                   : QMatMulAsymmetricMKL(quantized_marshalled, lhs_tensor,
+                                                          output_shape, input_dim, embed_dim,
+                                                          name + "_QMatMulAsymmetricMKL");
 
-        // Q_Y: [batch_seq_dim, embed_dim]
-        auto Q_Y = output_tensors[0];
-
-        // reshape to [seq, batch, embed_dim]
-        tvm::Array<tvm::Expr> Y_shape;
-        for (int i = 0; i < input_rank - 1; ++i)
-          Y_shape.push_back(input_shape[i]);
-        Y_shape.push_back(tvm::Expr(gsl::narrow_cast<int>(embed_dim)));
-        tvm::Tensor Y = Reshape(Q_Y, Y_shape, name + "_reshape");
-        outputs.push_back(Y);
+        outputs.push_back(output_tensor);
         return Status::OK();
       }
     }
@@ -97,15 +92,33 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMulInteger)::Evaluate(
   // slow path, cast to int32 for now
   // Support skipped trailing inputs
   auto lhs = (node.InputDefs().size() >= 3 && node.InputDefs()[2]->Exists())
-                 ? Sub(Cast(lhs_tensor, HalideIR::Int(32)), Cast(inputs[2], HalideIR::Int(32)))
-                 : Cast(lhs_tensor, HalideIR::Int(32));
+                 ? tvm_codegen::Sub(tvm_codegen::Cast(lhs_tensor, HalideIR::Int(32)), tvm_codegen::Cast(inputs[2], HalideIR::Int(32)))
+                 : tvm_codegen::Cast(lhs_tensor, HalideIR::Int(32));
   auto rhs = (node.InputDefs().size() >= 4 && node.InputDefs()[3]->Exists())
-                 ? Sub(Cast(rhs_tensor, HalideIR::Int(32)), Cast(inputs[3], HalideIR::Int(32)))
-                 : Cast(rhs_tensor, HalideIR::Int(32));
-  tvm::Tensor Y = MatMul(lhs, rhs, name);
+                 ? tvm_codegen::Sub(tvm_codegen::Cast(rhs_tensor, HalideIR::Int(32)), tvm_codegen::Cast(inputs[3], HalideIR::Int(32)))
+                 : tvm_codegen::Cast(rhs_tensor, HalideIR::Int(32));
+  tvm::Tensor Y = tvm_codegen::MatMul(lhs, rhs, name);
   outputs.push_back(Y);
   return Status::OK();
 }
 
-}  // namespace tvm_codegen
+// Evaluate of MatMulInteger OpIRCreator
+Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMulInteger)::Evaluate(
+    const tvm::Array<tvm::Tensor>& inputs,
+    const Node& node,
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm::Array<tvm::Tensor>& outputs) {
+  return EvaluateMatMul(inputs, node, ctx_codegen, outputs);
+}
+
+// Evaluate of MatMulInteger16 OpIRCreator
+Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMulInteger16)::Evaluate(
+    const tvm::Array<tvm::Tensor>& inputs,
+    const Node& node,
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm::Array<tvm::Tensor>& outputs) {
+  return EvaluateMatMul(inputs, node, ctx_codegen, outputs);
+}
+
+}  // namespace nuphar
 }  // namespace onnxruntime

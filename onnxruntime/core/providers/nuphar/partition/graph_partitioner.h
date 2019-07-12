@@ -19,7 +19,7 @@ using IsOpTypeSupportedFunc = std::function<bool(const Node& node)>;
 class GraphPartitioner : public Partitioner {
  public:
   GraphPartitioner(IsOpTypeSupportedFunc is_op_type_supported_func)
-      : is_op_type_supported_func_(is_op_type_supported_func), Partitioner() {}
+      : Partitioner(), is_op_type_supported_func_(is_op_type_supported_func) {}
 
   Status Partition(const onnxruntime::GraphViewer& graph,
                    std::vector<std::unique_ptr<ComputeCapability>>& result);
@@ -27,15 +27,13 @@ class GraphPartitioner : public Partitioner {
  private:
   IsOpTypeSupportedFunc is_op_type_supported_func_;
 
-  bool IsNodeSupported(const Node& node) override;
-
-  std::unordered_set<NodeKey> unsupported_nodes_;
+  bool IsNodeSupported(const Node& node) const override;
 
   // FORCE_ONE_SUBGRAPH is a marco to generate single subgraph partition
   // It is mainly for debug and reproducing older version
 #ifdef FORCE_ONE_SUBGRAPH
-  bool ForcePartition(const NodeIndex& n_idx, const int topology_idx,
-                      const Node& node, const std::vector<NodeIndex>& candiates,
+  bool ForcePartition(const Node& node,
+                      const std::vector<NodeIndex>& candiates,
                       const std::vector<NodeIndex>& rejected_partitions) override;
 #endif
 };

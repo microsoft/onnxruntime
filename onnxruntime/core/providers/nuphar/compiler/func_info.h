@@ -16,18 +16,21 @@
 #include <tvm/build_module.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 enum class ControlFlowInfoType : unsigned int {
   Scan = 1,
 };
 
+// abstract class for control flow info
 struct ControlFlowInfo {
  private:
   ControlFlowInfoType type;
 
  public:
   ControlFlowInfo(ControlFlowInfoType _type) : type(_type) {}
+
+  virtual ~ControlFlowInfo() = default;
 
   DYN_PROMOTE_BASE(ControlFlowInfo, ControlFlowInfoType, type)
 };
@@ -115,5 +118,5 @@ void FillNupharFuncInfo(NupharFuncInfo* func_info,
                         tvm::runtime::PackedFunc packed_func,
                         const std::string& name);
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

@@ -143,10 +143,19 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       if (current_provider == new_provider) {
         entries.push_back(node_info);
       } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                               "Using an input in multiple nodes on different devices is not supported currently. Input:",
-                               input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
-                               ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
+        // TODO: replace this with some more common check to allow CUDA/TensorRT sharing input too
+        static const std::unordered_set<std::string> cpu_compatible_providers = {
+            kCpuExecutionProvider,
+            kMklDnnExecutionProvider,
+            kNGraphExecutionProvider,
+            kNupharExecutionProvider};
+
+        if (!(cpu_compatible_providers.count(current_provider) > 0 &&
+              cpu_compatible_providers.count(new_provider) > 0))
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                 "Using an input in multiple nodes on different devices is not supported currently. Input:",
+                                 input_name, " is used by node ", existing_entry.p_node->Name(), " (", current_provider,
+                                 ") and node ", node_info.p_node->Name(), " (", new_provider, ").");
       }
     }
   }

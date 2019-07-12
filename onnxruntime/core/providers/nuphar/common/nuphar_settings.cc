@@ -11,14 +11,15 @@
 #include <unordered_set>
 
 namespace onnxruntime {
-namespace nuphar_codegen {
+namespace nuphar {
 
 static const std::unordered_set<std::string> valid_keys = {
     codegen::CodeGenSettings::kDumpAllOptions,
     codegen::CodeGenSettings::kCodeGenDumpModule,
     codegen::CodeGenSettings::kCodeGenDumpLower,
     codegen::CodeGenSettings::kCodeGenDumpSchedule,
-    codegen::CodeGenSettings::kCodeGenFastMath,
+    kNupharFastMath,
+    kNupharFastActivation,
     kNupharDumpFusedNodes,
     kNupharDumpPartition,
     kNupharMatmulExec,
@@ -47,8 +48,7 @@ void CreateNupharCodeGenSettings() {
                                                  << env_key << " from: " << options.at(key) << " to: " << value;
       }
 
-      std::string value_lower;
-      std::transform(value.begin(), value.end(), std::back_inserter(value_lower), (int (*)(int))std::tolower);
+      std::string value_lower = value;
       options[key] = value_lower;
     }
   }
@@ -59,13 +59,17 @@ void CreateNupharCodeGenSettings() {
   // create two temporary strings to get rid of the odr-use issue introduced
   // The issue would trigger missing definition errors for static constexpr members
   // at link time.
-  std::string fast_math_opt(codegen::CodeGenSettings::kCodeGenFastMath);
-  std::string select_fast_math(codegen::CodeGenSettings::kCodeGenFastMath_ShortPolynormial);
+  std::string fast_math_opt(kNupharFastMath);
+  std::string select_fast_math(kNupharFastMath_ShortPolynormial);
+  std::string fast_act_opt(kNupharFastActivation);
+  std::string select_fast_act(kNupharActivations_DeepCpu);
+
   // set jit cache so name
-  std::string cache_so_name_opt(nuphar_codegen::kNupharCacheSoName);
-  std::string cache_so_name_default(nuphar_codegen::kNupharCacheSoName_default);
+  std::string cache_so_name_opt(kNupharCacheSoName);
+  std::string cache_so_name_default(kNupharCacheSoName_default);
 
   settings.InsertOptions({{fast_math_opt, select_fast_math},
+                          {fast_act_opt, select_fast_act},
                           {cache_so_name_opt, cache_so_name_default}});
 
   settings.InsertOptions(options);
@@ -75,5 +79,5 @@ void CreateNupharCodeGenSettings() {
   }
 }
 
-}  // namespace nuphar_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

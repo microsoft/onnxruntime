@@ -9,7 +9,7 @@
 #include "core/providers/nuphar/common/nuphar_subgraph.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // CreateTVMIR function traverses a GraphViewer
 // and builds tvm ir (and store them in CodeGenContext)
@@ -30,5 +30,5 @@ Status CreateTVMIR(const Node& node,
 Status CreateTVMIR(const nuphar::NupharSubgraphUnit& subgraph,
                    NupharCodeGenCtx& ctx_codegen);
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

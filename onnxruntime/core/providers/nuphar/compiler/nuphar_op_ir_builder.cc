@@ -4,16 +4,16 @@
 #include "core/providers/nuphar/compiler/nuphar_op_ir_builder.h"
 
 #include "core/codegen/common/op_macro.h"
-#include "core/providers/nuphar/compiler/tvm_initializer.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "core/codegen/target/generic/op_ir_creator/all_ops.h"
-#include "core/codegen/target/ort_tvm_utils.h"
-#include "core/codegen/target/tvm_ir_builder.h"
-#include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
+#include "core/codegen/passes/op_ir_creator/tvm_ir_builder.h"
+#include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/common/common.h"
+#include "core/providers/nuphar/compiler/initializer_info.h"
+#include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 // Declaration of GetOrCreateInitializer
 // GetOrCreateInitializer create tvm::placeholder for a marshalled weight
@@ -36,7 +36,7 @@ static tvm::Tensor CreateInputPlaceholder(const tvm::Array<tvm::Expr>& shape,
                                           HalideIR::Type halide_type,
                                           const std::string& name,
                                           bool is_sliced) {
-  return tvm::placeholder(is_sliced && shape.size() > 1 ? SliceShapeFromDimension(shape, 1) : shape, halide_type, name);
+  return tvm::placeholder(is_sliced && shape.size() > 1 ? tvm_codegen::SliceShapeFromDimension(shape, 1) : shape, halide_type, name);
 }
 
 // CreateInput creats tvm::Tensor of corresponding ORT input
@@ -58,7 +58,7 @@ static bool CreateInput(
     // Handle inputs without initializer
     std::string name = NormalizeNodeArgName(def);
     MLDataType ONNXRUNTIME_data_type = DataTypeImpl::TypeFromProto(*def->TypeAsProto());
-    DLDataType dtype = ToTvmDLDataType(ONNXRUNTIME_data_type);
+    DLDataType dtype = tvm_codegen::ToTvmDLDataType(ONNXRUNTIME_data_type);
     HalideIR::Type halide_type((halideir_type_code_t)dtype.code, dtype.bits, dtype.lanes);
     tvm::Array<tvm::Expr> shape = ShapeToTvmArray(def, ctx_codegen);
 
@@ -87,7 +87,7 @@ const tvm::Tensor& GetOrCreateInitializer(const std::string& name,
   DLDataType dtype = tvm_codegen::ToTvmDLDataType(ONNXRUNTIME_data_type);
   HalideIR::Type halide_type((halideir_type_code_t)dtype.code, dtype.bits, dtype.lanes);
   std::string normalized_name = NormalizeCppName(name);
-  auto tvm_shape = ToTvmArray(tensor->Shape().GetDims());
+  auto tvm_shape = tvm_codegen::ToTvmArray(tensor->Shape().GetDims());
   auto tvm_tensor = CreateInputPlaceholder(tvm_shape, halide_type, normalized_name, is_sliced);
   // create the layout info
   ctx_codegen.CreateWeightLayoutInfo(name, tvm_tensor);
@@ -291,5 +291,5 @@ Status CreateTVMIR(
   return Status::OK();
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

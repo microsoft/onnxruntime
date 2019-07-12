@@ -3,48 +3,51 @@
 
 #include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 
+#include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/providers/nuphar/mti_x86/math/reduce_ops.h"
-#include "core/codegen/target/generic/scheduler/schedule_utils.h"
 #include <topi/tags.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 bool TVM_SCHEDULER_CLASS(Extern, NupharX86TVMRule)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    CodeGenContext&,
-    ScheduleContext& ctx_sched) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
-
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   bool status = InsertRootScheduleAndClosure(tensor, ctx_sched);
-  bool status_input = InputRootScheduleWithVectorization(tensor, natural_vector_size, ctx_sched);
+  bool status_input = InputRootScheduleWithVectorizationX86(tensor, ctx_sched);
   return status || status_input;
 }
 
 static bool ReduceVScheduleNupharX86(
     const tvm::Tensor& tensor,
-    ScheduleContext& ctx_sched) {
+    tvm_codegen::ScheduleContext& ctx_sched) {
   InsertRootScheduleAndClosure(tensor, ctx_sched);
 
   auto compute_op = tensor->op.as<tvm::ComputeOpNode>();
   if (compute_op->axis.size() > 1) {
-    tvm::Expr fuse_dim_expr(compute_op->attrs[nuphar_codegen::kNupharVReduceFuseDim].node_);
+    tvm::Expr fuse_dim_expr(compute_op->attrs[nuphar::kNupharVReduceFuseDim].node_);
     const int64_t* fuse_dim = as_const_int(fuse_dim_expr);
     ORT_ENFORCE(nullptr != fuse_dim);
 
     tvm::Array<tvm::IterVar> fused_axes;
+    bool can_vectorize = true;
     for (size_t i = gsl::narrow_cast<size_t>(*fuse_dim); i < compute_op->axis.size(); ++i) {
       fused_axes.push_back(compute_op->axis[i]);
+      if (tvm::as_const_int(tensor->shape[i]) == nullptr)
+        can_vectorize = false;
     }
 
     tvm::IterVar fused_x;
-    bool has_fused_axis = fused_axes.size() >= 1;
+    bool has_fused_axis = (fused_axes.size() >= 1 && can_vectorize);
+    // currently there's an issue in tvm when fusing two symbolic dims
+    // for simplicity, just disable fuse when no vectorize
 
     if (has_fused_axis) {
       ctx_sched.schedule[tensor->op].fuse(fused_axes, &fused_x);
-      ctx_sched.schedule[tensor->op].vectorize(fused_x);
+      if (can_vectorize)
+        ctx_sched.schedule[tensor->op].vectorize(fused_x);
     }
 
     auto shape = tensor->shape;
@@ -80,8 +83,8 @@ static bool ReduceVScheduleNupharX86(
         ctx_sched.schedule[tensor->op].unroll(x0);
       }
     }
-
-  } else if (compute_op->axis.size() > 0) {
+  } else if (compute_op->axis.size() > 0 &&
+             tvm::as_const_int(tensor->shape[0]) != nullptr) {
     tvm::IterVar x = compute_op->axis[0];
     ctx_sched.schedule[tensor->op].vectorize(x);
   }
@@ -98,14 +101,14 @@ static bool ReduceVScheduleNupharX86(
 bool TVM_SCHEDULER_CLASS(Reduce, NupharX86TVMRule)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    CodeGenContext&,
-    ScheduleContext& ctx_sched) {
+    tvm_codegen::CodeGenContext&,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   // respect topi::kCommReduce
   if (tensor->op->tag == topi::kCommReduce) {
     return InsertRootScheduleAndClosure(tensor, ctx_sched);
   }
 
-  if (tensor->op->tag == nuphar_codegen::kNupharVReduce) {
+  if (tensor->op->tag == nuphar::kNupharVReduce) {
     return ReduceVScheduleNupharX86(tensor, ctx_sched);
   }
 
@@ -113,5 +116,5 @@ bool TVM_SCHEDULER_CLASS(Reduce, NupharX86TVMRule)::Evaluate(
   return InsertRootScheduleAndClosure(tensor, ctx_sched);
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

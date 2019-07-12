@@ -7,7 +7,7 @@
 #include "core/graph/function.h"
 
 namespace onnxruntime {
-namespace codegen {
+namespace nuphar {
 
 constexpr int PRESET_USE_COUNT_FOR_UNKNOWN = 10;
 
@@ -39,6 +39,10 @@ static void CountNodeArg(const onnxruntime::NodeArg* input_def,
                          std::unordered_map<NodeKey, int>& node_use_counts,
                          int use_cnt);
 
+static bool IsMatMulOp(const std::string& op) {
+  return op == "MatMul" || op == "MatMulInteger" || op == "MatMulInteger16";
+}
+
 void CountGemmOp(const onnxruntime::Node& node,
                  const std::vector<const NodeArg*>& graph_inputs,
                  std::function<const ShapeExpr*(const onnxruntime::NodeArg*)> shape_func,
@@ -55,7 +59,7 @@ void CountMatMulOp(const onnxruntime::Node& node,
                    const std::vector<const NodeArg*>& graph_inputs,
                    std::function<const ShapeExpr*(const onnxruntime::NodeArg*)> shape_func,
                    std::unordered_map<NodeKey, int>& node_use_counts) {
-  ORT_ENFORCE(node.OpType() == "MatMul" || node.OpType() == "MatMulInteger");
+  ORT_ENFORCE(IsMatMulOp(node.OpType()));
   auto inputs = node.InputDefs();
   CountMatrixArgs(inputs[0], inputs[1], node, graph_inputs, shape_func, node_use_counts);
 }
@@ -96,7 +100,8 @@ void CountMatrixArgs(const onnxruntime::NodeArg* A,
   if (nullptr != b_shape) {
     const DimExpr& dim = b_shape->Rank() > 1 ? b_shape->at(b_shape->Rank() - 1) : DimExpr(1);
     // A's use cnt is based on the cols of B. If B is 1-D, use cnt is 1
-    use_cnt = dim.Value();
+    if (dim.IsConst())
+      use_cnt = dim.Value();
   }
 
   CountNodeArg(A, node, graph_inputs, node_use_counts, use_cnt);
@@ -132,7 +137,7 @@ void InternalUseCountAnalysis::Traverse(
     auto op_type = node->OpType();
     if (op_type == "Gemm") {
       CountGemmOp(*node, graph_inputs, shape_func_, node_use_counts_);
-    } else if (op_type == "MatMul" || op_type == "MatMulInteger") {
+    } else if (IsMatMulOp(op_type)) {
       CountMatMulOp(*node, graph_inputs, shape_func_, node_use_counts_);
     } else if (op_type == "Scan") {
       auto subgraph = node->GetGraphAttribute("body");
@@ -233,5 +238,5 @@ int NupharUseCountAnalysis::NodeUseCount(const onnxruntime::Node* node) const {
   return internal_analysis_->NodeUseCount(node);
 }
 
-}  // namespace codegen
+}  // namespace nuphar
 }  // namespace onnxruntime

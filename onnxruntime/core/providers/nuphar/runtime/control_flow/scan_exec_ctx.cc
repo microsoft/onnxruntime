@@ -3,17 +3,17 @@
 
 #include "core/providers/nuphar/runtime/control_flow/scan_exec_ctx.h"
 
+#include "core/codegen/common/common.h"
+#include "core/codegen/passes/utils/codegen_context.h"
+#include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/providers/nuphar/runtime/compute_ctx.h"
 #include "core/providers/nuphar/runtime/utils.h"
 
-#include "core/codegen/common/common.h"
-#include "core/codegen/target/ort_tvm_utils.h"
-#include "core/codegen/target/tvm_context.h"
 #include "gsl/gsl_util"
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
-namespace tvm_codegen {
+namespace nuphar {
 
 void ScanExecCtx::Advance(const ControlFlowInfo* cf_info) {
   ORT_ENFORCE_DEBUG(current_loop_step_ < max_loop_step_);
@@ -35,7 +35,17 @@ void ScanExecCtx::Advance(const ControlFlowInfo* cf_info) {
   const std::vector<int>& state_to_output_indices = scan_info->state_to_output_indices;
 
   // update input and output states
-  if (current_loop_step_ == 0) {
+  if (current_loop_step_ == (max_loop_step_ - 1)) {
+    // When executed the last loop step
+    // copy from current_state_output_ptrs to state_output_ptrs if needed
+    for (size_t scan_state_idx = 0; scan_state_idx < num_state_variables; ++scan_state_idx) {
+      if (current_ort_state_output_ptrs_[scan_state_idx] != ort_state_output_buffers_[scan_state_idx]) {
+        memcpy(ort_state_output_buffers_[scan_state_idx],
+               current_ort_state_output_ptrs_[scan_state_idx],
+               state_bytes_size_[scan_state_idx]);
+      }
+    }
+  } else if (current_loop_step_ == 0) {
     // When executed the first loop (current_loop_step == 0),
     // assign current_state_input_ptrs as current_state_output_ptrs
     // and current_state_output_ptrs as ort_state_output_buffers_
@@ -48,15 +58,6 @@ void ScanExecCtx::Advance(const ControlFlowInfo* cf_info) {
       } else {
         current_ort_state_output_ptrs_[scan_state_idx] = ort_state_output_buffers_[scan_state_idx];
       }
-    }
-  } else if (current_loop_step_ == (max_loop_step_ - 1)) {
-    // When executed the last loop step
-    // copy from current_state_output_ptrs to state_output_ptrs if needed
-    for (size_t scan_state_idx = 0; scan_state_idx < num_state_variables; ++scan_state_idx) {
-      if (current_ort_state_output_ptrs_[scan_state_idx] != ort_state_output_buffers_[scan_state_idx])
-        memcpy(ort_state_output_buffers_[scan_state_idx],
-               current_ort_state_output_ptrs_[scan_state_idx],
-               state_bytes_size_[scan_state_idx]);
     }
   } else {
     // When current_loop_step > 0
@@ -77,8 +78,8 @@ void ScanExecCtx::Advance(const ControlFlowInfo* cf_info) {
   ++current_loop_step_;
 }
 
-void ScanExecCtx::FillTVMArgs(KernelComputeCtx* kernel_compute_ctx,
-                              const NupharFuncInfo* func_info) {
+void ScanExecCtx::InitIteration(KernelComputeCtx* kernel_compute_ctx,
+                                const NupharFuncInfo* func_info) {
   FuncComputeCtx& subgraph_compute_ctx = kernel_compute_ctx->GetFuncComputeCtx(func_info);
   std::vector<DLTensor>& dl_tensors = subgraph_compute_ctx.dl_tensors;
 
@@ -118,8 +119,6 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
   dl_tensors.resize(tvm_num_args);
   std::vector<std::vector<int64_t>>& dl_output_shapes = subgraph_compute_ctx.dl_output_shapes;
   dl_output_shapes.resize(tvm_output_count);
-
-  std::unordered_map<std::string, int64_t>& realized_dims = kernel_compute_ctx->GetRealizedDims();
 
   // control flow info
   const ScanExecInfo* scan_info = Promote<ScanExecInfo>(func_info->cf_info.get());
@@ -162,11 +161,11 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
   // Handle Scan's control flow ctx
   seq_length_ = 0;
   for (int ort_input_idx = gsl::narrow<int>(num_state_variables);
-       ort_input_idx < func_info->ort_input_count;
+       ort_input_idx < gsl::narrow<int>(func_info->ort_input_count);
        ++ort_input_idx) {
     const int64_t* input_shape = subgraph_compute_ctx.ort_input_shapes[ort_input_idx];
     size_t scan_input_idx = gsl::narrow<size_t>(ort_input_idx) - gsl::narrow<size_t>(num_state_variables);
-    ORT_ENFORCE_DEBUG(scan_input_idx >= 0 && scan_input_idx < scan_input_axes.size());
+    ORT_ENFORCE_DEBUG(scan_input_idx < scan_input_axes.size());
     size_t input_scan_axis = gsl::narrow<size_t>(scan_input_axes[scan_input_idx]);
     if (seq_length_ == 0) {
       seq_length_ = input_shape[input_scan_axis];
@@ -184,7 +183,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
   const std::vector<int>& ort_input_to_func_indices = func_info->ort_input_to_func_indices;
   // Assign inputs
   size_t mutable_input_count = 0;  // inputs that are not initializers
-  for (int ort_input_idx = 0; ort_input_idx < func_info->ort_input_count; ++ort_input_idx) {
+  for (int ort_input_idx = 0; ort_input_idx < gsl::narrow<int>(func_info->ort_input_count); ++ort_input_idx) {
     int tvm_idx = ort_input_to_func_indices[ort_input_idx];
 
     // Skip initializer
@@ -212,7 +211,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
     } else {
       // if ith varialbe is an input, we need to slice it based on the scan_input_axes
       size_t scan_input_idx = gsl::narrow<size_t>(ort_input_idx) - gsl::narrow<size_t>(num_state_variables);
-      ORT_ENFORCE_DEBUG(scan_input_idx >= 0 && scan_input_idx < scan_input_axes.size());
+      ORT_ENFORCE_DEBUG(scan_input_idx < scan_input_axes.size());
       size_t input_scan_axis = gsl::narrow<size_t>(scan_input_axes[scan_input_idx]);
 
       std::vector<int64_t>& shape = scan_input_in_subgraph_shapes_[scan_input_idx];
@@ -234,23 +233,8 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
     }
 
     // update dynamic shape in realized_dims
-    // TODO: move this piece of code to kernel_compute_ctx
     const auto& symbols = input_meta.dim_symbols;
-    for (const auto& s_pair : symbols) {
-      size_t tvm_dim = s_pair.first;
-      int64_t dim_size = dl_tensors[tvm_input_idx].shape[tvm_dim];
-      const std::string& dim_param = s_pair.second;
-      auto dim_value_iter = realized_dims.find(dim_param);
-
-      if (dim_value_iter == realized_dims.end()) {
-        realized_dims.insert(std::make_pair(dim_param, dim_size));  // update new symbol
-      } else if (dim_value_iter->second == Dimension_Unknown) {
-        dim_value_iter->second = dim_size;  // update for a symbol
-      } else {
-        // a true runtime error, so use ORT_ENFORCE, not ORT_ENFORCE_DEBUG
-        ORT_ENFORCE(dim_value_iter->second == dim_size);
-      }
-    }
+    kernel_compute_ctx->UpdateRealizedDims(symbols, dl_tensors[tvm_input_idx].shape);
   }
 
   // Handle Initializers
@@ -272,7 +256,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
   current_func_output_ptrs_.resize(tvm_output_count);
 
   // Assign outputs and state outputs
-  for (int ort_output_idx = 0; ort_output_idx < func_info->ort_output_count; ++ort_output_idx) {
+  for (int ort_output_idx = 0; ort_output_idx < gsl::narrow<int>(func_info->ort_output_count); ++ort_output_idx) {
     int tvm_idx = ort_output_to_func_indices[ort_output_idx];
 
     // skip aliased output
@@ -288,15 +272,8 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
     realized_shape = output_meta.inferred_shape;
 
     // Update dynamic dim
-    // TODO: move this piece of code to kernel_compute_ctx
     const std::vector<std::pair<size_t, std::string>>& symbols = output_meta.dim_symbols;
-    for (const auto& s_pair : symbols) {
-      size_t dim = s_pair.first;
-      const std::string& dim_param = s_pair.second;
-      auto dim_value_iter = realized_dims.find(dim_param);
-      ORT_ENFORCE_DEBUG(dim_value_iter != realized_dims.end());
-      realized_shape[dim] = dim_value_iter->second;
-    }
+    kernel_compute_ctx->UpdateRealizedDims(symbols, realized_shape);
 
     // Fill in output DLTensor
     MLDataType data_type = output_meta.dtype;  // static meta from NupharFuncInfo
@@ -322,7 +299,7 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
       // if ith varialbe is an output, we need to remove an axis for DLTesnor
       size_t scan_output_idx = gsl::narrow<size_t>(ort_output_idx) - gsl::narrow<size_t>(num_state_variables);
       std::vector<int64_t>& shape = scan_output_shapes_[scan_output_idx];
-      ORT_ENFORCE_DEBUG(scan_output_idx >= 0 && scan_output_idx < scan_output_axes.size());
+      ORT_ENFORCE_DEBUG(scan_output_idx < scan_output_axes.size());
       size_t output_scan_axis = gsl::narrow<size_t>(scan_output_axes[scan_output_idx]);
       ShapeInsertAxis(shape, realized_shape.data(), realized_shape.size(), output_scan_axis, seq_length_);
 
@@ -349,8 +326,6 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
       current_func_output_ptrs_[tvm_output_idx] = &current_output_ptrs_[scan_output_idx];
     }
 
-    ORT_ENFORCE_DEBUG(kernel_compute_ctx->GetRuntimeHandle()->allow_unaligned_buffers ||
-                      (reinterpret_cast<std::uintptr_t>(output_data)) % 64 == 0);
     DLDataType dtype = tvm_codegen::ToTvmDLDataType(data_type);
     dl_tensors[tvm_idx] = {output_data, dl_ctx, gsl::narrow<int>(realized_shape.size()),
                            dtype, realized_shape.data(), nullptr, 0};
@@ -379,9 +354,6 @@ void ScanExecCtx::InitContext(KernelComputeCtx* kernel_compute_ctx,
 void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
                                 const NupharFuncInfo* func_info) {
   FuncComputeCtx& subgraph_compute_ctx = kernel_compute_ctx->GetFuncComputeCtx(func_info);
-  // control flow info
-  std::unordered_map<std::string, int64_t>& realized_dims = kernel_compute_ctx->GetRealizedDims();
-
   size_t tvm_input_count = func_info->func_input_count;
 
   // control flow info
@@ -396,11 +368,11 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
   // Handle Scan's control flow ctx
   seq_length_ = 0;
   for (int ort_input_idx = gsl::narrow<int>(num_state_variables);
-       ort_input_idx < func_info->ort_input_count;
+       ort_input_idx < gsl::narrow<int>(func_info->ort_input_count);
        ++ort_input_idx) {
     const int64_t* ort_input_shape = subgraph_compute_ctx.ort_input_shapes[ort_input_idx];
     size_t scan_input_idx = gsl::narrow<size_t>(ort_input_idx) - gsl::narrow<size_t>(num_state_variables);
-    ORT_ENFORCE_DEBUG(scan_input_idx >= 0 && scan_input_idx < scan_input_axes.size());
+    ORT_ENFORCE_DEBUG(scan_input_idx < scan_input_axes.size());
     size_t input_scan_axis = gsl::narrow<size_t>(scan_input_axes[scan_input_idx]);
     if (seq_length_ == 0)
       seq_length_ = ort_input_shape[input_scan_axis];
@@ -416,7 +388,7 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
   const std::vector<int>& ort_input_to_func_indices = func_info->ort_input_to_func_indices;
 
   // Assign inputs and state
-  for (int ort_input_idx = 0; ort_input_idx < func_info->ort_input_count; ++ort_input_idx) {
+  for (int ort_input_idx = 0; ort_input_idx < gsl::narrow<int>(func_info->ort_input_count); ++ort_input_idx) {
     int tvm_idx = ort_input_to_func_indices[ort_input_idx];
 
     // Skip initializer
@@ -436,14 +408,15 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
     size_t input_scan_axis = 0;
     bool is_scan_input = (scan_input_idx >= 0);
     if (is_scan_input) {
-      ORT_ENFORCE_DEBUG(scan_input_idx < scan_input_axes.size());
+      ORT_ENFORCE_DEBUG(scan_input_idx < gsl::narrow<int>(scan_input_axes.size()));
       input_scan_axis = gsl::narrow<size_t>(scan_input_axes[scan_input_idx]);
     }
 
     // update scan inputs' dynamic shape in realized_dims
     // state input would use shape from ort directly
-    // TODO: move this piece of code to kernel_compute_ctx
     if (is_scan_input) {
+      kernel_compute_ctx->UpdateRealizedDims(symbols, ort_input_shape, input_scan_axis);
+
       for (const auto& s_pair : symbols) {
         size_t tvm_dim = s_pair.first;
         size_t ort_dim = tvm_dim;
@@ -451,16 +424,6 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
           ort_dim = tvm_dim + 1;
         }
         int64_t dim_size = ort_input_shape[ort_dim];
-        auto dim_value_iter = realized_dims.find(s_pair.second);
-        ORT_ENFORCE_DEBUG(dim_value_iter != realized_dims.end());
-
-        if (dim_value_iter->second == Dimension_Unknown) {
-          dim_value_iter->second = dim_size;
-        } else {
-          // a true runtime error, so use ORT_ENFORCE, not ORT_ENFORCE_DEBUG
-          ORT_ENFORCE(dim_value_iter->second == dim_size);
-        }
-
         dl_tensor.shape[tvm_dim] = dim_size;
       }
     }
@@ -503,7 +466,7 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
 
   // Assign Outputs
   std::vector<std::vector<int64_t>>& dl_output_shapes = subgraph_compute_ctx.dl_output_shapes;
-  for (int ort_output_idx = 0; ort_output_idx < func_info->ort_output_count; ++ort_output_idx) {
+  for (int ort_output_idx = 0; ort_output_idx < gsl::narrow<int>(func_info->ort_output_count); ++ort_output_idx) {
     int tvm_idx = ort_output_to_func_indices[ort_output_idx];
 
     // Skip aliased output
@@ -519,28 +482,21 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
     size_t output_scan_axis = 0;
     bool is_scan_output = (scan_output_idx >= 0);
     if (is_scan_output) {
-      ORT_ENFORCE_DEBUG(scan_output_idx < scan_output_axes.size());
+      ORT_ENFORCE_DEBUG(scan_output_idx < gsl::narrow<int>(scan_output_axes.size()));
       output_scan_axis = gsl::narrow<size_t>(scan_output_axes[scan_output_idx]);
     }
-    std::vector<int64_t>& ort_output_shape =
-        is_scan_output ? scan_output_shapes_[scan_output_idx] : dl_output_shapes[tvm_output_idx];
 
     // Update dynamic dim
-    // TODO: move this piece of code to kernel_compute_ctx
     const auto& symbols = output_meta.dim_symbols;
-    for (const auto& s_pair : symbols) {
-      size_t tvm_dim = s_pair.first;
-      size_t ort_dim = tvm_dim;
-      if (is_scan_output && tvm_dim > output_scan_axis) {
-        ort_dim = tvm_dim + 1;
-      }
-      const std::string& dim_param = s_pair.second;
-      auto dim_value_iter = realized_dims.find(dim_param);
-      ORT_ENFORCE_DEBUG(dim_value_iter != realized_dims.end());
-      // update output shapes for tvm and ort
-      ort_output_shape[ort_dim] = dim_value_iter->second;
-      dl_tensor.shape[tvm_dim] = dim_value_iter->second;
+    if (is_scan_output) {
+      kernel_compute_ctx->UpdateRealizedDims(symbols,
+                                             scan_output_shapes_[scan_output_idx],
+                                             output_scan_axis);
     }
+    kernel_compute_ctx->UpdateRealizedDims(symbols, dl_output_shapes[tvm_output_idx]);
+
+    std::vector<int64_t>& ort_output_shape =
+        is_scan_output ? scan_output_shapes_[scan_output_idx] : dl_output_shapes[tvm_output_idx];
 
     // update ptr
     void* output_data = nullptr;
@@ -598,9 +554,9 @@ void ScanExecCtx::UpdateContext(KernelComputeCtx* kernel_compute_ctx,
   }
 }
 
-void ScanExecCtx::LoopFinalize() {
+void ScanExecCtx::LoopFinalizer() {
   seq_length_ = 0;
 }
 
-}  // namespace tvm_codegen
+}  // namespace nuphar
 }  // namespace onnxruntime
