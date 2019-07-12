@@ -89,9 +89,9 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
     if(node->OpType().find("Pool") != std::string::npos){
 
         if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(input_dims < 3 || input_dims > 4)
+            if(input_dims != 3 && input_dims != 4)
                 return false;
-        } else if(input_dims < 4 || input_dims > 5){
+        } else if(input_dims != 4 && input_dims != 5){
             return false;
         }
     }
@@ -217,23 +217,24 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
   int num_outputs = graph_viewer.GetOutputs().size();
 
     //GPU Plugin does not support 1D and 5D input
-    for(int i = 0; i < num_inputs; i++){
-        input_dims = graph_proto->input(i).type().tensor_type().shape().dim_size();
+    if(dev_id == "GPU"){
 
-        if(dev_id == "GPU"){
-            if(input_dims == 1 || input_dims == 5)
-                return false;
+        for(int i = 0; i < num_inputs; i++){
+            input_dims = graph_proto->input(i).type().tensor_type().shape().dim_size();
+
+                if(input_dims == 1 || input_dims == 5)
+                    return false;
         }
     }
 
     //GPU Plugin does not support 5D output
-    for(int i = 0; i < num_outputs; i++){
-        output_dims = graph_proto->output(i).type().tensor_type().shape().dim_size();
+    if(dev_id == "GPU"){
 
-        if(dev_id == "GPU"){
-            if(output_dims == 5)
-                return false;
-        }
+        for(int i = 0; i < num_outputs; i++){
+            output_dims = graph_proto->output(i).type().tensor_type().shape().dim_size();
+
+                if(output_dims == 5)
+                    return false;
     }
 
 
