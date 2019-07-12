@@ -60,7 +60,7 @@ static bool CanUpdateImplicitInputNameInSubgraph(const Node& node,
   if (!node.ContainsSubgraph())
     return true;
 
-  for (auto& subgraph : node.GetSubgraphs()) {
+  for (const gsl::not_null<const Graph*>& subgraph : node.GetSubgraphs()) {
     // if we have an existing NodeArg in the subgraph with the new_output_name that would override an implicit input
     // with the same name
     if (subgraph->GetNodeArg(new_output_name) != nullptr) {
@@ -407,6 +407,9 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
 }
 
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs) {
+  // clear so we have a known state. if we fail part way through we go back to this state.
+  constant_inputs.clear();
+
   // only initializers can be constant, and there's no edge from a node to an initializer
   // so the input edges count must be 0
   if (node.GetInputEdgesCount() > 0) {
