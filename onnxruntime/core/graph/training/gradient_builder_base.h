@@ -69,8 +69,18 @@ class GradientBuilderBase {
     return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->OutputDefs()[i]->TypeAsProto());
   }
 
-  ArgDef IA(const std::string& argSuffix) const {
-    return ArgDef(Name(argSuffix), nullptr);
+  ArgDef IA(const std::string& argSuffix, const TypeProto* type_proto = nullptr) const {
+    return ArgDef(Name(argSuffix), type_proto);
+  }
+
+  const TypeProto* IType(const size_t i) const {
+    ORT_ENFORCE(i < node_->InputDefs().size());
+    return node_->InputDefs()[i]->TypeAsProto();
+  }
+
+  const TypeProto* OType(const size_t i) const {
+    ORT_ENFORCE(i < node_->OutputDefs().size());
+    return node_->OutputDefs()[i]->TypeAsProto();
   }
 
   int GetSrcNodeInputSize() const {

@@ -349,7 +349,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         result.push_back(
             NodeDef("Reshape",
                     {IA("dY_ReduceSum"), IA("c_shape")},
-                    {IA("dC_reshaped")}));
+                    {IA("dC_reshaped", C.type_proto)}));
         result.push_back(
             NodeDef("Scale",
                     {IA("dC_reshaped")},
@@ -498,9 +498,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
   return std::vector<NodeDef>{
-    NodeDef("TrainableDropoutGrad", 
-    {GO(0), O(1), I(1)},
-    {GI(0)})};
+      NodeDef("TrainableDropoutGrad",
+              {GO(0), O(1), I(1)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
@@ -651,7 +651,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
                   {b},
                   {IA("b_shape")}));
 
-      ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2") : GI(1);
+      ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
       output.push_back(
           NodeDef("Reshape",
                   {IA("ReduceSum_2"), IA("b_shape")},
@@ -835,7 +835,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   result.push_back(
       NodeDef("Tile",
               {unsqueezed_Grad, REPEATS},
-              {IA("Tiled_Grad")}));
+              {IA("Tiled_Grad", IType(0))}));
 
   NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
   ArgDef SCALE = scale_node.output_args[0];
