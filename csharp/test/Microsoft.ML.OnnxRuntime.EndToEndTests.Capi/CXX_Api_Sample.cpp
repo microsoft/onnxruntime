@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
   // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
   // session (we also need to include cuda_provider_factory.h above which defines it)
   // #include "cuda_provider_factory.h"
-  // OrtSessionOptionsAppendExecutionProvider_CUDA(session_opsions, 1);
+  // OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 1);
 
   // Sets graph optimization level
   // Available levels are
@@ -32,7 +32,13 @@ int main(int argc, char* argv[]) {
   // create session and load model into memory
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
+#ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
+#else
+  const char* model_path = "squeezenet.onnx";
+#endif
+
+  printf("Using Onnxruntime C++ API\n");
   Ort::Session session(env, model_path, session_options);
 
   //*************************************************************************

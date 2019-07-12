@@ -18,7 +18,7 @@ void* CPUAllocator::Alloc(size_t size) {
 #elif defined(__AVX__)
   size_t alignment = 32;
 #else
-  size_t alignment = 32; //Indeed, the default one(8 or 16) should be enough
+  size_t alignment = 32;  //Indeed, the default one(8 or 16) should be enough
 #endif
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
@@ -52,7 +52,15 @@ std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) {
 
 ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
                     OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out) {
-  *out = new OrtAllocatorInfo(name1, type, id1, mem_type1);
+  if (strcmp(name1, onnxruntime::CPU) == 0) {
+    *out = new OrtAllocatorInfo(name1, type, OrtDevice(), id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CUDA) == 0) {
+    *out = new OrtAllocatorInfo(name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
+    *out = new OrtAllocatorInfo(name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)), id1, mem_type1);
+  } else {
+    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
+  }
   return nullptr;
 }
 
