@@ -5,9 +5,47 @@
 file(GLOB_RECURSE onnxruntime_training_srcs
     "${ONNXRUNTIME_ROOT}/core/training/*.h"
     "${ONNXRUNTIME_ROOT}/core/training/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/training/tensorboard/*.h"
+    "${ONNXRUNTIME_ROOT}/core/training/tensorboard/*.cc"
 )
 
-add_library(onnxruntime_training ${onnxruntime_training_srcs})
+# tensorboard protos
+if(EXISTS "${ONNX_CUSTOM_PROTOC_EXECUTABLE}")
+  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+else()
+  set(PROTOC_EXECUTABLE $<TARGET_FILE:protobuf::protoc>)
+  set(PROTOC_DEPS protobuf::protoc)
+endif()
+if(NOT onnxruntime_USE_FULL_PROTOBUF)
+  set(PROTOC_PROTOBUF_ARG "lite:")
+endif()
+
+set(TENSORBOARD_SOURCE_ROOT ${PROJECT_SOURCE_DIR}/external/tensorboard)
+set(TENSORBOARD_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorboard/compat/proto)
+file(GLOB_RECURSE tensorboard_proto_srcs "${TENSORBOARD_SOURCE_ROOT}/tensorboard/compat/proto/*.proto")
+foreach(_proto ${tensorboard_proto_srcs})
+  get_filename_component(_abs_file ${_proto} ABSOLUTE)
+  get_filename_component(_basename ${_proto} NAME_WE)
+  set(_tensorboard_cpp_srcs "${TENSORBOARD_BUILD_DIR}/${_basename}.pb.cc" "${TENSORBOARD_BUILD_DIR}/${_basename}.pb.h")
+  add_custom_command(
+    OUTPUT ${_tensorboard_cpp_srcs}
+    COMMAND ${PROTOC_EXECUTABLE}
+    ARGS --cpp_out ${PROTOC_PROTOBUF_ARG}${CMAKE_CURRENT_BINARY_DIR} -I ${TENSORBOARD_SOURCE_ROOT} -I ${REPO_ROOT}/cmake/external/protobuf/src ${_abs_file}
+    DEPENDS ${_abs_file} ${PROTOC_DEPS}
+    COMMENT "Running cpp protocol buffer compiler on ${_proto}"
+    VERBATIM )
+  set_source_files_properties(${_tensorboard_cpp_srcs} PROPERTIES GENERATED TRUE)
+  if(NOT WIN32)
+    if(HAS_UNUSED_PARAMETER)
+      set_source_files_properties(${_tensorboard_cpp_srcs} PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    endif()
+  endif()
+  list(APPEND tensorboard_cpp_srcs ${_tensorboard_cpp_srcs})
+endforeach()
+
+add_library(onnxruntime_training ${onnxruntime_training_srcs} ${tensorboard_cpp_srcs})
+target_include_directories(onnxruntime_training PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> ${CMAKE_CURRENT_BINARY_DIR})
+target_compile_definitions(onnxruntime_training PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 add_dependencies(onnxruntime_training ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx)
 onnxruntime_add_include_to_target(onnxruntime_training  onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
 

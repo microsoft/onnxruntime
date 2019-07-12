@@ -3,10 +3,12 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/platform/env.h"
 #include "core/session/environment.h"
 #include "core/training/training_optimizer.h"
 #include "core/training/training_session.h"
 #include "core/training/weight_updater.h"
+#include "core/training/tensorboard/event_writer.h"
 #include "test/training/poc/mnist_data_provider.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
@@ -22,6 +24,7 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
+using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 using namespace onnxruntime;
@@ -79,6 +82,21 @@ void shutdown_horovod() {
 // NOTE: these variables need to be alive when the error_function is called.
 int true_count = 0;
 float total_loss = 0.0f;
+uint64_t step = 0;
+
+std::string new_tensorboard_log_folder(std::string log_directory) {
+  int i = 0;
+  while (true) {
+    std::ostringstream filename;
+    filename << log_directory << "/run" << i++;
+
+    std::string path = filename.str();
+    if (!Env::Default().FolderExists(path)) {
+      Env::Default().CreateFolder(path);
+      return path;
+    }
+  }
+}
 
 void setup_training_params(std::string& model_name, TrainingRunner::Parameters& params) {
   params.model_path_ = model_name + ".onnx";
@@ -139,9 +157,13 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
     total_loss += *loss_data;
   };
 
-  params.post_evaluation_callback_ = [](size_t num_samples) {
+  std::string log_directory = new_tensorboard_log_folder("logs");
+  auto tensorboard = std::make_shared<EventWriter>(log_directory);
+  params.post_evaluation_callback_ = [tensorboard](size_t num_samples) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
+    tensorboard->AddScalar("precision", precision, step);
+    tensorboard->AddScalar("loss", average_loss, step);
     printf("#examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
            static_cast<int>(num_samples),
            true_count,
@@ -149,6 +171,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
            average_loss);
     true_count = 0;
     total_loss = 0.0f;
+    step++;
   };
 }
 

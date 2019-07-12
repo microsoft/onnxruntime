@@ -195,6 +195,29 @@ class PosixEnv : public Env {
     return common::Status(common::SYSTEM, e, oss.str());
   }
 
+  bool FolderExists(const std::string& path) const override {
+    struct stat sb;
+    if (stat(path.c_str(), &sb)) {
+      return false;
+    }
+    return S_ISDIR(sb.st_mode);
+  }
+
+  common::Status CreateFolder(const std::string& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of("\\/", pos + 1);
+      std::string directory = path.substr(0, pos);
+      if (FolderExists(directory.c_str())) {
+        continue;
+      }
+      if (mkdir(directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
   common::Status FileOpenRd(const std::string& path, /*out*/ int& fd) const override {
     fd = open(path.c_str(), O_RDONLY);
     if (0 > fd) {

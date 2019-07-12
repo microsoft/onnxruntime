@@ -145,6 +145,46 @@ class WindowsEnv : public Env {
     return common::Status::OK();
   }
 
+  bool FolderExists(const std::wstring& path) const override {
+    DWORD attributes = GetFileAttributesW(path.c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+  }
+
+  bool FolderExists(const std::string& path) const override {
+    DWORD attributes = GetFileAttributesA(path.c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+  }
+
+  common::Status CreateFolder(const std::wstring& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of(L"\\/", pos + 1);
+      std::wstring directory = path.substr(0, pos);
+      if (FolderExists(directory)) {
+        continue;
+      }
+      if (CreateDirectoryW(directory.c_str(), NULL) == 0) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
+  common::Status CreateFolder(const std::string& path) const override {
+    size_t pos = 0;
+    do {
+      pos = path.find_first_of("\\/", pos + 1);
+      std::string directory = path.substr(0, pos);
+      if (FolderExists(directory)) {
+        continue;
+      }
+      if (CreateDirectoryA(directory.c_str(), NULL) == 0) {
+        return common::Status(common::SYSTEM, errno);
+      }
+    } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
   common::Status FileOpenRd(const std::wstring& path, /*out*/ int& fd) const override {
     _wsopen_s(&fd, path.c_str(), _O_RDONLY | _O_SEQUENTIAL | _O_BINARY, _SH_DENYWR, _S_IREAD | _S_IWRITE);
     if (0 > fd) {
