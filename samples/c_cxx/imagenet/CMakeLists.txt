@@ -13,7 +13,9 @@ if(WIN32)
 endif()
 
 if(JPEG_FOUND)
-  SET(IMAGE_SRC jpeg_handle.cc jpeg_handle.h jpeg_mem.cc jpeg_mem.h)
+  SET(IMAGE_SRC jpeg_handle.cc jpeg_handle.h jpeg_mem.cc jpeg_mem.h image_loader_libjpeg.cc)
+elseif(WIN32)
+  SET(IMAGE_SRC image_loader_wic.cc)
 endif()
 add_executable(image_classifier main.cc runnable_task.h data_processing.h ${IMAGE_SRC}
         async_ring_buffer.h image_loader.cc image_loader.h cached_interpolation.h  single_consumer.h)
@@ -28,14 +30,5 @@ if(WIN32)
 endif()
 target_link_libraries(image_classifier PRIVATE onnxruntime slim_fs_lib ${IMAGE_LIBS})
 
-if(PNG_FOUND AND JPEG_FOUND)
-	add_executable(resize_image resize_image_cmd.cc jpeg_handle.cc jpeg_handle.h jpeg_mem.cc jpeg_mem.h
-			image_loader.cc image_loader.h cached_interpolation.h)
-	if(WIN32)
-	  target_compile_definitions(resize_image PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
-	endif()
-	target_include_directories(resize_image PRIVATE ${JPEG_INCLUDE_DIR})
-	target_link_libraries(resize_image PRIVATE slim_fs_lib ${JPEG_LIBRARIES})
-endif()
 
 

@@ -10,12 +10,6 @@
 #include "data_processing.h"
 #include <onnxruntime/core/session/onnxruntime_c_api.h>
 
-#ifndef HAVE_JPEG
-#include <wincodec.h>
-#include <wincodecsdk.h>
-#include <atlbase.h>
-#endif
-
 template <typename T>
 void ResizeImageInMemory(const T* input_data, float* output_data, int in_height, int in_width, int out_height,
                          int out_width, int channels);
