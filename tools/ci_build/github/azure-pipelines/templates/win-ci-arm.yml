@@ -1,13 +1,12 @@
 parameters:
+  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
-  DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
   DoEsrp: 'false'
-  DoTestCoverage: 'false'
   BuildArch: 'x64'
   SetVcvars: 'false'
   MsbuildArguments: '/m'
@@ -17,6 +16,7 @@ parameters:
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
@@ -45,44 +45,13 @@ jobs:
         displayName: 'Build Debug'
         inputs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-          platform: 'x64'
+          platform: 'arm64'
           configuration: 'Debug'
           msbuildArguments: ${{ parameters.MsbuildArguments }}
           msbuildArchitecture: 'x64'
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
           createLogFile: true
-
-      - task: BatchScript@1
-        displayName: 'Test Debug'
-        inputs:
-          filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-          arguments: '$(BuildCommand) --test --config Debug'
-          workingFolder: '$(Build.BinariesDirectory)'
-
-      - task: VSBuild@1
-        displayName: 'Build C# Debug'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-          platform: 'any cpu'
-          configuration: 'Debug'
-          restoreNugetPackages: false
-          msbuildArchitecture: 'x64'
-          workingFolder: '$(Build.SourcesDirectory)\csharp'
-          msbuildArguments: '/m'
-
-      - task: CmdLine@2
-        displayName: 'Test C# Debug'
-        inputs:
-          script: |
-           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    # Run test coverage report
-    - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
-      - template: windows-code-coverage-steps.yml
-        parameters:
-          OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
 
     # Build RelWithDebInfo -- this variable required to build C#
     - script: |
@@ -92,45 +61,12 @@ jobs:
       displayName: 'Build RelWithDebInfo'
       inputs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: 'x64'
+        platform: 'arm64'
         configuration: 'RelWithDebInfo'
         msbuildArguments: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-
-    - task: BatchScript@1
-      displayName: 'Test RelWithDebInfo'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(BuildCommand) --test --config RelWithDebInfo'
-        workingFolder: "$(Build.BinariesDirectory)"
-
-    - task: VSBuild@1
-      displayName: 'Build c# RelWithDebInfo'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'any cpu'
-        configuration: 'RelWithDebInfo'
-        msbuildArchitecture: 'x64'
-        restoreNugetPackages: false
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
-        msbuildArguments: '/m'
-
-    - task: CmdLine@2
-      displayName: 'Test C# RelWithDebInfo'
-      inputs:
-        script: |
-         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: PublishTestResults@2
-      displayName: 'Publish unit test results'
-      inputs:
-        testResultsFiles: '**\*.results.xml'
-        searchFolder: '$(Build.BinariesDirectory)'
-        testRunTitle: 'Unit Test Run'
-      condition: succeededOrFailed()
 
     # Nuget packaging if needed
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
@@ -148,12 +84,6 @@ jobs:
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
-      - template: esrp_dll.yml
-        parameters:
-          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-          DisplayName: 'ESRP - Sign C# dlls'
-          DoEsrp: ${{ parameters.DoEsrp }}
-
       - script: |
          ${{ parameters.NuPackScript }}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
@@ -164,10 +94,6 @@ jobs:
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
-
-    # Compliance tasks require logs from Debug Build
-    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-      - template: compliance.yml
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
