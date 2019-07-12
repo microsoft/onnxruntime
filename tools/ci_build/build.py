@@ -181,6 +181,7 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False):
     return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
 
 def update_submodules(source_dir):
+    run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
 def is_docker():
@@ -317,7 +318,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
-                 "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
+                 "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
                  "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + ("OFF" if args.use_openblas else "ON"),
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
@@ -635,6 +636,13 @@ def split_server_binary_and_symbol(build_dir, configs):
                 run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
                 run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
                 run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
+                libonnx = glob.glob(os.path.join(config_build_dir, "libonnxruntime.so.*"))
+                if len(libonnx) != 1 :
+                    raise ValueError("Too many libonxruntime.so.*")
+                libonnx = libonnx[0]
+                run_subprocess(['objcopy', '--only-keep-debug', libonnx, libonnx+'.symbol'], cwd=config_build_dir)
+                run_subprocess(['strip', '--strip-debug', libonnx], cwd=config_build_dir)
+                run_subprocess(['objcopy', '--add-gnu-debuglink={}.symbol'.format(libonnx), libonnx], cwd=config_build_dir)
 
 
 def run_server_tests(build_dir, configs):
@@ -683,33 +691,20 @@ def run_server_model_tests(build_dir, configs):
 def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-
         if is_windows():
             cwd = os.path.join(cwd, config)
+        args = [sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel']
         if nightly_build:
-            if use_tensorrt:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt', '--nightly_build'], cwd=cwd)
-            elif use_cuda:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda', '--nightly_build'], cwd=cwd)
-            elif use_ngraph:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_ngraph', '--nightly-build'], cwd=cwd)
-            elif use_openvino:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_openvino', '--nightly-build'], cwd=cwd)
-            else:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--nightly_build'], cwd=cwd)
-        else:
-            if use_tensorrt:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_tensorrt'], cwd=cwd)
-            elif use_cuda:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_cuda'], cwd=cwd)
-            elif use_ngraph:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_ngraph'], cwd=cwd)
-            elif use_openvino:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel', '--use_openvino'], cwd=cwd)
-            else:
-                run_subprocess([sys.executable, os.path.join(source_dir, 'setup.py'), 'bdist_wheel'], cwd=cwd)
-        if is_ubuntu_1604():
-            run_subprocess([os.path.join(source_dir, 'rename_manylinux.sh')], cwd=cwd+'/dist')
+            args.append('--nightly_build')
+        if use_tensorrt:
+            args.append('--use_tensorrt')
+        elif use_cuda:
+            args.append('--use_cuda')
+        elif use_ngraph:
+            args.append('--use_ngraph')
+        elif use_openvino:
+            args.append('--use_openvino')
+        run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
     if not is_windows():

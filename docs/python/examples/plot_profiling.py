@@ -19,7 +19,7 @@ from onnxruntime.datasets import get_example
 #########################
 # Let's load a very simple model and compute some prediction.
 
-example1 = get_example("mul_1.pb")
+example1 = get_example("mul_1.onnx")
 sess = rt.InferenceSession(example1)
 input_name = sess.get_inputs()[0].name
 

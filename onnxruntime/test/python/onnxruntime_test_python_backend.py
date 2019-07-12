@@ -29,7 +29,7 @@ class TestBackend(unittest.TestCase):
         raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
 
     def testRunModel(self):
-        name = self.get_name("mul_1.pb")
+        name = self.get_name("mul_1.onnx")
         rep = backend.prepare(name)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         res = rep.run(x)

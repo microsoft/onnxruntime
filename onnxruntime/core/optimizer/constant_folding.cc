@@ -37,6 +37,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
 
     // Create execution frame for executing constant nodes.
+    // NOTE: As we call AllNodeInputsAreConstant we can use the full list of initializers from
+    // graph.GetAllInitializedTensors() without filtering out overridable (i.e. non-constant) initializers
     OptimizerExecutionFrame::Info info({node}, graph.GetAllInitializedTensors());
 
     std::vector<int> fetch_mlvalue_idxs;
