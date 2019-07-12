@@ -8,10 +8,13 @@
 
 namespace onnxruntime {
 
-OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node, const KernelDef& kernel_def,
+OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
+                           const KernelDef& kernel_def,
                            const IExecutionProvider& execution_provider,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                           const OrtValueNameIdxMap& ort_value_name_idx_map, const FuncManager& funcs_mgr)
+                           const OrtValueNameIdxMap& ort_value_name_idx_map,
+                           const FuncManager& funcs_mgr,
+                           const DataTransferManager& data_transfer_mgr)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -19,11 +22,12 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node, const KernelDef& kerne
       constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       funcs_mgr_(funcs_mgr),
+      data_transfer_mgr_(data_transfer_mgr),
       proto_helper_context_(node) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                   other.ort_value_name_idx_map_, other.funcs_mgr_) {}
+                   other.ort_value_name_idx_map_, other.funcs_mgr_, other.data_transfer_mgr_) {}
 
 const OrtAllocatorInfo& OpKernelInfo::GetAllocatorInfo(int device_id, OrtMemType mem_type) const {
   AllocatorPtr alloc = GetAllocator(device_id, mem_type);
@@ -41,6 +45,10 @@ const KernelDef& OpKernelInfo::GetKernelDef() const {
 
 const IExecutionProvider* OpKernelInfo::GetExecutionProvider() const noexcept {
   return execution_provider_;
+}
+
+const DataTransferManager& OpKernelInfo::GetDataTransferManager() const noexcept {
+  return data_transfer_mgr_;
 }
 
 const onnxruntime::Node& OpKernelInfo::node() const noexcept {
