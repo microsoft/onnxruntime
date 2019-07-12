@@ -466,8 +466,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
   }
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  TensorShape tensor_shape{tensor_shape_vec};
-  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), DataTypeImpl::GetType<Tensor>(),
+  value.Init(new Tensor(type, TensorShape(std::move(tensor_shape_vec)), tensor_data, allocator), DataTypeImpl::GetType<Tensor>(),
              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   return Status::OK();
 }
