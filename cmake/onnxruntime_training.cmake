@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+set (CXXOPTS ${PROJECT_SOURCE_DIR}/external/cxxopts/include)
+
 # training lib
 file(GLOB_RECURSE onnxruntime_training_srcs
     "${ONNXRUNTIME_ROOT}/core/training/*.h"
@@ -57,7 +59,6 @@ endif()
 
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_srcs})
-
 
 # training runner lib
 file(GLOB_RECURSE onnxruntime_training_runner_srcs
@@ -125,7 +126,7 @@ file(GLOB_RECURSE training_bert_src
 )
 add_executable(onnxruntime_training_bert ${training_bert_src})
 onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
-target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
+target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)
 target_include_directories(onnxruntime_training_bert PUBLIC ${HOROVOD_INCLUDE_DIRS})

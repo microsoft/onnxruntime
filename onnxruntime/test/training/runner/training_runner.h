@@ -25,12 +25,19 @@ class TrainingRunner {
   struct Parameters {
     Parameters() {}
 
+    std::string model_name;
     std::string model_path_;
     std::string model_with_loss_func_path_;          // To save the model after adding loss func.
     std::string model_with_training_graph_path_;     // To save the model after adding loss func and backward graph.
     std::string model_actual_running_graph_path_;    // To save the model with the actual running graph after transformations.
     std::string model_trained_path_;                 // To save the model after training.
     std::string model_trained_with_loss_func_path_;  // To save the model with loss func after training.
+
+    PATH_STRING_TYPE train_data_dir;
+    PATH_STRING_TYPE test_data_dir;
+
+    bool is_perf_test;
+    int num_of_perf_samples;
 
     LossFunctionInfo loss_func_info_;
 
@@ -58,14 +65,12 @@ class TrainingRunner {
 
     bool shuffle_data_;
     size_t batch_size_;
+    size_t eval_batch_size;
     size_t num_of_epoch_;
 
     // Optimizer Parameter
     float learning_rate_;
     AdamOptimizerParams adam_opt_params_;
-
-    // When doing evaluation, some number of test samples will be selected to run evaluation.
-    size_t num_of_samples_for_evaluation_;
 
     // error_function_ is called when evaluating the error for a single sample.
     std::function<void(const MLValue& /*predict*/, const MLValue& /*label*/, const MLValue& /*loss*/)> error_function_;

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "cxxopts.hpp"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
@@ -15,49 +16,79 @@
 #ifdef USE_HOROVOD
 #include "core/graph/training/horovod_adapters.h"
 #include <mpi.h>
-#endif
-
 #include <tuple>
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
 using namespace std;
 
-const static float LEARNING_RATE = 1e-4f;
-const PATH_STRING_TYPE TRAINING_DATA_PATH = ORT_TSTR("bert_data/train");
-const PATH_STRING_TYPE TEST_DATA_PATH = ORT_TSTR("bert_data/test");
+Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
+  cxxopts::Options options("BERT Training", "Main Program to train BERT");
+  // clang-format off
+  options
+    .allow_unrecognised_options()
+    .add_options()
+      ("model_name", "model to be trained", cxxopts::value<std::string>())
+      ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
+        cxxopts::value<std::string>()->default_value("bert_data/train"))
+      ("test_data_dir", "Input ONNX example files (can be a glob or comma separated).",
+        cxxopts::value<std::string>()->default_value("bert_data/test"))
+      ("output_dir", "The output directory where the model checkpoints will be written.",
+        cxxopts::value<std::string>())
+      ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("1"))
+      ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
+      ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
+      ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("5e-5"))
+      ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("100000"))
+      ("num_warmup_steps", "Number of warmup steps.", cxxopts::value<int>()->default_value("10000"))
+      ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
+      ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
+      ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
+      ("use_fp16", "Whether to use fp32 or fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
+      ("num_of_perf_samples", "Num of samples to run for the perf test", cxxopts::value<int>()->default_value("100"))
+      ("max_seq_length",
+        "The maximum total input sequence length after WordPiece tokenization. "
+        "Sequences longer than this will be truncated, and sequences shorter "
+        "than this will be padded. Must match data generation.", cxxopts::value<int>()->default_value("512"))
+      ("max_predictions_per_seq",
+        "Maximum number of masked LM predictions per sequence. "
+        "Must match data generation.", cxxopts::value<int>()->default_value("80"));
+  // clang-format on
 
-struct TrainingConfig {
-  TrainingConfig() : model_name(""), num_of_epoch(0), num_of_training_samples(0), num_of_testing_samples(0), batch_size(1) {}
-  std::string model_name;
-  int num_of_epoch;
-  int num_of_training_samples;
-  int num_of_testing_samples;
-  int batch_size;
-  bool is_perf_test;
-};
+  try {
+    auto flags = options.parse(argc, argv);
 
-int validate_params(int argc, char* args[], TrainingConfig& config) {
-  if (argc < 7) {
-    printf("Incorrect command line for %s\n", args[0]);
-    printf("usage: exe_name model_name num_of_epoch num_of_training_samples num_of_testing_samples batch_size [train|perf] [optional:world_rank]\n");
-    return -1;
+    params.model_name = flags["model_name"].as<std::string>();
+    params.learning_rate_ = flags["learning_rate"].as<float>();
+    params.num_of_epoch_ = flags["num_of_epoch"].as<int>();
+    params.num_of_perf_samples = flags["num_of_perf_samples"].as<int>();
+    params.batch_size_ = flags["train_batch_size"].as<int>();
+    if (flags.count("eval_batch_size")) {
+      params.eval_batch_size = flags["eval_batch_size"].as<int>();
+    } else {
+      params.eval_batch_size = params.batch_size_;
+    }
+
+    auto train_data_dir = flags["train_data_dir"].as<std::string>();
+    auto test_data_dir = flags["test_data_dir"].as<std::string>();
+    params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
+    params.test_data_dir.assign(test_data_dir.begin(), test_data_dir.end());
+
+    std::string mode = flags["mode"].as<std::string>();
+    if (mode == "perf" || mode == "train") {
+      params.is_perf_test = mode == "perf";
+    } else {
+      printf("Incorrect command line for mode: it must be one of [perf|train]\n");
+    }
+
+  } catch (const exception& e) {
+    std::string msg = "Failed to parse the command line arguments";
+    cout << msg << e.what() << endl;
+    return Status(ONNXRUNTIME, FAIL, msg);
   }
-  config.model_name = args[1];
-  config.num_of_epoch = stoi(args[2]);
-  config.num_of_training_samples = stoi(args[3]);
-  config.num_of_testing_samples = stoi(args[4]);
-  config.batch_size = stoi(args[5]);
-
-  auto mode = string(args[6]);
-  if (mode == "perf" || mode == "train") {
-    config.is_perf_test = mode == "perf";
-  } else {
-    printf("Incorrect command line for mode: it must be one of [perf|train]\n");
-    return -1;
-  }
-
-  return 0;
+  return Status::OK();
 }
 
 #ifdef USE_HOROVOD
@@ -92,16 +123,14 @@ void shutdown_horovod() {
 int true_count = 0;
 float total_loss = 0.0f;
 
-void setup_training_params(const TrainingConfig& config, TrainingRunner::Parameters& params) {
-  params.model_path_ = config.model_name + ".onnx";
-  params.model_with_loss_func_path_ = config.model_name + "_with_cost.onnx";
-  params.model_with_training_graph_path_ = config.model_name + "_bw.onnx";
-  params.model_actual_running_graph_path_ = config.model_name + "_bw_running.onnx";
-  params.model_trained_path_ = config.model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path_ = config.model_name + "_with_cost_trained.onnx";
-  params.batch_size_ = config.batch_size;
-  params.num_of_samples_for_evaluation_ = config.num_of_testing_samples;
-  params.num_of_epoch_ = config.num_of_epoch;
+void setup_training_params(TrainingRunner::Parameters& params) {
+  params.model_path_ = params.model_name + ".onnx";
+  params.model_with_loss_func_path_ = params.model_name + "_with_cost.onnx";
+  params.model_with_training_graph_path_ = params.model_name + "_bw.onnx";
+  params.model_actual_running_graph_path_ = params.model_name + "_bw_running.onnx";
+  params.model_trained_path_ = params.model_name + "_trained.onnx";
+  params.model_trained_with_loss_func_path_ = params.model_name + "_with_cost_trained.onnx";
+
   params.loss_func_info_ = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
                                             "total_loss",
                                             {/*prediction_masked_lm*/ "output1",
@@ -145,7 +174,7 @@ void setup_training_params(const TrainingConfig& config, TrainingRunner::Paramet
 
   params.use_cuda_ = true;
 
-  params.skip_evaluation_ = config.is_perf_test;
+  params.skip_evaluation_ = params.is_perf_test;
 
   params.error_function_ = [](const MLValue& /*predict*/, const MLValue& /*label*/, const MLValue& loss) {
     // const Tensor& predict_t = predict.Get<Tensor>();
@@ -189,13 +218,14 @@ void setup_training_params(const TrainingConfig& config, TrainingRunner::Paramet
   };
 }
 
-int main(int argc, char* args[]) {
+int main(int argc, char* argv[]) {
 #ifndef USE_CUDA
   printf("BERT training is not supported in non-CUDA build. ");
 #endif
 
-  TrainingConfig config;
-  if (validate_params(argc, args, config) == -1) return -1;
+  TrainingRunner::Parameters params;
+  ParseArguments(argc, argv, params);
+  setup_training_params(params);
 
   // setup logger
   string default_logger_id{"Default"};
@@ -209,10 +239,6 @@ int main(int argc, char* args[]) {
   unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(env).IsOK());
 
-  // setup training params
-  TrainingRunner::Parameters params;
-  setup_training_params(config, params);
-
   int device_id = 0, device_count = 1;
 
 // setup horovod
@@ -223,21 +249,20 @@ int main(int argc, char* args[]) {
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
   // params.learning_rate_ = LEARNING_RATE / params.batch_size_;
-  params.learning_rate_ = LEARNING_RATE / device_count;
+  params.learning_rate_ = params.learning_rate_ / device_count;
   params.world_rank_ = device_id;
   params.world_size_ = device_count;
-  if (params.use_cuda_) {
-    printf("Using cuda device #%d \n", params.world_rank_);
-  }
+
+  printf("Using cuda device #%d, world_size %d \n", params.world_rank_, params.world_size_);
 
   const size_t max_num_files_preload = 2;
   DataLoader training_data_loader(params.input_name_map_,
-                                  TRAINING_DATA_PATH,
+                                  params.train_data_dir,
                                   max_num_files_preload,
                                   device_id,
                                   device_count);
   DataLoader test_data_loader(params.input_name_map_,
-                              TEST_DATA_PATH,
+                              params.test_data_dir,
                               max_num_files_preload);
   RETURN_IF_FAIL(training_data_loader.Load());
   // Evaluation is only done in device #0
@@ -269,13 +294,12 @@ int main(int argc, char* args[]) {
                                                           onnx::TensorProto_DataType_INT64,
                                                           onnx::TensorProto_DataType_FLOAT,
                                                           onnx::TensorProto_DataType_INT64};
-  RandomDataSet trainingData(config.num_of_training_samples, tensor_names, tensor_shapes, tensor_types);
-  RandomDataSet testData(config.num_of_testing_samples, tensor_names, tensor_shapes, tensor_types);
+  RandomDataSet random_perf_data(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
 
   // start training session
   std::unique_ptr<TrainingRunner> runner;
-  if (config.is_perf_test) {
-    runner = std::make_unique<TrainingRunner>(&trainingData, &testData, params);
+  if (params.is_perf_test) {
+    runner = std::make_unique<TrainingRunner>(&random_perf_data, nullptr, params);
   } else {
     runner = std::make_unique<TrainingRunner>(&training_data_loader, &test_data_loader, params);
   }

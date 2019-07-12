@@ -112,7 +112,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   //params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};
   params.weights_not_to_train_ = {""};
   params.batch_size_ = BATCH_SIZE;
-  params.num_of_samples_for_evaluation_ = NUM_SAMPLES_FOR_EVALUATION;
+  params.eval_batch_size = NUM_SAMPLES_FOR_EVALUATION;
   params.num_of_epoch_ = NUM_OF_EPOCH;
 #ifdef USE_CUDA
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.

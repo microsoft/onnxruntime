@@ -247,7 +247,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
     test_data_->RandomShuffle();
   }
 
-  size_t evaluation_batch_size = params_.num_of_samples_for_evaluation_;
+  size_t evaluation_batch_size = params_.eval_batch_size;
 
   printf("Test data range: [%d - %d)\n",
          static_cast<int>(current_batch * evaluation_batch_size),
