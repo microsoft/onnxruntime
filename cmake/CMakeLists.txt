@@ -53,6 +53,7 @@ option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" O
 option(onnxruntime_USE_MLAS "Use optimized blas library for GEMM and 2D Convolution" ON)
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -640,6 +641,11 @@ include(onnxruntime_providers.cmake)
 include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
+
+# Build Core AutoML support
+if(onnxruntime_USE_AUTOML)
+  include(onnxruntime_core_automl.cmake)
+endif()
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)

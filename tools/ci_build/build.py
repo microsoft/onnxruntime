@@ -121,6 +121,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_mkldnn", action='store_true', help="Build with MKLDNN.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
+    parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-R_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
@@ -322,6 +323,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
+                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino else "OFF"),

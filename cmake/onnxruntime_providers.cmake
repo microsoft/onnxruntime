@@ -25,6 +25,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB_RECURSE onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/automl/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/automl/cpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -58,12 +63,19 @@ source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_
 # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
 source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
 
+set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
+
 # disable contrib ops conditionally
-if(onnxruntime_DISABLE_CONTRIB_OPS)
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
-else()
-  add_library(onnxruntime_providers ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs} ${onnxruntime_cpu_contrib_ops_srcs})
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
+
+# if (onnxruntime_USE_AUTOML)
+  # source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_automl_cc_srcs})
+  # list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+# endif()
+
+add_library(onnxruntime_providers ${onnxruntime_providers_src})
 
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
 if(HAS_DEPRECATED_COPY)
