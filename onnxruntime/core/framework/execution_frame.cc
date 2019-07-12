@@ -204,7 +204,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = std::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());

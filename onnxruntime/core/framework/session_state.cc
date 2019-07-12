@@ -96,15 +96,18 @@ static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes
 }
 
 namespace {
-Status ResolveDimParams(const GraphViewer& graph, const std::vector<TensorShape>& input_shapes, std::unordered_map<std::string, int64_t>& out) {
+Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, TensorShape>& feeds, std::unordered_map<std::string, int64_t>& out) {
   for (size_t i = 0; i < graph.GetInputs().size(); ++i) {
     auto* input = graph.GetInputs()[i];
     auto* shape = input->Shape();
-    if (!shape || shape->dim_size() != static_cast<int>(input_shapes[i].NumDimensions()))
+    auto it = feeds.find(input->Name());
+    if (it == feeds.end())
       return Status(ONNXRUNTIME, FAIL);
-    for (int j = 0; j < shape->dim_size(); ++j) {
-      if (shape->dim()[j].has_dim_param()) {
-        out.insert({shape->dim()[j].dim_param(), input_shapes[i].GetDims()[j]});
+    if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions()))
+      return Status(ONNXRUNTIME, FAIL);
+    for (int k = 0; k < shape->dim_size(); ++k) {
+      if (shape->dim()[k].has_dim_param()) {
+        out.insert({shape->dim()[k].dim_param(), it->second.GetDims()[k]});
       }
     }
   }
@@ -112,9 +115,15 @@ Status ResolveDimParams(const GraphViewer& graph, const std::vector<TensorShape>
 }
 }  // namespace
 
-Status SessionState::GeneratePatternGroupCache(const std::vector<TensorShape>& input_shape, MemoryPatternGroup* output) const {
+Status SessionState::GeneratePatternGroupCache(const std::vector<TensorShape>& input_shape, const std::vector<int>& feed_mlvalue_idxs, MemoryPatternGroup* output) const {
+  std::map<std::string, TensorShape> feeds;
+  for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
+    std::string name;
+    ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
+	feeds.insert({ name, input_shape[i]});
+  }
   std::unordered_map<std::string, int64_t> map;
-  ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, input_shape, map));
+  ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
   auto* exe_plan = GetExecutionPlan();
   ORT_ENFORCE(exe_plan);
   OrtValuePatternPlanner mem_planner(*exe_plan);
@@ -176,14 +185,14 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<TensorShape>& i
   return Status::OK();
 }
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const {
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes, const std::vector<int>& feed_mlvalue_idxs) const {
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
     auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-    if (GeneratePatternGroupCache(input_shapes, mem_patterns.get()).IsOK()) {
+    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get()).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto ptr = mem_patterns.get();
       mem_patterns_[key] = std::move(mem_patterns);

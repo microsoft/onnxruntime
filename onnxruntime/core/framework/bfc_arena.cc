@@ -64,6 +64,9 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     return false;
   }
 
+  if (curr_region_allocation_bytes_ > (rounded_bytes * 2))
+    curr_region_allocation_bytes_ = RoundedBytes(std::min(memory_limit_, size_t{1048576}));
+
   // If curr_region_allocation_bytes_ is not enough to satisfy the
   // allocation, keep multiplying by a power of two until that is
   // sufficient.
