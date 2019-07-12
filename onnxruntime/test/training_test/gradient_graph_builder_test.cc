@@ -3,11 +3,11 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/gradient_op_test_utils.h"
-#include "test/providers/gradient_checker.h"
 #include "core/training/training_optimizer.h"
 #include "core/training/weight_updater.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
+using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
 
@@ -16,6 +16,8 @@ namespace test {
 
 constexpr auto ORIGINAL_MODEL_PATH = "testdata/test_training_model.onnx";
 constexpr auto BACKWARD_MODEL_PATH = "backward_model.onnx";
+
+const std::string TAB = "\t";
 
 AllocatorPtr GetAllocator() {
   static CPUExecutionProviderInfo info;
@@ -44,7 +46,7 @@ static void CreateMLValue(const AllocatorPtr& alloc,
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
-static std::string BuildBackPropGraph(const std::string& forward_model_file) {
+static std::string BuildBackPropGraph(const std::string& forward_model_file, const LossFunctionInfo& loss_func_info) {
   const std::string backward_model_file = BACKWARD_MODEL_PATH;
 
   std::unique_ptr<Environment> env;
@@ -52,11 +54,28 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file) {
 
   SessionOptions so;
   TrainingSession training_session{so};
-  LossFunctionInfo loss(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  std::cout << "Loading source model file = " << forward_model_file << std::endl;
 
   EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
-  EXPECT_TRUE(training_session.BuildLossFunction(loss).IsOK());
-  EXPECT_TRUE(training_session.BuildGradientGraph({"W1", "W2", "W3", "B1", "B2", "B3"}, "loss").IsOK());
+
+  auto model_inputs = training_session.GetModelInputNames();
+  std::cout << "Model input names = [" << std::endl;
+  for (auto& n : model_inputs) {
+    std::cout << TAB << n << std::endl;
+  }
+  std::cout << "]" << std::endl;
+
+  auto model_outputs = training_session.GetModelOutputNames();
+  std::cout << "Model output names = [" << std::endl;
+  for (auto& n : model_outputs) {
+    std::cout << TAB << n << std::endl;
+  }
+  std::cout << "]" << std::endl;
+
+  EXPECT_TRUE(training_session.BuildLossFunction(loss_func_info).IsOK());
+  EXPECT_TRUE(training_session.BuildGradientGraph(model_inputs, loss_func_info.loss_name).IsOK());
+
   EXPECT_TRUE(training_session.Save(backward_model_file,
                                     TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS)
                   .IsOK());
@@ -65,14 +84,21 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file) {
 }
 
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
-  SessionOptions& so, const std::string& backprop_model_file)
-{
+    SessionOptions& so, const std::string& backprop_model_file) {
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
-  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so);
+  const auto& log_manager = so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
+
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, log_manager);
 
   EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
+
+  std::pair<common::Status, const ModelMetadata*> res = training_session->GetModelMetadata();
+  EXPECT_TRUE(res.first.IsOK());
+  EXPECT_TRUE(res.second != nullptr);
+  auto model_metadata = res.second;
+  std::cout << "Loaded " << model_metadata->graph_name << std::endl;
 
   EXPECT_TRUE(training_session->Initialize().IsOK());
 
@@ -82,7 +108,9 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(*training_session, {LEARNING_RATE, GetAllocator()});
 
   std::vector<MLValue> gradient_fetches;
-  RunOptions run_option;
+  RunOptions run_options;
+  run_options.run_log_verbosity_level = so.session_log_verbosity_level;
+  run_options.run_tag = so.session_logid;
 
   // Create dummy feeds
   std::vector<int64_t> image_dims = {1, 784};
@@ -100,7 +128,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   auto output_names_include_gradients = training_session->GetModelOutputNames();
   std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
-  EXPECT_TRUE(training_session->Run(run_option, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
+  EXPECT_TRUE(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
 
   // Get gradients
   NameMLValMap grad;
@@ -117,21 +145,87 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 }
 
 TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH);
+  const auto loss_func_info = LossFunctionInfo(
+      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
 
   std::shared_ptr<Model> pModel;
   EXPECT_TRUE(Model::Load(backprop_model_file, pModel).IsOK());
+
+  Graph& graph = pModel->MainGraph();
+  EXPECT_FALSE(graph.GraphResolveNeeded());
+  EXPECT_TRUE(graph.NumberOfNodes() > 0);
+  EXPECT_TRUE(graph.MaxNodeIndex() > 0);
+
+  std::cout << "Graph input names = [" << std::endl;
+  for (const NodeArg* p_node_arg : graph.GetInputs()) {
+    std::cout << TAB << p_node_arg->Name() << std::endl;
+  }
+  std::cout << "]" << std::endl;
+
+  std::cout << "Graph output names = [" << std::endl;
+  for (const NodeArg* p_node_arg : graph.GetOutputs()) {
+    std::cout << TAB << p_node_arg->Name() << std::endl;
+  }
+  std::cout << "]" << std::endl;
+
+  for (Node& node : graph.Nodes()) {
+    std::cout << "Operation node:"
+              << " Index=" << node.Index()
+              << (node.NodeType() == Node::Type::Fused ? "-(FUSED)" : "")
+              << " OpType=" << node.OpType()
+              << " Name=" << node.Name()
+              << std::endl;
+  }
 }
 
-TEST(GradientGraphBuilderTest, RunTrainingSessionTest) {
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH);
+TEST(GradientGraphBuilderTest, RunTrainingSessionTest_Basic) {
+  const auto loss_func_info = LossFunctionInfo(
+      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
 
   SessionOptions so;
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
-TEST(GradientGraphBuilderTest, RunTrainingSessionTestWithProfiler) {
-  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH);
+TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithLogging) {
+  const auto& log_manager = DefaultLoggingManager();
+  const auto& default_logger = log_manager.DefaultLogger();
+  log_manager.SetDefaultLoggerSeverity(Severity::kINFO);
+
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kERROR, DataType::USER)) << "ERROR level logging enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, DataType::USER)) << "WARNING level logging enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, DataType::USER)) << "INFO level logging enabled.";
+
+  const auto loss_func_info = LossFunctionInfo(
+      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
+
+  SessionOptions so;
+  so.session_logid = "training_session_with_logging";
+  so.session_log_verbosity_level = 1;  // 1 == detailed logging
+
+  std::unique_ptr<TrainingSession> training_session = RunTrainingSessionWithChecks(so, backprop_model_file);
+
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kERROR, DataType::USER)) << "ERROR level logging still enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kWARNING, DataType::USER)) << "WARNING level logging still enabled.";
+  EXPECT_TRUE(default_logger.OutputIsEnabled(Severity::kINFO, DataType::USER)) << "INFO level logging still enabled.";
+
+  std::string profile_file = training_session->EndProfiling();
+
+  log_manager.SetDefaultLoggerSeverity(Severity::kWARNING);
+
+  EXPECT_EQ(profile_file, std::string()) << "There should be no profile output file.";
+}
+
+TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithProfiler) {
+  const auto loss_func_info = LossFunctionInfo(
+      OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
+
+  const std::string& backprop_model_file = BuildBackPropGraph(ORIGINAL_MODEL_PATH, loss_func_info);
 
   SessionOptions so;
   so.enable_profiling = true;
@@ -160,7 +254,6 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTestWithProfiler) {
 #ifdef DEBUG
       std::cout << count << ": " << line << std::endl;
 #endif
-
       if (count == 1) {
         ASSERT_TRUE(line.find("model_loading_uri") != std::string::npos);
       }
