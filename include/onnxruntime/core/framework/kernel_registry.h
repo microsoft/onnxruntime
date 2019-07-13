@@ -39,10 +39,13 @@ class KernelRegistry {
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+// This is used by the opkernel doc generator to enlist all restered opereators for a given provider's opkernel
   const KernelCreateMap& GetKernelCreateMap() const
   {
     return kernel_creator_fn_map_;
   }
+#endif
 
  private:
   // Check whether the types of inputs/outputs of the given node match the extra

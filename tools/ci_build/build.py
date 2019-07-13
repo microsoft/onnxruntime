@@ -777,9 +777,6 @@ def generate_documentation(source_dir, build_dir, configs):
         raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
 
-
-
-
 def main():
     args = parse_arguments()
 

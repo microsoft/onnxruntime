@@ -105,12 +105,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainS
 #pragma warning(disable : 4267 4996 4503 4003)
 #endif  // _MSC_VER
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
-namespace {
-  std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> executionProviderFactories;
-}
-#endif 
-
 using namespace std;
 namespace onnxruntime {
 namespace python {
