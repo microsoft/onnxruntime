@@ -52,18 +52,20 @@ TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
 }
 
 GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) {
-  const std::string& loss_name = loss_func_info.loss_name;
+  const std::string& total_loss = loss_func_info.loss_name;
   const VectorString& args = loss_func_info.loss_builder_args;
-  ORT_ENFORCE(args.size() == 9, " Invalid loss_func_info for BertLoss.");
+  ORT_ENFORCE(args.size() == 11, " Invalid loss_func_info for BertLoss.");
   const std::string& prediction_masked_lm = args[0];
   const std::string& prediction_next_sentence = args[1];
   const std::string& masked_lm_positions = args[2];
   const std::string& masked_lm_ids = args[3];
   const std::string& masked_lm_weights = args[4];
   const std::string& next_sentence_labels = args[5];
-  const int64_t batch_size = static_cast<int64_t>(stoi(args[6]));
-  const int64_t max_sequence_len = static_cast<int64_t>(stoi(args[7]));
-  const int64_t max_predictions_per_sequence = static_cast<int64_t>(stoi(args[8]));
+  const std::string& mlm_loss = args[6];
+  const std::string& nsp_loss = args[7];
+  const int64_t batch_size = static_cast<int64_t>(stoi(args[8]));
+  const int64_t max_sequence_len = static_cast<int64_t>(stoi(args[9]));
+  const int64_t max_predictions_per_sequence = static_cast<int64_t>(stoi(args[10]));
 
   std::vector<NodeDef> new_nodes;
   GraphAugmenter::GraphDefs graph_defs;
@@ -136,10 +138,12 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
                                    {ArgDef(prediction_masked_lm),
                                     ArgDef("scattered_lm_lables"),
-                                    ArgDef("scattered_lm_weights")},                          // Inputs
-                                   {ArgDef("loss_masked_lm", GetLossTypeProto(graph_defs))},  // Outputs
+                                    ArgDef("scattered_lm_weights")},                  // Inputs
+                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs))},  // Outputs
                                    NodeAttributes(),
                                    "Masked_LM_Loss"));
+
+    graph_defs.AddGraphOutputs({});
   }
 
   // LabelSoftmaxCrossEntropy for next_sentence
@@ -152,7 +156,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
                                    {ArgDef(prediction_next_sentence),
                                     ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
-                                   {ArgDef("loss_next_sentence", GetLossTypeProto(graph_defs))},     // Outputs
+                                   {ArgDef(nsp_loss, GetLossTypeProto(graph_defs))},                 // Outputs
                                    NodeAttributes(),
                                    "Next_Sentence_Loss"));
   }
@@ -161,11 +165,11 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   {
     new_nodes.emplace_back(NodeDef("Add",  // Op
                                    {
-                                       ArgDef("loss_masked_lm"),
-                                       ArgDef("loss_next_sentence")  // Inputs
+                                       ArgDef(mlm_loss),
+                                       ArgDef(nsp_loss)  // Inputs
                                    },
                                    {
-                                       ArgDef(loss_name, GetLossTypeProto(graph_defs))  // Outputs
+                                       ArgDef(total_loss, GetLossTypeProto(graph_defs))  // Outputs
                                    },
                                    NodeAttributes(),
                                    "Bert_Total_Loss"  // name
@@ -173,7 +177,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   }
 
   graph_defs.AddNodeDefs(new_nodes);
-  graph_defs.AddGraphOutputs({loss_name});
+  graph_defs.AddGraphOutputs({mlm_loss, nsp_loss, total_loss});
 
   return graph_defs;
 }

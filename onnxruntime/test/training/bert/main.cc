@@ -139,6 +139,8 @@ void setup_training_params(TrainingRunner::Parameters& params) {
                                              /*masked_lm_ids*/ "masked_lm_ids",
                                              /*masked_lm_weights*/ "masked_lm_weights",
                                              /*next_sentence_labels*/ "next_sentence_labels",
+                                             /*mlm_loss*/ "mlm_loss",
+                                             /*nsp_loss*/ "nsp_loss",
                                              /*batch_size*/ std::to_string(params.batch_size_),
                                              /*max_sequence_len*/ std::to_string(512),
                                              /*max_predictions_per_sequence*/ std::to_string(80)});
@@ -147,6 +149,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
   };
+  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
   params.immutable_weigths_ = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},

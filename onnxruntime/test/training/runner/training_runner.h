@@ -86,6 +86,8 @@ class TrainingRunner {
     int world_size_ = 1;
 
     bool skip_evaluation_ = false;
+
+    VectorString fetch_names;
   };
 
   TrainingRunner(std::shared_ptr<DataSet> training_data,

@@ -109,7 +109,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
-  //params.weights_to_train_ = {"W1", "W2", "W3", "B1", "B2", "B3"};
+  params.fetch_names = {"predictions", "loss"};
   params.weights_not_to_train_ = {""};
   params.batch_size_ = BATCH_SIZE;
   params.eval_batch_size = NUM_SAMPLES_FOR_EVALUATION;

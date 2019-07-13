@@ -20,8 +20,6 @@ using namespace std;
 namespace onnxruntime {
 namespace training {
 
-const static string SGD_OP_NAME = "SGDOptimizer";
-const static string SGD_LEARNING_RATE_STRING = "learning_rate";
 static SessionOptions SESSION_OPTION = {
     true,                              //enable_sequential_execution
     false,                             //enable_profiling
@@ -34,7 +32,7 @@ static SessionOptions SESSION_OPTION = {
     5,                                 //max_num_graph_transformation_steps
     TransformerLevel::Level1,          //graph_optimization_level
     0,                                 //session_thread_pool_size
-    true                               //only_execute_path_to_fetches
+    false                              //only_execute_path_to_fetches
 };
 
 TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
@@ -125,9 +123,15 @@ Status TrainingRunner::TrainingLoop() {
                                                                      {params_.learning_rate_,
                                                                       TrainingUtil::GetCpuAllocator()});
 
-  // Prepare output names
-  auto output_names_include_gradients = session_.GetModelOutputNames();
-  vector<string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
+  // Prepare fetches
+  vector<string> fetch_names;
+  if (params_.in_graph_optimizer_name_.empty()) {
+    auto output_names_include_gradients = session_.GetModelOutputNames();
+    fetch_names.assign(output_names_include_gradients.begin(), output_names_include_gradients.end());
+  } else {
+    fetch_names = params_.fetch_names;
+  }
+
   vector<string> feed_names = training_data_->TensorNames();
 
   double total_time{0};
@@ -149,7 +153,7 @@ Status TrainingRunner::TrainingLoop() {
     // loop through the data
     for (size_t batch = 0; batch < training_data_->TotalBatch(params_.batch_size_); ++batch) {
       std::vector<MLValue> feeds = training_data_->GetKthBatch(params_.batch_size_, batch);
-      vector<MLValue> gradient_fetches;
+      vector<MLValue> fetches;
 
       std::chrono::duration<double> duration_seconds;
       auto start = std::chrono::high_resolution_clock::now();
@@ -157,22 +161,14 @@ Status TrainingRunner::TrainingLoop() {
       ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                        feed_names,
                                        feeds,
-                                       training_output_names,
-                                       &gradient_fetches));
+                                       fetch_names,
+                                       &fetches));
+
       //Start counting after warm-up iterations
       if (batch >= warm_up_iters || shard_it > 0) {
         end = std::chrono::high_resolution_clock::now();
         duration_seconds = end - start;
         total_time += duration_seconds.count();
-      }
-
-      NameMLValMap grad;
-      for (size_t i = 0; i < training_output_names.size(); i++) {
-        if (training_output_names[i] == params_.loss_func_info_.loss_name ||
-            training_output_names[i] == params_.model_prediction_name_) {
-          continue;
-        }
-        grad.insert(make_pair(training_output_names[i], gradient_fetches[i]));
       }
 
       // Print some info when reaching the end of the batch.
@@ -186,8 +182,17 @@ Status TrainingRunner::TrainingLoop() {
              static_cast<int>((batch + 1) * params_.batch_size_ - 1));
 
       if (params_.in_graph_optimizer_name_.empty()) {
+        NameMLValMap grad;
+        for (size_t i = 0; i < fetches.size(); i++) {
+          if (fetch_names[i] == params_.loss_func_info_.loss_name ||
+              fetch_names[i] == params_.model_prediction_name_) {
+            continue;
+          }
+          grad.insert(make_pair(fetch_names[i], fetches[i]));
+        }
         weight_updater.Update(grad, params_.batch_size_);
       }
+
       ORT_RETURN_IF_ERROR(Evaluate(session_));
     }
 
@@ -273,7 +278,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
     ORT_RETURN_IF_ERROR(session.Run(RunOptions(),
                                     feed_names,
                                     feeds,
-                                    {params_.model_prediction_name_, params_.loss_func_info_.loss_name},
+                                    params_.fetch_names,
                                     &fetches));
     // Call error function with predict, label and loss.
     if (params_.error_function_) {
