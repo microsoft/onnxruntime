@@ -1,23 +1,17 @@
 #!/usr/bin/env python
 
-# from __future__ import absolute_import
-# from __future__ import division
-# from __future__ import print_function
-# from __future__ import unicode_literals
-
 from collections import defaultdict
 import io
 import os
 import sys
 import argparse
 
-#import numpy as np  # type: ignore
 
 import onnxruntime as rt
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy 
 from onnxruntime.capi.onnxruntime_pybind11_state import opkernel 
 from onnxruntime.capi.onnxruntime_pybind11_state.opkernel import KernelDef 
-#from typing import Any, Text, Sequence, Dict, List, Type, Set, Tuple
+
 
 def format_version_range(v):
     if (v[1] >= 2147483647):
@@ -37,6 +31,7 @@ def format_type_constraints(tc):
             tcstr += ', '
         tcstr += tcitem
     return tcstr
+    
 def main(args):  # type: (Type[Args]) -> None
     
     with io.open(args.output, 'w', newline='', encoding="utf-8") as fout:
@@ -52,7 +47,6 @@ def main(args):  # type: (Type[Args]) -> None
             if (domain == ''):
                 domain = 'ai.onnx.ml'
             index[op.provider][domain][op.op_name].append(op)
-            print(op.provider, op.op_name)
 
                
         fout.write('\n')
