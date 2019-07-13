@@ -359,6 +359,23 @@ extern "C" {
 }
 
 //
+// Define the default preferred byte alignment for buffers.
+//
+// MLAS_TARGET_AMD64_IX86: The typical architecture uses AVX instructions
+// accessing 256-bit vectors. MLAS_TARGET_AMD64 returns a larger value if the
+// platform supports 512-bit vectors to ensure that vectors are not split.
+//
+// MLAS_TARGET_ARM64: The kernels use "load pair" instructions to access 128-bit
+// vectors, so this value keeps both vectors in the same cache line.
+//
+// MLAS_TARGET_ARM: Using 16 for a single 128-bit vector may be sufficient for
+// this architecture, but the ONNX Runtime has historically used this larger
+// value.
+//
+
+#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
+
+//
 // Define the target number of per-thread multiplies before using another
 // thread to perform additional work.
 //
@@ -424,6 +441,7 @@ struct MLAS_PLATFORM {
     PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
     PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
     uint32_t NchwcBlockSize;
+    uint32_t PreferredBufferAlignment;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
