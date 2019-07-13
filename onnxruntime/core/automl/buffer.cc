@@ -20,6 +20,15 @@ inline size_t Roundup(size_t x, size_t y) {
 }
 }
 
+static inline Status CheckAllocationSize(int64_t requested_size, size_t& size) {
+  if (requested_size < 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Allocation size is not positive: ", requested_size);
+  }
+  size = static_cast<size_t>(requested_size);
+  return Status::OK();
+}
+
 Buffer::~Buffer() {
 }
 
@@ -37,11 +46,10 @@ struct AllocatorDeleter {
 using UniqueAllocPtr = std::unique_ptr<void, AllocatorDeleter>;
 
 Buffer::Buffer(const void* data, int64_t alloc_size, AllocatorPtr allocator) {
-  if (alloc_size < 1) {
-    ORT_THROW("Allocation size is not positive: ", alloc_size);
-  }
-  size_t size = static_cast<size_t>(alloc_size);
-  rep_ = std::make_shared<Rep>(data, size, size, allocator);
+  size_t size = 0;
+  CheckAllocationSize(alloc_size, size);
+  rep_ = std::make_shared<Rep>(data, size, allocator);
+  rep_->size_;
   rep_->is_mutable_ = false;
   view_start_ = data;
   view_size_ = size;
@@ -49,21 +57,13 @@ Buffer::Buffer(const void* data, int64_t alloc_size, AllocatorPtr allocator) {
 
 Buffer Buffer::FromString(const std::string& s, const AllocatorPtr& allocator) {
   Buffer result;
-  ORT_ENFORCE(result.AllocateInternal(s.size(), allocator).IsOK());
+  if (!result.Resize(static_cast<int64_t>(s.size()), allocator, false).IsOK()) {
+    ORT_THROW("Failed to wrap string of size: ", s.size());
+  }
   memcpy_s(result.mutable_data<void>(), result.capacity(), s.data(), s.size());
   result.ZeroPadding();
   result.Seal();
   return result;
-}
-
-Status Buffer::Allocate(int64_t requested_size, const AllocatorPtr& allocator) {
-  assert(!IsAllocated());
-  if(requested_size < 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Requested allocation size is not positive");
-  }
-  size_t size = static_cast<size_t>(requested_size);
-  return AllocateInternal(size, allocator);
 }
 
 Status Buffer::AllocateInternal(size_t size, const AllocatorPtr& allocator) {
@@ -74,9 +74,48 @@ Status Buffer::AllocateInternal(size_t size, const AllocatorPtr& allocator) {
                            "Memory allocation request failed for capacity:", capacity);
   }
   UniqueAllocPtr alloc(allocation, {allocator});
-  auto new_rep = std::make_shared<Rep>(alloc.get(), size, capacity, allocator);
+  auto new_rep = std::make_shared<Rep>(alloc.get(), capacity, allocator);
   alloc.release();
   rep_.swap(new_rep);
+  return Status::OK();
+}
+
+Status Buffer::Reserve(const int64_t requested_capacity, const AllocatorPtr& allocator) {
+  size_t new_capacity = 0;
+  ORT_RETURN_IF_ERROR(CheckAllocationSize(requested_capacity, new_capacity));
+  if (!IsMutable() || capacity() < new_capacity) {
+    if (IsMutable()) {
+      // reallocate and copy any data there
+      auto old_rep = rep_;
+      ORT_RETURN_IF_ERROR(AllocateInternal(new_capacity, allocator));
+      rep_->size_ = old_rep->size_;
+      auto copy_size = std::min(new_capacity, old_rep->capacity_);
+      memcpy_s(rep_->data_.p, new_capacity, old_rep->data_.cp, copy_size);
+    } else {
+      // Old data is immutable will stay in the old buffer or get discarded
+      ORT_RETURN_IF_ERROR(AllocateInternal(new_capacity, allocator));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status Buffer::Resize(const int64_t size, const AllocatorPtr& allocator, bool shrink_to_fit) {
+  size_t new_size = 0;
+  ORT_RETURN_IF_ERROR(CheckAllocationSize(size, new_size));
+  if (IsMutable() && size < this->size()) {
+    size_t new_capacity = bit_utils::Roundup(new_size, BufferAllocationAlignment);
+    if (shrink_to_fit && new_capacity != buffer_capacity()) {
+      auto old_rep = rep_;
+      ORT_RETURN_IF_ERROR(AllocateInternal(new_capacity, allocator));
+      auto copy_size = std::min(new_capacity, old_rep->capacity_);
+      memcpy_s(rep_->data_.p, new_capacity, old_rep->data_.cp, copy_size);
+    }
+  } else {
+    ORT_RETURN_IF_ERROR(Reserve(size, allocator));
+  }
+  rep_->size_ = new_size;
+  SetViewData(0, rep_->size_);
   return Status::OK();
 }
 
@@ -98,16 +137,20 @@ void Buffer::Seal() {
 }
 
 Status Buffer::Slice(int64_t requested_offset, int64_t requested_size, Buffer& out) const {
+  assert(IsAllocated());
+  ORT_ENFORCE(!IsMutable());
   if (requested_offset < 0 || static_cast<size_t>(requested_offset) >= buffer_size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Requested offset is outside of the buffer");
+                           "Requested offset is out of bounds of the original buffer");
   }
 
-  if (requested_size < 1) {
+  if (requested_size < 1 || static_cast<size_t>(requested_offset + requested_size) >= buffer_size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Requested slice size is not positive");
+                           "Requested slice size is not positive or outside the original buffer");
   }
 
+  Buffer result(rep_, requested_offset, requested_size);
+  out.swap(result);
   return Status::OK();
 }
 

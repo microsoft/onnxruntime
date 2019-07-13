@@ -62,10 +62,12 @@ class Buffer {
   /// original buffer but has a narrow view of it.
   Status Slice(int64_t offset, int64_t size, Buffer&) const;
 
-  /// \brief Allocates a new buffer of the specified capacity.
-  /// It throws if the buffer is already allocated or it fails to allocate
-  /// the requested amount of memory.
-  Status Allocate(int64_t size, const AllocatorPtr& allocator);
+
+  /// !\brief Reserves enough capacity in the buffer
+  Status Reserve(const int64_t capacity, const AllocatorPtr& allocator);
+
+  /// !\brief Sets buffer to the new size and reallocates if necessary
+  Status Resize(const int64_t new_size, const AllocatorPtr& allocator, bool shrink_to_fit = true);
 
   /// \brief Pads the buffer with zeros [size, capacity)
   void ZeroPadding();
@@ -100,13 +102,13 @@ class Buffer {
   bool IsMutable() const { return (rep_ != nullptr) && (rep_->is_mutable_); }
 
   /// !\brief Immutable buffer accessor
-  template<class T>
+  template <class T>
   const T* data() const { return reinterpret_cast<const T*>(view_start_); }
 
   /// !\brief Raw buffer access
   /// XXX: Consider specifying needed size as an argument so we
   /// can bounds check here against the actual allocation size???
-  template<class T>
+  template <class T>
   T* mutable_data() {
     assert(IsAllocated());
     ORT_ENFORCE(IsMutable());
@@ -124,6 +126,23 @@ class Buffer {
 
   size_t buffer_size() const {
     return rep_->size_;
+  }
+
+  size_t buffer_capacity() const {
+    return rep_->capacity_;
+  }
+
+  const uint8_t* GetBytesPtr() const {
+    return reinterpret_cast<const uint8_t*>(rep_->data_.cp);
+  }
+
+  uint8_t* GetBytesPtr() {
+    return reinterpret_cast<uint8_t*>(rep_->data_.p);
+  }
+
+  void SetViewData(int64_t requested_offset, int64_t requested_size) {
+    view_start_ = (GetBytesPtr() + requested_offset);
+    view_size_ = static_cast<size_t>(requested_size);
   }
 
   Status AllocateInternal(size_t size, const AllocatorPtr& allocator);
@@ -144,8 +163,8 @@ class Buffer {
     AllocatorPtr allocator_{};
 
     /// !\brief Initial allocation __ctor
-    Rep(const void* data, size_t size, size_t capacity, const AllocatorPtr& allocator) : Rep() {
-      Init(data, size, capacity, allocator, true);
+    Rep(const void* data, size_t capacity, const AllocatorPtr& allocator) : Rep() {
+      Init(data, capacity, allocator, true);
     }
 
     Rep(const Rep&) = delete;
@@ -153,12 +172,11 @@ class Buffer {
     ~Rep();
 
    protected:
-
     Rep() = default;
 
-    void Init(const void* data, size_t size, size_t capacity, const AllocatorPtr& allocator, bool is_mutable) {
+    void Init(const void* data, size_t capacity, const AllocatorPtr& allocator, bool is_mutable) {
       data_.cp = data;
-      size_ = size;
+      size_ = 0;
       capacity_ = capacity;
       allocator_ = allocator;
     }
@@ -171,6 +189,12 @@ class Buffer {
   // someplace within the buffer with a view_size less than rep::size_
   const void* view_start_{nullptr};
   size_t view_size_{0};
+
+  /// !\brief Slicing constructor
+  Buffer(std::shared_ptr<Rep> rep, int64_t requested_offset, int64_t requested_size)
+      : rep_(std::move(rep)) {
+    SetViewData(requested_offset, requested_size);
+  }
 };
 
 /// !\brief Swap support
