@@ -88,11 +88,13 @@ class TrainingRunner {
     bool skip_evaluation_ = false;
   };
 
-  //TODO(bahuang): pass by shared_ptr, or refactor to make TrainingRunner own training(test)_data
-  TrainingRunner(DataSet* training_data, DataSet* test_data, const Parameters& params);
+  TrainingRunner(std::shared_ptr<DataSet> training_data,
+                 std::shared_ptr<DataSet> test_data,
+                 const Parameters& params);
 
-  //TODO(bahuang): pass by shared_ptr, or refactor to make TrainingRunner own training(test)_data_loader
-  TrainingRunner(DataLoader* training_data_loader, DataLoader* test_data_loader, const Parameters& params)
+  TrainingRunner(std::shared_ptr<DataLoader> training_data_loader,
+                 std::shared_ptr<DataLoader> test_data_loader,
+                 const Parameters& params)
       : TrainingRunner(training_data_loader->MutableDataSet(),
                        test_data_loader->MutableDataSet(),
                        params) {
@@ -112,10 +114,10 @@ class TrainingRunner {
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& infos);
 
-  DataLoader* training_data_loader_ = nullptr;
-  DataLoader* test_data_loader_ = nullptr;
-  DataSet* training_data_;
-  DataSet* test_data_;
+  std::shared_ptr<DataLoader> training_data_loader_ = nullptr;
+  std::shared_ptr<DataLoader> test_data_loader_ = nullptr;
+  std::shared_ptr<DataSet> training_data_;
+  std::shared_ptr<DataSet> test_data_;
   Parameters params_;
   TrainingSession session_;
 };

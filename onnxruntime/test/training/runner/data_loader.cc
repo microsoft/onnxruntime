@@ -72,12 +72,12 @@ Status DataLoader::Load() {
   return Status::OK();
 }
 
-DataSet* DataLoader::NextShard() {
+std::shared_ptr<DataSet> DataLoader::NextShard() {
   size_t last_active_index = active_data_set_index_;
   active_data_set_index_ = (active_data_set_index_ + 1) % NumShards();
 
   //TODO: Release and Load Next File in another thread
-  data_sets_[last_active_index].release();
+  data_sets_[last_active_index].reset();
 
   size_t index_to_load = (active_data_set_index_ + max_num_files_preload_ - 1) % NumShards();
   Status s = LoadFile(data_files_[index_to_load], data_sets_[index_to_load]);
@@ -88,7 +88,7 @@ DataSet* DataLoader::NextShard() {
   return MutableDataSet();
 }
 
-Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::unique_ptr<DataSet>& data_set) {
+Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::shared_ptr<DataSet>& data_set) {
   int tensor_fd;
   ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(file_path, tensor_fd));
   FileInputStream f(tensor_fd);
@@ -96,7 +96,7 @@ Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::unique_ptr<D
   f.SetCloseOnDelete(true);
 
   if (data_set == nullptr) {
-    data_set = std::make_unique<DataSet>(input_tensor_names_);
+    data_set = std::make_shared<DataSet>(input_tensor_names_);
   }
 
   uint32_t sample_size;
@@ -111,7 +111,7 @@ Status DataLoader::LoadFile(const PATH_STRING_TYPE& file_path, std::unique_ptr<D
 
 Status DataLoader::LoadOneSample(CodedInputStream& coded_in,
                                  uint32_t sample_size,
-                                 std::unique_ptr<DataSet>& data_set) {
+                                 std::shared_ptr<DataSet>& data_set) {
   uint32_t read = 0;
   std::vector<ONNX_NAMESPACE::TensorProto> features(NumInputs());
 

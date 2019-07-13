@@ -282,27 +282,31 @@ int main(int argc, char* argv[]) {
                                                             onnx::TensorProto_DataType_INT64,
                                                             onnx::TensorProto_DataType_FLOAT,
                                                             onnx::TensorProto_DataType_INT64};
-    RandomDataSet random_perf_data(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
 
-    runner = std::make_unique<TrainingRunner>(&random_perf_data, nullptr, params);
+    auto random_perf_data = std::make_shared<RandomDataSet>(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
+
+    runner = std::make_unique<TrainingRunner>(random_perf_data, nullptr, params);
+
   } else {
     const size_t max_num_files_preload = 2;
-    DataLoader training_data_loader(params.input_name_map_,
-                                    params.train_data_dir,
-                                    max_num_files_preload,
-                                    device_id,
-                                    device_count);
-    DataLoader test_data_loader(params.input_name_map_,
-                                params.test_data_dir,
-                                max_num_files_preload);
-    RETURN_IF_FAIL(training_data_loader.Load());
+
+    auto training_data_loader = std::make_shared<DataLoader>(params.input_name_map_,
+                                                             params.train_data_dir,
+                                                             max_num_files_preload,
+                                                             device_id,
+                                                             device_count);
+    auto test_data_loader = std::make_shared<DataLoader>(params.input_name_map_,
+                                                         params.test_data_dir,
+                                                         max_num_files_preload);
+    RETURN_IF_FAIL(training_data_loader->Load());
     // Evaluation is only done in device #0
     if (device_id == 0) {
-      RETURN_IF_FAIL(test_data_loader.Load());
+      RETURN_IF_FAIL(test_data_loader->Load());
     }
 
-    runner = std::make_unique<TrainingRunner>(&training_data_loader, &test_data_loader, params);
+    runner = std::make_unique<TrainingRunner>(training_data_loader, test_data_loader, params);
   }
+
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run());
 

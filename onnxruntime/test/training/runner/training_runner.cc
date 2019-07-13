@@ -37,7 +37,9 @@ static SessionOptions SESSION_OPTION = {
     true                               //only_execute_path_to_fetches
 };
 
-TrainingRunner::TrainingRunner(DataSet* training_data, DataSet* test_data, const Parameters& params)
+TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
+                               std::shared_ptr<DataSet> test_data,
+                               const Parameters& params)
     : training_data_(training_data),
       test_data_(test_data),
       params_(params),

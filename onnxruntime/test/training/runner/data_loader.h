@@ -35,20 +35,20 @@ class DataLoader {
 
   common::Status Load();
 
-  DataSet* MutableDataSet() {
-    return data_sets_[active_data_set_index_].get();
+  std::shared_ptr<DataSet> MutableDataSet() {
+    return data_sets_[active_data_set_index_];
   }
 
-  DataSet* NextShard();
+  std::shared_ptr<DataSet> NextShard();
 
   size_t NumShards() const { return data_files_.size(); }
 
  private:
-  common::Status LoadFile(const PATH_STRING_TYPE& file_path, std::unique_ptr<DataSet>& data_set);
+  common::Status LoadFile(const PATH_STRING_TYPE& file_path, std::shared_ptr<DataSet>& data_set);
 
   common::Status LoadOneSample(google::protobuf::io::CodedInputStream& coded_in,
                                uint32_t sample_size,
-                               std::unique_ptr<DataSet>& data_set);
+                               std::shared_ptr<DataSet>& data_set);
 
   size_t NumInputs() const { return input_tensor_names_.size(); }
 
@@ -66,7 +66,7 @@ class DataLoader {
   const static size_t SIZEOF_UINT32 = 4;
 
   std::vector<PATH_STRING_TYPE> data_files_;
-  std::vector<std::unique_ptr<DataSet>> data_sets_;
+  std::vector<std::shared_ptr<DataSet>> data_sets_;
 };
 
 }  // namespace training

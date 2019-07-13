@@ -215,12 +215,13 @@ int main(int argc, char* args[]) {
 #endif
 
   // setup data
-  DataSet trainingData({"X", "labels"});
-  DataSet testData({"X", "labels"});
-  PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, trainingData, testData, device_id /* shard_to_load */, device_count /* total_shards */);
+  std::vector<string> feeds{"X", "labels"};
+  auto trainingData = std::make_shared<DataSet>(feeds);
+  auto testData = std::make_shared<DataSet>(feeds);
+  PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, device_id /* shard_to_load */, device_count /* total_shards */);
 
   // start training session
-  TrainingRunner runner(&trainingData, &testData, params);
+  TrainingRunner runner(trainingData, testData, params);
   RETURN_IF_FAIL(runner.Initialize());
   RETURN_IF_FAIL(runner.Run());
 
