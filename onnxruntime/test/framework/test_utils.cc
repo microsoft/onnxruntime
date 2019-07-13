@@ -35,6 +35,13 @@ IExecutionProvider* TestOpenVINOExecutionProvider() {
 }
 #endif
 
+#ifdef USE_NNAPI
+IExecutionProvider* TestNnapiExecutionProvider() {
+  static NnapiExecutionProvider nnapi_provider;
+  return &nnapi_provider;
+}
+#endif
+
 // Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
 std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
