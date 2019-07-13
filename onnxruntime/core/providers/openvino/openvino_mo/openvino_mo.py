@@ -28,8 +28,6 @@ import networkx as nx
 import onnx
 from collections import OrderedDict
 from operator import itemgetter
-#import class_registration
-#import import_extensions
 
 from mo.utils.versions_checker import check_python_version
 from mo.utils import import_extensions, class_registration
@@ -64,11 +62,14 @@ from mo.middle.passes.shape import convert_reshape, reverse_input_channels, \
 from mo.graph.graph import check_empty_graph, Node, Graph
 from openvino_emitter import port_renumber, serialize_mean_image, create_const_nodes, serialize_network, add_meta_data, generate_ie_ir, serialize_constants, serialize_constants_recursively
 from mo.pipeline.common import determined_sort, get_fw_tensor_debug_info, get_sorted_outputs, collect_sub_graphs, relabel_nodes_inplace_safe
+from mo.middle.passes import infer
 
 def is_fully_defined_shape(shape: np.ndarray):
     if -1 in shape:
         return True
     return True
+
+infer.is_fully_defined_shape = is_fully_defined_shape
 
 def partial_infer(graph: nx.MultiDiGraph, start_node: str = None):
 
@@ -337,7 +338,6 @@ def convert_fp16(onnx_modelproto_bytes):
         return 1
 
 def convert_fp32(onnx_modelproto_bytes):
-    print('In convert fp32')
     try:
         init_logger('ERROR', False)
         framework = 'onnx'
@@ -360,10 +360,6 @@ if __name__ == "__main__":
 
     from mo.utils.cli_parser import get_onnx_cli_parser
     weights_string, final_string = convert_fp32()
-    #print(weights)
-    #print("Got the weights back")
-    #print(final_string)
-    #print("Got the string back")
     sys.exit(0)
 
 

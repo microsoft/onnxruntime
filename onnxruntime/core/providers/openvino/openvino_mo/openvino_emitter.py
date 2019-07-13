@@ -63,7 +63,6 @@ def serialize_constants(weights, graph: nx.MultiDiGraph, data_type=np.float32):
     weights = serialize_constants_recursively(weights, graph, data_type, bin_hashes)
 
 
-    print(weights)
     return weights
 
 

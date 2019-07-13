@@ -144,7 +144,6 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
                 return false;
         }
     }
-
     //Only 2D MatMul is supported
     if(node->OpType() == "MatMul"){
         for(size_t i = 0; i < node_inputs.size(); i++){
@@ -425,6 +424,13 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       auto axis = attributes["axis"].i();
       if (axis != 1)
         return false;
+    }
+
+    //Don't support only one input
+    if(node->OpType() == "Sum"){
+
+        if(node->InputDefs().size() == 1)
+            return false;
     }
 
   }
