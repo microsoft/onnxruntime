@@ -221,8 +221,8 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // Sum over batches and classes
-  math::Sum<float, CPUMathUtil>(nd, loss_sample.data(), loss_data, nullptr);
+  // Sum over batches
+  math::Sum<float, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
 
   return Status::OK();
 }

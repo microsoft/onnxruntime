@@ -981,10 +981,11 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
 
   const TensorShape N_1d({5});
   const TensorShape N_3d({2, 3, 2});
-  const int64_t D = 11;
-  std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x), 11.0f); };
+  const int64_t D = 7;
+  std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x) * 5.0f, 7.0f); };
   std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
 
+  // 1D label without weigth
   {
     TensorShape logit_shape(N_1d);
     logit_shape.emplace_back(D);
@@ -996,6 +997,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     ASSERT_IS_TINY(max_error);
   }
 
+  // 1D label with weight
   {
     TensorShape logit_shape(N_1d);
     logit_shape.emplace_back(D);
@@ -1008,6 +1010,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     ASSERT_IS_TINY(max_error);
   }
 
+  // 3D label without weight
   {
     TensorShape logit_shape(N_3d);
     logit_shape.emplace_back(D);
@@ -1019,6 +1022,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     ASSERT_IS_TINY(max_error);
   }
 
+  // 3D label with weight
   {
     TensorShape logit_shape(N_3d);
     logit_shape.emplace_back(D);
