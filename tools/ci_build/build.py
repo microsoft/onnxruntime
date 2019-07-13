@@ -759,6 +759,16 @@ def generate_documentation(source_dir, build_dir, configs):
                     cwd = os.path.join(build_dir,config, config))
 
     docdiff = ''
+    docdiff = ''
+    try:
+        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
+    except subprocess.CalledProcessError:
+        print('git diff returned non-zero error code')
+    if len(docdiff) > 0:
+        # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders 
+        log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, MKLDNN and CUDA providers enabled.')
+        log.debug('diff:\n'+str(docdiff))
+
     try:
         docdiff = subprocess.check_output(['git', 'diff', operator_doc_path])
     except subprocess.CalledProcessError:
@@ -766,13 +776,6 @@ def generate_documentation(source_dir, build_dir, configs):
     if len(docdiff) > 0:
         raise BuildError('The updated operator document file '+str(operator_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
-    docdiff = ''
-    try:
-        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path])
-    except subprocess.CalledProcessError:
-        print('git diff returned non-zero error code')
-    if len(docdiff) > 0:
-        raise BuildError('The updated opkernel document file '+str(opkernel_doc_path)+' must be checked in.\n diff:\n'+str(docdiff))
 
 
 
