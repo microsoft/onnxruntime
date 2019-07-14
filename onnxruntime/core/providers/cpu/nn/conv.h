@@ -20,12 +20,13 @@ class Conv : public OpKernel, public ConvBase {
 class ConvFloat : public OpKernel, public ConvBase {
  public:
   ConvFloat(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+    activation_.ActivationKind = MlasIdentityActivation;
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  protected:
-  MLAS_ACTIVATION activation_{MlasIdentityActivation};
+  MLAS_ACTIVATION activation_;
 };
 
 }  // namespace onnxruntime
