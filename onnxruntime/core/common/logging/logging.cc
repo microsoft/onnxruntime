@@ -84,7 +84,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       default_filter_user_data_{filter_user_data},
       default_max_vlog_level_{default_max_vlog_level},
       owns_default_logger_{false} {
-  if (!sink_) {
+  if (sink_ == nullptr) {
     throw std::logic_error("ISink must be provided.");
   }
 
