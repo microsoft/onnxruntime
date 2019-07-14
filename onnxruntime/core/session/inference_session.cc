@@ -572,7 +572,6 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                            feeds.size(), " elements.");
   }
 
-  const Graph& graph = model_->MainGraph();
   for (size_t i = 0; i < feeds.size(); ++i) {
     const auto& feed_name = feed_names[i];
 
