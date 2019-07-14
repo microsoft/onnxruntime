@@ -3,16 +3,16 @@
 
 #pragma once
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/conv_base.h"
+#include "core/providers/cpu/nn/conv.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
 
 template <typename T>
-class Conv final : public OpKernel, public onnxruntime::ConvBase {
+class Conv final : public onnxruntime::Conv<T> {
  public:
-  explicit Conv(const OpKernelInfo& info) : OpKernel(info), onnxruntime::ConvBase(info) {
+  explicit Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info) {
     provider_ = (const_cast<MKLDNNExecutionProvider*>(
         dynamic_cast<const MKLDNNExecutionProvider*>(info.GetExecutionProvider())));
   }

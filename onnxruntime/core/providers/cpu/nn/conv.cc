@@ -143,7 +143,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-Status ConvFloat::Compute(OpKernelContext* context) const {
+Status Conv<float>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -281,6 +281,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     Conv,
     1,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    ConvFloat);
+    Conv<float>);
 
 }  // namespace onnxruntime

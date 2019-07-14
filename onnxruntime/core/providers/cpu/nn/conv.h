@@ -17,9 +17,10 @@ class Conv : public OpKernel, public ConvBase {
   Status Compute(OpKernelContext* context) const override;
 };
 
-class ConvFloat : public OpKernel, public ConvBase {
+template <>
+class Conv<float> : public OpKernel, public ConvBase {
  public:
-  ConvFloat(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  Conv<float>(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
     activation_.ActivationKind = MlasIdentityActivation;
   }
 

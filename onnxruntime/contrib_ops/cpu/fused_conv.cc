@@ -7,9 +7,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class FusedConvFloat final : public ConvFloat {
+class FusedConvFloat final : public Conv<float> {
  public:
-  FusedConvFloat(const OpKernelInfo& info) : ConvFloat(info) {
+  FusedConvFloat(const OpKernelInfo& info) : Conv<float>(info) {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
   }
 };
