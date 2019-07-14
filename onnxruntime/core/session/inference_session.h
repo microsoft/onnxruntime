@@ -391,7 +391,7 @@ class InferenceSession {
   std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
+  logging::LoggingManager* logging_manager_ = nullptr;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
@@ -399,6 +399,7 @@ class InferenceSession {
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
+  // The list of execution providers.
   ExecutionProviders execution_providers_;
 
  protected:
