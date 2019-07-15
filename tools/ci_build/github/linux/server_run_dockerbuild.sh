@@ -37,6 +37,7 @@ docker build -t "onnxruntime-server-$IMAGE" --build-arg BUILD_USER=onnxruntimede
 set +e
 mkdir -p ~/.cache/onnxruntime
 mkdir -p ~/.onnx
+mkdir -p ~/.cache/go
 
 if [ -z "$NIGHTLY_BUILD" ]; then
 set NIGHTLY_BUILD=0
@@ -50,7 +51,9 @@ if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ]; then
         --volume "$BUILD_DIR:/build" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+        --volume "$HOME/.cache/go:/home/onnxruntimedev/.cache/go" \
         -e NIGHTLY_BUILD \
+        -e GOCACHE=/home/onnxruntimedev/.cache/go \
         "onnxruntime-server-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/server_run_build.sh \
          -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
@@ -63,7 +66,9 @@ else
         --volume "$BUILD_DIR:/build" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+        --volume "$HOME/.cache/go:/home/onnxruntimedev/.cache/go" \
         -e NIGHTLY_BUILD \
+        -e GOCACHE=/home/onnxruntimedev/.cache/go \
         "onnxruntime-server-$IMAGE" \
         /bin/bash /onnxruntime_src/tools/ci_build/github/linux/server_run_build.sh \
         -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
