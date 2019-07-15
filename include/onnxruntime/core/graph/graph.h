@@ -279,6 +279,10 @@ class Node {
     return !attr_to_subgraph_map_.empty();
   }
 
+  /** Get the const subgraphs from a node. 
+  @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
+  std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
+
   /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
   @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
            nullptr if the Node has no subgraphs.
@@ -755,6 +759,9 @@ class Graph {
 
   /** Returns the parent graph if this is a subgraph */
   const Graph* ParentGraph() const { return parent_graph_; }
+
+  /** Returns the mutable parent graph if this is a subgraph */
+  Graph* MutableParentGraph() { return parent_graph_; }
 
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
