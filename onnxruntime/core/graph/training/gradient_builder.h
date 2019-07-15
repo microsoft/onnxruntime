@@ -51,15 +51,5 @@ DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGemmGradient)
 DECLARE_GRADIENT_BUILDER(GetTrainableDropoutGradient)
 
-using Dimension = onnx::TensorShapeProto_Dimension;
-
-void ComputeBroadcastBackwardAxes(
-    const std::vector<Dimension>& A_dims,
-    const std::vector<Dimension>& B_dims,
-    std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes);
-
-std::vector<Dimension> GetShape(const ArgDef& arg_def);
-
 }  // namespace training
 }  // namespace onnxruntime

@@ -13,6 +13,16 @@
 namespace onnxruntime {
 namespace training {
 
+using Dimension = onnx::TensorShapeProto_Dimension;
+
+void ComputeBroadcastBackwardAxes(
+    const std::vector<Dimension>& A_dims,
+    const std::vector<Dimension>& B_dims,
+    std::vector<int64_t>* A_axes,
+    std::vector<int64_t>* B_axes);
+
+std::vector<Dimension> GetShape(const ArgDef& arg_def);
+
 typedef std::vector<NodeDef> GradientDef;
 
 class GradientBuilderBase {
@@ -150,6 +160,12 @@ class GradientBuilderBase {
   static NodeDef OneConstantNode() {
     return ConstantValueNode(1.0f, "OneConstant");
   }
+
+  void HandleBroadcasting(const ArgDef& input_grad,
+                          const ArgDef& target,
+                          const ArgDef& output_grad,
+                          const std::vector<int64_t>& reduce_axes,
+                          std::vector<NodeDef>& output) const;
 
  private:
   friend class GradientGraphBuilder;

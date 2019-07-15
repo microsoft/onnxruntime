@@ -225,15 +225,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   return result;
 };
 
-std::vector<Dimension> GetShape(const ArgDef& arg_def) {
-  std::vector<Dimension> shape;
-  const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
-  for (auto dim = dims.begin(); dim < dims.end(); dim++) {
-    shape.push_back(*dim);
-  }
-  return shape;
-}
-
 IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   auto attributes = SrcNodeAttributes();
 
@@ -334,32 +325,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
     ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
 
     if (C_axes.size() > 0) {
-      result.push_back(
-          NodeDef("ReduceSum",
-                  {dY},
-                  {IA("dY_ReduceSum")},
-                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", C_axes)}}));
-      result.push_back(
-          NodeDef("Shape",
-                  {C},
-                  {IA("c_shape")}));
+      HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
       if (has_beta && beta != 1.0f) {
         result.push_back(
-            NodeDef("Reshape",
-                    {IA("dY_ReduceSum"), IA("c_shape")},
-                    {IA("dC_reshaped", C.type_proto)}));
-        result.push_back(
             NodeDef("Scale",
-                    {IA("dC_reshaped")},
+                    {IA("dC_reduced")},
                     {dC},
                     {MakeAttribute("scale", beta)}));
       } else {
         result.push_back(
-            NodeDef("Reshape",
-                    {IA("dY_ReduceSum"), IA("c_shape")},
-                    {dC}));
+            NodeDef("Identity", {IA("dC_reduced")}, {dC}));
       }
     } else {
       if (has_beta && beta != 1.0f) {
@@ -547,57 +523,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
               {GI(0)})};
 }
 
-void ComputeBroadcastBackwardAxes(
-    const std::vector<Dimension>& A_dims,
-    const std::vector<Dimension>& B_dims,
-    std::vector<int64_t>* A_axes,
-    std::vector<int64_t>* B_axes) {
-  if (A_axes) A_axes->clear();
-  if (B_axes) B_axes->clear();
-
-  int ndim = int(std::max(A_dims.size(), B_dims.size()));
-  int i = int(A_dims.size() - 1);
-  int j = int(B_dims.size() - 1);
-  int k = ndim - 1;
-
-  for (; i >= 0 && j >= 0; --k) {
-    if (A_dims[i].has_dim_value() && B_dims[j].has_dim_value()) {
-      auto A_dim = A_dims[i].dim_value(),
-           B_dim = B_dims[j].dim_value();
-
-      if (A_dim != B_dim) {
-        if (A_axes && A_dim == 1) {
-          A_axes->push_back(gsl::narrow_cast<int64_t>(k));
-        }
-        if (B_axes && B_dim == 1) {
-          B_axes->push_back(gsl::narrow_cast<int64_t>(k));
-        }
-      }
-    } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_param()) {
-      auto A_dim = A_dims[i].dim_param(),
-           B_dim = B_dims[j].dim_param();
-      if (A_dim != B_dim) {
-        ORT_THROW("Error");
-      }
-    }
-    // TODO : complete othere cases
-
-    --i;
-    --j;
-  }
-
-  if (A_axes && i < 0) {
-    for (; k >= 0; --k) {
-      A_axes->push_back(gsl::narrow_cast<int64_t>(k));
-    }
-
-  } else if (B_axes) {
-    for (; k >= 0; --k) {
-      B_axes->push_back(gsl::narrow_cast<int64_t>(k));
-    }
-  }
-}
-
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   bool is_sub = (SrcNodeOpType() == "Sub");
 
@@ -613,22 +538,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   if (IsGradientRequiredForSrcNodeInput(0)) {
     if (a_axes.size() > 0) {
-      output.push_back(
-          NodeDef("ReduceSum",
-                  {GO(0)},
-                  {IA("ReduceSum")},
-                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", a_axes)}}));
-
-      output.push_back(
-          NodeDef("Shape",
-                  {a},
-                  {IA("a_shape")}));
-
-      output.push_back(
-          NodeDef("Reshape",
-                  {IA("ReduceSum"), IA("a_shape")},
-                  {GI(0)}));
+      HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
     } else {
       output.push_back(
           NodeDef("Identity",
@@ -639,23 +549,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   if (IsGradientRequiredForSrcNodeInput(1)) {
     if (b_axes.size() > 0) {
-      output.push_back(
-          NodeDef("ReduceSum",
-                  {GO(0)},
-                  {IA("ReduceSum_2")},
-                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", b_axes)}}));
-
-      output.push_back(
-          NodeDef("Shape",
-                  {b},
-                  {IA("b_shape")}));
-
       ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
-      output.push_back(
-          NodeDef("Reshape",
-                  {IA("ReduceSum_2"), IA("b_shape")},
-                  {reshape_output}));
+      HandleBroadcasting(GO(0), b, reshape_output, b_axes, output);
 
       if (is_sub) {
         output.push_back(
@@ -709,24 +604,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
       output.push_back(
           NodeDef("Mul",
                   {GO(0), I(1)},
-                  {IA("PreReduceGrad0")}));
+                  {IA("PreReduceGrad0", OType(0))}));
     }
 
     if (a_axes.size() > 0) {
-      output.push_back(
-          NodeDef("ReduceSum",
-                  {IA("PreReduceGrad0")},
-                  {IA("ReduceSum_0")},
-                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", a_axes)}}));
-      output.push_back(
-          NodeDef("Shape",
-                  {a},
-                  {IA("a_shape")}));
-      output.push_back(
-          NodeDef("Reshape",
-                  {IA("ReduceSum_0"), IA("a_shape")},
-                  {GI(0)}));
+      HandleBroadcasting(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes, output);
     } else {
       output.push_back(
           NodeDef("Identity",
@@ -757,24 +639,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
       output.push_back(
           NodeDef("Mul",
                   {GO(0), I(0)},
-                  {IA("PreReduceGrad1")}));
+                  {IA("PreReduceGrad1", OType(0))}));
     }
 
     if (b_axes.size() > 0) {
-      output.push_back(
-          NodeDef("ReduceSum",
-                  {IA("PreReduceGrad1")},
-                  {IA("ReduceSum_1")},
-                  {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                   {"axes", MakeAttribute("axes", b_axes)}}));
-      output.push_back(
-          NodeDef("Shape",
-                  {b},
-                  {IA("b_shape")}));
-      output.push_back(
-          NodeDef("Reshape",
-                  {IA("ReduceSum_1"), IA("b_shape")},
-                  {GI(1)}));
+      HandleBroadcasting(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes, output);
     } else {
       output.push_back(
           NodeDef("Identity",
