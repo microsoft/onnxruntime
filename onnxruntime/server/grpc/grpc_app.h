@@ -7,10 +7,12 @@ namespace onnxruntime {
 namespace server {
 class GRPCApp {
  public:
-  GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env, std::string host, const unsigned short port);
+  GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env, const std::string& host, const unsigned short port);
   ~GRPCApp() = default;
   GRPCApp(const GRPCApp& other) = delete;
-  GRPCApp(GRPCApp&& other) = default;
+  GRPCApp(GRPCApp&& other) = delete;
+
+  GRPCApp& operator=(const GRPCApp&) = delete; 
 
   //Block until the server shuts down.
   void Run();

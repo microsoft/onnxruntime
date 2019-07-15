@@ -6,7 +6,7 @@ namespace onnx_grpc = onnxruntime::server::grpc;
 
 namespace onnxruntime {
 namespace server {
-GRPCApp::GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env, std::string host, const unsigned short port) : prediction_service_implementation_(env) {
+GRPCApp::GRPCApp(const std::shared_ptr<onnxruntime::server::ServerEnvironment>& env, const std::string& host, const unsigned short port) : prediction_service_implementation_(env) {
   ::grpc::EnableDefaultHealthCheckService(true);
   ::grpc::channelz::experimental::InitChannelzService();
   ::grpc::reflection::InitProtoReflectionServerBuilderPlugin();
