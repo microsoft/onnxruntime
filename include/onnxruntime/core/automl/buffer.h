@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 
@@ -39,20 +40,36 @@ class Buffer {
   // \brief Unallocated buffer, use Allocate() to make
   // usable
   Buffer() = default;
-  // Assume ownership of the buffer that is
-  // to be freed by the allocator. The buffer becomes immutable
-  // upon construction.
-  Buffer(const void* data, int64_t size, AllocatorPtr allocator);
 
   // \brief __dtor
   ~Buffer();
   /////////////////////////////////////////////
   // Making copies of the buffer increase rep_
   // reference count via a shared_ptr
-  Buffer(const Buffer&) = default;
-  Buffer& operator=(const Buffer&) = default;
-  Buffer(Buffer&&) = default;
-  Buffer& operator=(Buffer&&) = default;
+  Buffer(const Buffer& o) : Buffer() {
+    *this = o;
+  }
+  Buffer& operator=(const Buffer& o) {
+    if (&o != this) {
+      DecRefAndDeallocate();
+      if (o.IsAllocated()) {
+        o.AddRef();
+        rep_ = o.rep_;
+      }
+    }
+    return *this;
+  }
+  Buffer(Buffer&& o) : Buffer() {
+    *this = std::move(o);
+  }
+  Buffer& operator=(Buffer&& o) {
+    if (&o != this) {
+      DecRefAndDeallocate();
+      rep_ = o.rep_;
+      SetViewData(o);
+    }
+    return *this;
+  }
 
   /// \brief Allocates a new buffer and copies std::string content into it
   static Buffer FromString(const std::string& s, const AllocatorPtr& allocator);
@@ -61,7 +78,6 @@ class Buffer {
   /// The new Buffer instance point to the same memory allocation as the
   /// original buffer but has a narrow view of it.
   Status Slice(int64_t offset, int64_t size, Buffer&) const;
-
 
   /// !\brief Reserves enough capacity in the buffer
   Status Reserve(const int64_t capacity, const AllocatorPtr& allocator);
@@ -97,7 +113,7 @@ class Buffer {
   /// \brief Return the buffer's capacity (number of allocated bytes)
   size_t capacity() const { return (rep_ != nullptr) ? rep_->capacity_ : 0; }
 
-  bool IsAllocated() const { return (rep_ != nullptr) && (rep_->data_.cp != nullptr); }
+  bool IsAllocated() const { return rep_ != nullptr; }
 
   bool IsMutable() const { return (rep_ != nullptr) && (rep_->is_mutable_); }
 
@@ -112,18 +128,17 @@ class Buffer {
   T* mutable_data() {
     assert(IsAllocated());
     ORT_ENFORCE(IsMutable());
-    return reinterpret_cast<T*>(rep_->data_.p);
+    return reinterpret_cast<T*>(rep_->GetData());
   }
 
   /// \brief Standard swap
   void swap(Buffer& o) {
-    rep_.swap(o.rep_);
+    std::swap(rep_, o.rep_);
     std::swap(view_start_, o.view_start_);
     std::swap(view_size_, o.view_size_);
   }
 
  private:
-
   size_t buffer_size() const {
     return rep_->size_;
   }
@@ -133,11 +148,11 @@ class Buffer {
   }
 
   const uint8_t* GetBytesPtr() const {
-    return reinterpret_cast<const uint8_t*>(rep_->data_.cp);
+    return reinterpret_cast<const uint8_t*>(rep_->GetData());
   }
 
   uint8_t* GetBytesPtr() {
-    return reinterpret_cast<uint8_t*>(rep_->data_.p);
+    return reinterpret_cast<uint8_t*>(rep_->GetData());
   }
 
   void SetViewData(int64_t requested_offset, int64_t requested_size) {
@@ -145,44 +160,91 @@ class Buffer {
     view_size_ = static_cast<size_t>(requested_size);
   }
 
-  Status AllocateInternal(size_t size, const AllocatorPtr& allocator);
+  void SetViewData(const Buffer& o) {
+    view_start_ = o.view_start_;
+    view_size_ = o.view_size_;
+  }
 
+  void AddRef() const {
+    rep_->AddRef();
+  }
+
+  void DecRefAndDeallocate() {
+    if (IsAllocated()) {
+      rep_->MayBeDeallocate();
+      rep_ = nullptr;
+      view_start_ = nullptr;
+      view_size_ = 0;
+    }
+  }
+
+  // When allocating we need to allocate aligned buffer
+  // plus the size of Ref which will be constructed with placement new
+  // at the beginning of the buffer
+  static const size_t RefAlignment = 64;
+
+  // To be allocated at the start of the 64-bytes aligned buffer
   struct Rep {
-    union {
-      const void* cp;
-      void* p;
-    } data_{nullptr};
     size_t size_{0};
     size_t capacity_{0};
     bool is_mutable_{true};
-
+    std::atomic_uint32_t ref_cnt_{1};
     /**
      if allocator_ is null, it means Buffer does not own the allocation.
      Otherwise, Buffer instance will use deleter to deallocate memory.
     */
     AllocatorPtr allocator_{};
+    // Some of all members here
+    static const size_t MemberSize = sizeof(ref_cnt_) + sizeof(size_) + sizeof(capacity_) + sizeof(is_mutable_) + sizeof(allocator_);
+    // Fill out the rest of the object to align on 64 bytes boundary so the actual buffer can start right after that.
+    char padding_[(RefAlignment - MemberSize)];
 
     /// !\brief Initial allocation __ctor
-    Rep(const void* data, size_t capacity, const AllocatorPtr& allocator) : Rep() {
-      Init(data, capacity, allocator, true);
+    Rep(size_t size, size_t capacity, const AllocatorPtr& allocator) : Rep() {
+      Init(size, capacity, allocator);
     }
 
     Rep(const Rep&) = delete;
     Rep& operator=(const Rep&) = delete;
-    ~Rep();
 
-   protected:
+    void* GetData() {
+      return this + sizeof(*this);
+    }
+
+    const void* GetData() const {
+      return this + sizeof(*this);
+    }
+
+    void AddRef() {
+      if(allocator_ != nullptr) {
+        ref_cnt_.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+
+    void MayBeDeallocate() {
+      if (allocator_ != nullptr && 1 == DecRef()) {
+        auto allocator = std::move(allocator_);
+        this->~Rep();
+        allocator->Free(this);
+      }
+    }
+
+   private:
     Rep() = default;
+    ~Rep() = default;
 
-    void Init(const void* data, size_t capacity, const AllocatorPtr& allocator, bool is_mutable) {
-      data_.cp = data;
+    uint32_t DecRef() {
+      return ref_cnt_.fetch_sub(1, std::memory_order_acq_rel);
+    }
+
+    void Init(size_t size, size_t capacity, const AllocatorPtr& allocator) {
       size_ = 0;
       capacity_ = capacity;
       allocator_ = allocator;
     }
   };
 
-  std::shared_ptr<Rep> rep_;
+  Rep* rep_{nullptr};
   // By default this points the beginning of the buffer
   // the view_size is the same as rep::size_
   // however, if this represents a view then it will point
@@ -190,9 +252,12 @@ class Buffer {
   const void* view_start_{nullptr};
   size_t view_size_{0};
 
+  Status AllocateInternal(size_t size, const AllocatorPtr& allocator, Rep*&);
+
   /// !\brief Slicing constructor
-  Buffer(std::shared_ptr<Rep> rep, int64_t requested_offset, int64_t requested_size)
-      : rep_(std::move(rep)) {
+  /// No ref-couting, this is a ptr move
+  Buffer(Rep* rep, int64_t requested_offset, int64_t requested_size)
+      : rep_(rep) {
     SetViewData(requested_offset, requested_size);
   }
 };
