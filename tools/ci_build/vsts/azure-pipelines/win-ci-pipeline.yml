@@ -16,6 +16,17 @@ jobs:
   variables:
   - name: buildDirectory # currently some csproj files depend on this variable - would be nice if they didn't
     value: $(Build.BinariesDirectory)
+  - name: BUILD_PY_COMMON_OPTIONS
+    value: >-
+      --build_dir $(Build.BinariesDirectory) --config $(buildConfig)
+      --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe
+      --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe
+      --build_shared_lib
+      --enable_onnx_tests
+      --use_mkldnn
+      --use_mklml
+      --use_tvm
+      --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
 
   steps:
   - checkout: self
@@ -53,10 +64,31 @@ jobs:
       modifyEnvironment: true
 
   - task: CmdLine@1
-    displayName: 'Run build script'
+    displayName: 'Generate build files'
     inputs:
       filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-      arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --config $(buildConfig) --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe --skip_submodule_sync --enable_pybind --use_mkldnn --use_mklml --use_tvm --build_shared_lib --enable_msinternal --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+      arguments: >-
+        $(Build.SourcesDirectory)\tools\ci_build\build.py
+        $(BUILD_PY_COMMON_OPTIONS)
+        --update --skip_submodule_sync
+
+  - task: CmdLine@1
+    displayName: 'Build'
+    inputs:
+      filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+      arguments: >-
+        $(Build.SourcesDirectory)\tools\ci_build\build.py
+        $(BUILD_PY_COMMON_OPTIONS)
+        --build --parallel
+
+  - task: CmdLine@1
+    displayName: 'Test'
+    inputs:
+      filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+      arguments: >-
+        $(Build.SourcesDirectory)\tools\ci_build\build.py
+        $(BUILD_PY_COMMON_OPTIONS)
+        --test
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'

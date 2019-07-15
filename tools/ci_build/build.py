@@ -353,7 +353,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
                  ]
-    
+
     # temp turn on only for linux gpu build
     if not is_windows():
         if args.use_cuda:
@@ -362,7 +362,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += [
                 "-Donnxruntime_USE_HOROVOD=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
-        
+
 
 
     if args.use_brainslice:
@@ -428,7 +428,11 @@ def build_targets(cmake_path, build_dir, configs, parallel):
         if parallel:
             num_cores = str(multiprocessing.cpu_count())
             if is_windows():
-                build_tool_args += ["/maxcpucount:" + num_cores]
+                build_tool_args += [
+                    "/maxcpucount:" + num_cores,
+                    # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
+                    "/nodeReuse:False",
+                    ]
             else:
                 build_tool_args += ["-j" + num_cores]
 
