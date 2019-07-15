@@ -72,6 +72,7 @@ if __name__ == "__main__":
     keepdims_options = [0, 1]
     ops = ["ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", 
            "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "ArgMax", "ArgMin"]
+    print ("#pragma optimize (\"\", off)")
     print ("// Please don't manually edit this file. Generated from reduction_test_cases_generator.py")
     print ("ReductionTestCases testcases = {")
     print ("// input_data")
@@ -101,3 +102,4 @@ if __name__ == "__main__":
 
     print ("}")
     print ("};")
+    print ("#pragma optimize (\"\", on)")

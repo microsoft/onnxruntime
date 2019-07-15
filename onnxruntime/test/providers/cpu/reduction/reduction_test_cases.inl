@@ -1,3 +1,4 @@
+#pragma optimize ("", off)
 // Please don't manually edit this file. Generated from reduction_test_cases_generator.py
 ReductionTestCases testcases = {
     // input_data
@@ -5355,3 +5356,4 @@ ReductionTestCases testcases = {
                  1.000000f,
              })},
     }};
+#pragma optimize ("", on)
