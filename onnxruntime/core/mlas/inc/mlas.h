@@ -78,21 +78,30 @@ enum MLAS_ACTIVATION_KIND {
     MlasLeakyReluActivation,
     MlasTanhActivation,
     MlasLogisticActivation,
+    MlasClipActivation,
 };
 
 struct MLAS_ACTIVATION {
     MLAS_ACTIVATION_KIND ActivationKind;
-    float alpha;
+    union {
+        struct {
+            float alpha;
+        } LeakyRelu;
+        struct {
+            float minimum;
+            float maximum;
+        } Clip;
+        float Values[2];
+    } Parameters;
 };
 
 void
 MLASCALL
 MlasActivation(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     );
