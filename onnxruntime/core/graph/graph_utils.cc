@@ -398,7 +398,7 @@ const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, co
 }
 
 bool IsConstantInitializer(const Graph& graph, const std::string& initializer_name, bool check_outer_scope) {
-  const onnx::TensorProto* initializer = GetConstantInitializer(graph, initializer_name, check_outer_scope);
+  const ONNX_NAMESPACE::TensorProto* initializer = GetConstantInitializer(graph, initializer_name, check_outer_scope);
   return initializer != nullptr;
 }
 
