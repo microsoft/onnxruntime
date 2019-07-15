@@ -164,7 +164,11 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     ASSERT_TRUE(session.Initialize().IsOK());
 
     RunOptions run_options;
-    ASSERT_TRUE(session.Run(run_options, helper.feeds_, helper.output_names_, &fetches).IsOK());
+    auto status = session.Run(run_options, helper.feeds_, helper.output_names_, &fetches);
+    if (!status.IsOK()) {
+      std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(status.IsOK());
 
     if (level == TransformerLevel::Level3) {
       check_nchwc_graph(session);
@@ -724,7 +728,7 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(32);
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_height");
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_width");
 

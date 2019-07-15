@@ -369,7 +369,7 @@ class InferenceSession {
 
   common::Status CheckShapes(const std::string& input_name,
                              const TensorShape& input_shape,
-                             const std::vector<int64_t>& expected_shape) const;
+                             const TensorShape& expected_shape) const;
 
   common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds) const;
 
@@ -419,12 +419,12 @@ class InferenceSession {
   std::unordered_set<std::string> required_inputs_;
 
   struct InputDefMetaData {
-    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, const std::vector<int64_t>& tensor_shape0)
-        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(tensor_shape0) {
+    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
     }
     const NodeArg* node_arg;
     MLDataType ml_data_type;
-    std::vector<int64_t> tensor_shape;  // not applicable if the input is non-tensor type
+    TensorShape tensor_shape;  // not applicable if the input is non-tensor type
   };
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;

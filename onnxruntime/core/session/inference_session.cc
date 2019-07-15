@@ -555,9 +555,9 @@ int InferenceSession::GetCurrentNumRuns() const {
 
 common::Status InferenceSession::CheckShapes(const std::string& input_name,
                                              const TensorShape& input_shape,
-                                             const std::vector<int64_t>& expected_shape) const {
+                                             const TensorShape& expected_shape) const {
   auto input_shape_sz = input_shape.NumDimensions();
-  auto expected_shape_sz = expected_shape.size();
+  auto expected_shape_sz = expected_shape.NumDimensions();
   if (input_shape_sz != expected_shape_sz) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for input: ",
                            input_name,
@@ -651,7 +651,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
       // check for shape
       const auto& expected_shape = iter->second.tensor_shape;
-      if (!expected_shape.empty()) {
+      if (expected_shape.NumDimensions() > 0) {
         const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
         ORT_RETURN_IF_ERROR(CheckShapes(feed_name, input_shape, expected_shape));
       }
@@ -934,7 +934,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
                                                             elem_type,
                                                             elem_shape_proto
                                                                 ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto)
-                                                                : std::vector<int64_t>())});
+                                                                : TensorShape())});
     }
   };
 
