@@ -60,6 +60,12 @@ jobs:
       filename: '$(Build.BinariesDirectory)\installer\python\installer.exe'
       arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
 
+  - task: PowerShell@1
+    displayName: 'Set CUDA path'
+    inputs:
+      scriptName: 'tools/ci_build/vsts/windows/set_cuda_path.ps1'
+      arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion $(CUDA_VERSION)'
+
   - task: BatchScript@1
     displayName: 'Setup VS2017 env vars'
     inputs:
@@ -93,6 +99,12 @@ jobs:
         $(Build.SourcesDirectory)\tools\ci_build\build.py
         $(BUILD_PY_COMMON_OPTIONS)
         --test
+
+  - task: PowerShell@1
+    displayName: 'Clean up CUDA props files'
+    inputs:
+      scriptName: 'tools/ci_build/vsts/windows/clean_up_cuda_prop_files.ps1'
+      arguments: '-CudaVersion $(CUDA_VERSION)'
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
