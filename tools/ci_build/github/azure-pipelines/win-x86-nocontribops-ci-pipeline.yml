@@ -58,6 +58,8 @@ jobs:
         searchFolder: '$(Build.SourcesDirectory)\csharp\test'
         runInParallel: true
         configuration: Debug
+        platform: 'x86'
+        codeCoverageEnabled: True
 
     - task: VSBuild@1
       displayName: 'Build Release'
@@ -95,6 +97,8 @@ jobs:
         searchFolder: '$(Build.SourcesDirectory)\csharp\test'
         runInParallel: true
         configuration: Release
+        platform: 'x86'
+        codeCoverageEnabled: True
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
