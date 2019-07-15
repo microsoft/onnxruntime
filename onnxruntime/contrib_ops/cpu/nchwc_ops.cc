@@ -34,7 +34,7 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     KernelDefBuilder()
         .MayInplace(3, 0)
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    NchwcConv<float>);
+    NchwcConv);
 
 ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     MaxPool,
@@ -70,39 +70,38 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
 
 template <typename T>
 Status ReorderInput<T>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const TensorShape& X_shape = X->Shape();
+  const auto* X = context->Input<Tensor>(0);
+  const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
-  Tensor* Y = context->Output(0, X_shape);
+  auto* Y = context->Output(0, X_shape);
   MlasReorderInput(X_shape.GetDims().data(), X->template Data<T>(), Y->template MutableData<T>());
   return Status::OK();
 }
 
 template <typename T>
 Status ReorderOutput<T>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const TensorShape& X_shape = X->Shape();
+  const auto* X = context->Input<Tensor>(0);
+  const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   std::vector<int64_t> Y_shape(X_shape.GetDims());
   ORT_ENFORCE(channels_ <= Y_shape[1]);
   Y_shape[1] = channels_;
-  Tensor* Y = context->Output(0, Y_shape);
+  auto* Y = context->Output(0, Y_shape);
   MlasReorderOutput(Y_shape.data(), X->template Data<T>(), Y->template MutableData<T>());
   return Status::OK();
 }
 
-template <typename T>
-Status NchwcConv<T>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
-  const Tensor* B = context->Input<Tensor>(2);
-  const Tensor* Sum = context->Input<Tensor>(3);
+Status NchwcConv::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto* W = context->Input<Tensor>(1);
+  const auto* B = context->Input<Tensor>(2);
+  const auto* Sum = context->Input<Tensor>(3);
 
   ORT_RETURN_IF_ERROR(ConvBase::ValidateInputShape(X, W));
 
-  const TensorShape& X_shape = X->Shape();
-  const TensorShape& W_shape = W->Shape();
+  const auto& X_shape = X->Shape();
+  const auto& W_shape = W->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
@@ -131,34 +130,18 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
   Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(ConvBase::InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
-  Tensor* Y = context->Output(0, Y_dims);
-  T* y_data = Y->template MutableData<T>();
+  auto* Y = context->Output(0, Y_dims);
+  auto* y_data = Y->template MutableData<float>();
 
   // Check for the optional Conv/Sum fusion.
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     // If the output was not allocated inplace with the sum tensor, then copy here.
-    const float* sum_data = Sum->template Data<T>();
+    const auto* sum_data = Sum->template Data<float>();
     if (y_data != sum_data) {
-      memcpy(y_data, sum_data, sum_shape.Size() * sizeof(T));
+      memcpy(y_data, sum_data, sum_shape.Size() * sizeof(float));
     }
-  }
-
-  MLAS_ACTIVATION Activation;
-  if (ConvBase::activation_.empty()) {
-    Activation.ActivationKind = MlasIdentityActivation;
-  } else if (ConvBase::activation_ == "Relu") {
-    Activation.ActivationKind = MlasReluActivation;
-  } else if (ConvBase::activation_ == "LeakyRelu") {
-    Activation.ActivationKind = MlasLeakyReluActivation;
-    Activation.alpha = ConvBase::alpha_;
-  } else if (ConvBase::activation_ == "Tanh") {
-    Activation.ActivationKind = MlasTanhActivation;
-  } else if (ConvBase::activation_ == "Sigmoid") {
-    Activation.ActivationKind = MlasLogisticActivation;
-  } else {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", ConvBase::activation_);
   }
 
   MlasNchwcConv(kernel_shape.size(),
@@ -173,7 +156,7 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
                 W->template Data<float>(),
                 B != nullptr ? B->template Data<float>() : nullptr,
                 y_data,
-                &Activation,
+                &activation_,
                 Sum == nullptr,
                 const_cast<concurrency::ThreadPool*>(static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool()));
 
@@ -181,9 +164,9 @@ Status NchwcConv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
 
-  const TensorShape& X_shape = X->Shape();
+  const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
@@ -193,7 +176,7 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
 
   std::vector<int64_t> pads = pads_;
   std::vector<int64_t> output_dims = PoolBase::SetOutputSize(X_shape, X_shape[1], &pads, dilations_, ceil_mode_);
-  Tensor* Y = context->Output(0, output_dims);
+  auto* Y = context->Output(0, output_dims);
 
   MlasNchwcPool(kind,
                 2,
