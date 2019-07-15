@@ -197,7 +197,8 @@ class Node {
     void operator++();
     void operator--();
 
-    const Node& operator*();
+    const Node& operator*() const;
+    const Node* operator->() const;
 
    private:
     EdgeConstIterator m_iter;
@@ -214,6 +215,7 @@ class Node {
   NodeConstIterator OutputNodesBegin() const noexcept {
     return NodeConstIterator(relationships_.output_edges.cbegin());
   }
+
   /** Gets an iterator to the end of the output nodes from this Node. */
   NodeConstIterator OutputNodesEnd() const noexcept { return NodeConstIterator(relationships_.output_edges.cend()); }
 

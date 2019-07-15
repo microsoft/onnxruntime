@@ -84,6 +84,5 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
   }
 
   return Status::OK();
-}  // namespace onnxruntime
-
+}
 }  // namespace onnxruntime

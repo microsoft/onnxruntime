@@ -263,8 +263,12 @@ void Node::NodeConstIterator::operator--() {
   --m_iter;
 }
 
-const Node& Node::NodeConstIterator::operator*() {
+const Node& Node::NodeConstIterator::operator*() const {
   return (*m_iter).GetNode();
+}
+
+const Node* Node::NodeConstIterator::operator->() const {
+  return &(operator*());
 }
 
 NodeIndex Node::Index() const noexcept {
@@ -2079,18 +2083,21 @@ Node& Graph::AddNode(const std::string& name,
 
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
-  if (nullptr == node /*|| 0 != node->GetRelationships().output_edges.size()*/) {
-    // Node should be removed after all out edges are removed.
-    // TODO: add the check commented out back.
+  if (nullptr == node) {
     return false;
   }
 
+  // Node must be disconnected from any downstream nodes before removal
+  ORT_ENFORCE(node->GetOutputEdgesCount() == 0, "Can't remove node ", node->Name(), " as it still has output edges.");
+
   // Remove all input edges.
+  // Need to copy the edge info first so we can remove the real edges while iterating the copy of edge info.
   auto input_edges = node->GetRelationships().input_edges;
 
   for (auto& input_edge : input_edges) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
+
   return ReleaseNode(p_index);
 }
 

@@ -34,19 +34,16 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   }
 
   auto tensor_proto_data_type = shape_out_def->TypeAsProto()->tensor_type().elem_type();
-
   shape_initializer_proto.set_data_type(tensor_proto_data_type);
 
-  // Here we expect little-indian format to set raw data of the TensorProto.
+  // Here we expect little-endian format to set raw data of the TensorProto.
   shape_initializer_proto.set_raw_data(input_dims.data(),
                                        input_dims.size() * sizeof(decltype(input_dims)::value_type));
 
-  // Remove the output edges of the Shape node, then remove the node itself, and replace it with the initializer.
-  graph_utils::RemoveNodeOutputEdges(graph, node);
+  auto& new_node_arg = graph_utils::AddConstantInitializer(graph, shape_initializer_proto);
 
-  if (graph.RemoveNode(node.Index())) {
+  if (graph_utils::RemoveNodeAndUpdateEdges(graph, node, &new_node_arg)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
-    graph.AddInitializedTensor(shape_initializer_proto);
   }
 
   return Status::OK();
@@ -71,6 +68,12 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
     if (!input_dim.has_dim_value() || input_dim.dim_value() < 0) {
       return false;
     }
+  }
+
+  // we're going to create an initializer with the same name as the node output,
+  // so pass that name into the CanRemoveNode check
+  if (!graph_utils::CanRemoveNode(graph, node, &node.InputDefs()[0]->Name())) {
+    return false;
   }
 
   return true;

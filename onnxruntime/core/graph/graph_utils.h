@@ -50,12 +50,10 @@ cannot be overridden at runtime. If the initializer is not found or is not const
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
                                                           bool check_outer_scope = true);
 
-/** Find the initializer called 'original_name' in 'graph', or its ancestors if check_outer_scope is true, 
-    and replace with 'initializer' in the current graph. 
-    Does NOT look in any subgraphs. Requires original_name to match an initializer.
-    */
-void ReplaceInitializer(Graph& graph, const std::string& original_name, const ONNX_NAMESPACE::TensorProto& initializer,
-                        bool check_outer_scope = true);
+/** Add a new constant initializer to 'graph'. Checks that new_initializer does not already exist in 'graph'. 
+@returns The NodeArg for the new initializer. 
+*/
+NodeArg& AddConstantInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
@@ -86,19 +84,42 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   return false;
 }
 
-/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
+/** Check if it will be possible to remove or fuse a node.
     We support the removal of the Node as long as the following conditions hold:
-    - There should be no implicit inputs.
+    - The node should not produce a graph output unless replacement_output_name provides that output.
     - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
-    - If the Node has a single incoming node (and possibly multiple initializers), we can remove the Node and
-      connect its incoming node to its outgoing nodes.
-    - If the Node has a single initializer as input, we remove the Node and feed the initializer as input to its
-      output nodes. */
-bool RemoveNode(Graph& graph, Node& node);
+    - If the Node has a single incoming node, we can remove the Node and connect its incoming node to its 
+      outgoing nodes, if doing so does not clash with any values in any relevant subgraphs. 
+    - If the Node output will be replaced by replacement_output_name, we can remove or fuse the node 
+      if replacement_output_name does not clash with any values in any relevant subgraphs.  
+@param replacement_output_name 
+  If a new NodeArg will be created to replace the node's output (e.g. creating new initializer) 
+  provide the new name that will be used by the NodeArg.
+  If the node is being fused provide the output name from the last node being fused.
+  If nullptr: If the node has one input edge the name from that edge will be used in the checks, 
+              otherwise the node must have one input definition and the name from that will be used in the checks.
+*/
+bool CanRemoveNode(const Graph& graph, const Node& node, const std::string* replacement_output_name = nullptr);
+
+/** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
+See CanRemoveNode for details on when removal is allowed.
+@param replacement_output If we are not connecting the single incoming node with the downstream node/s
+                          provide the NodeArg that will replace the output from 'node' and be connected 
+                          with the downstream node/s.
+*/
+bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_output = nullptr);
 
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+/** Finalize the fusion of two nodes.
+    If replacement_node is nullptr:
+      outputs and edges from second_node are moved to first_node. second_node is deleted.
+    If replacement_node is provided: 
+      the outputs and edges from second_node are moved to replacement_node. both first_node and second_node are deleted.
+*/
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node = nullptr);
 
 }  // namespace graph_utils
 
