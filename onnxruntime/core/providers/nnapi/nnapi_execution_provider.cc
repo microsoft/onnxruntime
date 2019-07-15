@@ -19,34 +19,18 @@ NnapiExecutionProvider::NnapiExecutionProvider()
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
                                               [](int) { return std::make_unique<CPUAllocator>(
                                                             std::make_unique<OrtAllocatorInfo>(NNAPI,
-                                                                                               OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
+                                                                                               OrtAllocatorType::OrtDeviceAllocator)); },
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(device_info));
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); },
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_allocator_info));
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
-
-Status NnapiExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  if (!(strcmp(src.Location().name, NNAPI) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
-      !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, NNAPI) == 0) &&
-      !(strcmp(src.Location().name, NNAPI) == 0 && strcmp(dst.Location().name, NNAPI) == 0)) {
-    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
-  }
-
-  // Todo: Copy for now. May optimize later to avoid copy.
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
-  const void* src_data = src.DataRaw();
-  void* dst_data = dst.MutableDataRaw();
-  memcpy(dst_data, src_data, bytes);
-
-  return Status::OK();
-}
 
 std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   dnn::OnnxConverter converter;
