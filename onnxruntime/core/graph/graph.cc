@@ -549,6 +549,15 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
+std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
+  std::vector<gsl::not_null<const Graph*>> subgraphs;
+  subgraphs.reserve(attr_to_subgraph_map_.size());
+  std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
+                 [](const auto& entry) { return entry.second; });
+
+  return subgraphs;
+}
+
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
                       bool include_missing_optional_defs) const {
   for (const auto* arg : InputDefs()) {
