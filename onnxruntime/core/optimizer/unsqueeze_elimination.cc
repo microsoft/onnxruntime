@@ -34,9 +34,6 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     return Status(ONNXRUNTIME, FAIL, "index out of range");
   }
 
-  // for simplicity we will add the replacement initializer in this graph, even if the original came from an ancestor,
-  // so generate a replacement node arg name for this graph. use a prefix to minimize the chance of any naming
-  // clash with values in a subgraph
   auto new_name = graph.GenerateNodeArgName("UnsqueezeElimination_" + input_def.Name());
   if (!graph_utils::CanRemoveNode(graph, node, &new_name)) {
     LOGS_DEFAULT(WARNING) << "UnsqueezeElimination cannot remove node " << node.Name();

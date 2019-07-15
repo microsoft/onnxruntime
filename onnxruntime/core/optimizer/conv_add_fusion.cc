@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/conv_add_fusion.h"
-
-#include "core/common/logging/logging.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/conv_add_fusion.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
