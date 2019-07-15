@@ -19,6 +19,7 @@ OrtCreateRunOptions
 OrtCreateSession
 OrtCreateSessionFromArray
 OrtCreateSessionOptions
+OrtCreateStatus
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
 OrtCreateTensorWithDataAsOrtValue
