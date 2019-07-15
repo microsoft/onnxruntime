@@ -46,7 +46,7 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 //
 // Forward declare the thread pool implementation class.
 //
-// N.B. Avoid including onnxruntime headers here to keep the dependencies for
+// N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
 // standalone MLAS test executables smaller.
 //
 
@@ -57,6 +57,16 @@ namespace onnxruntime {
 };
 
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+
+//
+// Platform routines.
+//
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    );
 
 //
 // Activation routines.

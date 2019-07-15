@@ -99,6 +99,7 @@ Return Value:
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ErfKernelRoutine = MlasErfKernel;
     this->NchwcBlockSize = 8;
+    this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif
 
     //
@@ -168,6 +169,7 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
 
                 } else {
 
@@ -209,4 +211,34 @@ Return Value:
 
 #endif
 
+}
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    )
+/*++
+
+Routine Description:
+
+    This routine returns the preferred byte alignment for buffers that are used
+    with this library. Buffers that are not bytes aligned to this value will
+    function, but will not achieve best performance.
+
+Arguments:
+
+    None.
+
+Return Value:
+
+    Returns the preferred byte alignment for buffers.
+
+--*/
+{
+#if defined(MLAS_TARGET_AMD64)
+    return MlasPlatform.PreferredBufferAlignment;
+#else
+    return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+#endif
 }

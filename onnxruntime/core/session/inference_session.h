@@ -431,6 +431,8 @@ class InferenceSession {
 
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  // Data transfer manager.
+  DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;

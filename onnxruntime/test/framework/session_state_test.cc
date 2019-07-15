@@ -57,7 +57,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   CPUExecutionProvider execution_provider{CPUExecutionProviderInfo{"CPUExecutionProvider"}};
 
   OpKernelInfo p_info(node, kernel_def, execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetFuncMgr());
+                      s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
@@ -125,7 +125,7 @@ TEST(SessionStateTest, TestInitializerProcessing) {
         bool found = initialized_tensors.find(idx) != initialized_tensors.cend();
         ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state initialized tensors";
 
-        if (graph_utils::IsConstantInitializer(graph, entry.first, true)) {
+        if (graph_utils::IsConstantInitializer(graph, entry.first, false)) {
           found = const_initialized_tensors.find(idx) != const_initialized_tensors.cend();
           ASSERT_TRUE(found) << "Missing entry for " << entry.first << " in session state const initialized tensors";
         }
