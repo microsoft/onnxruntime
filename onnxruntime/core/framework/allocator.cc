@@ -3,6 +3,7 @@
 
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/mlas/inc/mlas.h"
 #include <cstdlib>
 #include <sstream>
 
@@ -11,15 +12,8 @@ namespace onnxruntime {
 void* CPUAllocator::Alloc(size_t size) {
   if (size <= 0)
     return nullptr;
-  //default align to 64;
   void* p;
-#if defined(__AVX512F__)
-  size_t alignment = 64;
-#elif defined(__AVX__)
-  size_t alignment = 32;
-#else
-  size_t alignment = 32;  //Indeed, the default one(8 or 16) should be enough
-#endif
+  size_t alignment = MlasGetPreferredBufferAlignment();
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
   if (p == nullptr) throw std::bad_alloc();
