@@ -195,28 +195,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
-    std::vector<int> input_indexes;
-    std::vector<int> input_dim_sizes;
-    std::vector<int> output_indexes;
-    std::vector<int> output_dim_sizes;
-    std::vector<std::vector<int64_t>> output_shapes;
-
-    // Build map from input name to its index in input definitions
-    std::unordered_map<std::string, int> input_map;
-    const auto& input_defs = fused_node->InputDefs();
-    input_map.reserve(input_defs.size());
-    for (int i = 0, end = input_defs.size(); i < end; ++i) {
-      input_map[input_defs[i]->Name()] = i;
-    }
-
-    // Build map from output name to its index in output definitions
-    std::unordered_map<std::string, int> output_map;
-    const auto& output_defs = fused_node->OutputDefs();
-    output_map.reserve(output_defs.size());
-    for (int i = 0, end = output_defs.size(); i < end; ++i) {
-      output_map[output_defs[i]->Name()] = i;
-    }
-
     // Reconstruct graph proto from fused node's function body
     const auto* func_body = fused_node->GetFunctionBody();
     if (!func_body) {
