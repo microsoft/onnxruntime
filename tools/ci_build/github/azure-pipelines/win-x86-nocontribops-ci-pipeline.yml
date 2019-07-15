@@ -59,6 +59,7 @@ jobs:
         runInParallel: true
         configuration: Debug
         platform: 'x86'
+        otherConsoleOptions: '/Platform:x86'
 
     - task: VSBuild@1
       displayName: 'Build Release'
@@ -97,6 +98,7 @@ jobs:
         runInParallel: true
         configuration: Release
         platform: 'x86'
+        otherConsoleOptions: '/Platform:x86'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
