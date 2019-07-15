@@ -115,6 +115,80 @@ TEST(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
+  TensorProto value_tensor;
+  value_tensor.add_dims(1);
+  value_tensor.add_float_data(1.f);
+  value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  TypeProto float_tensor_type;
+  float_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto create_subgraph = [&](GraphProto& graph_proto) {
+    // create subgraph that has an Add node to add a local and parent graph initializer
+    Model model("ConstantFoldingSubgraphTest_subgraph");
+    auto& graph = model.MainGraph();
+
+    TensorProto local_constant(value_tensor);
+    local_constant.set_name("local_constant");
+    graph.AddInitializedTensor(local_constant);
+
+    auto& local_constant_arg = graph.GetOrCreateNodeArg("local_constant", &float_tensor_type);
+    auto& parent_constant_arg = graph.GetOrCreateNodeArg("parent_constant", &float_tensor_type);
+    graph.AddOuterScopeNodeArg("parent_constant");
+
+    auto& add_out = graph.GetOrCreateNodeArg("add_out", &float_tensor_type);
+    graph.AddNode("add", "Add", "Add two inputs.", {&parent_constant_arg, &local_constant_arg}, {&add_out});
+
+    auto& subgraph_out = graph.GetOrCreateNodeArg("subgraph_out", &float_tensor_type);
+    graph.AddNode("identity", "Identity", "So Add isn't providing graph output.", {&add_out}, {&subgraph_out});
+
+    auto status = graph.Resolve();
+    ASSERT_TRUE(status.IsOK()) << status;
+    graph_proto = graph.ToGraphProto();
+  };
+
+  Model model("ConstantFoldingSubgraphTest_main_graph");
+  auto& graph = model.MainGraph();
+
+  // add initializer at parent level
+  TensorProto parent_value_tensor(value_tensor);
+  parent_value_tensor.set_name("parent_constant");
+  graph.AddInitializedTensor(parent_value_tensor);
+
+  // put the subgraph in an If node
+  TypeProto if_cond_type;
+  if_cond_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  if_cond_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& if_cond_input = graph.GetOrCreateNodeArg("if_in", &if_cond_type);
+  auto& if_output = graph.GetOrCreateNodeArg("if_out", &float_tensor_type);
+
+  auto& if_node = graph.AddNode("if", "If", "If node", {&if_cond_input}, {&if_output});
+
+  GraphProto subgraph;
+  create_subgraph(subgraph);
+
+  if_node.AddAttribute("then_branch", {subgraph});
+  if_node.AddAttribute("else_branch", {subgraph});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 2);  // one in each subgraph
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+
+  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0)
+      << "Constant folding should have been able to remove the Add node in both subgraphs";
+}
+
 TEST(GraphTransformationTests, ShapeToInitializer) {
   string model_uri = MODEL_FOLDER + "shape-add.onnx";
   std::shared_ptr<Model> model;
@@ -308,9 +382,10 @@ TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
 
   // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
+  // Unsqueeze is also not eliminated as the initializer that is its input is also not constant
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] != 0);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {
