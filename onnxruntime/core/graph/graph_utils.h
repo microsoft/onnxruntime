@@ -46,7 +46,7 @@ bool IsConstantInitializer(const Graph& graph, const std::string& name, bool che
 /** Checks if the given node has only constant inputs (initializers). */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node);
 
-/** Returns the associated TensorProto* for a name if it is an initializer. 
+/** Returns a pointer to the corresponding TensorProto for a name if it is an initializer. 
 @param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
 */
 const onnx::TensorProto* ReturnInitializedValue(const Graph& graph, const std::string& name, bool check_outer_scope);
