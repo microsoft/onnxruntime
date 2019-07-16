@@ -1417,4 +1417,4 @@ TEST(InferenceSessionTests, TestSSDMobileNet) {
 #endif
 
 }  // namespace test
-}  // namespace onnxclsruntime
+}  // namespace onnxruntime
