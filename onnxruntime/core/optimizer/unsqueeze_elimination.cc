@@ -25,11 +25,9 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 
   // Generate new dims.
   NodeArg* input_def = node.MutableInputDefs()[0];
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  graph.GetInitializedTensor(input_def->Name(), tensor_proto);
-  if (tensor_proto == nullptr) {
-    return Status::OK();
-  }
+  const auto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_def->Name());
+  ORT_ENFORCE(tensor_proto);
+
   std::vector<int64_t> new_dims(axes.size() + tensor_proto->dims().size(), 0);
   if (new_dims.size() >= std::numeric_limits<int>::max()) {
     return Status(ONNXRUNTIME, FAIL, "index out of range");
@@ -56,8 +54,13 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
       new_tensor_proto.add_dims(new_dims[i]);
     }
   }
-  graph.RemoveInitializedTensor(input_def->Name());
-  graph.AddInitializedTensor(new_tensor_proto);
+
+  // TODO: This seems wrong as there's no check whether another node is using the initializer before replacing it.
+  //       Shouldn't we check that or alternatively create an initializer with a different name and let
+  //       Graph::CleanUnusedInitializers remove the original one if nothing else consumes it?
+  // graph.RemoveInitializedTensor(input_def->Name());
+  // graph.AddInitializedTensor(new_tensor_proto);
+  graph_utils::ReplaceInitializer(graph, input_def->Name(), new_tensor_proto);
 
   // Update shape of NodeArg.
   TensorShapeProto shape;
@@ -75,8 +78,8 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 }  // namespace onnxruntime
 
 bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) const {
-  // Attempt to remove an Unsqueeze operator only if it gets an initializer as input.
-  return node.GetInputEdgesCount() == 0 &&
+  // Attempt to remove an Unsqueeze operator only if it gets a constant initializer as input.
+  return graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name()) &&
          !graph.IsNodeOutputsInGraphOutputs(node);
 }
 
