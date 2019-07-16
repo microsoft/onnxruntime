@@ -92,7 +92,7 @@ OrtValue* CreateTensorWithDataAsOrtValue(OrtAllocatorInfo* info, std::vector<T>&
 template <typename key_type, typename value_type>
 OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
   OrtAllocatorInfo* info;
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
   const size_t ele_count = map.size();
   std::vector<int64_t> dims(1, ele_count);
@@ -122,7 +122,7 @@ OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map
 template <typename T>
 void VectorProtoToOrtValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& output) {
   OrtAllocatorInfo* info;
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
   OrtValueArray in(input.size());
   size_t j = 0;

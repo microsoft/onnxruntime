@@ -538,7 +538,7 @@ TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const onnx::TypeProto& tensor_proto_type) {
+                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
   ORT_ENFORCE(IsLittleEndianOrder());
 
