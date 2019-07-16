@@ -1686,9 +1686,14 @@ public:
         void
         ) override
     {
+        union TypeAlias {
+            unsigned u;
+            float f;
+        };
+
         // N.B. The test data includes values at the edge of Tanh/Logistic boundaries.
         //    Identity,   Relu,       LeakyRelu,  Tanh,       Logistic,   Clip,
-        static const unsigned TestData[20][6] = {
+        static const TypeAlias TestData[20][6] = {
             { 0x00000001, 0x00000001, 0x00000001, 0x00000000, 0x3f000000, 0x00000001 }, // positive denormal
             { 0x80000001, 0x00000000, 0x80000000, 0x80000000, 0x3f000000, 0x00000000 }, // negative denormal
             { 0x7ff00002, 0x7ff00002, 0x7ff00002, 0x7ff00002, 0x7ff00002, 0x7ff00002 }, // positive NaN
@@ -1712,7 +1717,7 @@ public:
         };
 
         MLAS_ACTIVATION Activation;
-        unsigned Buffer[_countof(TestData)];
+        TypeAlias Buffer[_countof(TestData)];
 
         for (unsigned kind = 0; kind < unsigned(MlasClipActivation); kind++) {
 
@@ -1730,16 +1735,15 @@ public:
             //
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
-                Buffer[i] = TestData[i][0];
+                Buffer[i].u = TestData[i][0].u;
             }
 
-            MlasActivation(&Activation, (float*)Buffer, nullptr, _countof(Buffer), 1, 1);
+            MlasActivation(&Activation, &Buffer[0].f, nullptr, _countof(Buffer), 1, 1);
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
-                if (Buffer[i] != TestData[i][kind] &&
-                    *(const float*)&Buffer[i] != *(const float*)&TestData[i][kind]) {
-                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i], TestData[i][kind]);
+                if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
+                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i].u, TestData[i][kind].u);
                 }
             }
 
@@ -1748,15 +1752,14 @@ public:
             //
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
-                Buffer[i] = TestData[i][0];
-                MlasActivation(&Activation, (float*)&Buffer[i], nullptr, 1, 1, 1);
+                Buffer[i].u = TestData[i][0].u;
+                MlasActivation(&Activation, &Buffer[i].f, nullptr, 1, 1, 1);
             }
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
-                if (Buffer[i] != TestData[i][kind] &&
-                    *(const float*)&Buffer[i] != *(const float*)&TestData[i][kind]) {
-                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i], TestData[i][kind]);
+                if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
+                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i].u, TestData[i][kind].u);
                 }
             }
         }
