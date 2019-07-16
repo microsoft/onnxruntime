@@ -79,7 +79,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_2<float, std::string>);
 
 template <>
-void LabelEncoder_2<float, std::string>::SetAttributeNames(const OpKernelInfo& info) {
+void LabelEncoder_2<float, std::string>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_floats";
   _value_field_name = "values_strings";
   info.GetAttrOrDefault<std::string>("default_string", &_default_value, std::string("_Unused"));
@@ -96,7 +96,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_2<std::string, float>);
 
 template <>
-void LabelEncoder_2<std::string, float>::SetAttributeNames(const OpKernelInfo& info) {
+void LabelEncoder_2<std::string, float>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_strings";
   _value_field_name = "values_floats";
   info.GetAttrOrDefault<float>("default_float", &_default_value, -0.0f);
@@ -113,7 +113,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_2<std::int64_t, float>);
 
 template <>
-void LabelEncoder_2<std::int64_t, float>::SetAttributeNames(const OpKernelInfo& info) {
+void LabelEncoder_2<std::int64_t, float>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_int64s";
   _value_field_name = "values_floats";
   info.GetAttrOrDefault<float>("default_float", &_default_value, -0.0f);
@@ -130,7 +130,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_2<float, std::int64_t>);
 
 template <>
-void LabelEncoder_2<float, std::int64_t>::SetAttributeNames(const OpKernelInfo& info) {
+void LabelEncoder_2<float, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_floats";
   _value_field_name = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
@@ -147,7 +147,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_2<std::int64_t, std::string>)
 
 template <>
-void LabelEncoder_2<std::int64_t, std::string>::SetAttributeNames(const OpKernelInfo& info) {
+void LabelEncoder_2<std::int64_t, std::string>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_int64s";
   _value_field_name = "values_strings";
   info.GetAttrOrDefault<std::string>("default_string", &_default_value, std::string("_Unused"));
@@ -164,7 +164,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder_2<std::string, std::int64_t>)
 
 template <>
-void LabelEncoder_2<std::string, std::int64_t>::SetAttributeNames(const OpKernelInfo& info) {
+void LabelEncoder_2<std::string, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_strings";
   _value_field_name = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
