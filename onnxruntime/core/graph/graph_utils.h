@@ -60,7 +60,7 @@ void ReplaceInitializer(Graph& graph, const std::string& original_name, const ON
 /** Returns a pointer to the corresponding TensorProto for a name if it is an initializer. 
 @param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
 */
-const onnx::TensorProto* ReturnInitializedValue(const Graph& graph, const std::string& name, bool check_outer_scope);
+const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
