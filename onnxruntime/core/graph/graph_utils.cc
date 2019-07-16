@@ -422,6 +422,16 @@ bool IsConstantInitializer(const Graph& graph, const std::string& initializer_na
   return constant_initializer;
 }
 
+const onnx::TensorProto* ReturnInitializedValue(const Graph& graph, const std::string& name, bool check_outer_scope) {
+  const onnx::TensorProto* initializer = nullptr;
+  if (graph.GetInitializedTensor(name, initializer)) {
+    return initializer;
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    return ReturnInitializedValue(*graph.ParentGraph(), name, check_outer_scope);
+  }
+  return initializer;
+}
+
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   return IsConstantInitializer(graph, node_arg.Name(), true);
 }
