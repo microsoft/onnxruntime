@@ -1,5 +1,6 @@
 #include "gradient_checker.h"
 #include "gradient_op_test_utils.h"
+#include "test/random_seed.h"
 #include <random>
 
 namespace onnxruntime {
@@ -318,8 +319,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
-  auto seed = std::chrono::system_clock::now().time_since_epoch().count();
-  std::default_random_engine generator{gsl::narrow_cast<uint32_t>(seed)};
+  const auto seed = GetStaticRandomSeed();
+  std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
   std::normal_distribution<X_T> distribution{mean, scale};
 
   // Initialize 'x_datas' to random values.

@@ -11,6 +11,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "test/random_seed.h"
 
 using namespace ::onnxruntime::logging;
 
@@ -36,16 +37,19 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
   if (create_default_logging_manager) {
     static std::string default_logger_id{"Default"};
     s_default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                        Severity::kWARNING,  // TODO make this configurable through
-                                                                             // cmd line arguments or some other way
-                                                        false,
-                                                        LoggingManager::InstanceType::Default,
-                                                        &default_logger_id);
+                                                                 Severity::kWARNING,  // TODO make this configurable through
+                                                                                      // cmd line arguments or some other way
+                                                                 false,
+                                                                 LoggingManager::InstanceType::Default,
+                                                                 &default_logger_id);
 
     // make sure default logging manager exists and is working
     auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
     LOGS(logger, VERBOSE) << "Logging manager initialized.";
   }
+
+  //SetStaticRandomSeed(0); // set the seed value // TODO make this configurable
+  std::clog << "ORT test random seed value: " << GetStaticRandomSeed() << std::endl;
 
 #ifdef HAVE_FRAMEWORK_LIB
   auto status = Environment::Create(runtime_environment_);
