@@ -41,10 +41,10 @@ ONNX_OPERATOR_KERNEL_EX(
 MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMklDnnExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); }, std::numeric_limits<size_t>::max()});
+                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(MKLDNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
 
   if (info.create_arena) {
     InsertAllocator(CreateAllocator(default_allocator_info));
@@ -60,23 +60,6 @@ MKLDNNExecutionProvider::MKLDNNExecutionProvider(const MKLDNNExecutionProviderIn
 }  // namespace onnxruntime
 
 MKLDNNExecutionProvider::~MKLDNNExecutionProvider() {
-}
-
-Status MKLDNNExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  // Support CPU <-> MKLDNN for now
-  if (!(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, CPU) == 0) &&
-      !(strcmp(src.Location().name, CPU) == 0 && strcmp(dst.Location().name, MKLDNN) == 0) &&
-      !(strcmp(src.Location().name, MKLDNN) == 0 && strcmp(dst.Location().name, MKLDNN_CPU) == 0)) {
-    ORT_NOT_IMPLEMENTED(src.Location().name, " copy to ", dst.Location().name, " is not implemented");
-  }
-
-  // Todo: Copy for now. May optimize later to avoid copy.
-  size_t bytes = src.DataType()->Size() * src.Shape().Size();
-  const void* src_data = src.DataRaw();
-  void* dst_data = dst.MutableDataRaw();
-  memcpy(dst_data, src_data, bytes);
-
-  return Status::OK();
 }
 
 namespace mkl_dnn {
