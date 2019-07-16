@@ -47,16 +47,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
     return std::make_shared<KernelRegistry>();
   }
 
-  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    // TODO: Copy for now. May optimize later to avoid copy.
-    size_t bytes = src.DataType()->Size() * src.Shape().Size();
-    const void* src_data = src.DataRaw();
-    void* dst_data = dst.MutableDataRaw();
-    memcpy(dst_data, src_data, bytes);
-
-    return Status::OK();
-  }
-
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }

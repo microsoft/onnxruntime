@@ -418,9 +418,6 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
 
-  std::unique_ptr<detail::UniDirectionalLstm<T>> fw;
-  std::unique_ptr<detail::UniDirectionalLstm<T>> bw;
-
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
     gsl::span<const T> input_weights_2 = input_weights.subspan(input_weights_size_per_direction,
@@ -449,37 +446,37 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> last_cell_2 = last_cell.subspan(last_cell_size_per_direction,
                                                  last_cell_size_per_direction);
 
-    fw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
-                                                         seq_length, batch_size, input_size,
-                                                         hidden_size_, Direction::kForward, input_forget_,
-                                                         bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-                                                         activation_funcs_.Entries()[0],
-                                                         activation_funcs_.Entries()[1],
-                                                         activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+    detail::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size,
+                                     hidden_size_, Direction::kForward, input_forget_,
+                                     bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
+                                     activation_funcs_.Entries()[0],
+                                     activation_funcs_.Entries()[1],
+                                     activation_funcs_.Entries()[2],
+                                     clip_, ttp_);
 
-    bw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
-                                                         seq_length, batch_size, input_size,
-                                                         hidden_size_, Direction::kReverse, input_forget_,
-                                                         bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2,
-                                                         activation_funcs_.Entries()[3],
-                                                         activation_funcs_.Entries()[4],
-                                                         activation_funcs_.Entries()[5],
-                                                         clip_, ttp_);
+    detail::UniDirectionalLstm<T> bw(alloc, logger, seq_length, batch_size, input_size,
+                                     hidden_size_, Direction::kReverse, input_forget_,
+                                     bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2,
+                                     activation_funcs_.Entries()[3],
+                                     activation_funcs_.Entries()[4],
+                                     activation_funcs_.Entries()[5],
+                                     clip_, ttp_);
 
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
+    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
+               output_1, hidden_output_1, last_cell_1);
+    bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2,
+               output_2, hidden_output_2, last_cell_2);
   } else {
-    fw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
-                                                         seq_length, batch_size, input_size,
-                                                         hidden_size_, direction_, input_forget_,
-                                                         bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-                                                         activation_funcs_.Entries()[0],
-                                                         activation_funcs_.Entries()[1],
-                                                         activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+    detail::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size,
+                                     hidden_size_, direction_, input_forget_,
+                                     bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
+                                     activation_funcs_.Entries()[0],
+                                     activation_funcs_.Entries()[1],
+                                     activation_funcs_.Entries()[2],
+                                     clip_, ttp_);
 
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
+    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
+               output_1, hidden_output_1, last_cell_1);
   }
 
   if (!output.empty())

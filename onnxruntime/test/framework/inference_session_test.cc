@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
@@ -25,6 +26,9 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
@@ -111,12 +115,6 @@ class FuseExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
     static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
-  }
-
-  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_UNUSED_PARAMETER(src);
-    ORT_UNUSED_PARAMETER(dst);
-    return Status::OK();
   }
 };
 
@@ -284,7 +282,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
-    st = TestCudaExecutionProvider()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
