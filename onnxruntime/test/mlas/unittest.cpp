@@ -1783,11 +1783,15 @@ main(
 
     printf("Conv2D tests.\n");
     std::make_unique<MlasConv2DTest>()->ExecuteShort();
-    std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+    if (MlasNchwcGetBlockSize() > 1) {
+        std::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+    }
 
     printf("Pool2D tests.\n");
     std::make_unique<MlasPool2DTest>()->ExecuteShort();
-    std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+    if (MlasNchwcGetBlockSize() > 1) {
+        std::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+    }
 
     printf("Pool3D tests.\n");
     std::make_unique<MlasPool3DTest>()->ExecuteShort();
