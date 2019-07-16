@@ -11,7 +11,7 @@ namespace ml {
 
 ONNX_CPU_OPERATOR_VERSIONED_ML_KERNEL(
     LabelEncoder,
-    1, 2,
+    1, 1,
     KernelDefBuilder().TypeConstraint("T1",
                                       std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>(),
                                                               DataTypeImpl::GetTensorType<int64_t>()})

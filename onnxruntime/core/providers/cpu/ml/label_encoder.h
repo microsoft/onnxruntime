@@ -75,11 +75,6 @@ public:
 		const TensorShape& shape = X.Shape();
 		Tensor& Y = *context->Output(0, TensorShape(shape));
 
-		if (X.DataType() != DataTypeImpl::GetType<TKey>())
-				return Status(ONNXRUNTIME, FAIL, "LabelEncoder encounters unexpected input type.");
-		if (Y.DataType() != DataTypeImpl::GetType<TKey>())
-				return Status(ONNXRUNTIME, FAIL, "LabelEncoder encounters unexpected output type.");
-
 		auto input = X.template DataAsSpan<TKey>();
 		auto output = Y.template MutableDataAsSpan<TValue>();
 
