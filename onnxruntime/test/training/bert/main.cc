@@ -42,6 +42,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("100000"))
       ("num_warmup_steps", "Number of warmup steps.", cxxopts::value<int>()->default_value("10000"))
+      ("evaluation_period", 
+        "How many training steps to make before making an evaluation.", 
+        cxxopts::value<size_t>()->default_value("100"))  
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
@@ -70,6 +73,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     } else {
       params.eval_batch_size = params.batch_size_;
     }
+    params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto test_data_dir = flags["test_data_dir"].as<std::string>();
@@ -120,8 +124,9 @@ void shutdown_horovod() {
 #endif
 
 // NOTE: these variables need to be alive when the error_function is called.
-int true_count = 0;
 float total_loss = 0.0f;
+float mlm_loss = 0.0f;
+float nsp_loss = 0.0f;
 
 void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_path_ = params.model_name + ".onnx";
@@ -179,45 +184,37 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   params.skip_evaluation_ = params.is_perf_test;
 
-  params.error_function_ = [](const MLValue& /*predict*/, const MLValue& /*label*/, const MLValue& loss) {
-    // const Tensor& predict_t = predict.Get<Tensor>();
-    // const Tensor& label_t = label.Get<Tensor>();
-    const Tensor& loss_t = loss.Get<Tensor>();
+  params.error_function_ = [](const std::vector<std::string>& /*feed_names*/,
+                              const std::vector<OrtValue>& /*feeds*/,
+                              const std::vector<std::string>& /*fetch_names*/,
+                              const std::vector<OrtValue>& fetches) {
+    const Tensor& total_loss_t = fetches[0].Get<Tensor>();
+    const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
+    const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
 
-    // const float* prediction_data = predict_t.template Data<float>();
-    // const int64_t* label_data = label_t.template Data<int64_t>();
-    const float* loss_data = loss_t.template Data<float>();
+    const float* total_loss_val = total_loss_t.template Data<float>();
+    const float* mlm_loss_val = mlm_loss_t.template Data<float>();
+    const float* nsp_loss_val = nsp_loss_t.template Data<float>();
 
-    //const TensorShape predict_shape = predict_t.Shape();
-    //const TensorShape label_shape = label_t.Shape();
-    //const TensorShape loss_shape = loss_t.Shape();
-    //ORT_ENFORCE(predict_shape.NumDimensions() == label_shape.NumDimensions() + 1);
-
-    //int64_t batch_size = predict_shape[0];
-    //for (int n = 0; n < batch_size; ++n) {
-    //  auto max_class_index = std::distance(prediction_data,
-    //                                       std::max_element(prediction_data, prediction_data + NUM_CLASS));
-
-    //  if (static_cast<int>(label_data[max_class_index]) == 1) {
-    //    true_count++;
-    //  }
-
-    //  prediction_data += predict_shape.SizeFromDimension(1);
-    //  label_data += label_shape.SizeFromDimension(1);
-    //}
-    total_loss += *loss_data;
+    total_loss += *total_loss_val;
+    mlm_loss += *mlm_loss_val;
+    nsp_loss += *nsp_loss_val;
   };
 
-  params.post_evaluation_callback_ = [](size_t num_samples) {
-    float precision = float(true_count) / num_samples;
-    float average_loss = total_loss / float(num_samples);
-    printf("#examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
+  params.post_evaluation_callback_ = [](size_t num_samples, size_t step) {
+    float average_total_loss = total_loss / float(num_samples);
+    float average_mlm_loss = mlm_loss / float(num_samples);
+    float average_nsp_loss = nsp_loss / float(num_samples);
+
+    printf("Step: %zu, #examples: %d, total_loss: %0.04f, mlm_loss: %0.04f, nsp_loss: %0.04f \n\n",
+           step,
            static_cast<int>(num_samples),
-           true_count,
-           precision,
-           average_loss);
-    true_count = 0;
+           average_total_loss,
+           average_mlm_loss,
+           average_nsp_loss);
     total_loss = 0.0f;
+    mlm_loss = 0.0f;
+    nsp_loss = 0.0f;
   };
 }
 

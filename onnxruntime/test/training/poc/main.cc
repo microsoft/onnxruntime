@@ -82,7 +82,6 @@ void shutdown_horovod() {
 // NOTE: these variables need to be alive when the error_function is called.
 int true_count = 0;
 float total_loss = 0.0f;
-uint64_t step = 0;
 
 std::string new_tensorboard_log_folder(std::string log_directory) {
   int i = 0;
@@ -114,6 +113,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   params.batch_size_ = BATCH_SIZE;
   params.eval_batch_size = NUM_SAMPLES_FOR_EVALUATION;
   params.num_of_epoch_ = NUM_OF_EPOCH;
+  params.evaluation_period = 1;
 #ifdef USE_CUDA
   // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
   // Adding another cuda kernel call for this division seems wasteful currently.
@@ -128,10 +128,13 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   params.learning_rate_ = LEARNING_RATE;
 #endif
 
-  params.error_function_ = [](const MLValue& predict, const MLValue& label, const MLValue& loss) {
-    const Tensor& predict_t = predict.Get<Tensor>();
-    const Tensor& label_t = label.Get<Tensor>();
-    const Tensor& loss_t = loss.Get<Tensor>();
+  params.error_function_ = [](const std::vector<std::string>& /*feed_names*/,
+                              const std::vector<OrtValue>& feeds,
+                              const std::vector<std::string>& /*fetch_names*/,
+                              const std::vector<OrtValue>& fetches) {
+    const Tensor& label_t = feeds[1].Get<Tensor>();
+    const Tensor& predict_t = fetches[0].Get<Tensor>();
+    const Tensor& loss_t = fetches[1].Get<Tensor>();
 
     const float* prediction_data = predict_t.template Data<float>();
     const float* label_data = label_t.template Data<float>();
@@ -159,19 +162,19 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
 
   std::string log_directory = new_tensorboard_log_folder("logs");
   auto tensorboard = std::make_shared<EventWriter>(log_directory);
-  params.post_evaluation_callback_ = [tensorboard](size_t num_samples) {
+  params.post_evaluation_callback_ = [tensorboard](size_t num_samples, size_t step) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
     tensorboard->AddScalar("precision", precision, step);
     tensorboard->AddScalar("loss", average_loss, step);
-    printf("#examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
+    printf("Step: %zu, #examples: %d, #correct: %d, precision: %0.04f, loss: %0.04f \n\n",
+           step,
            static_cast<int>(num_samples),
            true_count,
            precision,
            average_loss);
     true_count = 0;
     total_loss = 0.0f;
-    step++;
   };
 }
 

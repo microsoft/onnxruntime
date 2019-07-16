@@ -197,7 +197,12 @@ Status GradientGraphBuilder::Build() {
 
   // Accumulate Gradients
   for (auto gradient_pair : gradients_to_accumulate_) {
-    gradient_graph_defs.AddNodeDefs({NodeDef("Sum", gradient_pair.second, {gradient_pair.first})});
+    gradient_graph_defs.AddNodeDefs(
+        {NodeDef("Sum",
+                 gradient_pair.second,
+                 {gradient_pair.first},
+                 NodeAttributes(),
+                 "AccumulateGrad_" + gradient_pair.first.name)});
   }
 
   // Set the gradients as graph outputs, if in-graph optimizers are not used.

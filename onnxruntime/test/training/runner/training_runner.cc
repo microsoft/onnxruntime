@@ -40,6 +40,7 @@ TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
                                const Parameters& params)
     : training_data_(training_data),
       test_data_(test_data),
+      step_(0),
       params_(params),
       session_(SESSION_OPTION) {
   ORT_ENFORCE(!params_.model_path_.empty());
@@ -163,6 +164,7 @@ Status TrainingRunner::TrainingLoop() {
                                        feeds,
                                        fetch_names,
                                        &fetches));
+      step_++;
 
       //Start counting after warm-up iterations
       if (batch >= warm_up_iters || shard_it > 0) {
@@ -193,7 +195,9 @@ Status TrainingRunner::TrainingLoop() {
         weight_updater.Update(grad, params_.batch_size_);
       }
 
-      ORT_RETURN_IF_ERROR(Evaluate(session_));
+      if (step_ % params_.evaluation_period == 0) {
+        ORT_RETURN_IF_ERROR(Evaluate(session_));
+      }
     }
 
     // Move to next shard of data
@@ -280,9 +284,10 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
                                     feeds,
                                     params_.fetch_names,
                                     &fetches));
-    // Call error function with predict, label and loss.
+
+    // Call error function
     if (params_.error_function_) {
-      params_.error_function_(fetches[0] /*predict*/, feeds.back() /*label*/, fetches[1] /*loss*/);
+      params_.error_function_(feed_names, feeds, params_.fetch_names, fetches);
     }
 
     // Set to next batch
@@ -297,7 +302,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
 
   // Call afer a test batch.
   if (params_.post_evaluation_callback_) {
-    params_.post_evaluation_callback_(evaluation_batch_size);
+    params_.post_evaluation_callback_(evaluation_batch_size, step_);
   }
 
   return Status::OK();

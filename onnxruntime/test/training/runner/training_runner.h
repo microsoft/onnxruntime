@@ -67,16 +67,22 @@ class TrainingRunner {
     size_t batch_size_;
     size_t eval_batch_size;
     size_t num_of_epoch_;
+    size_t evaluation_period;
 
     // Optimizer Parameter
     float learning_rate_;
     AdamOptimizerParams adam_opt_params_;
 
     // error_function_ is called when evaluating the error for a single sample.
-    std::function<void(const MLValue& /*predict*/, const MLValue& /*label*/, const MLValue& /*loss*/)> error_function_;
+    std::function<void(const std::vector<std::string>& feed_names,
+                       const std::vector<OrtValue>& feeds,
+                       const std::vector<std::string>& fetch_names,
+                       const std::vector<OrtValue>& fetches)>
+        error_function_;
 
     // post_evaluation_callback_ is called when a batch of evaluation is done.
-    std::function<void(size_t /*num_of_test_sample_run*/)> post_evaluation_callback_;
+    std::function<void(size_t /*eval_batch_size*/, size_t /*step*/)>
+        post_evaluation_callback_;
 
     // Use CUDA providers or not.
     // TODO: support a list of providers.
@@ -120,6 +126,8 @@ class TrainingRunner {
   std::shared_ptr<DataLoader> test_data_loader_ = nullptr;
   std::shared_ptr<DataSet> training_data_;
   std::shared_ptr<DataSet> test_data_;
+  size_t step_;
+
   Parameters params_;
   TrainingSession session_;
 };
