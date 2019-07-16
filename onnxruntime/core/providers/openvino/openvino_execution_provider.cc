@@ -201,7 +201,7 @@ bool IsOpSupported(std::string name){
 
 //Checks if the entire graph is supported by OpenVINO EP and returns false if it is not.
 
-bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id){
+bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id, std::string &error_msg){
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
@@ -222,7 +222,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
             input_dims = graph_proto->input(i).type().tensor_type().shape().dim_size();
 
                 if(input_dims == 1 || input_dims == 5)
-                    return false;
+                {
+                  error_msg =  "Error because GPU plugin doesn't support 1D and 5D input";
+                  return false;
+                }
         }
     }
 
@@ -233,7 +236,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
             output_dims = graph_proto->output(i).type().tensor_type().shape().dim_size();
 
                 if(output_dims == 5)
-                    return false;
+                {
+                  error_msg =  "Error because GPU plugin doesn't support  5D output";
+                  return false;
+                }
         }
     }
 
@@ -243,7 +249,11 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
 
     //Check if the Operation is Supported by OpenVINO
     if (!IsOpSupported(node->OpType())) {
-      return false;
+      
+      {
+          error_msg =  "Error because Operation is not supported by OpenVINO";
+            return false;
+      }
     }
 
     auto node_inputs = node->InputDefs();
@@ -253,7 +263,11 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         if(node_inputs[i]->Shape() != nullptr){
 
             if(node_inputs[i]->Shape()->dim_size() == 0)
-                return false;
+               {
+                  error_msg =  "Error from Zero dimension check";
+                  return false;
+                }
+                
         }
     }
 
@@ -263,7 +277,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     if(node->OpType() == "BatchNormalization"){
 
         if(GetInputCount(node,initializers) > 1)
-            return false;
+            {
+                  error_msg =  "Error: BatchNormalization cannot take more than 1 input";
+                  return false;
+            }
     }
 
 
@@ -271,7 +288,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     if(node->OpType() == "Conv"){
 
         if(GetInputCount(node,initializers) > 1)
-            return false;
+            {
+                  error_msg =  "Error: Conv cannot take more than 1 input";
+                  return false;
+            }
     }
 
 
@@ -281,29 +301,43 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         int input_count = GetInputCount(node,initializers);
 
         if(input_count > 1)
-            return false;
+            {
+                  error_msg =  "Error: Input count is greater than one from Reshape operation";
+                  return false;
+            }
 
         //Myriad and HDDL plugins do not support Reshape with two initializers
         if(dev_id == "MYRIAD" || dev_id == "HDDL")
             if(input_count == 0)
-                return false;
+                {
+                  error_msg =  "Error: Myriad and HDDL plugins do not support Reshape with two initializers ";
+                  return false;
+            }
 
         if(!IsDimensionSupported(node,dev_id)){
-            return false;
+            error_msg =  "Error: Dimension is not supported from  Reshape operation";
+            return false;    
         }
     }
 
     if(node->OpType() == "Flatten"){
 
         if(!IsDimensionSupported(node,dev_id))
-            return false;
+            {
+                  error_msg =  "Error: Dimension is not supported from Flatten operation";
+                  return false;
+            }
 
         //Only default axis is supported for MYRIAD and HDDL plugins
         auto attributes = node->GetAttributes();
         auto axis = attributes["axis"].i();
         if (dev_id == "MYRIAD" || dev_id == "HDDL") {
             if (axis != 1)
-            return false;
+            {
+                  error_msg =  "Error: Only default axis is supported for MYRIAD and HDDL plugins";
+                  return false;
+            }
+
         }
     }
 
@@ -311,7 +345,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     if (node->OpType() == "MatMul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
         if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-          return false;
+          
+                error_msg =  "Error: Matmul is only supported if it is followed by Add";
+                return false;
+            
         }
       }
 
@@ -325,12 +362,18 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
         const auto out_node = graph_viewer.GetNode((*it).Index());
 
         if (out_node->OpType() != "Add") {
-          return false;
+          {
+                  error_msg =  "Error: Outnode optyoe is not Add";
+                  return false;
+          }
         }
       }
 
       if(!IsDimensionSupported(node,dev_id))
-        return false;
+         {
+                  error_msg =  "Error: Dimension is not supported";
+                  return false;
+          }
 
     }
 
@@ -340,7 +383,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
-          return false;
+          {
+                  error_msg =  "Error: Dropout, Identity and Concat can't have graph inputs";
+                  return false;
+           }
         }
       }
     }
@@ -352,30 +398,49 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       auto attributes = node->GetAttributes();
       auto auto_pad = attributes["auto_pad"].s();
       if (auto_pad == "" || auto_pad == "SAME_LOWER")
-        return false;
+        {
+                  error_msg =  "Error: Auto pad shouldn't be empty or SAME_LOWER for MaxPool and AVerage Pool";
+                  return false;
+        }
 
       auto strides_ints = attributes["strides"].ints();
       if(auto_pad == "SAME_UPPER" && strides_ints.size() == 0)
-          return false;
+        {
+                  error_msg =  "Error: Auto pad shouldn't be SAME_UPPER and stride_ints shouldn't be Zero at same time";
+                  return false;
+        }
+          
 
       //Dilations have to be 1
       auto dilations_ints = attributes["dilations"].ints();
       if (dilations_ints.size() != 0) {
         if (dilations_ints[0] > 1)
-          return false;
+        {
+                  error_msg =  "dilations_ints size is not equal to zero and greater than one. The value should be one";
+                  return false;
+        }
       }
 
       //Don't support ceil_mode = 1
       auto ceil_mode = attributes["ceil_mode"].i();
       if (ceil_mode != 0)
-        return false;
+        {
+                  error_msg =  "Error: Ceil_mode is not 0. Don't Support for ceil_mode is 1 ";
+                  return false;
+        }
 
       //Don't support multiple outputs for Pooling
       if (node->OutputDefs().size() > 1)
-        return false;
+        {
+                  error_msg =  "Error: Multiple outputs for Pooling";
+                  return false;
+        }
 
       if(!IsDimensionSupported(node,dev_id))
-        return false;
+        {
+                  error_msg =  "Error: From Max Pool or Average Pool. Dimension is not supported";
+                  return false;
+        }
     }
 
     //Only support 4D and 5D blobs for CPU,GPU
@@ -383,7 +448,10 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     if(node->OpType() == "GlobalMaxPool" || node->OpType() == "GlobalAveragePool"){
 
         if(!IsDimensionSupported(node,dev_id))
-            return false;
+              {
+                  error_msg =  "Error=: Only support 4D and 5D blobs for CPU,GPU, Only support 3D and 4D blobs for MYRIAD and HDDL";
+                  return false;
+        }
     }
 
     //Transpose with no attr is not supported
@@ -391,46 +459,70 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
       auto attributes = node->GetAttributes();
       auto perm = attributes["perm"].ints();
       if (perm.size() == 0 || perm.size() > 5) {
-        return false;
+        {
+            error_msg =  "Error from operation Transpose:Tranpose with no attr is not supported. perm size shouldn't be zero or greater than five";
+            return false;
+        }
       }
 
       //String data type is not supported
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
       if (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING) {
-        return false;
+        {
+                  error_msg =  "Error from operation Transpose:String data type is not supported ";
+                  return false;
+        }
       }
 
       if(!IsDimensionSupported(node,dev_id))
-        return false;
+        {
+                  error_msg =  "Error from operation Transpose:Dimension is not supported ";
+                  return false;
+        }
     }
 
 
     if (node->OpType() == "Unsqueeze") {
 
       if(!IsDimensionSupported(node,dev_id))
-        return false;
+        {
+                  error_msg =  "Error from operation Unsqueeze:Dimension is not supported ";
+                  return false;
+        }
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
       if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
-        return false;
+        {
+                  error_msg =  "Error from operation Unsqueeze:tensor prototype mismatch ";
+                  return false;
+        }
     }
 
     //Only support 2D input and axis 1
     if (node->OpType() == "Softmax") {
 
       if(!IsDimensionSupported(node,dev_id))
-        return false;
+        {
+            error_msg =  "Error from operation Softmax:Dimension is not supported ";
+             return false;
+        }
 
       auto attributes = node->GetAttributes();
       auto axis = attributes["axis"].i();
       if (axis != 1)
-        return false;
+        {
+            error_msg =  "Error from operation Softmax:axis is not 1 ";
+             return false;
+        }
     }
 
     //Don't support only one input
     if(node->OpType() == "Sum"){
 
         if(node->InputDefs().size() == 1)
-            return false;
+            {
+            error_msg =  "Error from operation Sum:Doesn't support only one input ";
+             return false;
+        }
     }
 
   }
@@ -466,14 +558,15 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 #endif
 
   int counter = 0;
+  std::string error_msg = "";
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
   std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
-  if (!IsGraphSupported(graph_viewer,device_id)) {
-    LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations.";
+  if (!IsGraphSupported(graph_viewer,device_id, error_msg)) {
+    LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations." << error_msg;
     return result;
   }
 
