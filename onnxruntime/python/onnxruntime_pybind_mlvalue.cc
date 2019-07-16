@@ -108,11 +108,19 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
     // numpy requires long int as its dims.
     int ndim = PyArray_NDIM(darray);
     npy_intp* npy_dims = PyArray_DIMS(darray);
-    std::vector<int64_t> dims(ndim);
-    for (int i = 0; i < ndim; ++i) {
-      dims[i] = npy_dims[i];
+    std::vector<int64_t> dims;
+    // numpy arrays created using this syntax "np.array(['4'])" have a shape of (1,). This doesn't match the
+    // shape of the input that is defined to be [1,1] and causes shape validation to fail. See testLabelEncoder test.
+    // This code tries to fix the shape when mlvalue is created.
+    if (ndim == 1) {
+      dims.push_back(1);
+      dims.push_back(npy_dims[0]);
+    } else {
+      dims.resize(ndim);
+      for (int i = 0; i < ndim; ++i) {
+        dims[i] = npy_dims[i];
+      }
     }
-
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
     std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
