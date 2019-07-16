@@ -1,5 +1,6 @@
 jobs:
 - job: Windows_nGraph_CI_Dev
+  timeoutInMinutes: 120
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:
