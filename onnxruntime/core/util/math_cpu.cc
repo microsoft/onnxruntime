@@ -24,58 +24,18 @@
 namespace onnxruntime {
 namespace math {
 
-// Gemm implementation purely based on Eigen.
-template <typename T>
-void GemmEigen(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    int64_t M,
-    int64_t N,
-    int64_t K,
-    float alpha,
-    const T* A,
-    const T* B,
-    float beta,
-    T* C) {
-  auto C_mat = EigenMatrixMap<T>(C, N, M);
-  if (beta == 0) {
-    C_mat.setZero();
-  } else {
-    C_mat *= static_cast<T>(beta);
+// MatMul implementation purely based on Eigen.
+#define EIGEN_MATMUL_FUNCTION(T)                                                         \
+  template <>                                                                            \
+  void MatMul<T>(int M, int N, int K, const T* A, const T* B, T* C) {                    \
+    auto C_mat = EigenMatrixMap<T>(C, N, M);                                             \
+    C_mat.noalias() = ConstEigenMatrixMap<T>(B, N, K) * ConstEigenMatrixMap<T>(A, K, M); \
   }
-  switch (TransA) {
-    case CblasNoTrans: {
-      switch (TransB) {
-        case CblasNoTrans:
-          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, N, K) *
-                                                      ConstEigenMatrixMap<T>(A, K, M));
-          return;
-        case CblasTrans:
-          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
-                                                      ConstEigenMatrixMap<T>(A, K, M));
-          return;
-        default:
-          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
-      }
-    }
-    case CblasTrans: {
-      switch (TransB) {
-        case CblasNoTrans:
-          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, N, K) *
-                                                      ConstEigenMatrixMap<T>(A, M, K).transpose());
-          return;
-        case CblasTrans:
-          C_mat.noalias() += static_cast<T>(alpha) * (ConstEigenMatrixMap<T>(B, K, N).transpose() *
-                                                      ConstEigenMatrixMap<T>(A, M, K).transpose());
-          return;
-        default:
-          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
-      }
-    }
-    default:
-      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
-  }
-}
+
+EIGEN_MATMUL_FUNCTION(int32_t)
+EIGEN_MATMUL_FUNCTION(uint32_t)
+EIGEN_MATMUL_FUNCTION(int64_t)
+EIGEN_MATMUL_FUNCTION(uint64_t)
 
 ////////////////////////////////////////////////////////////////////////////////
 // BLAS alternatives.
@@ -104,115 +64,31 @@ void GemmEigen(
 template <>
 void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
                               const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                              float* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-#if defined(USE_MLAS)
+                              float* C, CPUMathUtil* /*provider*/) {
   int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
   // TODO: Make this use the operator threadpool
   MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, nullptr);
-#else
-  GemmEigen<float>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-#endif
 }
 
 template <>
-void Gemm<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                               const int64_t N, const int64_t K, float alpha, const double* A, const double* B,
-                               float beta, double* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No double precision Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-  GemmEigen<double>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C) {
+  // TODO: Make this use the operator threadpool
+  MlasSgemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, nullptr);
 }
 
-template <>
-void Gemm<int32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                const int64_t N, const int64_t K, float alpha, const int32_t* A, const int32_t* B,
-                                float beta, int32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No int32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                 const int64_t N, const int64_t K, float alpha, const uint32_t* A, const uint32_t* B,
-                                 float beta, uint32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No uint32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<int64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                const int64_t N, const int64_t K, float alpha, const int64_t* A, const int64_t* B,
-                                float beta, int64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No int64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                 const int64_t N, const int64_t K, float alpha, const uint64_t* A, const uint64_t* B,
-                                 float beta, uint64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No uint64_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
-  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
+EIGEN_MATMUL_FUNCTION(double)
 
 template <>
 void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
                                 float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
                                 int ldc, CPUMathUtil*) {
-#if defined(USE_MLAS)
   MlasSgemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, nullptr);
-#else
-  using OuterStride = Eigen::OuterStride<Eigen::Dynamic>;
-  using StridedMap = Eigen::Map<Eigen::MatrixXf, 0, OuterStride>;
-  using ConstStridedMap = Eigen::Map<const Eigen::MatrixXf, 0, OuterStride>;
-  auto C_mat = StridedMap(C, N, M, OuterStride(ldc));
-  if (beta == 0) {
-    C_mat.setZero();
-  } else {
-    C_mat *= beta;
-  }
-  switch (TransA) {
-    case CblasNoTrans: {
-      switch (TransB) {
-        case CblasNoTrans:
-          C_mat.noalias() +=
-              alpha * (ConstStridedMap(B, N, K, OuterStride(ldb)) *
-                       ConstStridedMap(A, K, M, OuterStride(lda)));
-          return;
-        case CblasTrans:
-          C_mat.noalias() +=
-              alpha * (ConstStridedMap(B, K, N, OuterStride(ldb)).transpose() *
-                       ConstStridedMap(A, K, M, OuterStride(lda)));
-          return;
-        default:
-          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
-      }
-    }
-    case CblasTrans: {
-      switch (TransB) {
-        case CblasNoTrans:
-          C_mat.noalias() +=
-              alpha * (ConstStridedMap(B, N, K, OuterStride(ldb)) *
-                       ConstStridedMap(A, M, K, OuterStride(lda)).transpose());
-          return;
-        case CblasTrans:
-          C_mat.noalias() +=
-              alpha * (ConstStridedMap(B, K, N, OuterStride(ldb)).transpose() *
-                       ConstStridedMap(A, M, K, OuterStride(lda)).transpose());
-          return;
-        default:
-          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
-      }
-    }
-    default:
-      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
-  }
-#endif
 }
 
 template <>
 void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
+                              float beta, float* y, CPUMathUtil* /*provider*/) {
   EigenVectorMap<float> y_vec(y, TransA == CblasNoTrans ? M : N);
   if (beta == 0) {
     // In Caffe2 we often do a lazy initialization, which may contain NaNs in
@@ -254,7 +130,7 @@ SPECIALIZED_AXPY(float)
 template <>
 void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
                               const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                              float* C, CPUMathUtil* /*context*/, MLDataType /*math_type*/) {
+                              float* C, CPUMathUtil* /*context*/) {
   int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
   int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
   cblas_sgemm(CblasRowMajor, TransA, TransB,
@@ -266,46 +142,13 @@ void Gemm<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOS
 }
 
 template <>
-void Gemm<double, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                               const int64_t N, const int64_t K, float alpha, const double* A, const double* B,
-                               float beta, double* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  int lda = gsl::narrow_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = gsl::narrow_cast<int>((TransB == CblasNoTrans) ? N : K);
-  cblas_dgemm(CblasRowMajor, TransA, TransB, gsl::narrow_cast<int>(M), gsl::narrow_cast<int>(N),
-              gsl::narrow_cast<int>(K), gsl::narrow_cast<double>(alpha), A, lda, B, ldb, gsl::narrow_cast<double>(beta),
-              C, gsl::narrow_cast<int>(N));
+void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C) {
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
 }
 
 template <>
-void Gemm<int32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                const int64_t N, const int64_t K, float alpha, const int32_t* A, const int32_t* B,
-                                float beta, int32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No int32_t Gemm offering from MKLML. Directly fallback to Eigen.
-  GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                 const int64_t N, const int64_t K, float alpha, const uint32_t* A, const uint32_t* B,
-                                 float beta, uint32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No uint32_t Gemm offering from MKLML. Directly fallback to Eigen.
-  GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<int64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                const int64_t N, const int64_t K, float alpha, const int64_t* A, const int64_t* B,
-                                float beta, int64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No int64_t Gemm offering from MKLML. Directly fallback to Eigen.
-  GemmEigen<int64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
-
-template <>
-void Gemm<uint64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                                 const int64_t N, const int64_t K, float alpha, const uint64_t* A, const uint64_t* B,
-                                 float beta, uint64_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
-  // No uint64_t Gemm offering from MKLML. Directly fallback to Eigen.
-  GemmEigen<uint64_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C) {
+  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1, A, K, B, N, 0, C, N);
 }
 
 template <>
@@ -318,7 +161,7 @@ void GemmEx<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSP
 
 template <>
 void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,
-                              float beta, float* y, CPUMathUtil* /*context*/, MLDataType /*math_type*/) {
+                              float beta, float* y, CPUMathUtil* /*context*/) {
   cblas_sgemv(CblasRowMajor, TransA, M, N, alpha, A, N, x, 1, beta, y, 1);
 }
 
@@ -336,40 +179,12 @@ CAFFE2_SPECIALIZED_AXPY(float, s)
 
 #endif  // USE_EIGEN_FOR_BLAS
 
-template <>
-void GemmBatched<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int A_size,
-                                     int A_batches, int B_size, int B_batches, int M, int N, int K, float /*alpha*/,
-                                     const float* A, const float* B, float /*beta*/, float* C, CPUMathUtil* provider,
-                                     Tensor*, /* scratch */
-                                     MLDataType /* math_type */) {
-  auto a_offset = A_size / A_batches;
-  auto b_offset = B_size / B_batches;
-  auto y_offset = M * N;
-  // loop over matrices in the batch
-  for (int i = 0; i < A_batches; ++i) {
-    math::Gemm<float, CPUMathUtil>(
-        TransA,
-        TransB,
-        M,
-        N,
-        K,
-        1,
-        A + a_offset * i,
-        B + b_offset * i,
-        0,
-        C + y_offset * i,
-        provider);
-  }
-}
-
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \
   void Funcname<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil*) {   \
     EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(x, N).array().expr(); \
   }
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Exp, exp)
-DELEGATE_SIMPLE_UNARY_FUNCTION(float, Log, log)
-DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqrt, sqrt)
 DELEGATE_SIMPLE_UNARY_FUNCTION(float, Sqr, square)
 #undef DELEGATE_SIMPLE_UNARY_FUNCTION
 

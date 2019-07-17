@@ -17,13 +17,7 @@ set(mlas_common_srcs
 
 if(MSVC)
 
-  if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM")
-
-    set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
-    )
-
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+  if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
 
     set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/sgemma.asm)
     set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/sgemma.i)
@@ -45,17 +39,13 @@ if(MSVC)
 
     set(mlas_platform_srcs ${obj_filename})
 
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "Win32")
-
-    enable_language(ASM_MASM)
-
-    set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
 
     set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/sgemma.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
 
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "x64")
+  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_GENERATOR MATCHES "Win64")
 
     enable_language(ASM_MASM)
 
@@ -76,6 +66,16 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
+    )
+
+  else()
+
+    enable_language(ASM_MASM)
+
+    set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+
+    set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/sgemma.asm
     )
 
   endif()
