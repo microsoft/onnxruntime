@@ -111,11 +111,10 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--arm64", action='store_true',
                         help="Create ARM64 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
-    parser.add_argument("--android_arm", action='store_true',
+    parser.add_argument("--android", action='store_true', help='Build for Android')
+    parser.add_argument("--android_abi", type=str, default='arm64-v8a',
             help='')
-    parser.add_argument("--android_armv8", action='store_true',
-            help='')
-    parser.add_argument("--android_api", type=int, default=21,
+    parser.add_argument("--android_api", type=int, default=27,
             help='Android API Level, e.g. 21')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
@@ -379,13 +378,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
-    if args.android_arm or args.android_armv8:
+    if args.android:
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
-                "-DANDROID_PLATFORM=android-" + str(args.android_api)]
-        if args.android_arm:
-            cmake_args += ['-DANDROID_ABI=armeabi-v7a']
-        else:
-            cmake_args += ['-DANDROID_ABI=arm64-v8a']
+                "-DANDROID_PLATFORM=android-" + str(args.android_api),
+                "-DANDROID_ABI=" + str(args.android_abi)]
 
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
@@ -852,7 +848,7 @@ def main():
                 toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
-        if args.android_arm or args.android_armv8:
+        if args.android:
             # Cross-compiling for Android
             host_protoc_path = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         if is_ubuntu_1604():
