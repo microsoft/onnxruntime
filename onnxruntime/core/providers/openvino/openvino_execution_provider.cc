@@ -438,18 +438,15 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       auto attributes = node->GetAttributes();
       auto perm = attributes["perm"].ints();
       if (perm.size() == 0 || perm.size() > 5) {
-        {
-            throw " Transpose:Tranpose with no attr is not supported. perm size shouldn't be zero or greater than five";
-        }
+          throw " Transpose:Tranpose with no attr is not supported. perm size shouldn't be zero or greater than five";
       }
 
       //String data type is not supported
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
-      if (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING) {
+      if (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING)
         {
             throw "Transpose:String data type is not supported ";
         }
-      }
 
       if(!IsDimensionSupported(node,dev_id))
         {
@@ -535,12 +532,9 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
  
-try
-{
+  try{
   CheckGraphSupported(graph_viewer, device_id);
-}
-catch(const char* error_msg)
-{
+} catch(const char* error_msg) {
   LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations." << error_msg;
 }
 
