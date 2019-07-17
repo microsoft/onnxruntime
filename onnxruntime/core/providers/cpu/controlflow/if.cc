@@ -156,7 +156,7 @@ Status IfImpl::AllocateOutputTensors() {
                              graph_output->Name(), " did not.");
     }
 
-    TensorShape output_shape{onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape)};
+    TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
 
     // if size < 0 we have a symbolic dimension and need to use a temporary OrtValue in the subgraph execution
     if (output_shape.Size() < 0) {

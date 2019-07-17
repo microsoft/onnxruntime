@@ -44,6 +44,9 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -99,6 +102,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
               "Environment must be initialized before creating an InferenceSession.");
 
   InitLogger(logging_manager);
+
+  // Register data transfer methods.
+  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+#ifdef USE_CUDA
+  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
+#endif
+  session_state_.SetDataTransferMgr(&data_transfer_mgr_);
 
   // The threadpool is currently evolving.  We will always create a per session threadpool.
   // Beyond this, we will create a global thread pool to share across sessions.
@@ -396,7 +406,8 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
       subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
-
+      // Pass data transfer manager to subgraph.
+      subgraph_session_state->SetDataTransferMgr(&session_state.GetDataTransferMgr());
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
@@ -995,6 +1006,10 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
 
   if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
     add_transformers(TransformerLevel::Level2);
+  }
+
+  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
+    add_transformers(TransformerLevel::Level3);
   }
 }
 
