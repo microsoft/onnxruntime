@@ -623,15 +623,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
           protobuf::libprotobuf
           DEPENDS ${all_dependencies}
   )
-  #demo
-  message("PNG Lib Dir = ${PNG_LIBRARIES}")
-  message("PNG Include Dir = ${PNG_INCLUDE_DIRS}")
-  if(PNG_FOUND AND NOT WIN32) # for some reason some symbols are not found in Win32 PNG module
-    add_executable(fns_candy_style_transfer "${ONNXRUNTIME_ROOT}/test/shared_lib/fns_candy_style_transfer.c")
-    target_include_directories(fns_candy_style_transfer PRIVATE "${TEST_SRC_DIR}/util/include" ${PNG_INCLUDE_DIRS})
-    target_link_libraries(fns_candy_style_transfer PRIVATE onnxruntime ${PNG_LIBRARIES})
-    set_target_properties(fns_candy_style_transfer PROPERTIES FOLDER "ONNXRuntimeTest")
-  endif()
 endif()
 
 if (onnxruntime_BUILD_SERVER)
