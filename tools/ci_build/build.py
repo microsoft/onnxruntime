@@ -113,7 +113,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
     parser.add_argument("--android_abi", type=str, default='arm64-v8a',
-            help='')
+            help='Android ABI, e.g., arm64-v8a or armeabi-v7a')
     parser.add_argument("--android_api", type=int, default=27,
             help='Android API Level, e.g. 21')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
