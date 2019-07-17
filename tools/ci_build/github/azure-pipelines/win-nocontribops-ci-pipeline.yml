@@ -1,4 +1,5 @@
 variables:
+  DisableContribOps: ON
   TestDataUrlNoContribOps : https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
 
 jobs:
