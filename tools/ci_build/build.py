@@ -111,6 +111,13 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--arm64", action='store_true',
                         help="Create ARM64 makefiles. Requires --update and no existing cache CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    parser.add_argument("--android_arm", action='store_true',
+            help='')
+    parser.add_argument("--android_armv8", action='store_true',
+            help='')
+    parser.add_argument("--android_api", type=int, default=21,
+            help='Android API Level, e.g. 21')
+    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -369,6 +376,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.use_preinstalled_eigen:
         cmake_args += ["-Donnxruntime_USE_PREINSTALLED_EIGEN=ON",
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
+
+    if args.android_arm or args.android_armv8:
+        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
+                "-DANDROID_PLATFORM=android-" + str(args.android_api)]
+        if args.android_arm:
+            cmake_args += ['-DANDROID_ABI=armeabi-v7a']
+        else:
+            cmake_args += ['-DANDROID_ABI=arm64-v8a']
 
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
@@ -706,23 +721,24 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_openvino')
         run_subprocess(args, cwd=cwd)
 
-def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
-    if not is_windows():
+def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
+    if (args.arm or args.arm64) and not is_windows():
         raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
 
     log.info("Building protoc for host to be used in cross-compiled build process")
-    protoc_build_dir = os.path.join(build_dir, 'host_protoc')
+    protoc_build_dir = os.path.join(os.getcwd(), build_dir, 'host_protoc')
     os.makedirs(protoc_build_dir, exist_ok=True)
     # Generate step
     cmd_args = [cmake_path,
-                os.path.join(source_dir, 'cmake\external\protobuf\cmake'),
-                '-T',
-                'host=x64',
-                '-G',
-                'Visual Studio 15 2017',
+                os.path.join(source_dir, 'cmake', 'external', 'protobuf', 'cmake'),
                 '-Dprotobuf_BUILD_TESTS=OFF',
                 '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
                 '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
+    if is_windows():
+        cmd_args += ['-T',
+                'host=x64',
+                '-G',
+                'Visual Studio 15 2017']
     run_subprocess(cmd_args, cwd= protoc_build_dir)
     # Build step
     cmd_args = [cmake_path,
@@ -731,8 +747,12 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
                 "--target", "protoc"]
     run_subprocess(cmd_args)
 
-    if not os.path.exists(os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')):
-        raise BuildError("Couldn't build protoc.exe for host. Failing build.")
+    # Absolute protoc path is needed for cmake
+    expected_protoc_path = os.path.join(protoc_build_dir, 'Release', 'protoc.exe') if is_windows() else os.path.join(protoc_build_dir, 'protoc')
+    if not os.path.exists(expected_protoc_path):
+        raise BuildError("Couldn't build protoc for host. Failing build.")
+
+    return expected_protoc_path
 
 def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
@@ -762,12 +782,14 @@ def main():
 
     cmake_extra_defines = args.cmake_extra_defines if args.cmake_extra_defines else []
 
+    cross_compiling = args.arm or args.arm64 or args.android_arm or args.android_armv8
+
     # if there was no explicit argument saying what to do, default to update, build and test (for native builds).
     if (args.update == False and args.clean == False and args.build == False and args.test == False):
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
-        if args.arm or args.arm64:
+        if cross_compiling:
             args.test = False
         else:
             args.test = True
@@ -807,7 +829,7 @@ def main():
           elif (args.arm or args.arm64):
             # Cross-compiling for ARM(64) architecture
             # First build protoc for host to use during cross-compilation
-            build_protoc_for_windows_host(cmake_path, source_dir, build_dir)
+            host_protoc_path = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
             if args.arm:
                 cmake_extra_args = ['-A', 'ARM']
             else:
@@ -825,6 +847,9 @@ def main():
                 toolset += ',cuda=' + args.cuda_version
 
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
+        if args.android_arm or args.android_armv8:
+            # Cross-compiling for Android
+            host_protoc_path = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
@@ -845,11 +870,8 @@ def main():
         path_to_protoc_exe = None
         if args.path_to_protoc_exe:
             path_to_protoc_exe = args.path_to_protoc_exe
-        # Need to provide path to protoc.exe built for host to be used in the cross-compiled build process
-        elif args.arm or args.arm64:
-            path_to_protoc_exe = os.path.join(build_dir, 'host_protoc', 'Release', 'protoc.exe')
 
-        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
+        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, host_protoc_path, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
     if (args.clean):
