@@ -527,10 +527,26 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
+def adb_push(source_dir, src, dest, **kwargs):
+    return run_subprocess([os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'adb-push.sh'), src, dest], **kwargs)
+
+def adb_shell(*args, **kwargs):
+    return run_subprocess(['adb', 'shell', *args], **kwargs)
+
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False, enable_ngraph = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
+        android_x86_64 = args.android_abi == 'x86_64'
+        if android_x86_64:
+            run_subprocess(os.path.join(source_dir, 'tools', 'ci_build', 'github', 'android', 'start_android_emulator.sh'))
+            adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
+            adb_push(source_dir, os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'), '/data/local/tmp/', cwd=cwd)
+            adb_push(source_dir, 'onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
+            adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
+            adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
+            adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
+            continue
         if enable_tvm:
           dll_path = os.path.join(build_dir, config, "external", "tvm", config)
         elif enable_tensorrt:
@@ -778,7 +794,7 @@ def main():
 
     cmake_extra_defines = args.cmake_extra_defines if args.cmake_extra_defines else []
 
-    cross_compiling = args.arm or args.arm64 or args.android_arm or args.android_armv8
+    cross_compiling = args.arm or args.arm64 or args.android
 
     # if there was no explicit argument saying what to do, default to update, build and test (for native builds).
     if (args.update == False and args.clean == False and args.build == False and args.test == False):
@@ -786,7 +802,7 @@ def main():
         args.update = True
         args.build = True
         if cross_compiling:
-            args.test = False
+            args.test = args.android_abi == 'x86_64'
         else:
             args.test = True
 
