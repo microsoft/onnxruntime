@@ -363,48 +363,29 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> hidden_output_2 = hidden_output.subspan(hidden_output_size_per_direction,
                                                          hidden_output_size_per_direction);
 
-    std::unique_ptr<detail::UniDirectionalGru<T>> fw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc,
-        seq_length,
-        batch_size,
-        input_size,
-        hidden_size_,
-        linear_before_reset_,
-        Direction::kForward,
-        bias_1, initial_hidden_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        clip_);
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    detail::UniDirectionalGru<T> fw(alloc, seq_length, batch_size, input_size, hidden_size_,
+                                    linear_before_reset_, Direction::kForward, bias_1, initial_hidden_1,
+                                    activation_funcs_.Entries()[0],
+                                    activation_funcs_.Entries()[1],
+                                    clip_);
+    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
+               output_1, hidden_output_1);
 
-    std::unique_ptr<detail::UniDirectionalGru<T>> bw = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc,
-        seq_length,
-        batch_size,
-        input_size,
-        hidden_size_,
-        linear_before_reset_,
-        Direction::kReverse,
-        bias_2, initial_hidden_2,
-        activation_funcs_.Entries()[2],
-        activation_funcs_.Entries()[3],
-        clip_);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2, output_2, hidden_output_2);
+    detail::UniDirectionalGru<T> bw(alloc, seq_length, batch_size, input_size, hidden_size_,
+                                    linear_before_reset_, Direction::kReverse, bias_2, initial_hidden_2,
+                                    activation_funcs_.Entries()[2],
+                                    activation_funcs_.Entries()[3],
+                                    clip_);
+    bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, recurrent_weights_2,
+               output_2, hidden_output_2);
   } else {
-    std::unique_ptr<detail::UniDirectionalGru<T>> gru_p = std::make_unique<detail::UniDirectionalGru<T>>(
-        alloc,
-        seq_length,
-        batch_size,
-        input_size,
-        hidden_size_,
-        linear_before_reset_,
-        direction_,
-        bias_1, initial_hidden_1,
-        activation_funcs_.Entries()[0],
-        activation_funcs_.Entries()[1],
-        clip_);
-
-    gru_p->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1);
+    detail::UniDirectionalGru<T> gru_p(alloc, seq_length, batch_size, input_size, hidden_size_,
+                                       linear_before_reset_, direction_, bias_1, initial_hidden_1,
+                                       activation_funcs_.Entries()[0],
+                                       activation_funcs_.Entries()[1],
+                                       clip_);
+    gru_p.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
+                  output_1, hidden_output_1);
   }
 
   if (!output.empty())

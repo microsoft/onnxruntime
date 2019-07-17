@@ -42,15 +42,30 @@ IExecutionProvider* TestNnapiExecutionProvider() {
 }
 #endif
 
+static void CountOpsInGraphImpl(const Graph& graph, std::map<std::string, int>& ops) {
+  for (auto& node : graph.Nodes()) {
+    auto pos = ops.find(node.OpType());
+    if (pos == ops.end()) {
+      ops[node.OpType()] = 1;
+    } else {
+      ++pos->second;
+    }
+
+    if (node.ContainsSubgraph()) {
+      for (auto& subgraph : node.GetSubgraphs()) {
+        CountOpsInGraphImpl(*subgraph, ops);
+      }
+    }
+  }
+}
+
 // Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
 std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
-  std::map<std::string, int> op_to_count;
-  for (auto& node : graph.Nodes()) {
-    op_to_count[node.OpType()] =
-        op_to_count.count(node.OpType()) == 0 ? 1 : ++op_to_count[node.OpType()];
-  }
-  return op_to_count;
+  std::map<std::string, int> ops;
+  CountOpsInGraphImpl(graph, ops);
+
+  return ops;
 }
 
 }  // namespace test
