@@ -1395,23 +1395,6 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   ASSERT_TRUE(!status.IsOK());
 }
 
-TEST(InferenceSessionTests, TestSSDMobileNet) {
-  string model_uri = "testdata/ssd_mobilenet_v1_coco_2018_01_28.onnx";
-
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestSSDMobileNet";
-  InferenceSession session_object{so};
-
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
-
-  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
-
-  auto status = session_object.Initialize();
-
-  ASSERT_TRUE(status.IsOK());
-}
 #endif
 
 }  // namespace test
