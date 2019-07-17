@@ -90,7 +90,6 @@ class NchwcTransformerImpl {
   void TransformAdd(Node& node);
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
-  void TransformElementwise(Node& node);
 
   Graph& graph_;
 
@@ -596,6 +595,8 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
   CreateNchwcArgument(node, node, total_channels, output_shape);
 }
 
+// After doing a Conv/Add fusion, there may be an activation node that could now
+// be fused into the Conv node as well.
 void NchwcTransformerImpl::TransformActivation(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
@@ -617,18 +618,6 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
     } else {
       CreateNchwcArgument(node, node, nchwc_input->channels_, nchwc_input->shape_);
     }
-  }
-}
-
-void NchwcTransformerImpl::TransformElementwise(Node& node) {
-  auto& input_defs = node.MutableInputDefs();
-
-  auto it = nchwc_args_.find(input_defs[0]);
-  if (it != nchwc_args_.end()) {
-    auto& nchwc_input = it->second;
-    input_defs[0] = nchwc_input->nchwc_arg_;
-    nchwc_input->remaining_original_uses_--;
-    CreateNchwcArgument(node, node, nchwc_input->channels_, nchwc_input->shape_);
   }
 }
 
@@ -654,8 +643,6 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
       TransformActivation(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {6})) {
-      TransformElementwise(node);
     }
   }
 

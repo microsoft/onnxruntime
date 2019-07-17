@@ -1,5 +1,6 @@
 jobs:
 - job: Windows_CI_GPU_Dev
+  timeoutInMinutes: 120
   pool: Win-GPU-CUDA10
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
