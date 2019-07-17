@@ -46,7 +46,7 @@ class TrainingRunner {
     // If specified, every gradient output will be connected to a new optimizer node
     // who has the updated weights as new graph outputs.
     // For now all to-be-trained weights use the same optimizer type.
-    std::string in_graph_optimizer_name_;
+    std::string in_graph_optimizer_name_ = "SGDOptimizer";
 
     // For some model, loss function's input "prediction" is not the model output.
     // So model_prediction_name must be specified.
@@ -120,7 +120,7 @@ class TrainingRunner {
   Status Evaluate(InferenceSession& session);
   Status LoadAndEvaluate(const std::string& model_path);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
-                              std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& infos);
+                              std::unordered_map<std::string, OptimizerInfo>& infos);
 
   std::shared_ptr<DataLoader> training_data_loader_ = nullptr;
   std::shared_ptr<DataLoader> test_data_loader_ = nullptr;

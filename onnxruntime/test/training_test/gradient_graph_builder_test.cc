@@ -3,8 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/gradient_op_test_utils.h"
-#include "core/training/training_optimizer.h"
-#include "core/training/weight_updater.h"
+// #include "test/providers/gradient_checker.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 using namespace onnxruntime::logging;
@@ -102,11 +101,6 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 
   EXPECT_TRUE(training_session->Initialize().IsOK());
 
-  // Create a WeightUpdater powered by GradientDescent algorithm.
-  const static float LEARNING_RATE = 0.5f;
-
-  WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(*training_session, {LEARNING_RATE, GetAllocator()});
-
   std::vector<MLValue> gradient_fetches;
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
@@ -129,17 +123,6 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
 
   EXPECT_TRUE(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
-
-  // Get gradients
-  NameMLValMap grad;
-  for (size_t i = 0; i < training_output_names.size(); i++) {
-    if (training_output_names[i] == "loss") continue;
-    if (training_output_names[i] == "predictions") continue;
-
-    grad.insert(make_pair(training_output_names[i], gradient_fetches[i]));
-  }
-
-  EXPECT_TRUE(weight_updater.Update(grad, 1).IsOK());
 
   return training_session;
 }

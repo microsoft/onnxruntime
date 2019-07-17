@@ -13,7 +13,6 @@
 using namespace std;
 namespace onnxruntime {
 namespace training {
-namespace in_graph_optimizer {
 
 class SGDBuilder : public OptimizerBuilder {
  public:
@@ -182,6 +181,5 @@ void OptimizerBuilderRegistry::RegisterBuilders() {
   REGISTER_OPTIMIZER_BUILDER("SGDOptimizer", SGDBuilder);
   REGISTER_OPTIMIZER_BUILDER("AdamOptimizer", AdamOptimizerBuilder);
 }
-}  // namespace in_graph_optimizer
 }  // namespace training
 }  // namespace onnxruntime

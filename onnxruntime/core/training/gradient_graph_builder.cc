@@ -25,7 +25,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& y_node_arg_names,
                                            const unordered_set<string>& x_node_arg_names,
                                            string loss_node_arg_name,
-                                           const unordered_map<string, in_graph_optimizer::OptimizerInfo>& opt_info)
+                                           const unordered_map<string, OptimizerInfo>& opt_info)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
       pre_training_graph_transformer_{"pre_training_graph_transformer"},
@@ -222,7 +222,7 @@ Status GradientGraphBuilder::Build() {
         ORT_THROW("Weight ", weight_name, " is not found in the optimizier info map.");
       }
       const auto& opt_info = opt_info_it->second;
-      auto opt_builder = in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info.name_);
+      auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info.name_);
 
       opt_builder->Build({x_node_arg},
                          opt_info,

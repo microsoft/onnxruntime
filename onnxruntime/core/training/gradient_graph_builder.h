@@ -55,7 +55,7 @@ class GradientGraphBuilder {
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
                        std::string loss_node_arg_name,
-                       const std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& opt_info);
+                       const std::unordered_map<std::string, OptimizerInfo>& opt_info);
 
   Status Build();
 
@@ -72,7 +72,7 @@ class GradientGraphBuilder {
 
   RuleBasedGraphTransformer pre_training_graph_transformer_;
 
-  std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo> opt_info_;
+  std::unordered_map<std::string, OptimizerInfo> opt_info_;
 
   // key: ArgDef for the gradient after accumulation
   // value: ArgDef for the gradients to be accumulated

@@ -6,8 +6,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
-#include "core/training/training_optimizer.h"
-#include "core/training/weight_updater.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
 
@@ -48,11 +46,9 @@ TrainingRunner::TrainingRunner(std::shared_ptr<DataSet> training_data,
               (params_.weights_to_train_.empty() && !params_.weights_not_to_train_.empty()));
   ORT_ENFORCE(!params_.model_trained_path_.empty() || !params_.model_trained_with_loss_func_path_.empty());
   ORT_ENFORCE(!params_.model_prediction_name_.empty());
-#ifdef USE_CUDA
-  ORT_ENFORCE(!params_.use_cuda_ || !params_.in_graph_optimizer_name_.empty());
-#else
-  ORT_ENFORCE(params_.in_graph_optimizer_name_.empty());
-#endif
+  ORT_ENFORCE(!params_.in_graph_optimizer_name_.empty());
+  // Only have SGDOptimizer from CPU
+  ORT_ENFORCE(params_.use_cuda_ || params_.in_graph_optimizer_name_ == "SGDOptimizer");
 }
 
 Status TrainingRunner::Initialize() {
@@ -79,12 +75,8 @@ Status TrainingRunner::Initialize() {
     std::cout << "Training weight " << weight << std::endl;
   }
 
-  std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo> opt_info;
-#ifdef USE_CUDA
-  if (params_.use_cuda_) {
-    ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, opt_info));
-  }
-#endif
+  std::unordered_map<std::string, OptimizerInfo> opt_info;
+  ORT_RETURN_IF_ERROR(SetupOptimizerParams(weights_to_train, opt_info));
 
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name, opt_info));
@@ -119,11 +111,6 @@ Status TrainingRunner::Run() {
 }
 
 Status TrainingRunner::TrainingLoop() {
-  // The optimizer out of the graph, will be used if params_.in_graph_optimizer_name_ is not set
-  WeightUpdater<out_graph_optimizer::GradientDescent> weight_updater(session_,
-                                                                     {params_.learning_rate_,
-                                                                      TrainingUtil::GetCpuAllocator()});
-
   // Prepare fetches
   vector<string> fetch_names;
   if (params_.in_graph_optimizer_name_.empty()) {
@@ -192,7 +179,6 @@ Status TrainingRunner::TrainingLoop() {
           }
           grad.insert(make_pair(fetch_names[i], fetches[i]));
         }
-        weight_updater.Update(grad, params_.batch_size_);
       }
 
       if (step_ % params_.evaluation_period == 0) {
@@ -316,13 +302,13 @@ Status TrainingRunner::LoadAndEvaluate(const std::string& model_path) {
 }
 
 Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
-                                            std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& opt_infos) {
+                                            std::unordered_map<std::string, OptimizerInfo>& opt_infos) {
   // If in-graph optimizer is used, prepare the weight<->optimizer mapping.
   // Here all weights use the same SGDOptimizer or AdamOptimizer
   bool use_in_graph_optimizer = !params_.in_graph_optimizer_name_.empty();
 
   if (use_in_graph_optimizer) {
-    in_graph_optimizer::OptimizerInfo opt_info{
+    OptimizerInfo opt_info{
         params_.in_graph_optimizer_name_,
         params_.learning_rate_,
         params_.world_rank_,

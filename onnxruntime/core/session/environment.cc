@@ -52,7 +52,7 @@ Status Environment::Initialize() {
       training::RegisterGradientSchemas();
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
-      training::in_graph_optimizer::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
+      training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
 #endif
     });
 

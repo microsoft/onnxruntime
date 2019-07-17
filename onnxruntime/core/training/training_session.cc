@@ -4,8 +4,6 @@
 #include "core/graph/model.h"
 #include "core/graph/training/loss_function_builder.h"
 #include "core/graph/training/in_graph_training_optimizer.h"
-#include "core/training/training_optimizer.h"
-#include "core/training/weight_updater.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/training_session.h"
 
@@ -28,7 +26,7 @@ static Status AddLossFuncionInternal(Graph& graph,
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const string& loss_function_output_name,
                                          const unordered_set<string>& node_arg_names_to_train,
-                                         const unordered_map<string, in_graph_optimizer::OptimizerInfo>& opt_info) {
+                                         const unordered_map<string, OptimizerInfo>& opt_info) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
@@ -56,7 +54,7 @@ Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info
 
 Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_to_train,
                                            const string& loss_function_output_name,
-                                           const unordered_map<string, in_graph_optimizer::OptimizerInfo>& opt_info) {
+                                           const unordered_map<string, OptimizerInfo>& opt_info) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
   opt_info_ = opt_info;

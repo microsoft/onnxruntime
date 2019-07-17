@@ -55,7 +55,7 @@ class TrainingSession : public InferenceSession {
 
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
-                                    const std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo>& opt_info = {});
+                                    const std::unordered_map<std::string, OptimizerInfo>& opt_info = {});
 
   /** Save a model, 3 options:
   1. save with updated weights
@@ -105,7 +105,7 @@ class TrainingSession : public InferenceSession {
   std::shared_ptr<ILossFunction> loss_graph_builder_;
   LossFunctionInfo loss_func_info_;
 
-  std::unordered_map<std::string, in_graph_optimizer::OptimizerInfo> opt_info_;
+  std::unordered_map<std::string, OptimizerInfo> opt_info_;
 };
 }  // namespace training
 }  // namespace onnxruntime

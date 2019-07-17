@@ -796,6 +796,15 @@ TEST(GradientCheckerTest, SoftMaxGrad) {
   }
 }
 
+TEST(OptimizerTest, SGDTest) {
+    OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain, false);
+    test.AddInput<float>("ETA", {}, { 0.5f });
+    test.AddInput<float>("W", { 3 }, { 1, 2, 3 });
+    test.AddInput<float>("G", { 3 }, { 4, 5, 6 });
+    test.AddOutput<float>("W_New", { 3 }, { -1.f, -0.5f, 0.f });
+    test.Run();
+}
+
 #ifdef USE_CUDA
 
 TEST(GradientCheckerTest, GatherGrad) {
@@ -1061,15 +1070,6 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info}, {{1}}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
-}
-
-TEST(OptimizerTest, SGDTest) {
-  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain, false);
-  test.AddInput<float>("ETA", {}, {0.5f});
-  test.AddInput<float>("W", {3}, {1, 2, 3});
-  test.AddInput<float>("G", {3}, {4, 5, 6});
-  test.AddOutput<float>("W_New", {3}, {-1.f, -0.5f, 0.f});
-  test.Run();
 }
 
 TEST(OptimizerTest, AdamOptimizerTest) {

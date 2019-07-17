@@ -5,9 +5,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
-#include "core/training/training_optimizer.h"
 #include "core/training/training_session.h"
-#include "core/training/weight_updater.h"
 #include "core/training/tensorboard/event_writer.h"
 #include "test/training/poc/mnist_data_provider.h"
 #include "test/training/runner/training_runner.h"
@@ -114,19 +112,24 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
   params.eval_batch_size = NUM_SAMPLES_FOR_EVALUATION;
   params.num_of_epoch_ = NUM_OF_EPOCH;
   params.evaluation_period = 1;
-#ifdef USE_CUDA
-  // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
-  // Adding another cuda kernel call for this division seems wasteful currently.
-  params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
-  params.in_graph_optimizer_name_ = params.use_cuda_ ? "AdamOptimizer" : "";
 
-  params.adam_opt_params_.alpha_ = 0.9f;
-  params.adam_opt_params_.beta_ = 0.999f;
-  params.adam_opt_params_.lambda_ = 0;
-  params.adam_opt_params_.epsilon_ = 0.1f;
-#else
-  params.learning_rate_ = LEARNING_RATE;
-#endif
+  // TODO: simplify provider/optimizer configuration. For now it is fixed to used SGD with CPU and Adam with GPU.
+  if (params.use_cuda_)
+  {
+      // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
+      // Adding another cuda kernel call for this division seems wasteful currently.
+      params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+      params.in_graph_optimizer_name_ = "AdamOptimizer";
+
+      params.adam_opt_params_.alpha_ = 0.9f;
+      params.adam_opt_params_.beta_ = 0.999f;
+      params.adam_opt_params_.lambda_ = 0;
+      params.adam_opt_params_.epsilon_ = 0.1f;
+  }
+  else {
+      params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+      params.in_graph_optimizer_name_ = "SGDOptimizer";
+  }
 
   params.error_function_ = [](const std::vector<std::string>& /*feed_names*/,
                               const std::vector<OrtValue>& feeds,

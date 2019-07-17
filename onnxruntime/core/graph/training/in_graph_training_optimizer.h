@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 namespace training {
-namespace in_graph_optimizer {
 
 struct OptimizerInfo {
   std::string name_;
@@ -109,6 +108,5 @@ class OptimizerBuilderRegistry : public GenericRegistry<OptimizerBuilder> {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerBuilderRegistry);
 };
 
-}  // namespace in_graph_optimizer
 }  // namespace training
 }  // namespace onnxruntime
