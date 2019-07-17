@@ -447,15 +447,15 @@ class TestInferenceSession(unittest.TestCase):
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
         # Python type
-        x = np.array(['4'])
+        x = np.array(['4'], ndmin=2)
         res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[3]], dtype=np.int64)
+        output_expected = np.array([3], ndmin=2, dtype=np.int64)
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        x = np.array(['4'], dtype=np.object)
+        x = np.array(['4'], ndmin=2, dtype=np.object)
         res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[3]], dtype=np.int64)
+        output_expected = np.array([3], ndmin=2, dtype=np.int64)
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
