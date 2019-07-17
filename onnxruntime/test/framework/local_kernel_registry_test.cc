@@ -184,11 +184,11 @@ OpKernel* CreateOptionalOpKernel(const OpKernelInfo& kernel_info) {
   return new OptionalOpKernel<float>(kernel_info);
 }
 
-static const std::string MUL_MODEL_URI = "testdata/mul_1.pb";
-static const std::string FOO_MODEL_URI = "testdata/foo_1.pb";
-static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.pb";
+static const std::string MUL_MODEL_URI = "testdata/mul_1.onnx";
+static const std::string FOO_MODEL_URI = "testdata/foo_1.onnx";
+static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.onnx";
 
-static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.pb";
+static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.onnx";
 
 void RunSession(InferenceSession& session_object,
                 RunOptions& run_options,

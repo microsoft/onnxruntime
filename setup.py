@@ -139,7 +139,7 @@ if '--use_openvino' in sys.argv:
   sys.argv.remove('--use_openvino')
 
 # Additional examples
-examples_names = ["mul_1.pb", "logreg_iris.onnx", "sigmoid.onnx"]
+examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
