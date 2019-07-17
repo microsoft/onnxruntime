@@ -267,7 +267,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             &CPUMathUtil::Instance());
       }
 
-      MlasActivation(&activation_, Ydata, Bdata, M, Ydata, output_image_size, output_image_size);
+      MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);
 
       Xdata += X_offset * group_;
       Ydata += Y_offset * group_;
