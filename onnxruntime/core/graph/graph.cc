@@ -943,6 +943,8 @@ Status Graph::BuildConnections(std::vector<std::string>& outer_scope_node_args_c
   }
 
   // now build connections within this Graph instance
+  node_arg_to_producer_node_.clear();
+  node_arg_to_consumer_nodes_.clear();
   for (auto& node : Nodes()) {
     // Need mutable input defs to be able to set any outer scope NodeArg implicit inputs
     auto& input_args = node.MutableInputDefs();
