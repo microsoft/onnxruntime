@@ -89,9 +89,9 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
     if(node->OpType().find("Pool") != std::string::npos){
 
         if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(input_dims != 3 || input_dims != 4)
+            if(input_dims != 3 && input_dims != 4)
                 return false;
-        } else if(input_dims < 4 || input_dims > 5){
+        } else if(input_dims != 4 && input_dims != 5){
             return false;
         }
     }
@@ -138,9 +138,9 @@ bool IsDimensionSupported(const Node* node, std::string dev_id){
                 return false;
         }
 
-        //Only 2D input supported on MYRIAD and HDDL
+        //3D input not supported on MYRIAD and HDDL
         if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(input_dims != 2)
+            if(input_dims == 3)
                 return false;
         }
     }
@@ -216,17 +216,28 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
   int num_inputs = graph_viewer.GetInputs().size();
   int num_outputs = graph_viewer.GetOutputs().size();
 
-  if (num_inputs != 0)
-    input_dims = graph_proto->input(0).type().tensor_type().shape().dim_size();
+    //GPU Plugin does not support 1D and 5D input
+    if(dev_id == "GPU"){
 
-  if (num_outputs != 0)
-    output_dims = graph_proto->output(0).type().tensor_type().shape().dim_size();
+        for(int i = 0; i < num_inputs; i++){
+            input_dims = graph_proto->input(i).type().tensor_type().shape().dim_size();
 
-  //GPU Plugin does not support single dimensional input and 5 dimensional input
-  if (dev_id == "GPU") {
-    if (input_dims == 1 || input_dims == 5 || output_dims == 5)
-      return false;
-  }
+                if(input_dims == 1 || input_dims == 5)
+                    return false;
+        }
+    }
+
+    //GPU Plugin does not support 5D output
+    if(dev_id == "GPU"){
+
+        for(int i = 0; i < num_outputs; i++){
+            output_dims = graph_proto->output(i).type().tensor_type().shape().dim_size();
+
+                if(output_dims == 5)
+                    return false;
+        }
+    }
+
 
   for (auto index : node_indexes) {
     const auto node = graph_viewer.GetNode(index);
@@ -327,7 +338,7 @@ bool IsGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string 
     //Dropout , Identity and Concat can't have graph inputs
     if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
       auto graph_inputs = graph_viewer.GetInputs();
-      for (auto input : node->InputDefs()) {
+      for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
           return false;
@@ -481,7 +492,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     const auto node = graph_viewer.GetNode(index);
 
     // Track graph inputs and initializers
-    for (auto input_def : node->InputDefs()) {
+    for (const auto& input_def : node->InputDefs()) {
       if (fused_outputs.find(input_def) == fused_outputs.end()) {
         fused_inputs.insert(input_def);
       } else {
@@ -490,7 +501,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     }
 
     // Track graph outputs
-    for (auto output_def : node->OutputDefs()) {
+    for (const auto& output_def : node->OutputDefs()) {
       if (fused_inputs.find(output_def) == fused_inputs.end()) {
         fused_outputs.insert(output_def);
       } else {
