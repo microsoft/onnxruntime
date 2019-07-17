@@ -62,7 +62,7 @@ Status TrainingRunner::Initialize() {
   }
 
   // Get the weights-to-train list if user specify it.
-  // Otherweise, generate the list by removing not-to-train ones from all initializers.
+  // Otherwise, generate the list by removing not-to-train ones from all initializers.
   auto weights_to_train = params_.weights_to_train_;
   if (weights_to_train.empty()) {
     weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weigths_);
@@ -207,7 +207,7 @@ Status TrainingRunner::EndTraining() {
   }
 
   // Test the in-memory model before saving.
-  printf("\nEvaluateing the final model on the test set.\n");
+  printf("\nEvaluating the final model on the test set.\n");
   ORT_RETURN_IF_ERROR(Evaluate(session_));
 
   printf("\nSaving the trained model.\n");
@@ -286,7 +286,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session) {
     }
   }
 
-  // Call afer a test batch.
+  // Call after a test batch.
   if (params_.post_evaluation_callback_) {
     params_.post_evaluation_callback_(evaluation_batch_size, step_);
   }

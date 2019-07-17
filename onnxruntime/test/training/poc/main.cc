@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/platform/env.h"
@@ -25,28 +26,56 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
-using namespace onnxruntime;
-
-const static int NUM_OF_EPOCH = 2;
-const static float LEARNING_RATE = .1f;
-const static int BATCH_SIZE = 100;
 const static int NUM_CLASS = 10;
-const static int NUM_SAMPLES_FOR_EVALUATION = 100;
 const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
-const static std::string MNIST_DATA_PATH = "mnist_data";
 
-int validate_params(int argc, char* args[]) {
-  if (argc < 2) {
-    printf("Incorrect command line for %s\n", args[0]);
-#ifdef USE_CUDA
-    printf("usage: exe_name model_name [gpu] [optional:world_rank]\n");
-#else
-    printf("usage: exe_name model_name\n");
-#endif
-    return -1;
+Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
+  cxxopts::Options options("POC Training", "Main Program to train on MNIST");
+  // clang-format off
+  options
+    .allow_unrecognised_options()
+    .add_options()
+      ("model_name", "model to be trained", cxxopts::value<std::string>())
+      ("mnist_data_dir", "MNIST training and test data path.",
+        cxxopts::value<std::string>()->default_value("mnist_data"))
+      ("log_dir", "The directory to write tensorboard events.",
+        cxxopts::value<std::string>()->default_value("logs/poc"))
+      ("use_cuda", "Use CUDA execution provider for training.")
+      ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("2"))
+      ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
+      ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
+      ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.1"))
+      ("evaluation_period", "How many training steps to make before making an evaluation.",
+        cxxopts::value<size_t>()->default_value("1"));
+  // clang-format on
+
+  try {
+    auto flags = options.parse(argc, argv);
+
+    params.model_name = flags["model_name"].as<std::string>();
+    params.use_cuda_ = flags.count("use_cuda") > 0;
+    params.learning_rate_ = flags["learning_rate"].as<float>();
+    params.num_of_epoch_ = flags["num_of_epoch"].as<int>();
+    params.batch_size_ = flags["train_batch_size"].as<int>();
+    if (flags.count("eval_batch_size")) {
+      params.eval_batch_size = flags["eval_batch_size"].as<int>();
+    } else {
+      params.eval_batch_size = params.batch_size_;
+    }
+    params.evaluation_period = flags["evaluation_period"].as<size_t>();
+
+    auto train_data_dir = flags["mnist_data_dir"].as<std::string>();
+    auto log_dir = flags["log_dir"].as<std::string>();
+    params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
+    params.log_dir.assign(log_dir.begin(), log_dir.end());
+
+  } catch (const exception& e) {
+    std::string msg = "Failed to parse the command line arguments";
+    cout << msg << e.what() << endl;
+    return Status(ONNXRUNTIME, FAIL, msg);
   }
-  return 0;
+  return Status::OK();
 }
 
 #ifdef USE_HOROVOD
@@ -81,53 +110,33 @@ void shutdown_horovod() {
 int true_count = 0;
 float total_loss = 0.0f;
 
-std::string new_tensorboard_log_folder(std::string log_directory) {
-  int i = 0;
-  while (true) {
-    std::ostringstream filename;
-    filename << log_directory << "/run" << i++;
-
-    std::string path = filename.str();
-    if (!Env::Default().FolderExists(path)) {
-      Env::Default().CreateFolder(path);
-      return path;
-    }
-  }
-}
-
-void setup_training_params(std::string& model_name, TrainingRunner::Parameters& params) {
-  params.model_path_ = model_name + ".onnx";
-  params.model_with_loss_func_path_ = model_name + "_with_cost.onnx";
-  params.model_with_training_graph_path_ = model_name + "_bw.onnx";
-  params.model_actual_running_graph_path_ = model_name + "_bw_running.onnx";
-  params.model_trained_path_ = model_name + "_trained.onnx";
-  params.model_trained_with_loss_func_path_ = model_name + "_with_cost_trained.onnx";
+void setup_training_params(TrainingRunner::Parameters& params) {
+  params.model_path_ = params.model_name + ".onnx";
+  params.model_with_loss_func_path_ = params.model_name + "_with_cost.onnx";
+  params.model_with_training_graph_path_ = params.model_name + "_bw.onnx";
+  params.model_actual_running_graph_path_ = params.model_name + "_bw_running.onnx";
+  params.model_trained_path_ = params.model_name + "_trained.onnx";
+  params.model_trained_with_loss_func_path_ = params.model_name + "_with_cost_trained.onnx";
   params.model_prediction_name_ = "predictions";
   params.loss_func_info_ = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                             "loss",
                                             {params.model_prediction_name_, "labels"});
   params.fetch_names = {"predictions", "loss"};
   params.weights_not_to_train_ = {""};
-  params.batch_size_ = BATCH_SIZE;
-  params.eval_batch_size = NUM_SAMPLES_FOR_EVALUATION;
-  params.num_of_epoch_ = NUM_OF_EPOCH;
-  params.evaluation_period = 1;
 
   // TODO: simplify provider/optimizer configuration. For now it is fixed to used SGD with CPU and Adam with GPU.
-  if (params.use_cuda_)
-  {
+  if (params.use_cuda_) {
       // TODO: This should be done in SGD optimizer. Will refactor when optimizing the kernel.
       // Adding another cuda kernel call for this division seems wasteful currently.
-      params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+      params.learning_rate_ /= params.batch_size_;
       params.in_graph_optimizer_name_ = "AdamOptimizer";
 
       params.adam_opt_params_.alpha_ = 0.9f;
       params.adam_opt_params_.beta_ = 0.999f;
       params.adam_opt_params_.lambda_ = 0;
       params.adam_opt_params_.epsilon_ = 0.1f;
-  }
-  else {
-      params.learning_rate_ = LEARNING_RATE / BATCH_SIZE;
+  } else {
+      params.learning_rate_ /= params.batch_size_;
       params.in_graph_optimizer_name_ = "SGDOptimizer";
   }
 
@@ -163,8 +172,7 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
     total_loss += *loss_data;
   };
 
-  std::string log_directory = new_tensorboard_log_folder("logs");
-  auto tensorboard = std::make_shared<EventWriter>(log_directory);
+  auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
   params.post_evaluation_callback_ = [tensorboard](size_t num_samples, size_t step) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
@@ -182,8 +190,6 @@ void setup_training_params(std::string& model_name, TrainingRunner::Parameters& 
 }
 
 int main(int argc, char* args[]) {
-  if (validate_params(argc, args) == -1) return -1;
-
   // setup logger
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
@@ -198,11 +204,8 @@ int main(int argc, char* args[]) {
 
   // setup training params
   TrainingRunner::Parameters params;
-  std::string model_name = args[1];
-#ifdef USE_CUDA
-  params.use_cuda_ = (argc > 2 && string(args[2]) == "gpu");
-#endif
-  setup_training_params(model_name, params);
+  ParseArguments(argc, args, params);
+  setup_training_params(params);
 
   // setup horovod
   int device_id = 0,
@@ -224,7 +227,8 @@ int main(int argc, char* args[]) {
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
-  PrepareMNISTData(MNIST_DATA_PATH, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, device_id /* shard_to_load */, device_count /* total_shards */);
+  std::string mnist_data_path(params.train_data_dir.begin(), params.train_data_dir.end());
+  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, device_id /* shard_to_load */, device_count /* total_shards */);
 
   // start training session
   TrainingRunner runner(trainingData, testData, params);

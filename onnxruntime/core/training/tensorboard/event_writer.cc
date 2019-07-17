@@ -3,6 +3,7 @@
 
 #include "core/training/tensorboard/event_writer.h"
 #include "core/training/tensorboard/crc32c.h"
+#include "core/platform/env.h"
 
 #include <ctime>
 #include <fstream>
@@ -22,18 +23,15 @@ namespace onnxruntime {
 namespace training {
 namespace tensorboard {
 
-static std::string GetHostname() {
-  // TODO: get hostname for inclusion in Tensorboard events filename
-  return "localhost";
-}
-
-static std::string GenerateFilePath(const std::string& log_dir) {
-  std::ostringstream filename;
+static std::basic_string<PATH_CHAR_TYPE> GenerateFilePath(const std::basic_string<PATH_CHAR_TYPE>& log_dir) {
+  std::basic_ostringstream<PATH_CHAR_TYPE> filename;
   if (!log_dir.empty()) {
-    filename << log_dir << "/";
+    ORT_ENFORCE(Env::Default().CreateFolder(log_dir).IsOK(), "Failed to create log directory");
+    filename << log_dir << GetPathSep<PATH_CHAR_TYPE>();
   }
 
-  filename << "events.out.tfevents." << std::setfill('0') << std::setw(10) << std::time(0) << "." << GetHostname();
+  // TODO: get hostname for inclusion in Tensorboard events filename
+  filename << "events.out.tfevents." << std::setfill(static_cast<PATH_CHAR_TYPE>('0')) << std::setw(10) << std::time(0) << ".localhost";
   return filename.str();
 }
 
@@ -48,7 +46,7 @@ static void Encode(char* buffer, T value) {
   memcpy(buffer, &value, sizeof(value));
 }
 
-EventWriter::EventWriter(const std::string& log_dir) : stream_(GenerateFilePath(log_dir), std::ios::binary) {
+EventWriter::EventWriter(const std::basic_string<PATH_CHAR_TYPE>& log_dir) : stream_(GenerateFilePath(log_dir), std::ios::binary) {
 }
 
 EventWriter::EventWriter(std::ofstream&& stream) : stream_(std::move(stream)) {

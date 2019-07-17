@@ -4,6 +4,7 @@
 #pragma once
 
 #include <fstream>
+#include "core/framework/path_lib.h"
 
 namespace tensorboard {
   class Event;
@@ -17,7 +18,7 @@ namespace tensorboard {
 
 class EventWriter {
  public:
-  EventWriter(const std::string& log_dir);
+  EventWriter(const std::basic_string<PATH_CHAR_TYPE>& log_dir);
   EventWriter(std::ofstream&& stream);
   ~EventWriter();
 
