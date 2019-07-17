@@ -87,8 +87,6 @@ else()
       set(ARM64 TRUE)
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
       set(X86_64 TRUE)
-      message(STATUS "-----")
-      message(STATUS ${X86_64})
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
       set(X86 TRUE)
     endif()
@@ -140,8 +138,6 @@ else()
       ${mlas_platform_srcs_avx}
       )
   elseif (X86_64)
-    message(STATUS
-      "x86-64")
     enable_language(ASM)
 
     # The LLVM assmebler does not support the .arch directive to enable instruction
