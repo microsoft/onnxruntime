@@ -3,10 +3,11 @@
 #if defined(_MSC_VER) || defined(__INTEL_COMPILER)
 #pragma optimize ("", off)
 #elif defined(__GNUC__)
-#pragma GCC push_options
-#pragma GCC optimize ("O0")
 #if defined(__clang__)
     #pragma clang optimize off
+#else
+    #pragma GCC push_options
+    #pragma GCC optimize ("O0")
 #endif
 #endif
 ReductionTestCases testcases = {
@@ -5368,8 +5369,9 @@ ReductionTestCases testcases = {
 #if defined(_MSC_VER) || defined(__INTEL_COMPILER)
 #pragma optimize ("", on)
 #elif defined(__GNUC__)
-#pragma GCC pop_options
 #if defined(__clang__)
     #pragma clang optimize on
+#else
+    #pragma GCC pop_options
 #endif
 #endif
