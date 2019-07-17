@@ -48,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
         }
         public static void Run(CommandOptions options)
         {
-            string modelPath = @"D:\models\ehsan\celeb\celeb.onnx";
+            string modelPath = options.ModelFile;
             string inputPath = options.InputFile;
             int iteration = options.IterationCount;
             bool parallelExecution = options.ParallelExecution;
@@ -103,17 +103,9 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
                 var container = new List<NamedOnnxValue>();
                 foreach (var name in inputMeta.Keys)
                 {
-                    //float[] rawData = LoadTensorFromFile(inputPath);
-                    Random r = new Random();
-
-                    byte[] rawData = new byte[3 * 257 * 257];
-                    for (int i=0; i< 3*257* 257; i++ )
-                    {
-                        rawData[i] = Convert.ToByte(r.Next(0, 255));
-                    }
-                    
-                    var tensor = new DenseTensor<byte>(rawData,new int[] { 1, 3, 257, 257 });
-                    container.Add(NamedOnnxValue.CreateFromTensor<byte>(name, tensor));
+                    float[] rawData = LoadTensorFromFile(inputPath);
+                    var tensor = new DenseTensor<float>(rawData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
 
                 
