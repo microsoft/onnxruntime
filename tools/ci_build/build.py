@@ -130,6 +130,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-R_FP16","MYRIAD_FP16"], help="Build with OpenVINO for specific hardware.")
+    parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
@@ -340,6 +341,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_VAD_R=" + ("ON" if args.use_openvino == "VAD-R_FP16" else "OFF"),
+                 "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
                  "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_mklml and not args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -551,7 +553,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             adb_push(source_dir, 'onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
             adb_push(source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
+            if args.use_dnnlibrary:
+                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
+            else:
+                adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
             continue
         if enable_tvm:
           dll_path = os.path.join(build_dir, config, "external", "tvm", config)
