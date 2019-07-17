@@ -126,6 +126,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
     }
   } else if (A_shape.size() > 2 || B_shape.size() > 2) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
+      // If B_shape.size() == 2, dA is computed through 2 ops: transpose and matmul.
+      // It can be replaced with Gemm(dY_reshape, B_transpose) and reshape.
+      // However, there is a performance degradation.
+      // Thus this implementation is not implemented.
       int64_t B_rank = B_shape.size();
       std::vector<int64_t> B_perm(B_rank);
       std::iota(B_perm.begin(), B_perm.end(), 0);
@@ -173,49 +177,96 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
       }
     }
     if (IsGradientRequiredForSrcNodeInput(1)) {
-      int64_t A_rank = A_shape.size();
-      std::vector<int64_t> A_perm(A_rank);
-      std::iota(A_perm.begin(), A_perm.end(), 0);
-      std::swap(A_perm[A_rank - 1], A_perm[A_rank - 2]);
+      if (B_shape.size() == 2 &&
+          (B_shape[0].has_dim_value() || A_shape[A_shape.size() - 1].has_dim_value()) &&
+          (B_shape[1].has_dim_value() || Y_shape[Y_shape.size() - 1].has_dim_value())) {
+        // A[M, K], B[K, N], Y[M, N]
+        int64_t K, N;
+        if (B_shape[0].has_dim_value()) {
+          K = B_shape[0].dim_value();
+        } else {
+          K = A_shape[A_shape.size() - 1].dim_value();
+        }
+        if (B_shape[1].has_dim_value()) {
+          N = B_shape[1].dim_value();
+        } else {
+          N = Y_shape[Y_shape.size() - 1].dim_value();
+        }
 
-      std::vector<Dimension> output_shape;
-      for (size_t i = 0; i < Y_shape.size() - 2; i++) {
-        output_shape.push_back(Y_shape[i]);
-      }
-      output_shape.push_back(A_shape[A_shape.size() - 1]);
-      output_shape.push_back(Y_shape[Y_shape.size() - 1]);
+        std::vector<int64_t> A_shape_2d{-1, K};
+        NodeDef A_shape_2d_node = ConstantValueNode(A_shape_2d, Name("A_shape_2d"));
+        ArgDef A_shape_2d_arg = A_shape_2d_node.output_args[0];
+        result.push_back(A_shape_2d_node);
 
-      std::vector<int64_t> B_axes;
-      ComputeBroadcastBackwardAxes(B_shape, output_shape, &B_axes, nullptr);
+        std::vector<int64_t> dY_shape_2d{-1, N};
+        NodeDef dY_shape_2d_node = ConstantValueNode(dY_shape_2d, Name("dY_shape_2d"));
+        ArgDef dY_shape_2d_arg = dY_shape_2d_node.output_args[0];
+        result.push_back(dY_shape_2d_node);
 
-      result.push_back(
-          NodeDef("Transpose",
-                  {A},
-                  {IA("A_t")},
-                  {MakeAttribute("perm", A_perm)}));
+        NodeDef zero_constant_node = ZeroConstantNode();
+        ArgDef ZERO = zero_constant_node.output_args[0];
+        result.push_back(zero_constant_node);
 
-      ArgDef matmul_out = B_axes.size() > 0 ? IA("PreReduceGrad1") : GI(1);
-
-      result.push_back(
-          NodeDef("MatMul",
-                  {IA("A_t"), GO(0)},
-                  {matmul_out}));
-
-      if (B_axes.size() > 0) {
-        result.push_back(
-            NodeDef("ReduceSum",
-                    {IA("PreReduceGrad1")},
-                    {IA("ReduceGrad1")},
-                    {{"keepdims", MakeAttribute("keepdims", int64_t(0))},
-                     {"axes", MakeAttribute("axes", B_axes)}}));
-        result.push_back(
-            NodeDef("Shape",
-                    {B},
-                    {IA("B_shape")}));
         result.push_back(
             NodeDef("Reshape",
-                    {IA("ReduceGrad1"), IA("B_shape")},
-                    {GI(1)}));
+                    {A, A_shape_2d_arg},
+                    {IA("A_reshape_2d")}));
+        result.push_back(
+            NodeDef("Reshape",
+                    {GO(0), dY_shape_2d_arg},
+                    {IA("dY_reshape_2d")}));
+
+        // dB = A' * dY
+        result.push_back(
+            NodeDef("Gemm",
+                    {IA("A_reshape_2d"), IA("dY_reshape_2d"), ZERO},
+                    {GI(1)},
+                    {MakeAttribute("transA", int64_t(1))}));
+      } else {
+        int64_t A_rank = A_shape.size();
+        std::vector<int64_t> A_perm(A_rank);
+        std::iota(A_perm.begin(), A_perm.end(), 0);
+        std::swap(A_perm[A_rank - 1], A_perm[A_rank - 2]);
+
+        std::vector<Dimension> output_shape;
+        for (size_t i = 0; i < Y_shape.size() - 2; i++) {
+          output_shape.push_back(Y_shape[i]);
+        }
+        output_shape.push_back(A_shape[A_shape.size() - 1]);
+        output_shape.push_back(Y_shape[Y_shape.size() - 1]);
+
+        std::vector<int64_t> B_axes;
+        ComputeBroadcastBackwardAxes(B_shape, output_shape, &B_axes, nullptr);
+
+        result.push_back(
+            NodeDef("Transpose",
+                    {A},
+                    {IA("A_t")},
+                    {MakeAttribute("perm", A_perm)}));
+
+        ArgDef matmul_out = B_axes.size() > 0 ? IA("PreReduceGrad1") : GI(1);
+
+        result.push_back(
+            NodeDef("MatMul",
+                    {IA("A_t"), GO(0)},
+                    {matmul_out}));
+
+        if (B_axes.size() > 0) {
+          result.push_back(
+              NodeDef("ReduceSum",
+                      {IA("PreReduceGrad1")},
+                      {IA("ReduceGrad1")},
+                      {{"keepdims", MakeAttribute("keepdims", int64_t(0))},
+                       {"axes", MakeAttribute("axes", B_axes)}}));
+          result.push_back(
+              NodeDef("Shape",
+                      {B},
+                      {IA("B_shape")}));
+          result.push_back(
+              NodeDef("Reshape",
+                      {IA("ReduceGrad1"), IA("B_shape")},
+                      {GI(1)}));
+        }
       }
     }
   } else {
