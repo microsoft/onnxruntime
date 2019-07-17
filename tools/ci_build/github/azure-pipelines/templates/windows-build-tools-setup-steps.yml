@@ -57,7 +57,7 @@ steps:
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
-    
+
     - task: PowerShell@2
       displayName: 'Download OpenCppCoverage installer'
       continueOnError: true
@@ -81,7 +81,7 @@ steps:
     - task: BatchScript@1
       displayName: 'Setup VS2017 env vars'
       inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+        filename: '$(Build.SourcesDirectory)\tools\vs2017_vcvarsall.bat'
         arguments: '${{parameters.buildArch}} -vcvars_ver=14.11'
         modifyEnvironment: true
       condition: ${{parameters.setVcvars}}

@@ -75,7 +75,7 @@ jobs:
         displayName: 'Test C# Debug'
         inputs:
           script: |
-           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+           FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     # Run test coverage report
@@ -121,7 +121,7 @@ jobs:
       displayName: 'Test C# RelWithDebInfo'
       inputs:
         script: |
-         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f 
+         FOR /F  %%f IN ('dir /s /b test\Microsoft.ML.OnnxRuntime.Tests\bin\*Tests.dll') DO %dotnetexe% vstest %%f
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
@@ -137,7 +137,7 @@ jobs:
       - task: BatchScript@1
         displayName: 'Setup VS2017 env vars'
         inputs:
-          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+          filename: '$(Build.SourcesDirectory)\tools\vs2017_vcvarsall.bat'
           arguments: 'x64 -vcvars_ver=14.11'
           modifyEnvironment: true
 
