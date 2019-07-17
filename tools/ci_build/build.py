@@ -147,7 +147,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'], 
-                        default='Visual Studio 15 2017', help="Specify the VS generator that CMake invokes.")
+                        default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -490,6 +490,8 @@ def setup_cuda_vars(args):
                                  "Current version is {}. CUDA 9.2 requires version 14.11.*".format(vc_ver_str),
                                  "If necessary manually install the 14.11 toolset using the Visual Studio 2017 updater.",
                                  "See 'Windows CUDA Build' in build.md in the root directory of this repository.")
+            
+            # TODO: check if cuda_version >=10.1, when cuda is enabled and VS version >=2019
 
     return cuda_home, cudnn_home
 

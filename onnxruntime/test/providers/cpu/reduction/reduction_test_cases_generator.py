@@ -63,6 +63,28 @@ def PrintResult(op, axes, keepdims, res):
 
     print ("})},")
 
+def PrintDisableOptimizations():
+    print ("// Optimizations are disabled in this file to improve build throughput")
+    print ("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
+    print ("#pragma optimize (\"\", off)")
+    print ("#elif defined(__GNUC__)")
+    print ("#pragma GCC push_options")
+    print ("#pragma GCC optimize (\"O0\")")
+    print ("#if defined(__clang__)")
+    print ("\t#pragma clang optimize off")
+    print ("#endif")
+    print ("#endif")
+
+def PrintReenableOptimizations():
+    print ("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
+    print ("t#pragma optimize (\"\", on)")
+    print ("#elif defined(__GNUC__)")
+    print ("#pragma GCC pop_options")
+    print ("#if defined(__clang__)")
+    print ("\t#pragma clang optimize on")
+    print ("#endif")
+    print ("#endif")
+
 if __name__ == "__main__":
     from itertools import product
     input_shape = [2,3,2,2,3]
@@ -72,8 +94,8 @@ if __name__ == "__main__":
     keepdims_options = [0, 1]
     ops = ["ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", 
            "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "ArgMax", "ArgMin"]
-    print ("#pragma optimize (\"\", off)")
     print ("// Please don't manually edit this file. Generated from reduction_test_cases_generator.py")
+    PrintDisableOptimizations()
     print ("ReductionTestCases testcases = {")
     print ("// input_data")
     print ("{")
@@ -102,4 +124,4 @@ if __name__ == "__main__":
 
     print ("}")
     print ("};")
-    print ("#pragma optimize (\"\", on)")
+    PrintReenableOptimizations()

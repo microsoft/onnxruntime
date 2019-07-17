@@ -1,5 +1,14 @@
-#pragma optimize ("", off)
 // Please don't manually edit this file. Generated from reduction_test_cases_generator.py
+// Optimizations are disabled in this file to improve build throughput
+#if defined(_MSC_VER) || defined(__INTEL_COMPILER)
+#pragma optimize ("", off)
+#elif defined(__GNUC__)
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
+#if defined(__clang__)
+    #pragma clang optimize off
+#endif
+#endif
 ReductionTestCases testcases = {
     // input_data
     {
@@ -5356,4 +5365,11 @@ ReductionTestCases testcases = {
                  1.000000f,
              })},
     }};
+#if defined(_MSC_VER) || defined(__INTEL_COMPILER)
 #pragma optimize ("", on)
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#if defined(__clang__)
+    #pragma clang optimize on
+#endif
+#endif
