@@ -238,13 +238,13 @@ class MklDnnConv : public MklDnnKernel {
 
     if (!bias_dims_mkl.empty()) {
       fwd_desc_.reset(new mkldnn::convolution_forward::desc(
-          mkldnn::prop_kind::forward, mkldnn::convolution_direct, *src_md_,
+          mkldnn::prop_kind::forward_inference, mkldnn::convolution_direct, *src_md_,
           *filter_md_, *bias_md_, *primitive_dst_md_,
           strides_mkl, dilations_mkl, padding_left_mkl,
           padding_right_mkl, mkldnn::padding_kind::zero));
     } else {
       fwd_desc_.reset(new mkldnn::convolution_forward::desc(
-          mkldnn::prop_kind::forward, mkldnn::convolution_direct, *src_md_,
+          mkldnn::prop_kind::forward_inference, mkldnn::convolution_direct, *src_md_,
           *filter_md_, *primitive_dst_md_, strides_mkl,
           dilations_mkl, padding_left_mkl,
           padding_right_mkl, mkldnn::padding_kind::zero));

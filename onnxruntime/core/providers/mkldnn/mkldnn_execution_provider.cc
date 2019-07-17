@@ -119,7 +119,6 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
   bool use_subgraph = true;
 
   bool FP16_graph = false;
-  bool opset10_graph = false;
   bool mkldnn_nodes_in_the_graph = false;
 
   if (graph_viewer.MaxNodeIndex() > 0) {
@@ -131,9 +130,6 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
     }
     if (node->InputDefs()[0]->Type() != nullptr)
       FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
-
-    if (GetOnnxOpSet(graph_viewer) == 10)
-      opset10_graph = true;
   }
 
   for (auto node_index = 0; node_index < graph_viewer.MaxNodeIndex(); node_index++) {
@@ -149,7 +145,7 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
     }
   }
 
-  if (FP16_graph || opset10_graph || !mkldnn_nodes_in_the_graph) {
+  if (FP16_graph || !mkldnn_nodes_in_the_graph) {
     // FP16 not supported yet.
     use_subgraph = false;
     result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
@@ -262,6 +258,12 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
     if (IsDimensionSupported(node) == false) {
       node_index++;
+      if (subgraph_ptr->mkldnn_nodes.size() > 0) {
+        CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
+        subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+        subgraph_attributes.clear();
+        output_to_source_node_map.clear();
+      }
       continue;
     }
 
@@ -455,7 +457,7 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::mkl_dnn::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<mkl_dnn::MkldnnFuncKernel<float>*>(state);
-      return  custom_op->Compute(api, context);
+      return custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);
