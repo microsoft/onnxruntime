@@ -215,11 +215,11 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   subgraph.AddInitializedTensor(local_constant);
 
   subgraph.AddOuterScopeNodeArg("parent_constant");
-  auto& node1 = subgraph.AddNode("node1", "Add", "operator1", ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type), 
+  subgraph.AddNode("node1", "Add", "operator1", ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type), 
                                                                      &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)}, 
                                                               ArgMap{&o1_def});
 
-  auto& node2 = subgraph.AddNode("node2", "Add", "operator2", ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type), 
+  subgraph.AddNode("node2", "Add", "operator2", ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type), 
                                                                      &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)},
                                                               ArgMap{&o2_def});
 
@@ -227,11 +227,11 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
  // main graph continued
-  auto& node3 = graph.AddNode("node3", "If", "cpu operator2", ArgMap{&i1_def}, ArgMap{&o1_def, &o2_def});
-  node3.AddAttribute("then_branch", {subgraph.ToGraphProto()});
-  node3.AddAttribute("else_branch", {subgraph.ToGraphProto()});
+  auto& if_node = graph.AddNode("node3", "If", "cpu operator2", ArgMap{&i1_def}, ArgMap{&o1_def, &o2_def});
+  if_node.AddAttribute("then_branch", {subgraph.ToGraphProto()});
+  if_node.AddAttribute("else_branch", {subgraph.ToGraphProto()});
 
-  onnxruntime::Graph* subgraph_1 = node3.GetMutableGraphAttribute("then_branch");
+  onnxruntime::Graph* subgraph_1 = if_node.GetMutableGraphAttribute("then_branch");
   for (auto& node : subgraph_1->Nodes()) {
     if (node.Name() == "node2") {
       node.SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);       
@@ -240,7 +240,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
     }
   }
 
-  onnxruntime::Graph* subgraph_2 = node3.GetMutableGraphAttribute("else_branch");
+  onnxruntime::Graph* subgraph_2 = if_node.GetMutableGraphAttribute("else_branch");
   for (auto& node : subgraph_2->Nodes()) {
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
