@@ -301,8 +301,6 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
 
       const TensorProto* tensor_proto = pair.second;
-      ORT_ENFORCE(tensor_proto != nullptr, "Failed to get initialized tensor ", pair.first);
-
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
 
