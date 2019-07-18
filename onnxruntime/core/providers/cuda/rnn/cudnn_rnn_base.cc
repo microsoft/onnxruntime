@@ -220,7 +220,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     x_data = x_reversed_data.get();
   }
 
-  auto byte_size = X->DataType()->Size();
   const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->template Data<T>();
   const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->template Data<T>();
   T* y_h_data = (Y_h == nullptr) ? nullptr : Y_h->template MutableData<T>();
@@ -234,9 +233,11 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     y_alloc_data = GetScratchBuffer<T>(output_size);
     y_data = y_alloc_data.get();
   }
-  // Cudnn library doesn't guarantee the data beyond the shorter sequence will be initialized to 0, so we need to do it manually.
-  cudaMemset(y_data, 0, output_size * byte_size);
+
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
+
+  // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc_, CUDNN_RNN_PADDED_IO_ENABLED));
 
   size_t workspace_bytes;
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc_, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
@@ -288,6 +289,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      nullptr, nullptr, nullptr, nullptr,
                                                      workspace_cuda.get(),
                                                      workspace_bytes));
+    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
+    if (nullptr == Y) {
+      return Status::OK();
+    }
   }
 
   IAllocatorUniquePtr<T> y_reorganized_data;

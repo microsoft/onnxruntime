@@ -106,7 +106,7 @@ std::vector<Ort::Value> Run(const Ort::Session& session, const Ort::RunOptions& 
 
 protobufutil::Status Executor::Predict(const std::string& model_name,
                                        const std::string& model_version,
-                                       onnxruntime::server::PredictRequest& request,
+                                       const onnxruntime::server::PredictRequest& request,
                                        /* out */ onnxruntime::server::PredictResponse& response) {
   auto logger = env_->GetLogger(request_id_);
 

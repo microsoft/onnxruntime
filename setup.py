@@ -118,6 +118,7 @@ elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib'] # TODO add libmklml and libiomp5 later.
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
+  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll'])
 
 if is_manylinux2010:
     data = []
