@@ -111,8 +111,7 @@ OrtStatus* OrtTypeInfo::FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto* input,
         auto& t = s.dim(i);
         shape_data[i] = t.has_dim_value() ? t.dim_value() : -1;
       }
-      TensorShape shape(std::move(shape_data));
-      st = GetTensorShapeAndType(&shape, type, &info);
+      st = GetTensorShapeAndType(reinterpret_cast<const TensorShape*>(&shape_data), type, &info);
     } else {
       st = GetTensorShapeAndType(nullptr, type, &info);
     }
