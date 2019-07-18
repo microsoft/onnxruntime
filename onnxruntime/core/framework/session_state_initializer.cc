@@ -184,14 +184,14 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              OrtCallback& deleter,
                                              const DataTransferManager& data_transfer_mgr) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
-  if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
+  if (alloc_info.device.Type() == OrtDevice::CPU || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(env, proto_path.c_str(), tensor_proto, m, ort_value, deleter);
   }
   //alloc_info.name is not 'CPU'
   const IExecutionProvider* provider = exec_providers.Get(alloc_info);
   if (provider == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid allocation info. Provider name = ", alloc_info.name);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid allocation info: ", alloc_info.ToString());
   }
   // deserialize and copy. In the copy stage, it won't check if the buffer has enough room.
   // The result tensor won't need a deleter because:

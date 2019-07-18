@@ -33,7 +33,7 @@ struct AllocPlanPerValue {
   bool create_fence_if_async{false};
 
  public:
-  AllocPlanPerValue() : location(CPU, OrtArenaAllocator) {}
+  AllocPlanPerValue() : location(OrtArenaAllocator) {}
 };
 
 // SequentialExecutionPlan: This is the data that is produced by a static

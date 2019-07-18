@@ -80,7 +80,7 @@ class ExecutionProviders {
       return nullptr;
     }
 
-    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+    return exec_provider->GetAllocator(allocator_info.device.Id(), allocator_info.mem_type);
   }
 
   bool Empty() const { return exec_providers_.empty(); }

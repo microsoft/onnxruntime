@@ -73,51 +73,46 @@ struct OrtDevice {
 };
 
 struct OrtAllocatorInfo {
-  // use string for name, so we could have customized allocator in execution provider.
-  const char* name;
-  int id;
   OrtMemType mem_type;
-  OrtAllocatorType type;
+  OrtAllocatorType allocator_type;
   OrtDevice device;
 
-  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtAllocatorInfo(OrtAllocatorType allocator_type_, OrtDevice device_ = OrtDevice(), OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
-      : name(name_),
-        id(id_),
-        mem_type(mem_type_),
-        type(type_),
-        device(device_) {
+      : allocator_type(allocator_type_),
+        device(device_),
+        mem_type(mem_type_) {
   }
 
   // To make OrtAllocatorInfo become a valid key in std map
   inline bool operator<(const OrtAllocatorInfo& other) const {
-    if (type != other.type)
-      return type < other.type;
+    if (allocator_type != other.allocator_type)
+      return allocator_type < other.allocator_type;
     if (mem_type != other.mem_type)
       return mem_type < other.mem_type;
-    if (id != other.id)
-      return id < other.id;
+    if (device.Id() != other.device.Id())
+      return device.Id() < other.device.Id();
 
-    return strcmp(name, other.name) < 0;
+    return device.Type() < other.device.Type();
   }
 
   inline std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtAllocatorInfo: ["
-         << " name:" << name
-         << " id:" << id
+         << " device type:" << device.Type()
+         << " device id:" << device.Id()
          << " mem_type:" << mem_type
-         << " type:" << type
+         << " allocator type:" << allocator_type
          << "]";
     return ostr.str();
   }
 };
 
 inline bool operator==(const OrtAllocatorInfo& left, const OrtAllocatorInfo& other) {
-  return left.mem_type == other.mem_type && left.type == other.type && left.id == other.id &&
-         strcmp(left.name, other.name) == 0;
+  return left.mem_type == other.mem_type && left.allocator_type == other.allocator_type && left.device.Id() == other.device.Id() &&
+         left.device.Type() == other.device.Type() == 0;
 }
 
 inline bool operator!=(const OrtAllocatorInfo& lhs, const OrtAllocatorInfo& rhs) { return !(lhs == rhs); }
@@ -252,7 +247,7 @@ class CPUAllocator : public IDeviceAllocator {
   }
 
   CPUAllocator() {
-    allocator_info_ = std::make_unique<OrtAllocatorInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+    allocator_info_ = std::make_unique<OrtAllocatorInfo>(OrtAllocatorType::OrtDeviceAllocator);
   }
 
   void* Alloc(size_t size) override;

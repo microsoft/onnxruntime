@@ -10,13 +10,13 @@
 namespace onnxruntime {
 namespace test {
 
-static std::string GetAllocatorId(const std::string& name, const int id, const bool isArena) {
+static std::string GetAllocatorId(const OrtDevice::DeviceType device_type, const int id, const bool isArena) {
   std::ostringstream ss;
   if (isArena)
     ss << "arena_";
   else
     ss << "device_";
-  ss << name << "_" << id;
+  ss << device_type << "_" << id;
   return ss.str();
 }
 
@@ -24,7 +24,7 @@ static Status RegisterAllocator(std::unordered_map<std::string, AllocatorPtr>& m
                                 std::unique_ptr<IDeviceAllocator> allocator, size_t /*memory_limit*/,
                                 bool use_arena) {
   auto& info = allocator->Info();
-  auto allocator_id = GetAllocatorId(info.name, info.id, use_arena);
+  auto allocator_id = GetAllocatorId(info.device.Type(), info.device.Id(), use_arena);
 
   auto status = Status::OK();
   if (map.find(allocator_id) != map.end())
@@ -65,8 +65,8 @@ Status AllocatorManager::InitializeAllocators() {
 AllocatorManager::~AllocatorManager() {
 }
 
-AllocatorPtr AllocatorManager::GetAllocator(const std::string& name, const int id, bool arena) {
-  auto allocator_id = GetAllocatorId(name, id, arena);
+AllocatorPtr AllocatorManager::GetAllocator(const OrtDevice::DeviceType device_type, const int id, bool arena) {
+  auto allocator_id = GetAllocatorId(device_type, id, arena);
   auto entry = map_.find(allocator_id);
   ORT_ENFORCE(entry != map_.end(), "Allocator not found:", allocator_id);
   return entry->second;

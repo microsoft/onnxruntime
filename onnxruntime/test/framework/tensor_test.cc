@@ -24,8 +24,8 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   EXPECT_EQ(shape, tensor_shape);
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
   auto& location = t.Location();
-  EXPECT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
+  EXPECT_EQ(location.device.Type(), OrtDevice::CPU);
+  EXPECT_EQ(location.device.Id(), 0);
 
   auto t_data = t.template MutableData<T>();
   EXPECT_TRUE(t_data);
@@ -39,8 +39,8 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   EXPECT_EQ(shape, tensor_shape);
   EXPECT_EQ(new_t.DataType(), DataTypeImpl::GetType<T>());
   auto& new_location = new_t.Location();
-  ASSERT_STREQ(new_location.name, CPU);
-  EXPECT_EQ(new_location.id, 0);
+  EXPECT_EQ(new_location.device.Type(), OrtDevice::CPU);
+  EXPECT_EQ(new_location.device.Id(), 0);
 
   auto new_data = new_t.template MutableData<T>();
   EXPECT_TRUE(new_data);
@@ -132,9 +132,9 @@ TEST(TensorTest, EmptyTensorTest) {
   EXPECT_TRUE(!data);
 
   auto& location = t.Location();
-  ASSERT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
+  EXPECT_EQ(location.device.Type(), OrtDevice::CPU);
+  EXPECT_EQ(location.device.Id(), 0);
+  EXPECT_EQ(location.allocator_type, OrtAllocatorType::OrtArenaAllocator);
 }
 
 TEST(TensorTest, StringTensorTest) {
@@ -153,8 +153,8 @@ TEST(TensorTest, StringTensorTest) {
     EXPECT_EQ(shape, tensor_shape);
     EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<std::string>());
     auto& location = t.Location();
-    ASSERT_STREQ(location.name, CPU);
-    EXPECT_EQ(location.id, 0);
+    EXPECT_EQ(location.device.Type(), OrtDevice::CPU);
+    EXPECT_EQ(location.device.Id(), 0);
 
     std::string* new_data = t.template MutableData<std::string>();
     EXPECT_TRUE(new_data);

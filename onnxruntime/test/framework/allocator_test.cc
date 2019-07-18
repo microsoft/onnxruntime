@@ -11,9 +11,9 @@ namespace test {
 TEST(AllocatorTest, CPUAllocatorTest) {
   auto cpu_arena = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
 
-  ASSERT_STREQ(cpu_arena->Info().name, CPU);
-  EXPECT_EQ(cpu_arena->Info().id, 0);
-  EXPECT_EQ(cpu_arena->Info().type, OrtAllocatorType::OrtArenaAllocator);
+  EXPECT_EQ(cpu_arena->Info().device.Type(), OrtDevice::CPU);
+  EXPECT_EQ(cpu_arena->Info().device.Id(), 0);
+  EXPECT_EQ(cpu_arena->Info().allocator_type, OrtAllocatorType::OrtArenaAllocator);
 
   size_t size = 1024;
   auto bytes = cpu_arena->Alloc(size);
@@ -49,7 +49,7 @@ class TestAllocator : public IAllocator {
   }
 
   virtual const OrtAllocatorInfo& Info() const override {
-    static OrtAllocatorInfo info("test", OrtDeviceAllocator);
+    static OrtAllocatorInfo info(OrtDeviceAllocator);
     return info;
   }
 

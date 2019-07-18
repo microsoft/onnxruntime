@@ -281,7 +281,7 @@ class OpTester {
       ORT_ENFORCE(shape.Size() == values_count, values_count,
                   " input values doesn't match tensor size of ", shape.Size());
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(OrtDevice::CPU);
       auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                                shape,
                                                allocator);

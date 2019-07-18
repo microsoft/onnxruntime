@@ -27,7 +27,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       }
     }
     AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const {
-      return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
+      return cpu_execution_provider_->GetAllocator(info.device.Id(), info.mem_type);
     }
 
     AllocatorPtr GetAllocator() const {

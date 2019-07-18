@@ -47,11 +47,11 @@ std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) {
 ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
                     OrtMemType mem_type1, _Out_ OrtAllocatorInfo** out) {
   if (strcmp(name1, onnxruntime::CPU) == 0) {
-    *out = new OrtAllocatorInfo(name1, type, OrtDevice(), id1, mem_type1);
+    *out = new OrtAllocatorInfo(type, OrtDevice(), mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA) == 0) {
-    *out = new OrtAllocatorInfo(name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1, mem_type1);
+    *out = new OrtAllocatorInfo(type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
-    *out = new OrtAllocatorInfo(name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)), id1, mem_type1);
+    *out = new OrtAllocatorInfo(type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)), mem_type1);
   } else {
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
   }
@@ -62,13 +62,8 @@ ORT_API(void, OrtReleaseAllocatorInfo, _Frees_ptr_opt_ OrtAllocatorInfo* p) {
   delete p;
 }
 
-ORT_API_STATUS_IMPL(OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr, _Out_ const char** out) {
-  *out = ptr->name;
-  return nullptr;
-}
-
 ORT_API_STATUS_IMPL(OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr, _Out_ int* out) {
-  *out = ptr->id;
+  *out = ptr->device.Id();
   return nullptr;
 }
 
@@ -78,7 +73,7 @@ ORT_API_STATUS_IMPL(OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr, _Out
 }
 
 ORT_API_STATUS_IMPL(OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out) {
-  *out = ptr->type;
+  *out = ptr->allocator_type;
   return nullptr;
 }
 

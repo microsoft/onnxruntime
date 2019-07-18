@@ -420,7 +420,7 @@ static DeviceCopyCheck CheckExecutionProviders(const ExecutionProviders& executi
     // it will currently handle the scenario when only the CPUExecutionProvider is registered though
     if (!std::all_of(allocators.cbegin(), allocators.cend(),
                      [](const gsl::not_null<const IAllocator*>& allocator) {
-                       return strcmp(allocator->Info().name, CPU) == 0;
+                       return allocator->Info().device.Type() == OrtDevice::CPU;
                      })) {
       all_cpu = false;
       break;

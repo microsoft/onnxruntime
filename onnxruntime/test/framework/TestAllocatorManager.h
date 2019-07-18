@@ -16,7 +16,7 @@ class AllocatorManager {
   */
   ~AllocatorManager();
 
-  AllocatorPtr GetAllocator(const std::string& name, const int id = 0, bool arena = true);
+  AllocatorPtr GetAllocator(const OrtDevice::DeviceType device_type, const int id = 0, bool arena = true);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AllocatorManager);
