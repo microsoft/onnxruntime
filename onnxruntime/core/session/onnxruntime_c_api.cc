@@ -165,8 +165,12 @@ ORT_API_STATUS_IMPL(OrtFillStringTensor, _In_ OrtValue* value, _In_ const char* 
 template <typename T>
 OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, OrtAllocator* allocator,
                             std::unique_ptr<Tensor>* out) {
+  std::vector<int64_t> shapes(shape_len);
+  for (size_t i = 0; i != shape_len; ++i) {
+    shapes[i] = shape[i];
+  }
   std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shape, shape_len), alloc_ptr);
+  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
 
@@ -178,8 +182,10 @@ template <typename T>
 OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAllocatorInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
+  std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
     elem_count *= shape[i];
+    shapes[i] = shape[i];
   }
 
   size_t size_to_allocate;
@@ -191,7 +197,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtAll
     oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
-  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shape, shape_len), p_data, *info);
+  *out = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), p_data, *info);
   return nullptr;
 }
 

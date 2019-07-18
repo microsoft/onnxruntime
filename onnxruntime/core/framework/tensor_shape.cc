@@ -11,7 +11,7 @@ namespace onnxruntime {
 TensorShape::TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {
 }
 
-TensorShape::TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {
+TensorShape::TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(dims) {
 }
 
 TensorShape::TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {
