@@ -3,6 +3,14 @@
   Licensed under the MIT License
 """
 
+from mo.utils.version import get_version
+from mo.utils.utils import refer_to_faq_msg
+from mo.utils.unsupported_ops import UnsupportedOps
+from mo.graph.graph import *
+from mo.front.extractor import update_ie_fields
+from xml.etree.ElementTree import Element, SubElement, tostring
+import xml.dom.minidom
+import hashlib
 import sys
 import os
 ov_root = os.environ['INTEL_CVSDK_DIR']
@@ -13,17 +21,8 @@ else:
 mo_path = ov_root + "/deployment_tools/model_optimizer"
 sys.path.append(mo_path)
 
-import hashlib
-import xml.dom.minidom
-from xml.etree.ElementTree import Element, SubElement, tostring
 
-from mo.front.extractor import update_ie_fields
-from mo.graph.graph import *
-from mo.utils.unsupported_ops import UnsupportedOps
-from mo.utils.utils import refer_to_faq_msg
-from mo.utils.version import get_version
-
-def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed: bool=True):
+def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed: bool = True):
 
     for node_name in list(graph.nodes()):
         if 'R5' in version:
@@ -35,7 +34,7 @@ def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed:
                 node.kind == 'data' and (
                 (len(node.out_edges()) == 1 and 'bin' not in node.out_edge(0)) or
                 node.has_and_set('is_output')
-        ) and
+                ) and
                 len(node.in_nodes()) == 0):
 
             if node.has_valid('value'):
@@ -49,9 +48,12 @@ def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed:
                 graph.add_node(copy_data_node_name, kind='data', precision="FP32", shape=np.array(node.shape),
                                value=np.array(node.value))
                 if node.has_valid('force_precision'):
-                    Node(graph, copy_data_node_name)['force_precision'] = node.force_precision
-                    Node(graph, const_node_name)['force_precision'] = node.force_precision
-                graph.add_edges_from([(copy_data_node_name, const_node_name, {'in': 0, 'bin': 'custom'})])
+                    Node(graph, copy_data_node_name)[
+                        'force_precision'] = node.force_precision
+                    Node(graph, const_node_name)[
+                        'force_precision'] = node.force_precision
+                graph.add_edges_from(
+                    [(copy_data_node_name, const_node_name, {'in': 0, 'bin': 'custom'})])
             elif start_data_nodes_are_not_allowed:
                 log.debug('node = {}'.format(node.graph.node[node.id]))
                 # TODO for body sub-graph it shouldn't be reported as an error
@@ -67,7 +69,8 @@ def serialize_constants(weights, graph: nx.MultiDiGraph,  data_type=np.float32):
 
     bin_hashes = {}
 
-    weights = serialize_constants_recursively(weights, graph, data_type, bin_hashes)
+    weights = serialize_constants_recursively(
+        weights, graph, data_type, bin_hashes)
 
     return weights
 
@@ -100,7 +103,6 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
                 blob_flatten = blob.flatten()
                 weights = np.append(weights, blob_flatten)
 
-
                 graph.node[node.node]['offset'] = start
                 graph.node[node.node]['size'] = end - start
                 start = start + blob.size * precision
@@ -121,7 +123,8 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
         if node.has_valid('sub_graphs'):
             for sub_graph_attr_name in node.sub_graphs:
                 sub_graph = node[sub_graph_attr_name]
-                weights = serialize_constants_recursively(weights, sub_graph, data_type, bin_hashes)
+                weights = serialize_constants_recursively(
+                    weights, sub_graph, data_type, bin_hashes)
 
     return weights
 
@@ -150,9 +153,11 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
         if int(d) != d:
             raise Error('The value "{}" for shape is not integer.'.format(d))
         if not isinstance(d, np.int64):
-            log.warning('The element of shape is not np.int64 value. Converting the value "{}" to integer'.format(d))
+            log.warning(
+                'The element of shape is not np.int64 value. Converting the value "{}" to integer'.format(d))
             d = int(d)
         dim.text = str(d)
+
 
 def sorted_inputs(node):
     if 'R5' in version:
@@ -160,11 +165,13 @@ def sorted_inputs(node):
     else:
         return node.get_sorted_inputs(node)
 
+
 def sorted_outputs(node):
     if 'R5' in version:
         return get_sorted_outputs(node)
     else:
         return node.get_sorted_outputs(node)
+
 
 def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etree.ElementTree.Element):
     # input ports
@@ -199,7 +206,7 @@ def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etr
             port = SubElement(outputs, 'port')
             port.set('id', str(d['out']))
             assert node.graph.node[v][
-                       'shape'] is not None, 'Output shape is not calculated properly for node {}'.format(
+                'shape'] is not None, 'Output shape is not calculated properly for node {}'.format(
                 node.id)
             xml_shape(node.graph.node[v]['shape'], port)
 
@@ -216,7 +223,7 @@ def xml_consts(graph: nx.MultiDiGraph, node: Node, element: xml.etree.ElementTre
                 const.set('size', str(graph.node[u]['size']))
             except Exception as e:
                 raise Error('Unable to access binary attributes ("offset" and/or "size") '
-                    'for blobs for node {}. Details: {}'.format(node.soft_get('name'), e))
+                            'for blobs for node {}. Details: {}'.format(node.soft_get('name'), e))
 
 
 def soft_get(node, attr):
@@ -243,7 +250,8 @@ def serialize_element(
                 else:
                     value = node[attr[1]] if attr[1] in node else None
             except TypeError as e:
-                raise Error('Unable to extract {} from layer {}', key, soft_get(node, 'name')) from e
+                raise Error('Unable to extract {} from layer {}',
+                            key, soft_get(node, 'name')) from e
             except Exception as e:
                 raise Error(
                     'Cannot emit value for attribute {} for layer {}. '
@@ -253,7 +261,8 @@ def serialize_element(
                     attr
                 ) from e
         elif isinstance(attr, dict):
-            node_attrs = node.graph.node[node.id] if isinstance(node, Node) else node
+            node_attrs = node.graph.node[node.id] if isinstance(
+                node, Node) else node
             for key in attr.keys():
                 if key in node_attrs:
                     for k, v in node_attrs[key].items():
@@ -264,7 +273,8 @@ def serialize_element(
             value = node[attr] if attr in node else None
         if value is not None:
             element.set(key, str(value))
-    serialize_node_attributes(graph, node, subelements, element, edges, unsupported)
+    serialize_node_attributes(graph, node, subelements,
+                              element, edges, unsupported)
     if len(element.attrib) == 0 and len(element.getchildren()) == 0:
         parent_element.remove(element)
 
@@ -273,7 +283,8 @@ def serialize_meta_list(graph, node, schema, element, edges, unsupported):
     _, list_accessor, sub_schema = schema
     items = list_accessor(node)  # this is a list of dictionary-like objects
     for item in items:
-        serialize_node_attributes(graph, item, [sub_schema], element, edges, unsupported)
+        serialize_node_attributes(
+            graph, item, [sub_schema], element, edges, unsupported)
 
 
 def serialize_node_attributes(
@@ -301,11 +312,13 @@ def serialize_node_attributes(
             else:
                 name = s[0]
                 if name == '@list':
-                    serialize_meta_list(graph, node, s, parent_element, edges, unsupported)
+                    serialize_meta_list(
+                        graph, node, s, parent_element, edges, unsupported)
                 elif name == '@network':
                     serialize_network(node[s[1]], parent_element, unsupported)
                 else:
-                    serialize_element(graph, node, s, parent_element, edges, unsupported)
+                    serialize_element(
+                        graph, node, s, parent_element, edges, unsupported)
     except Exception as e:
         raise Error(
             'Error while emitting attributes for layer {} (id = {}). '
@@ -318,7 +331,8 @@ def serialize_node_attributes(
 def create_pre_process_block_for_image(net: xml.etree.ElementTree.Element, ref_layer_names: list, mean_offset: tuple,
                                        mean_size: tuple):
     pre_process = SubElement(net, 'pre-process')
-    pre_process.set('mean-precision', 'FP32')  # TODO: to think about need to output FP16 mean values
+    # TODO: to think about need to output FP16 mean values
+    pre_process.set('mean-precision', 'FP32')
     # TODO: extend it for several inputs
     pre_process.set('reference-layer-name', ref_layer_names[0])
     for idx in range(len(mean_size)):
@@ -354,8 +368,8 @@ def add_meta_data(net: xml.etree.ElementTree.Element, meta_info: dict):
     parameters = SubElement(meta, 'cli_parameters')
     [SubElement(parameters, str(key)).set('value', str(meta_info[key])) for key in sorted(meta_info.keys()) if
      key != 'unset']
-    SubElement(parameters, 'unset').set('unset_cli_parameters', ', '.join(sorted(meta_info['unset'])))
-
+    SubElement(parameters, 'unset').set(
+        'unset_cli_parameters', ', '.join(sorted(meta_info['unset'])))
 
 
 def serialize_network(graph, net_element, unsupported):
@@ -375,9 +389,11 @@ def serialize_network(graph, net_element, unsupported):
             unsupported.add(node)
             continue
         try:
-            serialize_node_attributes(graph, node, node.IE, layers, edges, unsupported)
+            serialize_node_attributes(
+                graph, node, node.IE, layers, edges, unsupported)
         except Error as e:
-            raise Error(str(e).replace('<SUB-ELEMENT>', '{} (id = {})'.format(node.soft_get('name'), node.id))) from e
+            raise Error(str(e).replace(
+                '<SUB-ELEMENT>', '{} (id = {})'.format(node.soft_get('name'), node.id))) from e
 
 
 def generate_ie_ir(graph: nx.MultiDiGraph, file_name: str, input_names: tuple = (), mean_offset: tuple = (),
@@ -386,10 +402,12 @@ def generate_ie_ir(graph: nx.MultiDiGraph, file_name: str, input_names: tuple = 
     net = Element('net')
     net.set('name', graph.name)
     net.set('version', str((graph.graph['ir_version'])))
-    net.set('batch', '1')  # TODO substitute real batches here (is it a number or is it an index?)
+    # TODO substitute real batches here (is it a number or is it an index?)
+    net.set('batch', '1')
 
     if mean_size or mean_offset:
-        create_pre_process_block_for_image(net, input_names, mean_offset, mean_size)
+        create_pre_process_block_for_image(
+            net, input_names, mean_offset, mean_size)
 
     if 'mean_values' in graph.graph.keys():
         for input_name, values in graph.graph['mean_values'].items():
