@@ -12,6 +12,8 @@ import numpy
 import test_util
 import onnx_ml_pb2
 import predict_pb2
+import prediction_service_pb2_grpc
+import grpc
 
 class HttpJsonPayloadTests(unittest.TestCase):
     server_ip = '127.0.0.1'
@@ -357,6 +359,69 @@ class HttpEndpointTests(unittest.TestCase):
         r = requests.get(url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode('utf-8'), 'Healthy')
+
+class GRPCTests(unittest.TestCase):
+    server_ip = '127.0.0.1'
+    server_port = 54321
+    server_app_path = ''
+    test_data_path = ''
+    model_path = ''
+    log_level = 'verbose'
+    server_app_proc = None
+    wait_server_ready_in_seconds = 1
+
+    @classmethod
+    def setUpClass(cls):
+        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        test_util.prepare_mnist_model(onnx_model)
+        cmd = [cls.server_app_path, '--grpc_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
+        test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
+        cls.server_app_proc = subprocess.Popen(cmd)
+        test_util.test_log('Server app PID: {0}'.format(cls.server_app_proc.pid))
+        test_util.test_log('Sleep {0} second(s) to wait for server initialization'.format(cls.wait_server_ready_in_seconds))
+        time.sleep(cls.wait_server_ready_in_seconds)
+
+
+    @classmethod
+    def tearDownClass(cls):
+        test_util.test_log('Shutdown server app')
+        cls.server_app_proc.kill()
+        test_util.test_log('PID {0} has been killed: {1}'.format(cls.server_app_proc.pid, test_util.is_process_killed(cls.server_app_proc.pid)))
+
+
+    def test_mnist_happy_path(self):
+        input_data_file = os.path.join(self.test_data_path, 'mnist_test_data_set_0_input.pb')
+        output_data_file = os.path.join(self.test_data_path, 'mnist_test_data_set_0_output.pb')
+
+        with open(input_data_file, 'rb') as f:
+            request_payload = f.read()
+
+        request = predict_pb2.PredictRequest()
+        request.ParseFromString(request_payload)
+        uri = "{}:{}".format(self.server_ip, self.server_port)
+        test_util.test_log(uri)
+        with grpc.insecure_channel(uri) as channel:
+            stub = prediction_service_pb2_grpc.PredictionServiceStub(channel)
+            actual_result = stub.Predict(request)
+
+        expected_result = predict_pb2.PredictResponse()
+        with open(output_data_file, 'rb') as f:
+            expected_result.ParseFromString(f.read())
+
+        for k in expected_result.outputs.keys():
+            self.assertEqual(actual_result.outputs[k].data_type, expected_result.outputs[k].data_type)
+
+        count = 1
+        for i in range(0, len(expected_result.outputs['Plus214_Output_0'].dims)):
+            self.assertEqual(actual_result.outputs['Plus214_Output_0'].dims[i], expected_result.outputs['Plus214_Output_0'].dims[i])
+            count = count * int(actual_result.outputs['Plus214_Output_0'].dims[i])
+
+        actual_array = numpy.frombuffer(actual_result.outputs['Plus214_Output_0'].raw_data, dtype=numpy.float32)
+        expected_array = numpy.frombuffer(expected_result.outputs['Plus214_Output_0'].raw_data, dtype=numpy.float32)
+        self.assertEqual(len(actual_array), len(expected_array))
+        self.assertEqual(len(actual_array), count)
+        for i in range(0, count):
+            self.assertTrue(test_util.compare_floats(actual_array[i], expected_array[i], rel_tol=0.001))
 
 
 if __name__ == '__main__':
