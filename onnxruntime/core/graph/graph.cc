@@ -549,6 +549,15 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
+std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
+  std::vector<gsl::not_null<const Graph*>> subgraphs;
+  subgraphs.reserve(attr_to_subgraph_map_.size());
+  std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
+                 [](const auto& entry) { return entry.second; });
+
+  return subgraphs;
+}
+
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
                       bool include_missing_optional_defs) const {
   for (const auto* arg : InputDefs()) {
@@ -1321,6 +1330,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
+
     subgraph_inputs = &required_subgraph_inputs;
     num_subgraph_inputs = num_required_subgraph_inputs;
   }
@@ -1870,6 +1880,8 @@ Status Graph::Resolve(bool no_proto_sync_required) {
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
 
+  ++num_resolves_;
+
   return Status::OK();
 }
 
@@ -2224,7 +2236,16 @@ void Graph::CleanUnusedInitializers() {
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
     if (used_args.find(name) == end) {
-      LOGS_DEFAULT(WARNING) << name << " exists in this graph's initializers but it is not used by any node";
+      // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
+      // from the model.
+      // on later calls we are removing initializers that optimizations have made redundant.
+      if (num_resolves_ == 0) {
+        LOGS_DEFAULT(WARNING) << "Removing initializer '"
+                              << name << "'. It is not used by any node and should be removed from the model.";
+      } else {
+        LOGS_DEFAULT(INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+      }
+
       erase_list.push_back(name);
     }
   }

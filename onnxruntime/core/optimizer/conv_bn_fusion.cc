@@ -23,31 +23,21 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
   // Get initializers of BatchNormalization
   const auto& bn_inputs = bn_node.InputDefs();
-  const ONNX_NAMESPACE::TensorProto* bn_scale_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(bn_inputs[1]->Name(), bn_scale_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* bn_scale_tensor_proto = graph_utils::GetConstantInitializer(graph, bn_inputs[1]->Name());
+  ORT_ENFORCE(bn_scale_tensor_proto);
 
-  const ONNX_NAMESPACE::TensorProto* bn_B_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(bn_inputs[2]->Name(), bn_B_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* bn_B_tensor_proto = graph_utils::GetConstantInitializer(graph, bn_inputs[2]->Name());
+  ORT_ENFORCE(bn_B_tensor_proto);
 
-  const ONNX_NAMESPACE::TensorProto* bn_mean_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(bn_inputs[3]->Name(), bn_mean_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* bn_mean_tensor_proto = graph_utils::GetConstantInitializer(graph, bn_inputs[3]->Name());
+  ORT_ENFORCE(bn_mean_tensor_proto);
 
-  const ONNX_NAMESPACE::TensorProto* bn_var_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(bn_inputs[4]->Name(), bn_var_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* bn_var_tensor_proto = graph_utils::GetConstantInitializer(graph, bn_inputs[4]->Name());
+  ORT_ENFORCE(bn_var_tensor_proto);
 
   const auto& conv_inputs = conv_node.InputDefs();
-  const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
-    return Status::OK();
-  }
+  const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
+  ORT_ENFORCE(conv_W_tensor_proto);
 
   // Currently, fusion is only supported for float or double data type.
   if (!Initializer::IsSupportedDataType(bn_scale_tensor_proto) ||
@@ -76,12 +66,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   auto bn_var = std::make_unique<Initializer>(bn_var_tensor_proto);
   auto conv_W = std::make_unique<Initializer>(conv_W_tensor_proto);
 
-  const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   std::unique_ptr<Initializer> conv_B = nullptr;
+  const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (conv_inputs.size() == 3) {
-    if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto)) {
-      return Status::OK();
-    }
+    conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
+    ORT_ENFORCE(conv_B_tensor_proto);
 
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->dims_size() != 1 ||
@@ -124,24 +113,23 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   }
 
   // Replace initializers of conv node
-  graph.RemoveInitializedTensor(conv_W_tensor_proto->name());
+  graph_utils::ReplaceInitializer(graph, conv_W_tensor_proto->name(), new_conv_W_tensor_proto);
+
   if (conv_inputs.size() == 3) {
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 6011)  // Not deferencing null pointer. conv_B_tensor_proto is set on line 93
 #endif
-    graph.RemoveInitializedTensor(conv_B_tensor_proto->name());
+    graph_utils::ReplaceInitializer(graph, conv_B_tensor_proto->name(), new_conv_B_tensor_proto);
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
   } else {
-    graph.RemoveInitializedTensor(bn_B_tensor_proto->name());
+    graph_utils::ReplaceInitializer(graph, bn_B_tensor_proto->name(), new_conv_B_tensor_proto);
     conv_node.MutableInputDefs().push_back(bn_B_node_arg);
     conv_node.MutableInputArgsCount()[2] = 1;
   }
-  graph.AddInitializedTensor(new_conv_W_tensor_proto);
-  graph.AddInitializedTensor(new_conv_B_tensor_proto);
 
   // Remove BN node.
   auto* bn_node_to_remove = graph.GetNode(bn_node.Index());

@@ -148,9 +148,9 @@ void RegisterNchwcSchemas() {
           AttributeProto::STRING,
           OPTIONAL)
       .Attr(
-          "alpha",
+          "activation_params",
           "",
-          AttributeProto::FLOAT,
+          AttributeProto::FLOATS,
           OPTIONAL)
       .Input(0, "X", "", "T")
       .Input(1, "W", "", "T")
@@ -862,10 +862,15 @@ activation.)DOC")
           AttributeProto::INTS,
           OPTIONAL)
       .Attr(
-          "strides", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("pads",
-            "",
-            AttributeProto::INTS, OPTIONAL)
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
       .Attr(
           "group",
           "",
@@ -877,9 +882,9 @@ activation.)DOC")
           AttributeProto::STRING,
           OPTIONAL)
       .Attr(
-          "alpha",
+          "activation_params",
           "",
-          AttributeProto::FLOAT,
+          AttributeProto::FLOATS,
           OPTIONAL)
       .Input(
           0,
@@ -891,7 +896,12 @@ activation.)DOC")
           "W",
           "",
           "T")
-      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Input(
+          2,
+          "B",
+          "",
+          "T",
+          OpSchema::Optional)
       .Output(
           0,
           "Y",
