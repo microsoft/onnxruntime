@@ -1,13 +1,9 @@
 #!/bin/bash
 set -e
 
-whereis -l
+# cmake==3.13.2 is actually 3.12.2 lol
+python3 -m pip install cmake==3.13.2.post1
 
-whereis cmake
-
-python3 -m pip install cmake==3.13.2
-
-whereis cmake
 cmake --version
 
 #download Android NDK r19c
