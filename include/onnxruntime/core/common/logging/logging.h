@@ -183,12 +183,6 @@ class LoggingManager final {
   static void SetDefaultLoggerSeverity(Severity severity);
 
   /**
-     Change the minimum severity level for log messages to be output by the default logger.
-     @param severity The severity.
-  */
-  static void SetDefaultLoggerSeverity(Severity severity);
-
-  /**
      Logs a FATAL level message and creates an exception that can be thrown with error information.
      @param category The log category.
      @param location The location the log message was generated.
@@ -324,16 +318,6 @@ inline const Logger& LoggingManager::DefaultLogger() {
 inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
   if (s_default_logger_ == nullptr) {
     // fail early for attempted misuse. don't use logging macros as we have no logger.
-    throw std::logic_error("Attempt to use DefaultLogger but none has been registered.");
-  }
-
-  s_default_logger_->SetSeverity(severity);
-}
-
-inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
-  if (s_default_logger_ == nullptr) {
-    // fail early for attempted misuse. don't use logging macros as we have no logger.
-
     throw std::logic_error("Attempt to use DefaultLogger but none has been registered.");
   }
 
