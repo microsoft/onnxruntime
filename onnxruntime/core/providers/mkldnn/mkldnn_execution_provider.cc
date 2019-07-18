@@ -112,8 +112,7 @@ std::shared_ptr<KernelRegistry> MKLDNNExecutionProvider::GetKernelRegistry() con
 }
 
 bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
-                                          const std::vector<const KernelRegistry*>& kernel_registries,
-                                          std::vector<std::unique_ptr<ComputeCapability>>& result) const {
+                                          const std::vector<const KernelRegistry*>& kernel_registries) const {
   // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
   // MKLDNN_SUBGRAPH environment variable
   bool use_subgraph = true;
@@ -148,13 +147,11 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
   if (FP16_graph || !mkldnn_nodes_in_the_graph) {
     // FP16 not supported yet.
     use_subgraph = false;
-    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   } else {
     const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
     if (env != nullptr) {
       if (atoi(env) == 0) {
         use_subgraph = false;
-        result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
       }
     }
   }
@@ -224,16 +221,16 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
-  std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
   // ORT_MKLDNN_SUBGRAPH environment variable
-  if (UseSubgraph(graph_viewer, kernel_registries, result) == false) {
-    return result;
+  if (UseSubgraph(graph_viewer, kernel_registries) == false) {
+    return IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   }
 
   LOGS_DEFAULT(INFO) << "Using MKL-DNN Subgraph";
   // use sub-graph implementation
+  std::vector<std::unique_ptr<ComputeCapability>> result;
   mkl_dnn::Subgraph::SubgraphVariables sub_var;
   std::shared_ptr<mkl_dnn::Subgraph> subgraph_ptr;
 
