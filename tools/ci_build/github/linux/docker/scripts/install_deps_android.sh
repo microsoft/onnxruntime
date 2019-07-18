@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
-mkdir -p /tmp/src
-aria2c -q -d /tmp/src https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2.tar.gz
-tar -xf /tmp/src/cmake-3.13.2.tar.gz -C /tmp/src
-cd /tmp/src/cmake-3.13.2
-./configure --prefix=/usr --parallel=`nproc` --system-curl --system-zlib --system-expat
-make -j`nproc`
-make install
+
+whereis -l
+
+whereis cmake
+
+python3 -m pip install cmake==3.13.2
+
+whereis cmake
+cmake --version
 
 #download Android NDK r19c
 aria2c -q -d /tmp https://dl.google.com/android/repository/android-ndk-r19c-linux-x86_64.zip
@@ -15,5 +17,3 @@ cd /
 rm -rf /tmp/src
 
 apt-get -y remove libprotobuf-dev protobuf-compiler
-
-
