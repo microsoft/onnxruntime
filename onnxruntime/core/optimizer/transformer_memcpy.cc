@@ -69,7 +69,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kTensorrtExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider, logger_);
-      auto current_modified = copy_impl.ModifyGraph(registry_manager_); 
+      auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
     }
   }
@@ -167,18 +167,20 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     const KernelCreateInfo* kci = nullptr;
     kernel_registries.SearchKernelRegistry(node, &kci);
 
-    auto status = onnxruntime::Node::ForEachWithIndex(node.InputDefs(),
-                                                      [this, &kci, &initializers_consumed](const onnxruntime::NodeArg& arg, size_t index) {
-                                                        // check if this NodeArg corresponds to an initializer defined in current graph or outer graph level
-                                                        const auto* initializer_tensor_proto = graph_utils::GetInitializer(graph_, arg.Name(), true);
-                                                        if (initializer_tensor_proto != nullptr)
-                                                          initializers_consumed[arg.Name()] = initializer_tensor_proto;
-                                                        if (kci && kci->kernel_def->IsInputOnCpu(index))
-                                                          non_provider_input_defs_.insert(&arg);
-                                                        else
-                                                          provider_input_defs_.insert(&arg);
-                                                        return Status::OK();
-                                                      });
+    auto status = onnxruntime::Node::ForEachWithIndex(
+        node.InputDefs(),
+        [this, &kci, &initializers_consumed](const onnxruntime::NodeArg& arg, size_t index) {
+          // check if this NodeArg is an initializer defined in current outer graph level
+          const auto* initializer_tensor_proto =
+              graph_utils::GetInitializer(graph_, arg.Name(), true);
+          if (initializer_tensor_proto != nullptr)
+            initializers_consumed[arg.Name()] = initializer_tensor_proto;
+          if (kci && kci->kernel_def->IsInputOnCpu(index))
+            non_provider_input_defs_.insert(&arg);
+          else
+            provider_input_defs_.insert(&arg);
+          return Status::OK();
+        });
 
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
@@ -309,14 +311,14 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       LOGS(logger_, INFO) << "Making a copy of the initializer: " << name << " and the copy's name is: " << new_def_name;
 
       if (graph_.IsSubgraph()) {
-          // TODO: The copy being made is possibly redundant 
-          // When multiple subraphs consume the same initializer as an implicit input,
-          // mulitple copies of the initializer will be made into the provider device
-          // This should not directly affect runtime performance as the copies occur during initialization
-          // but overuse of the provider device's memory is definitely inefficient
-          // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer 
-          // For now, just logging the information
-          LOGS(logger_, INFO) << "Possibly this is a redundant copy into the provider device for the initializer: " << name;  
+        // TODO: The copy being made is possibly redundant
+        // When multiple subraphs consume the same initializer as an implicit input,
+        // multiple copies of the initializer will be made into the provider device
+        // This should not directly affect runtime performance as the copies occur during initialization
+        // but overuse of the provider device's memory is definitely inefficient
+        // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
+        // For now, just logging the information
+        LOGS(logger_, INFO) << "Possibly this is a redundant copy into the provider device for the initializer: " << name;
       }
 
       graph_.AddInitializedTensor(new_tensor_proto);
@@ -352,6 +354,7 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
     p_node->ReplaceDefs(dup_replacements);
   }
 
+  // This denotes a modification to the graph
   return !replacements.empty();
 }
 
