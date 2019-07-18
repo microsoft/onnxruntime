@@ -21,9 +21,6 @@ if [ $BUILD_OS = "manylinux2010" ]; then
     COMMON_BUILD_ARGS="${COMMON_BUILD_ARGS} --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python3 -c 'import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())')"
     # Python does not provide a shared library on manylinux, use another library
     COMMON_BUILD_ARGS="${COMMON_BUILD_ARGS} PYTHON_LIBRARY=/usr/lib64/librt.so"
-
-elif [ $BUILD_OS = "android" ]; then
-    COMMON_BUILD_ARGS="--android --android_ndk_path /android-ndk/"
 fi
 if [ $BUILD_DEVICE = "gpu" ]; then
     if [ $BUILD_OS = "manylinux2010" ]; then
@@ -47,7 +44,7 @@ elif [ $BUILD_DEVICE = "tensorrt" ]; then
         --use_tensorrt --tensorrt_home /workspace/tensorrt \
         --cuda_home /usr/local/cuda \
         --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
-else #cpu, ngraph and openvino
+else #cpu, ngraph, openvino and nnapi
     python3 $SCRIPT_DIR/../../build.py --build_dir /build \
         --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
 fi

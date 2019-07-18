@@ -4,7 +4,7 @@ jobs:
   steps:
     - template: templates/set-test-data-variables-step.yml
 
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d nnapi -x " --use_dnnlibrary"'
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o android -r $(Build.BinariesDirectory) -d nnapi -x " --android --android_ndk_path /android-ndk/ --android_abi x86_64 --use_dnnlibrary"'
       displayName: 'Command Line Script'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
