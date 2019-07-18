@@ -247,7 +247,7 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
     //Check if the Operation is Supported by OpenVINO
     if (!IsOpSupported(node->OpType())) {
-      
+
       {
           throw "Operation is not supported by OpenVINO";
       }
@@ -263,7 +263,7 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
                {
                   throw "node_input is zero dimension";
                 }
-                
+
         }
     }
 
@@ -296,14 +296,14 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
         if(input_count > 1)
             {
-                  throw "Reshape operation: Input count is greater than one";                  
+                  throw "Reshape operation: Input count is greater than one";
             }
 
         //Myriad and HDDL plugins do not support Reshape with two initializers
         if(dev_id == "MYRIAD" || dev_id == "HDDL")
             if(input_count == 0)
                 {
-                  throw "Myriad and HDDL plugins do not support Reshape with two initializers ";                 
+                  throw "Myriad and HDDL plugins do not support Reshape with two initializers ";
             }
 
         if(!IsDimensionSupported(node,dev_id)){
@@ -334,10 +334,10 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     if (node->OpType() == "MatMul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
         if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-          
+
                 throw "Matmul is  Susported if it is followed by Add";
-                
-            
+
+
         }
       }
 
@@ -393,7 +393,7 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
         {
 			    throw "Auto pad shouldn't be SAME_UPPER and stride_ints shouldn't be Zero at same time";
         }
-          
+
 
       //Dilations have to be 1
       auto dilations_ints = attributes["dilations"].ints();
@@ -524,18 +524,19 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 #endif
 
   int counter = 0;
- 
+
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
   std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
 
- 
+
   try{
   CheckGraphSupported(graph_viewer, device_id);
 } catch(const char* error_msg) {
   LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations." << error_msg;
+  return result;
 }
 
   std::string model_proto_strbuf;
