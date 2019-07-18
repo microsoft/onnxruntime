@@ -84,7 +84,7 @@ else()
     if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
       set(ARM TRUE)
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
-      set(ARM64 TRUE)
+      set(ARM TRUE) # Android NDK fails to compile sgemma.s
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
       set(X86_64 TRUE)
     elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
