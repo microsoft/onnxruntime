@@ -639,25 +639,26 @@ if (onnxruntime_BUILD_SERVER)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/prediction_service_impl_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/executor_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
 
   add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
-  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock gsl onnx onnx_proto server_proto)
+  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock gsl onnx onnx_proto server_proto server_grpc_proto)
   add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core PRIVATE ${ONNXRUNTIME_ROOT} )
+  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core  ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT} )
   if(UNIX)
     target_compile_options(onnxruntime_test_utils_for_server PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   endif()
-  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} spdlog::spdlog)
+  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} spdlog::spdlog server_grpc_proto)
 
 
   AddTest(
     TARGET onnxruntime_server_tests
     SOURCES ${onnxruntime_test_server_src}
-    LIBS ${onnxruntime_test_server_libs} server_proto onnxruntime_server_lib ${onnxruntime_test_providers_libs}
+    LIBS ${onnxruntime_test_server_libs} server_proto server_grpc_proto onnxruntime_server_lib ${onnxruntime_test_providers_libs}
     DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
   )
 
@@ -667,6 +668,20 @@ if (onnxruntime_BUILD_SERVER)
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
+          
+  set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
+
+  add_custom_command(
+    TARGET onnxruntime_server_tests
+    COMMAND $<TARGET_FILE:protobuf::protoc>
+    ARGS 
+      --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+      --plugin=protoc-gen-grpc="${_GRPC_PY_PLUGIN_EXECUTABLE}"
+      -I ${grpc_proto_path}
+      "${grpc_proto}"
+    DEPENDS "${grpc_proto}"
+    COMMENT "Running ${_GRPC_PY_PLUGIN_EXECUTABLE} on ${grpc_proto}"
+    )
 
   add_custom_command(
     TARGET onnxruntime_server_tests POST_BUILD
@@ -679,6 +694,9 @@ if (onnxruntime_BUILD_SERVER)
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
     COMMAND ${CMAKE_COMMAND} -E copy
       ${CMAKE_CURRENT_BINARY_DIR}/predict_pb2.py
+      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${grpc_py}
       ${CMAKE_CURRENT_BINARY_DIR}/server_test/
   )
 
