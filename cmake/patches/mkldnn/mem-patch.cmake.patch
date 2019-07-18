@@ -1,7 +1,3 @@
-From 9037a0caa19a36fc04156668abdbd9a426810d39 Mon Sep 17 00:00:00 2001
-From: sreekanth <sreekanth.v.yalachigere@intel.com>
-Date: Thu, 11 Jul 2019 16:04:52 -0700
-Subject: [PATCH] mem_fix
 
 ---
  src/cpu/jit_avx2_1x1_convolution.cpp                 | 6 +++---
