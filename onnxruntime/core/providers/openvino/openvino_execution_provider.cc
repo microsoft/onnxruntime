@@ -64,145 +64,131 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 }
 
 //Gets the input count of given node
-int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set){
-
-    int count = 0;
-    for(const auto& input : node->InputDefs()){
-        auto name = input->Name();
-        auto it = initializer_set.find(name);
-        if(it == initializer_set.end()){
-            count++;
-        }
+int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
+  int count = 0;
+  for (const auto& input : node->InputDefs()) {
+    auto name = input->Name();
+    auto it = initializer_set.find(name);
+    if (it == initializer_set.end()) {
+      count++;
     }
-    return count;
+  }
+  return count;
 }
 
 //Checks whether the dimensions of a given node are supported in OpenVINO
-bool IsDimensionSupported(const Node* node, std::string dev_id){
+bool IsDimensionSupported(const Node* node, std::string dev_id) {
+  auto node_inputs = node->InputDefs();
+  size_t input_dims = 0;
+  if (node_inputs[0]->Shape() != nullptr) {
+    input_dims = node_inputs[0]->Shape()->dim_size();
+  }
 
-    auto node_inputs = node->InputDefs();
-    size_t input_dims = 0;
-    if(node_inputs[0]->Shape() != nullptr){
-        input_dims = node_inputs[0]->Shape()->dim_size();
+  if (node->OpType().find("Pool") != std::string::npos) {
+    if (dev_id == "MYRIAD" || dev_id == "HDDL") {
+      if (input_dims != 3 && input_dims != 4)
+        return false;
+    } else if (input_dims != 4 && input_dims != 5) {
+      return false;
+    }
+  }
+
+  //Only support 4D and 5D Transposes
+  if (node->OpType() == "Transpose") {
+    if (input_dims == 2 || input_dims == 3 || input_dims > 5)
+      return false;
+  }
+
+  if (node->OpType() == "Unsqueeze") {
+    auto attributes = node->GetAttributes();
+    auto axes = attributes["axes"].ints();
+    if (input_dims + axes.size() > 5)
+      return false;
+    if (dev_id == "MYRIAD" || dev_id == "HDDL") {
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+        return false;
+    }
+  }
+
+  if (node->OpType() == "Reshape") {
+    //Don't support Reshape without output dims
+    auto node_outputs = node->OutputDefs();
+    if (node_outputs[0]->Shape() != nullptr && node_outputs[0]->Shape()->dim_size() == 0)
+      return false;
+
+    if (dev_id == "MYRIAD" || dev_id == "HDDL") {
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+        return false;
+    }
+  }
+
+  if (node->OpType() == "Softmax") {
+    //First dimension of Softmax input has to be 1
+    if (input_dims != 0) {
+      if (node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+        return false;
     }
 
-    if(node->OpType().find("Pool") != std::string::npos){
-
-        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(input_dims != 3 && input_dims != 4)
-                return false;
-        } else if(input_dims != 4 && input_dims != 5){
-            return false;
-        }
+    //3D input not supported on GPU, MYRIAD and HDDL
+    if (dev_id == "GPU" || dev_id == "MYRIAD" || dev_id == "HDDL") {
+      if (input_dims == 3)
+        return false;
     }
-
-    //Only support 4D and 5D Transposes
-    if(node->OpType() == "Transpose"){
-
-        if(input_dims == 2 || input_dims == 3 || input_dims > 5)
-            return false;
+  }
+  //Only 2D MatMul is supported
+  if (node->OpType() == "MatMul") {
+    for (size_t i = 0; i < node_inputs.size(); i++) {
+      if (node_inputs[i]->Shape() != nullptr) {
+        if (node_inputs[i]->Shape()->dim_size() != 2)
+          return false;
+      }
     }
+  }
 
-    if(node->OpType() == "Unsqueeze"){
-
-        auto attributes = node->GetAttributes();
-        auto axes = attributes["axes"].ints();
-        if(input_dims + axes.size() > 5)
-            return false;
-        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
-                return false;
-        }
+  if (node->OpType() == "Flatten") {
+    if (dev_id == "MYRIAD" || dev_id == "HDDL") {
+      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
+        return false;
     }
+  }
 
-    if(node->OpType() == "Reshape"){
-
-        //Don't support Reshape without output dims
-        auto node_outputs = node->OutputDefs();
-        if(node_outputs[0]->Shape() != nullptr && node_outputs[0]->Shape()->dim_size() == 0)
-            return false;
-
-        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-
-            if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
-                return false;
-
-        }
-    }
-
-    if(node->OpType() == "Softmax"){
-
-        //First dimension of Softmax input has to be 1
-        if(input_dims != 0 ){
-            if(node_inputs[0]->Shape()->dim(0).dim_value() != 1)
-                return false;
-        }
-
-        //3D input not supported on MYRIAD and HDDL
-        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(input_dims == 3)
-                return false;
-        }
-    }
-    //Only 2D MatMul is supported
-    if(node->OpType() == "MatMul"){
-        for(size_t i = 0; i < node_inputs.size(); i++){
-
-            if(node_inputs[i]->Shape() != nullptr){
-                if(node_inputs[i]->Shape()->dim_size() != 2)
-                    return false;
-            }
-        }
-    }
-
-    if(node->OpType() == "Flatten"){
-
-        if(dev_id == "MYRIAD" || dev_id == "HDDL"){
-            if(node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim(0).dim_value() != 1)
-                return false;
-        }
-    }
-
-    return true;
+  return true;
 }
 
 //Checks whether the node is supported by OpenVINO
-bool IsOpSupported(std::string name){
+bool IsOpSupported(std::string name) {
+  std::set<std::string> supported_ops = {
+      "Add",
+      "BatchNormalization",
+      "Conv",
+      "GlobalAveragePool",
+      "Relu",
+      "Reshape",
+      "Flatten",
+      "Gemm",
+      "MaxPool",
+      "AveragePool",
+      "Concat",
+      "Dropout",
+      "LRN",
+      "Softmax",
+      "Mul",
+      "Sum",
+      "Transpose",
+      "Identity",
+      "MatMul",
+      "Unsqueeze",
+      "ImageScaler",
+      "LeakyRelu",
+      "GlobalMaxPool"};
 
-    std::set<std::string> supported_ops = {
-        "Add",
-        "BatchNormalization",
-        "Conv",
-        "GlobalAveragePool",
-        "Relu",
-        "Reshape",
-        "Flatten",
-        "Gemm",
-        "MaxPool",
-        "AveragePool",
-        "Concat",
-        "Dropout",
-        "LRN",
-        "Softmax",
-        "Mul",
-        "Sum",
-        "Transpose",
-        "Identity",
-        "MatMul",
-        "Unsqueeze",
-        "ImageScaler",
-        "LeakyRelu",
-        "GlobalMaxPool"};
-
-    auto iter = supported_ops.find(name);
-    return iter != supported_ops.end();
+  auto iter = supported_ops.find(name);
+  return iter != supported_ops.end();
 }
-
 
 //Checks if the entire graph is supported by OpenVINO EP and throws eception if any.
 
-void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id){
-
+void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id) {
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
   auto node_indexes = graph_viewer.GetNodesInTopologicalOrder();
@@ -215,136 +201,109 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
   int num_inputs = graph_viewer.GetInputs().size();
   int num_outputs = graph_viewer.GetOutputs().size();
 
-    //GPU Plugin does not support 1D and 5D input
-    if(dev_id == "GPU"){
+  //GPU Plugin does not support 1D and 5D input
+  if (dev_id == "GPU") {
+    for (int i = 0; i < num_inputs; i++) {
+      input_dims = graph_proto->input(i).type().tensor_type().shape().dim_size();
 
-        for(int i = 0; i < num_inputs; i++){
-            input_dims = graph_proto->input(i).type().tensor_type().shape().dim_size();
-
-                if(input_dims == 1 || input_dims == 5)
-                {
-                   throw "GPU plugin doesn't support 1D and 5D input";
-                }
-        }
+      if (input_dims == 1 || input_dims == 5) {
+        throw "GPU plugin doesn't support 1D and 5D input";
+      }
     }
+  }
 
-    //GPU Plugin does not support 5D output
-    if(dev_id == "GPU"){
+  //GPU Plugin does not support 5D output
+  if (dev_id == "GPU") {
+    for (int i = 0; i < num_outputs; i++) {
+      output_dims = graph_proto->output(i).type().tensor_type().shape().dim_size();
 
-        for(int i = 0; i < num_outputs; i++){
-            output_dims = graph_proto->output(i).type().tensor_type().shape().dim_size();
-
-                if(output_dims == 5)
-                {
-                   throw "GPU plugin doesn't support  5D output";
-                }
-        }
+      if (output_dims == 5) {
+        throw "GPU plugin doesn't support  5D output";
+      }
     }
-
+  }
 
   for (auto index : node_indexes) {
     const auto node = graph_viewer.GetNode(index);
 
     //Check if the Operation is Supported by OpenVINO
     if (!IsOpSupported(node->OpType())) {
-
       {
-          throw "Operation is not supported by OpenVINO";
+        throw "Operation is not supported by OpenVINO";
       }
     }
 
     auto node_inputs = node->InputDefs();
 
     //Zero dimension check
-    for(size_t i = 0; i < node_inputs.size(); i++){
-        if(node_inputs[i]->Shape() != nullptr){
-
-            if(node_inputs[i]->Shape()->dim_size() == 0)
-               {
-                  throw "node_input is zero dimension";
-                }
-
+    for (size_t i = 0; i < node_inputs.size(); i++) {
+      if (node_inputs[i]->Shape() != nullptr) {
+        if (node_inputs[i]->Shape()->dim_size() == 0) {
+          throw "Node_input is zero dimension";
         }
+      }
     }
-
-
 
     //BatchNormalization cannot take more than 1 input
-    if(node->OpType() == "BatchNormalization"){
-
-        if(GetInputCount(node,initializers) > 1)
-            {
-               throw "BatchNormalization cannot take more than 1 input";
-            }
+    if (node->OpType() == "BatchNormalization") {
+      if (GetInputCount(node, initializers) > 1) {
+        throw "BatchNormalization: Cannot take more than 1 input";
+      }
     }
-
 
     //Conv cannot take more than 1 input
-    if(node->OpType() == "Conv"){
-
-        if(GetInputCount(node,initializers) > 1)
-            {
-                  throw "Conv cannot take more than 1 input";
-            }
+    if (node->OpType() == "Conv") {
+      if (GetInputCount(node, initializers) > 1) {
+        throw "Conv: Cannot take more than 1 input";
+      }
     }
-
 
     //Reshape should have shape as initializer
-    if(node->OpType() == "Reshape"){
+    if (node->OpType() == "Reshape") {
+      int input_count = GetInputCount(node, initializers);
 
-        int input_count = GetInputCount(node,initializers);
+      if (input_count > 1) {
+        throw "Reshape: Shape should be an initializer";
+      }
 
-        if(input_count > 1)
-            {
-                  throw "Reshape operation: Input count is greater than one";
-            }
-
-        //Myriad and HDDL plugins do not support Reshape with two initializers
-        if(dev_id == "MYRIAD" || dev_id == "HDDL")
-            if(input_count == 0)
-                {
-                  throw "Myriad and HDDL plugins do not support Reshape with two initializers ";
-            }
-
-        if(!IsDimensionSupported(node,dev_id)){
-            throw "Reshape operation: Dimension is not supported";
+      //Myriad and HDDL plugins do not support Reshape with two initializers
+      if (dev_id == "MYRIAD" || dev_id == "HDDL")
+        if (input_count == 0) {
+          throw "Myriad and HDDL plugins do not support Reshape with two initializers ";
         }
+
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Reshape: Dimensions are not supported";
+      }
     }
 
-    if(node->OpType() == "Flatten"){
+    if (node->OpType() == "Flatten") {
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Flatten: Dimensions are not supported";
+      }
 
-        if(!IsDimensionSupported(node,dev_id))
-            {
-                  throw "Flatten operation: Dimension is not supported";
-            }
-
-        //Only default axis is supported for MYRIAD and HDDL plugins
-        auto attributes = node->GetAttributes();
-        auto axis = attributes["axis"].i();
-        if (dev_id == "MYRIAD" || dev_id == "HDDL") {
-            if (axis != 1)
-            {
-                  throw "Only default axis is supported for MYRIAD and HDDL plugins";
-            }
-
+      //Only default axis is supported for MYRIAD and HDDL plugins
+      auto attributes = node->GetAttributes();
+      auto axis = attributes["axis"].i();
+      if (dev_id == "MYRIAD" || dev_id == "HDDL") {
+        if (axis != 1) {
+          throw "Only default axis is supported for MYRIAD and HDDL plugins";
         }
+      }
     }
 
     //MatMul is only supported if it is followed by Add
     if (node->OpType() == "MatMul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
         if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-
-                throw "Matmul is  Susported if it is followed by Add";
-
-
+          throw "Input data type should be float";
         }
       }
 
       auto iter = node->OutputNodesBegin();
 
       if (iter == node->OutputNodesEnd()) {
-        throw "iteration reached end";
+        throw "MatMul should be followed by Add";
       }
 
       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
@@ -352,16 +311,14 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
         if (out_node->OpType() != "Add") {
           {
-                  throw "Outnode optype is not Add";
+            throw "Matmul should be followed by Add";
           }
         }
       }
 
-      if(!IsDimensionSupported(node,dev_id))
-         {
-                  throw "Dimension is not supported";
-         }
-
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Dimension is not supported";
+      }
     }
 
     //Dropout , Identity and Concat can't have graph inputs
@@ -371,8 +328,8 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
           {
-                  throw "Dropout, Identity and Concat can't have graph inputs";
-           }
+            throw "Dropout, Identity and Concat can't have graph inputs";
+          }
         }
       }
     }
@@ -380,57 +337,48 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     //Attribute auto pad for MaxPool and Average Pool must not be empty or SAME_LOWER
     //Only support 4D and 5D blobs for CPU,GPU
     //Only support 3D and 4D blobs for MYRIAD and HDDL
-    if (node->OpType() == "MaxPool" || node->OpType() == "AveragePool"){
+    if (node->OpType() == "MaxPool" || node->OpType() == "AveragePool") {
       auto attributes = node->GetAttributes();
       auto auto_pad = attributes["auto_pad"].s();
-      if (auto_pad == "" || auto_pad == "SAME_LOWER")
-        {
-            throw "Auto pad shouldn't be empty or SAME_LOWER for MaxPool and AVerage Pool";
-        }
+      if (auto_pad == "" || auto_pad == "SAME_LOWER") {
+        throw "Attribute auto pad shouldn't be empty or SAME_LOWER for MaxPool and Average Pool";
+      }
 
       auto strides_ints = attributes["strides"].ints();
-      if(auto_pad == "SAME_UPPER" && strides_ints.size() == 0)
-        {
-			    throw "Auto pad shouldn't be SAME_UPPER and stride_ints shouldn't be Zero at same time";
-        }
-
+      if (auto_pad == "SAME_UPPER" && strides_ints.size() == 0) {
+        throw "Pooling: Generic Error";
+      }
 
       //Dilations have to be 1
       auto dilations_ints = attributes["dilations"].ints();
       if (dilations_ints.size() != 0) {
-        if (dilations_ints[0] > 1)
-        {
-            throw "dilations_ints size is not equal to zero and greater than one. The value should be one";
+        if (dilations_ints[0] > 1) {
+          throw "Pooling: Generic error";
         }
       }
 
       //Don't support ceil_mode = 1
       auto ceil_mode = attributes["ceil_mode"].i();
-      if (ceil_mode != 0)
-        {
-            throw "Ceil_mode is not 0. Don't Support for ceil_mode is 1 ";
-        }
+      if (ceil_mode != 0) {
+        throw "Pooling: Ceil mode should be 1";
+      }
 
       //Don't support multiple outputs for Pooling
-      if (node->OutputDefs().size() > 1)
-        {
-            throw "Multiple outputs for Pooling";
-        }
+      if (node->OutputDefs().size() > 1) {
+        throw "Pooling: Multiple outputs not supported";
+      }
 
-      if(!IsDimensionSupported(node,dev_id))
-        {
-			throw "From Max Pool or Average Pool. Dimension is not supported";
-        }
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Pooling: Dimensions not supported";
+      }
     }
 
     //Only support 4D and 5D blobs for CPU,GPU
     //Only support 3D and 4D blobs for MYRIAD and HDDL
-    if(node->OpType() == "GlobalMaxPool" || node->OpType() == "GlobalAveragePool"){
-
-        if(!IsDimensionSupported(node,dev_id))
-              {
-                  throw "Only support 4D and 5D blobs for CPU,GPU, Only support 3D and 4D blobs for MYRIAD and HDDL";
-        }
+    if (node->OpType() == "GlobalMaxPool" || node->OpType() == "GlobalAveragePool") {
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Pooling: Only support 4D and 5D blobs for CPU,GPU, Only support 3D and 4D blobs for MYRIAD and HDDL";
+      }
     }
 
     //Transpose with no attr is not supported
@@ -438,63 +386,50 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       auto attributes = node->GetAttributes();
       auto perm = attributes["perm"].ints();
       if (perm.size() == 0 || perm.size() > 5) {
-          throw " Transpose:Tranpose with no attr is not supported. perm size shouldn't be zero or greater than five";
+        throw " Transpose: Tranpose with no attr is not supported. Perm size shouldn't be zero or greater than five";
       }
 
       //String data type is not supported
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
-      if (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING)
-        {
-            throw "Transpose:String data type is not supported ";
-        }
+      if (type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING) {
+        throw "Transpose: String data type is not supported ";
+      }
 
-      if(!IsDimensionSupported(node,dev_id))
-        {
-         throw "Transpose:Dimension is not supported ";
-        }
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Transpose: Dimensions are not supported ";
+      }
     }
 
-
     if (node->OpType() == "Unsqueeze") {
-
-      if(!IsDimensionSupported(node,dev_id))
-        {
-          throw "Unsqueeze:Dimension is not supported ";
-        }
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Unsqueeze: Dimensions are not supported ";
+      }
       const auto* type_proto = node->InputDefs()[0]->TypeAsProto();
-      if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
-        {
-          throw "Unsqueeze:tensor prototype mismatch ";
-        }
+      if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+        throw "Unsqueeze: Datatype should be float";
+      }
     }
 
     //Only support 2D input and axis 1
     if (node->OpType() == "Softmax") {
-
-      if(!IsDimensionSupported(node,dev_id))
-        {
-          throw "Softmax:Dimension is not supported ";
-        }
+      if (!IsDimensionSupported(node, dev_id)) {
+        throw "Softmax: Dimensions are not supported ";
+      }
 
       auto attributes = node->GetAttributes();
       auto axis = attributes["axis"].i();
-      if (axis != 1)
-        {
-          throw "Softmax:axis is not 1 ";
-        }
+      if (axis != 1) {
+        throw "Softmax: Only default axis is supported";
+      }
     }
 
     //Don't support only one input
-    if(node->OpType() == "Sum"){
-
-        if(node->InputDefs().size() == 1)
-            {
-              throw "Sum:Doesn't support only one input ";
-        }
+    if (node->OpType() == "Sum") {
+      if (node->InputDefs().size() == 1) {
+        throw "Sum: Doesn't support only one input ";
+      }
     }
-
   }
-
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCapability(
@@ -529,15 +464,14 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
-  std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
+  std::set<const onnxruntime::NodeArg *> fused_inputs, fused_outputs;
 
-
-  try{
-  CheckGraphSupported(graph_viewer, device_id);
-} catch(const char* error_msg) {
-  LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations." << error_msg;
-  return result;
-}
+  try {
+    CheckGraphSupported(graph_viewer, device_id);
+  } catch (const char* error_msg) {
+    LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as graph has unsupported operations." << error_msg;
+    return result;
+  }
 
   std::string model_proto_strbuf;
   model_proto.SerializeToString(&model_proto_strbuf);
@@ -547,7 +481,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   // Try converting with OpenVINO's Model Optimizer
   try {
     openvino_ep::OpenVINOGraph::ConvertONNXModelToOpenVINOIR(model_proto_strbuf, xml_string, weights_string, precision_fp32);
-  } catch  (const char* msg) {
+  } catch (const char* msg) {
     // Model Optimizer cannot convert this model.
     LOGS_DEFAULT(WARNING) << openvino_ep::OpenVINOGraph::log_tag << "Rejecting as Model Optimizer cannot convert this model." << msg;
     return result;
