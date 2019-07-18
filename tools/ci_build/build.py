@@ -840,13 +840,14 @@ def main():
     log.info("Build started")
     if (args.update):
         cmake_extra_args = []
+        path_to_protoc_exe = None
         if(is_windows()):
           if (args.x86):
             cmake_extra_args = ['-A','Win32','-T','host=x64','-G', 'Visual Studio 15 2017']
           elif (args.arm or args.arm64):
             # Cross-compiling for ARM(64) architecture
             # First build protoc for host to use during cross-compilation
-            host_protoc_path = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
             if args.arm:
                 cmake_extra_args = ['-A', 'ARM']
             else:
@@ -866,7 +867,7 @@ def main():
             cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
         if args.android:
             # Cross-compiling for Android
-            host_protoc_path = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
@@ -884,11 +885,10 @@ def main():
                    raise UsageError("The test_data_url and test_data_checksum arguments are required.")
             setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
 
-        path_to_protoc_exe = None
         if args.path_to_protoc_exe:
             path_to_protoc_exe = args.path_to_protoc_exe
 
-        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, host_protoc_path, configs, cmake_extra_defines,
+        generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 
     if (args.clean):
