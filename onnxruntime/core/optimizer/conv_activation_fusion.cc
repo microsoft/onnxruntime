@@ -3,7 +3,6 @@
 
 #include <deque>
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_activation_fusion.h"
 
 using namespace ONNX_NAMESPACE;
@@ -11,13 +10,6 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace {
-static bool IsFusableActivation(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6});
-}
-
 }  // namespace
 
 Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
@@ -38,9 +30,9 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    const Node& next_node = *(node->OutputNodesBegin());
-    if (!IsFusableActivation(next_node) ||
-        next_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
+    const auto& next_node = *(node->OutputNodesBegin());
+
+    if (next_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
       continue;
     }
 
@@ -48,6 +40,22 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
+    // Test if this is an activation that can be fused and also extract the
+    // activation's parameters.
+    std::vector<float> activation_params;
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6}) &&
+        !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Sigmoid", {6}) &&
+        !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {
+        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "alpha")->f());
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6})) {
+        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "min")->f());
+        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "max")->f());
+      } else {
+        continue;
+      }
+    }
+    
     Node& conv_node = *node;
     Node& act_node = *graph.GetNode(next_node.Index());
 
@@ -58,18 +66,13 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                      &conv_node.GetAttributes(),
                                      "com.microsoft");
 
-    //Add a new attribute to specify the activation type
-    fused_conv.AddAttribute("activation", act_node.OpType());
-
     // Assign provider to this new node. Provider should be same as the provider for old node.
     fused_conv.SetExecutionProviderType(conv_node.GetExecutionProviderType());
 
-    //Add optional attributes for activations
-    if (act_node.OpType() == "LeakyRelu") {
-      const NodeAttributes& attrs = act_node.GetAttributes();
-      for (const auto& attr : attrs) {
-        fused_conv.AddAttribute(attr.first, attr.second);
-      }
+    // Add attributes to specify the activation type and parameters.
+    fused_conv.AddAttribute("activation", next_node.OpType());
+    if (activation_params.size() > 0) {
+      fused_conv.AddAttribute("activation_params", activation_params);
     }
 
     // move output definitions and edges from act_node to fused_conv. delete conv_node and act_node.
