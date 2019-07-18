@@ -120,7 +120,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   // find defs that require copy
   for (auto& node : graph_.Nodes()) {
     //don't need to do node placement here now, onnxruntime will do it according to registered kernels.
-    //as we process the defs for the nodes in the vurrent graph level, collect the initializers scoped to the current graph level alone
+    //as we process the defs for the nodes in the current graph level, collect the initializers scoped to the current graph level alone
     ProcessDefs(node, kernel_registries, initializers_consumed);
   }
 
