@@ -98,6 +98,10 @@ if(onnxruntime_USE_OPENMP AND UNIX)
     message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
   endif()
 endif()
+
+if(onnxruntime_USE_MKLML AND WIN32)
+  message(FATAL_ERROR "MKLML is not supported")
+endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
   if(onnxruntime_USE_NSYNC)
