@@ -404,7 +404,6 @@ def generate_ie_ir(graph: nx.MultiDiGraph, file_name: str, input_names: tuple = 
     pretty_xml_as_string = xml_doc.toprettyxml()
     if len(unsupported.unsupported):
         log.debug('Partially correct IR XML:\n{}'.format(pretty_xml_as_string))
-        unsupported.report(log.error, "List of operations that cannot be converted to IE IR:")
         raise Error('Part of the nodes was not translated to IE. Stopped. ' +
                     refer_to_faq_msg(24))
 
