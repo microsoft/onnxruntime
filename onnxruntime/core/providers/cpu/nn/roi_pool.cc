@@ -48,11 +48,6 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
     int roi_height = std::max(roi_end_h - roi_start_h + 1, 1);
     int roi_width = std::max(roi_end_w - roi_start_w + 1, 1);
 
-    const float bin_size_h =
-        static_cast<float>(roi_height) / static_cast<float>(pooled_height_);
-    const float bin_size_w =
-        static_cast<float>(roi_width) / static_cast<float>(pooled_width_);
-
     const float* batch_data = Xdata + roi_batch_id * X->Shape().SizeFromDimension(1);
 
     for (int c = 0; c < channels; ++c) {
@@ -61,10 +56,10 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
           // Compute pooling region for this output unit:
           //  start (included) = floor(ph * roi_height / pooled_height_)
           //  end (excluded) = ceil((ph + 1) * roi_height / pooled_height_)
-          int hstart = static_cast<int>(std::floor(static_cast<float>(ph) * bin_size_h));
-          int wstart = static_cast<int>(std::floor(static_cast<float>(pw) * bin_size_w));
-          int hend = static_cast<int>(std::ceil(static_cast<float>(ph + 1) * bin_size_h));
-          int wend = static_cast<int>(std::ceil(static_cast<float>(pw + 1) * bin_size_w));
+          int hstart = (ph * roi_height) / static_cast<int>(pooled_height_);
+          int wstart = (pw * roi_width) / static_cast<int>(pooled_width_);
+          int hend = ((ph + 1) * roi_height + static_cast<int>(pooled_height_) - 1) / static_cast<int>(pooled_height_);
+          int wend = ((ph + 1) * roi_width + static_cast<int>(pooled_width_) - 1) / static_cast<int>(pooled_width_);
 
           // Add roi offsets and clip to input boundaries
           hstart = std::min(std::max(hstart + roi_start_h, 0), height);
