@@ -14,18 +14,18 @@ namespace server {
 
 namespace protobufutil = google::protobuf::util;
 
-#define GenerateErrorResponse(logger, error_code, message, context)                     \
-  {                                                                                     \
-    auto http_error_code = (error_code);                                                \
-    (context).response.insert("x-ms-request-id", ((context).request_id));               \
-    if (!(context).client_request_id.empty()) {                                         \
-      (context).response.insert("x-ms-client-request-id", (context).client_request_id); \
-    }                                                                                   \
-    auto json_error_message = CreateJsonError(http_error_code, (message));              \
-    logger->debug(json_error_message);                                                  \
-    (context).response.result(http_error_code);                                         \
-    (context).response.body() = json_error_message;                                     \
-    (context).response.set(http::field::content_type, "application/json");              \
+#define GenerateErrorResponse(logger, error_code, message, context)                              \
+  {                                                                                              \
+    auto http_error_code = (error_code);                                                         \
+    (context).response.insert(util::MS_REQUEST_ID_HEADER, ((context).request_id));               \
+    if (!(context).client_request_id.empty()) {                                                  \
+      (context).response.insert(util::MS_CLIENT_REQUEST_ID_HEADER, (context).client_request_id); \
+    }                                                                                            \
+    auto json_error_message = CreateJsonError(http_error_code, (message));                       \
+    logger->debug(json_error_message);                                                           \
+    (context).response.result(http_error_code);                                                  \
+    (context).response.body() = json_error_message;                                              \
+    (context).response.set(http::field::content_type, "application/json");                       \
   }
 
 static bool ParseRequestPayload(const HttpContext& context, SupportedContentType request_type,
@@ -40,7 +40,7 @@ void Predict(const std::string& name,
   logger->info("Model Name: {}, Version: {}, Action: {}", name, version, action);
 
   if (!context.client_request_id.empty()) {
-    logger->info("x-ms-client-request-id: [{}]", context.client_request_id);
+    logger->info("{}: [{}]", util::MS_CLIENT_REQUEST_ID_HEADER, context.client_request_id);
   }
 
   // Request and Response content type information
@@ -89,9 +89,9 @@ void Predict(const std::string& name,
   }
 
   // Build HTTP response
-  context.response.insert("x-ms-request-id", context.request_id);
+  context.response.insert(util::MS_REQUEST_ID_HEADER, context.request_id);
   if (!context.client_request_id.empty()) {
-    context.response.insert("x-ms-client-request-id", context.client_request_id);
+    context.response.insert(util::MS_CLIENT_REQUEST_ID_HEADER, context.client_request_id);
   }
   context.response.body() = response_body;
   context.response.result(http::status::ok);

@@ -41,3 +41,13 @@ If those models are in different folder but in the same structure as the test da
 ```
 
 All tests are running in sequential order.
+
+## Generating python GRPC clients
+
+Protoc needs absolute paths
+```
+protoc --python_out=/home/colin/onnxserving -I . *.proto
+protoc --grpc_out=/home/colin/onnxserving --plugin=protoc-gen-grpc=/usr/local/bin/grpc_python_plugin -I . prediction_service.proto
+```
+
+need to pip install `grpcio` and `protobuf`

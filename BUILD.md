@@ -59,7 +59,10 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build ONNX Runtime Server on Linux
 
-1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+    See https://golang.org/doc/install for installation instructions.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+
 
 ## Build/Test Flavors for CI
 
