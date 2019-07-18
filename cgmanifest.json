@@ -301,6 +301,33 @@
       },
       {
          "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"90cb0f8d60b07e96ca7f0ba92fa50884010599ad",
+               "repositoryUrl":"https://github.com/JDAI-CV/DNNLibrary.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"9e7e8cbe9f675123dd41b7c62868acad39188cae",
+               "repositoryUrl":"https://github.com/google/flatbuffers.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"8d7a107d68c127f3f494bb7807b796c8c5a97a82",
+               "repositoryUrl":"https://github.com/google/glog.git"
+            }
+         }
+      },
+      {
+         "component":{
             "Type":"other",
             "Other":{
                "Name":"Boost",
