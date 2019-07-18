@@ -577,7 +577,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
   if (!invalid_dim_indices.empty()) {
     std::ostringstream ostr;
     ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
-    for (int i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
+    for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
       int idx = invalid_dim_indices[i];
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
