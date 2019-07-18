@@ -220,7 +220,6 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     x_data = x_reversed_data.get();
   }
 
-  auto byte_size = X->DataType()->Size();
   const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->template Data<T>();
   const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->template Data<T>();
   T* y_h_data = (Y_h == nullptr) ? nullptr : Y_h->template MutableData<T>();
