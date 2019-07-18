@@ -9,6 +9,8 @@ cmake --version
 # Download Android SDK Manager
 wget -qO- -O temp.zip https://dl.google.com/android/repository/sdk-tools-linux-4333796.zip && unzip -oq temp.zip -d /android-sdk && rm temp.zip
 
+mkdir /android-sdk/platforms /android-sdk/platform-tools
+
 # Download Android NDK r19c
 wget -qO- -O temp.zip https://dl.google.com/android/repository/android-ndk-r19c-linux-x86_64.zip && unzip -oq temp.zip -d /android-ndk && rm temp.zip
 
