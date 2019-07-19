@@ -6,7 +6,6 @@
 #include "core/framework/execution_providers.h"
 
 using namespace ONNX_NAMESPACE;
-
 namespace onnxruntime {
 
 // implements MemCpy node insertion in graph transform
@@ -318,7 +317,6 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       const TensorProto* tensor_proto = pair.second;
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
-
       graph_.AddInitializedTensor(new_tensor_proto);
 
       replacements.insert(std::make_pair(provider_def, &new_def));
