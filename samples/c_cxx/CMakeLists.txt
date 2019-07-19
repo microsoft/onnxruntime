@@ -11,13 +11,15 @@ else()
  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
 endif()
+option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 
 message("${CMAKE_SYSTEM_INCLUDE_PATH}")
 find_package(JPEG)
 find_package(PNG)
 
-
-add_definitions(-DUSE_CUDA)
+if(onnxruntime_USE_CUDA)
+  add_definitions(-DUSE_CUDA)
+endif()
 
 #TODO: remove this part(need to talk to Ryan and find a solution for this)
 if(UNIX)
