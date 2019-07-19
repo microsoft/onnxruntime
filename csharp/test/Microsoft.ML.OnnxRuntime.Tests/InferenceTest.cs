@@ -62,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
             options.SetSessionGraphOptimizationLevel(graphOptimizationLevel);
-            if(disableSequentialExecution) options.DisableSequentialExecution();
+            if (disableSequentialExecution) options.DisableSequentialExecution();
 
             using (var session = new InferenceSession(modelPath, options))
             {
@@ -142,25 +142,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void ThrowWrongDimensions()
-        {
-            var tuple = OpenSessionSqueezeNet();
-            var session = tuple.Item1;
-            var inputMeta = session.InputMetadata;
-            var container = new List<NamedOnnxValue>();
-            var inputData = new float[] { 0.1f, 0.2f, 0.3f };
-            var tensor = new DenseTensor<float>(inputData, new int[] { 1, 3 });
-            container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
-            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.True(
-            !string.IsNullOrEmpty(ex.Message) &&
-            ex.Message.StartsWith("[ErrorCode:Fail]") &&
-            ex.Message.Contains("X num_dims does not match W num_dims. X: {1,3} W: {64,3,3,3}")
-            );
-            session.Dispose();
-        }
-
-        [Fact]
         private void ThrowExtraInputs()
         {
             var tuple = OpenSessionSqueezeNet();
@@ -220,7 +201,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
             var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
-            if (isContribOpsDisabled) {
+            if (isContribOpsDisabled)
+            {
                 skipModels.Add("test_tiny_yolov2");
             }
 
@@ -661,7 +643,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var gpu = Environment.GetEnvironmentVariable("TESTONGPU");
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
-	    float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
 
             using (var session = tuple.Item1)
             {
@@ -671,7 +653,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var container = new List<NamedOnnxValue>();
                 container.Add(NamedOnnxValue.CreateFromTensor<float>("data_0", tensor));
                 var res = session.Run(container);
-		var resultArray = res.First().AsTensor<float>().ToArray();
+                var resultArray = res.First().AsTensor<float>().ToArray();
                 Assert.Equal(expectedOutput, resultArray, new floatComparer());
             }
         }
@@ -782,8 +764,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             public GpuFact()
             {
-		var testOnGpu = System.Environment.GetEnvironmentVariable("TESTONGPU");
-                if (testOnGpu == null || !testOnGpu.Equals("ON") )
+                var testOnGpu = System.Environment.GetEnvironmentVariable("TESTONGPU");
+                if (testOnGpu == null || !testOnGpu.Equals("ON"))
                 {
                     Skip = "GPU testing not enabled";
                 }
