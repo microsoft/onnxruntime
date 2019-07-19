@@ -797,12 +797,12 @@ TEST(GradientCheckerTest, SoftMaxGrad) {
 }
 
 TEST(OptimizerTest, SGDTest) {
-    OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain, false);
-    test.AddInput<float>("ETA", {}, { 0.5f });
-    test.AddInput<float>("W", { 3 }, { 1, 2, 3 });
-    test.AddInput<float>("G", { 3 }, { 4, 5, 6 });
-    test.AddOutput<float>("W_New", { 3 }, { -1.f, -0.5f, 0.f });
-    test.Run();
+  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain, false);
+  test.AddInput<float>("ETA", {}, {0.5f});
+  test.AddInput<float>("W", {3}, {1, 2, 3});
+  test.AddInput<float>("G", {3}, {4, 5, 6});
+  test.AddOutput<float>("W_New", {3}, {-1.f, -0.5f, 0.f});
+  test.Run();
 }
 
 #ifdef USE_CUDA
@@ -813,11 +813,11 @@ TEST(GradientCheckerTest, GatherGrad) {
   OpDef op_def{"Gather"};
 
   TensorInfo x_info({5, 4, 3, 2});
+  std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 5.0f); };
 
   // gather_0 without duplicated indices
   {
     int num_indices = 2;
-    std::function<float(float)> transformer = [](float x) { return std::fmod(std::fabs(x), 5.0f); };
     TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
 
     TensorShape y_shape{x_info.shape};
@@ -832,7 +832,6 @@ TEST(GradientCheckerTest, GatherGrad) {
   // gather_0 with duplicated indices
   {
     int num_indices = 10;
-    std::function<float(float)> transformer = [](float x) { return std::fmod(std::fabs(x), 5.0f); };
     TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
 
     TensorShape y_shape{x_info.shape};
@@ -847,7 +846,7 @@ TEST(GradientCheckerTest, GatherGrad) {
   // gather_1
   {
     int num_indices = 8;
-    std::function<float(float)> transformer = [](float x) { return std::fmod(std::fabs(x), 4.0f); };
+    std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 4.0f); };
     TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
 
     TensorShape y_shape{x_info.shape};
@@ -856,6 +855,17 @@ TEST(GradientCheckerTest, GatherGrad) {
 
     gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
                                           {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // 2D Indices
+  {
+    TensorInfo indices_info({2, 3}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
+
+    TensorShape y_shape{2, 3, 4, 3, 2};
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
+                                          {MakeAttribute("axis", int64_t(0))});
     EXPECT_IS_TINY(max_error);
   }
 }
