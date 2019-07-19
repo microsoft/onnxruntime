@@ -55,7 +55,7 @@ class TransformerMemcpyImpl {
 /** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer. 
 @param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
 */
-const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
+static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
   const onnx::TensorProto* initializer = nullptr;
   if (graph.GetInitializedTensor(name, initializer)) {
     return initializer;
