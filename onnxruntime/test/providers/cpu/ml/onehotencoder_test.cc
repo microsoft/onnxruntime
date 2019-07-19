@@ -41,6 +41,18 @@ void TestIntCategory(std::vector<T>& input) {
 
   test_vector.AddAttribute("zeros", int64_t{0});
   test_vector.Run(OpTester::ExpectResult::kExpectFailure);
+
+  // Test MultiDimensional [:, :, Labels]
+  OpTester test_multiD("OneHotEncoder", 1, onnxruntime::kMLDomain);
+  test_multiD.AddAttribute("cats_int64s", categories);
+  test_multiD.AddInput<T>("X", {1, 1, 7}, input);
+  test_multiD.AddOutput<float>("Y", {1, 1, 7, 8}, expected_output);
+
+  test_multiD.AddAttribute("zeros", int64_t{1});
+  test_multiD.Run();
+
+  test_multiD.AddAttribute("zeros", int64_t{0});
+  test_multiD.Run(OpTester::ExpectResult::kExpectFailure);
 }
 
 TEST(OneHotEncoderOpTest, IntegerWithInt64) {
@@ -49,17 +61,18 @@ TEST(OneHotEncoderOpTest, IntegerWithInt64) {
 }
 
 /*
+// TODO: Support int32_t type kernel for the op and uncomment the test 
 TEST(OneHotEncoderOpTest, IntegerWithInt32) {
-  vector<int> input{ 8, 1, 0, 0, 3, 7, 4 };
-  TestIntCategory<int>(input);
+  vector<int32_t> input{ 8, 1, 0, 0, 3, 7, 4 };
+  TestIntCategory<int32_t>(input);
 }
+*/
 
 TEST(OneHotEncoderOpTest, IntegerWithDouble) {
   vector<double> input{ 8.1f, 1.2f, 0.0f, 0.7f, 3.4f, 7.9f, 4.4f };
   TestIntCategory<double>(input);
 }
 
-*/
 TEST(OneHotEncoderOpTest, String) {
   std::vector<std::string> categories{"Apple", "Orange", "Watermelon", "Blueberry", "Coconut", "Mango", "Tangerine"};
   vector<std::string> input{"Watermelon", "Orange", "Tangerine", "Apple", "Kit"};
@@ -95,6 +108,18 @@ TEST(OneHotEncoderOpTest, String) {
 
   test_vector.AddAttribute("zeros", int64_t{0});
   test_vector.Run(OpTester::ExpectResult::kExpectFailure);
+
+  // Test MultiDimensional [:, Labels, :]
+  OpTester test_multiD("OneHotEncoder", 1, onnxruntime::kMLDomain);
+  test_multiD.AddAttribute("cats_strings", categories);
+  test_multiD.AddInput<string>("X", {1, 5, 1}, input);
+  test_multiD.AddOutput<float>("Y", {1, 5, 1, 7}, expected_output);
+
+  test_multiD.AddAttribute("zeros", int64_t{1});
+  test_multiD.Run();
+
+  test_multiD.AddAttribute("zeros", int64_t{0});
+  test_multiD.Run(OpTester::ExpectResult::kExpectFailure);
 }
 
 }  // namespace test
