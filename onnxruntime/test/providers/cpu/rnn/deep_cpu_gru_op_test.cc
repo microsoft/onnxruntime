@@ -762,7 +762,7 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
 }
 
-TEST(GRUTest, DISABLED_ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeReset) {
+TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeReset) {
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 

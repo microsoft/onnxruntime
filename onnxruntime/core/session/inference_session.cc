@@ -44,6 +44,9 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "core/session/custom_ops.h"
 #include "core/util/protobuf_parsing_utils.h"
@@ -88,7 +91,8 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }
 }  // namespace
 
-InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
+InferenceSession::InferenceSession(const SessionOptions& session_options,
+				   logging::LoggingManager* logging_manager)
     : session_options_{session_options},
       graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
@@ -99,6 +103,8 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
               "Environment must be initialized before creating an InferenceSession.");
 
   InitLogger(logging_manager);
+
+  session_state_.SetDataTransferMgr(&data_transfer_mgr_);
 
   // The threadpool is currently evolving.  We will always create a per session threadpool.
   // Beyond this, we will create a global thread pool to share across sessions.
@@ -396,6 +402,10 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       subgraph_session_state->SetLogger(*session_logger_);
       // Pass threadpool to subgraph
       subgraph_session_state->SetThreadPool(session_state.GetThreadPool());
+      // Pass data transfer manager to subgraph.
+      subgraph_session_state->SetDataTransferMgr(&session_state.GetDataTransferMgr());
+      // Pass fused function manager to subgraph
+      subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
@@ -471,6 +481,16 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR(execution_providers_.Add(onnxruntime::kCpuExecutionProvider,
                                                    std::make_unique<CPUExecutionProvider>(epi)));
     }
+
+    // Register data transfer methods.
+    data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+#ifdef USE_CUDA
+    // TODO: this should be refactored later by exposing separate API to allow users to register different data transfers for different devices.
+    bool is_nvidia_gpu_used = (nullptr != execution_providers_.Get(kCudaExecutionProvider)) || (nullptr != execution_providers_.Get(kTensorrtExecutionProvider));
+    if (is_nvidia_gpu_used) {
+      data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
+    }
+#endif
 
     if (!session_options_.enable_sequential_execution &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
@@ -566,13 +586,13 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                            feeds.size(), " elements.");
   }
 
-  // More feeds are offered.
-  // In the case of overriding some initializers (which are also taken as graph inputs).
   for (size_t i = 0; i < feeds.size(); ++i) {
-    auto iter = input_def_map_.find(feed_names[i]);
+    const auto& feed_name = feed_names[i];
+
+    auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name:", feed_names[i]);
+                             "Invalid Feed Input Name:", feed_name);
     }
 
     auto expected_type = utils::GetMLDataType(*iter->second);
@@ -592,7 +612,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
                                                  const std::vector<OrtValue>* p_fetches) {
-  if (!p_fetches) {
+  if (p_fetches == nullptr) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
   }
@@ -635,8 +655,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     }
 
     ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
-
-    // if the output vector is non-empty, ensure that its the same size as the output_names
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
     FeedsFetchesInfo info(feed_names, output_names);
@@ -732,7 +750,8 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
     }
   }
 
-  return std::make_pair(common::Status::OK(), &required_input_def_list_);
+  // return required inputs (excludes any inputs used for overriding initializers)
+  return std::make_pair(common::Status::OK(), &model_->MainGraph().GetInputs());
 }
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
@@ -821,17 +840,27 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
   model_metadata_.custom_metadata_map = model.MetaData();
   model_metadata_.graph_name = graph.Name();
 
-  // save required inputs
-  const auto& required_inputs = graph.GetInputs();  // inputs excluding initializers
-  required_input_def_list_ = required_inputs;       // A direct copy of required inputs
+  for (auto input : graph.GetInputs()) {
+    required_inputs_.insert(input->Name());
+  }
 
-  // save all valid inputs
-  auto& all_inputs = graph.GetInputsIncludingInitializers();
-  input_def_map_.reserve(all_inputs.size());
+  auto add_inputs = [this](const InputDefList& inputs) {
+    input_def_map_.reserve(inputs.size());
+    for (auto elem : inputs) {
   model_input_names_.reserve(all_inputs.size());
-  for (auto elem : all_inputs) {
-    input_def_map_.insert({elem->Name(), elem});
+      input_def_map_.insert({elem->Name(), elem});
     model_input_names_.insert(elem->Name());
+    }
+  };
+
+  if (graph.CanOverrideInitializer()) {
+    // for IR 4 or higher it is optional to have a matching graph input for an initializer, and if one exists the
+    // initializer is explicitly overridable.
+    add_inputs(graph.GetInputsIncludingInitializers());
+  } else {
+    // for IR < 4 we don't allow overriding initializers so that they can be treated as constant. exclude them from
+    // the list of valid inputs by just using the GetInputs() list.
+    add_inputs(graph.GetInputs());
   }
 
   // save outputs
@@ -866,16 +895,16 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
     run_log_id += run_options.run_tag;
 
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (run_options.run_log_severity_level < 0) {
+    if (run_options.run_log_severity_level == -1) {
       severity = session_logger_->GetSeverity();
     } else {
       ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
-                      run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid run log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   run_options.run_log_severity_level);
       severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
+
 
     new_run_logger = logging_manager_->CreateLogger(run_log_id,
                                                     severity,
@@ -895,26 +924,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
-  if (logging_manager != nullptr) {
-    std::string session_logid = !session_options_.session_logid.empty()
-                                    ? session_options_.session_logid
-                                    : "InferenceSession";  // there's probably a better default...
-
+  if (logging_manager != nullptr && !session_options_.session_logid.empty()) {
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (session_options_.session_log_severity_level < 0) {
+    if (session_options_.session_log_severity_level == -1) {
       severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
       ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
-                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   session_options_.session_log_severity_level);
       severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
 
-    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+    owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid,
+                                                           severity,
+                                                           false,
                                                            session_options_.session_log_verbosity_level);
-
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
@@ -945,6 +970,10 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
 
   if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
     add_transformers(TransformerLevel::Level2);
+  }
+
+  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
+    add_transformers(TransformerLevel::Level3);
   }
 }
 

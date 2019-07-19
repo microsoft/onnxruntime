@@ -16,14 +16,16 @@
 #include "core/graph/graph.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/logging/logging.h"
 
 #include "openvino_graph.h"
 
-namespace onnxruntime{
+namespace onnxruntime {
 namespace openvino_ep {
 
-OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
+const std::string OpenVINOGraph::log_tag = "[OpenVINO-EP] ";
 
+OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
   std::string precision_str = "FP32";
@@ -95,7 +97,26 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   openvino_network_ = BuildOpenVINONetworkWithMO();
 
   // Create hardware specific OpenVINO network representation
-  infer_requests_ = GetExecutableHandle(openvino_network_, device_id_);
+  GetExecutableHandle(openvino_network_);
+
+  std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
+  plugin_path.push_back("");
+  plugin_ = InferenceEngine::PluginDispatcher(
+                plugin_path)
+                .getPluginByDevice(device_id_);
+
+  //Loading model to the plugin
+  InferenceEngine::ExecutableNetwork exeNetwork = plugin_.LoadNetwork(*openvino_network_, {});
+
+  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
+
+  //Create infer request
+  for (size_t i = 0; i < num_inf_reqs_; i++) {
+    auto infRequest = exeNetwork.CreateInferRequestPtr();
+
+    infer_requests_.push_back(infRequest);
+  }
+  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
 }
 
 std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() const {
@@ -112,8 +133,7 @@ std::vector<std::string> OpenVINOGraph::GetEnvLdLibraryPath() const {
 }
 
 void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
-    std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32) {
-
+                                                 std::string& openvino_xml, std::string& openvino_bin, bool precision_fp32) {
   Py_Initialize();
   if (!Py_IsInitialized()) {
     throw "Python environment initialization failure";
@@ -176,7 +196,6 @@ void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetworkWithMO() {
-
   const auto& attributes = fused_node_->GetAttributes();
   std::string xml_string = attributes.at("xml_str").s();
   std::string weights_string = attributes.at("weights_str").s();
@@ -196,36 +215,28 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetwork
 
 InferenceEngine::Precision OpenVINOGraph::ConvertPrecisionONNXToOpenVINO(
     ONNX_NAMESPACE::DataType onnx_type) {
-
-  if(*onnx_type == "float" || *onnx_type == "tensor(float)") {
+  if (*onnx_type == "float" || *onnx_type == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
-  } else if ( *onnx_type == "float16" || *onnx_type == "tensor(float16)") {
+  } else if (*onnx_type == "float16" || *onnx_type == "tensor(float16)") {
     return InferenceEngine::Precision::FP16;
-  } else if ( *onnx_type == "int32" || *onnx_type == "tensor(int32)") {
+  } else if (*onnx_type == "int32" || *onnx_type == "tensor(int32)") {
     return InferenceEngine::Precision::I32;
-  } else if ( *onnx_type == "int16" || *onnx_type == "tensor(int16)") {
+  } else if (*onnx_type == "int16" || *onnx_type == "tensor(int16)") {
     return InferenceEngine::Precision::I16;
-  } else if ( *onnx_type == "int8" || *onnx_type == "tensor(int8)") {
+  } else if (*onnx_type == "int8" || *onnx_type == "tensor(int8)") {
     return InferenceEngine::Precision::I8;
-  } else if ( *onnx_type == "uint16" || *onnx_type == "tensor(uint16)") {
+  } else if (*onnx_type == "uint16" || *onnx_type == "tensor(uint16)") {
     return InferenceEngine::Precision::U16;
-  } else if ( *onnx_type == "uint8" || *onnx_type == "tensor(uint8)") {
+  } else if (*onnx_type == "uint8" || *onnx_type == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else {
     throw "Unsupported Data type";
   }
 }
 
-std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHandle(
-    std::shared_ptr<InferenceEngine::CNNNetwork> network, const std::string& device) {
-
-
-  // Load Plugin for inference engine
-  std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
-  plugin_path.push_back("");
-  InferenceEngine::InferencePlugin plugin = InferenceEngine::PluginDispatcher(
-                                                plugin_path)
-                                                .getPluginByDevice(device);
+void OpenVINOGraph::GetExecutableHandle(
+    std::shared_ptr<InferenceEngine::CNNNetwork> network) {
+  LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
 
   // Configure input & output
   // Prepare input blobs
@@ -235,7 +246,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
 
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
-
     // Get the onnx index for the corresponding input (ignoring initializers)
     auto tracked_input_idx = input_indexes_[input_idx];
     auto precision = ConvertPrecisionONNXToOpenVINO(onnx_input_defs[tracked_input_idx]->Type());
@@ -270,7 +280,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
 
   int output_idx = 0;
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
-
     auto precision = ConvertPrecisionONNXToOpenVINO(onnx_output_defs[output_idx]->Type());
     iter->second->setPrecision(precision);
 
@@ -296,17 +305,6 @@ std::vector<InferenceEngine::InferRequest::Ptr> OpenVINOGraph::GetExecutableHand
         throw "Invalid Dims type for output data map for: " + iter->first;
     }
   }
-
-  // Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exeNetwork = plugin.LoadNetwork(*network,
-                                                                     {});
-
-  // Create infer request
-  std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
-  for (size_t i = 0; i < num_inf_reqs_; i++) {
-    infer_requests.push_back(exeNetwork.CreateInferRequestPtr());
-  }
-  return infer_requests;
 }
 
 size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
@@ -321,6 +319,8 @@ size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* inpu
     batch_size = input_shape[0];
   }
 
+  LOGS_DEFAULT(INFO) << log_tag << "Deduced batch size: " << batch_size;
+
   return batch_size;
 }
 
@@ -329,14 +329,12 @@ size_t OpenVINOGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* inpu
 void OpenVINOGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[],
                                         size_t batch_slice_idx,
                                         size_t infer_req_idx) {
-
   auto infer_request = infer_requests_[infer_req_idx];
   auto graph_input_info = openvino_network_->getInputsInfo();
 
   size_t i = 0;
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter, ++i) {
-
     // Get OpenVINO's input buffer
     auto graph_input_blob = infer_request->GetBlob(input_info_iter->first);
     auto graph_input_buffer =
@@ -359,7 +357,6 @@ void OpenVINOGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* in
 void OpenVINOGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[],
                                            size_t batch_slice_idx,
                                            size_t infer_req_idx) {
-
   auto infer_request = infer_requests_[infer_req_idx];
 
   // Wait for Async inference completion
@@ -424,6 +421,8 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Currently allows only one Infer execution at a time
   std::lock_guard<std::mutex> lock(compute_lock_);
 
+  LOGS_DEFAULT(INFO) << log_tag << "Starting inference";
+
   // Get Input and Output tensors
   size_t input_count = openvino_network_->getInputsInfo().size();
   size_t output_count = openvino_network_->getOutputsInfo().size();
@@ -465,7 +464,9 @@ void OpenVINOGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx);
   }
+
+  LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
 }  // namespace openvino_ep
-} // namespace onnxruntime
+}  // namespace onnxruntime

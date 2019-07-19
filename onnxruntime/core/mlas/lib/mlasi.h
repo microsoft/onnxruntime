@@ -255,33 +255,101 @@ typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
     const float* Input,
+    const float* Filter,
     float* Output,
-    size_t N
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
     );
 
-typedef MLAS_LOGISTIC_KERNEL_ROUTINE* PMLAS_LOGISTIC_KERNEL_ROUTINE;
+typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
+(MLASCALL MLAS_CONV_DEPTHWISE_FLOAT_KERNEL)(
     const float* Input,
+    const float* Filter,
     float* Output,
-    size_t N
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
     );
 
-typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
+typedef MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_ERF_KERNEL_ROUTINE)(
+(MLASCALL MLAS_CONV_POINTWISE_FLOAT_KERNEL)(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t InputChannels,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t OutputCount,
+    const float* Bias,
+    unsigned Flags
+    );
+
+typedef MLAS_CONV_POINTWISE_FLOAT_KERNEL* PMLAS_CONV_POINTWISE_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_POOL_FLOAT_KERNEL)(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t ActualKernelSize,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad
+    );
+
+typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_ELEMENTWISE_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
     size_t N
     );
 
-typedef MLAS_ERF_KERNEL_ROUTINE* PMLAS_ERF_KERNEL_ROUTINE;
+typedef MLAS_ELEMENTWISE_KERNEL_ROUTINE* PMLAS_ELEMENTWISE_KERNEL_ROUTINE;
 
 extern "C" {
 
@@ -347,16 +415,69 @@ extern "C" {
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
 #endif
 
-    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
-    MLAS_ERF_KERNEL_ROUTINE MlasErfKernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
-    MLAS_ERF_KERNEL_ROUTINE MlasErfKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelSse;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelFma3;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelFma3;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx512F;
+#else
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
+#endif
+
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernelFma3;
 #endif
 
 }
+
+//
+// Define the default preferred byte alignment for buffers.
+//
+// MLAS_TARGET_AMD64_IX86: The typical architecture uses AVX instructions
+// accessing 256-bit vectors. MLAS_TARGET_AMD64 returns a larger value if the
+// platform supports 512-bit vectors to ensure that vectors are not split.
+//
+// MLAS_TARGET_ARM64: The kernels use "load pair" instructions to access 128-bit
+// vectors, so this value keeps both vectors in the same cache line.
+//
+// MLAS_TARGET_ARM: Using 16 for a single 128-bit vector may be sufficient for
+// this architecture, but the ONNX Runtime has historically used this larger
+// value.
+//
+
+#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
 
 //
 // Define the target number of per-thread multiplies before using another
@@ -364,7 +485,7 @@ extern "C" {
 //
 // The number is derived from performance results running SGEMM across a
 // range of workloads and observing the ideal number of threads to complete
-// that workload. See EvaluateThreadingPerformance() in the unit test.
+// that workload.
 //
 
 #if defined(_OPENMP)
@@ -420,10 +541,11 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
-    PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
-    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
-    PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE LogisticKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
     uint32_t NchwcBlockSize;
+    uint32_t PreferredBufferAlignment;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
