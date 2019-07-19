@@ -143,7 +143,7 @@ ONNX Runtime supports OpenVINO Execution Provider to enable deep learning infere
 
 The OpenVINO Execution Provider can be built using the following commands:
 
-- Install the OpenVINO 2018 R5.0.1 release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
 
 - Install the model optimizer prerequisites for ONNX by running
 <code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
@@ -152,11 +152,11 @@ The OpenVINO Execution Provider can be built using the following commands:
 
    <code>source setupvars.sh</code>
 
-- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2018_R5/_docs_install_guides_installing_openvino_linux.html#GPU-steps)
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
 
-- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2018_R5/_docs_install_guides_installing_openvino_linux.html#Movidius-steps)
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
 
-- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2018_R5/_docs_install_guides_installing_openvino_linux.html#Vision-Accelerator-Design-steps)
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
 
 
 - Build ONNX Runtime using the below command.
