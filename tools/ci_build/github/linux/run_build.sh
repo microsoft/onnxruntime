@@ -14,7 +14,7 @@ o) BUILD_OS=${OPTARG};;
 esac
 done
 
-COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp"
 if [ $BUILD_OS = "manylinux2010" ]; then
     # FindPython3 does not work on manylinux2010 image, define things manually
     # ask python where to find includes
