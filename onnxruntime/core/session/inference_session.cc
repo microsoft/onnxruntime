@@ -385,7 +385,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   }
 
   // Insert copy node/s.
-  MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager, session_state.Logger()};
+  MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
   ORT_RETURN_IF_ERROR(copy_transformer.Apply(graph, modified));
 
   return common::Status::OK();

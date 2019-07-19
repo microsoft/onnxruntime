@@ -5,11 +5,8 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/graph/graph_utils.h"
-#include "core/common/logging/logging.h"
-#include "core/common/logging/macros.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::logging;
 
 namespace onnxruntime {
 
@@ -17,8 +14,8 @@ namespace onnxruntime {
 // note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTranformer
 class TransformerMemcpyImpl {
  public:
-  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider, const Logger& logger)
-      : graph_(graph), provider_(provider), logger_(logger) {}
+  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider)
+      : graph_(graph), provider_(provider) {}
 
   bool ModifyGraph(const KernelRegistryManager& schema_registries);
 
@@ -55,7 +52,6 @@ class TransformerMemcpyImpl {
 
   onnxruntime::Graph& graph_;
   std::string provider_;
-  const Logger& logger_;
 };
 
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
@@ -68,7 +64,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kNupharExecutionProvider &&
         provider != onnxruntime::kTensorrtExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider) {
-      TransformerMemcpyImpl copy_impl(graph, provider, logger_);
+      TransformerMemcpyImpl copy_impl(graph, provider);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
     }
@@ -119,7 +115,6 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   InitializedTensorSet initializers_consumed;
   // find defs that require copy
   for (auto& node : graph_.Nodes()) {
-    //don't need to do node placement here now, onnxruntime will do it according to registered kernels.
     //as we process the defs, collect all the initializers consumed at the current graph level
     ProcessDefs(node, kernel_registries, initializers_consumed);
   }
@@ -300,24 +295,17 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       std::string new_def_name = graph_.GenerateNodeArgName(name);
       auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
 
+      // We make a copy of the initializer that is to be consumed by the provider Node so that
+      // session state initializer can copy it over to the provider device during its operation
+      // TODO: The copy being made is possibly redundant if this occurs in a subgraph
+      // When multiple subgraphs consume the same initializer as an implicit input,
+      // multiple copies of the initializer will be made into the provider device
+      // This should not directly affect runtime performance as the copies occur during initialization
+      // but overuse of the provider device's memory is definitely inefficient
+      // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
       const TensorProto* tensor_proto = pair.second;
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
-
-      // We make a copy of the initializer that is to be consumed by the provider Node so that
-      // session state initializer can copy it over to the provider device during its operation
-      LOGS(logger_, INFO) << "Making a copy of the initializer: " << name << " and the copy's name is: " << new_def_name;
-
-      if (graph_.IsSubgraph()) {
-        // TODO: The copy being made is possibly redundant
-        // When multiple subraphs consume the same initializer as an implicit input,
-        // multiple copies of the initializer will be made into the provider device
-        // This should not directly affect runtime performance as the copies occur during initialization
-        // but overuse of the provider device's memory is definitely inefficient
-        // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
-        // For now, just logging the information
-        LOGS(logger_, INFO) << "Possibly this is a redundant copy into the provider device for the initializer: " << name;
-      }
 
       graph_.AddInitializedTensor(new_tensor_proto);
 

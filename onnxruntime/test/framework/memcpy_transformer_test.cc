@@ -8,7 +8,6 @@
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"
-#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -109,7 +108,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   KernelRegistryManager test_registry_manager;
   test_registry_manager.RegisterKernels(execution_providers);
 
-  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager, DefaultLoggingManager().DefaultLogger());
+  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
   status = transformer.Apply(graph, modified);
@@ -163,7 +162,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   KernelRegistryManager test_registry_manager;
   test_registry_manager.RegisterKernels(execution_providers);
 
-  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager, DefaultLoggingManager().DefaultLogger());
+  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
   status = transformer.Apply(graph, modified);
@@ -276,8 +275,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   KernelRegistryManager test_registry_manager;
   test_registry_manager.RegisterKernels(execution_providers);
 
-  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider},
-                                test_registry_manager, DefaultLoggingManager().DefaultLogger());
+  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
   status = transformer.Apply(graph, modified);
