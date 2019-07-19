@@ -139,14 +139,17 @@ struct NchwcTestHelper {
 };
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
-                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph) {
+                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph,
+                          int opset_version = 10) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
   }
 
   // Build the model for this test.
-  Model model("nchwc");
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = opset_version;
+  Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
@@ -482,7 +485,7 @@ TEST(NchwcOptimizerTests, ConvGlobalPool) {
 }
 
 TEST(NchwcOptimizerTests, ConvAddFusion) {
-  auto test_case = [&](const std::string& op_type, bool do_relu) {
+  auto test_case = [&](const std::string& op_type, int opset_version, bool do_relu) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput({1, 32, 28, 28});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -510,15 +513,18 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
       EXPECT_EQ(op_to_count["Relu"], 0);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Verify that Add or Sum can be fused into a preceding NCHWc Conv node,
   // with an optional Relu node following.
   std::vector<std::string> op_types = {"Add", "Sum"};
+  static const int opset_versions[] = {7, 10};
   for (auto& op_type : op_types) {
-    test_case(op_type, false);
-    test_case(op_type, true);
+    for (auto opset_version : opset_versions) {
+      test_case(op_type, opset_version, false);
+      test_case(op_type, opset_version, true);
+    }
   }
 }
 
