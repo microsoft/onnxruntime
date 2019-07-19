@@ -169,6 +169,7 @@ Return Value:
 
     size_t InputSize = 1;
     size_t OutputSize = 1;
+    bool CanFlattenShape = (Dimensions == 2);
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
 
@@ -193,6 +194,8 @@ Return Value:
             WorkBlock->DilationShape[dim] = 1;
         }
 
+        CanFlattenShape &= (WorkBlock->DilationShape[dim] == 1);
+
         if (Padding != nullptr) {
             WorkBlock->Padding[dim] = size_t(Padding[dim]);
             WorkBlock->Padding[dim + Dimensions] = size_t(Padding[dim + Dimensions]);
@@ -201,21 +204,58 @@ Return Value:
             WorkBlock->Padding[dim + Dimensions] = 0;
         }
 
+        CanFlattenShape &= (WorkBlock->Padding[dim] == 0 && WorkBlock->Padding[dim + Dimensions] == 0);
+
         if (StrideShape != nullptr) {
             WorkBlock->StrideShape[dim] = size_t(StrideShape[dim]);
         } else {
             WorkBlock->StrideShape[dim] = 1;
         }
 
-        //
-        // Compute the number of output elements affected by left and right
-        // padding.
-        //
+        CanFlattenShape &= (WorkBlock->StrideShape[dim] == 1);
+    }
+
+    WorkBlock->InputSize = InputSize;
+    WorkBlock->OutputSize = OutputSize;
+
+    //
+    // Detect operations where the kernel is using the entire input width,
+    // has strides and dilations set to one, and no padding. These operations
+    // are transformed from outputting [N][1] to [1][N] by flattening the
+    // operation to a single line using striding equal to the original width.
+    //
+    // With the originally shape, the NCHWc kernels would process a single
+    // output per output line. After reshaping, the NCHWc kernels are able to
+    // process multiple outputs per output line which typically performs better,
+    // despite potentially using fewer threads due to the decreased output
+    // height.
+    //
+
+    if (CanFlattenShape && (WorkBlock->InputShape[1] == WorkBlock->KernelShape[1])) {
+
+        WorkBlock->StrideShape[1] = WorkBlock->InputShape[1];
+
+        WorkBlock->InputShape[1] *= WorkBlock->InputShape[0];
+        WorkBlock->InputShape[0] = 1;
+
+        WorkBlock->OutputShape[1] *= WorkBlock->OutputShape[0];
+        WorkBlock->OutputShape[0] = 1;
+
+        WorkBlock->KernelShape[1] *= WorkBlock->KernelShape[0];
+        WorkBlock->KernelShape[0] = 1;
+    }
+
+    //
+    // Compute the number of output elements affected by left and right padding.
+    //
+
+    for (size_t dim = 0; dim < Dimensions; dim++) {
 
         const size_t SpanValue =
             WorkBlock->DilationShape[dim] * (WorkBlock->KernelShape[dim] - 1) + 1;
         const size_t StrideValue = WorkBlock->StrideShape[dim];
         const size_t PaddingLeftValue = WorkBlock->Padding[dim];
+        const size_t InputValue = WorkBlock->InputShape[dim];
 
         size_t OutputCountWithLeftPad;
 
@@ -231,13 +271,12 @@ Return Value:
             OutputCountLeftPad = OutputCountWithLeftPad;
         }
 
+        const size_t OutputValue = WorkBlock->OutputShape[dim];
+
         WorkBlock->OutputCountLeftPad[dim] = OutputCountLeftPad;
         WorkBlock->OutputCount[dim] = OutputCountWithLeftPad - OutputCountLeftPad;
         WorkBlock->OutputCountRightPad[dim] = OutputValue - OutputCountWithLeftPad;
     }
-
-    WorkBlock->InputSize = InputSize;
-    WorkBlock->OutputSize = OutputSize;
 }
 
 //
