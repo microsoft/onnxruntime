@@ -45,7 +45,7 @@ Status UpsampleNearest(const T* input,
   }
 
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
-  return std::vector<int64_t> output_dim_counter(n_dim);
+  std::vector<int64_t> output_dim_counter(n_dim);
   output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
 
   std::vector<int64_t> input_dim_counters(n_dim);
