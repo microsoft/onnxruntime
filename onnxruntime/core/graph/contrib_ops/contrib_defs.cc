@@ -1389,7 +1389,7 @@ Example 4:
                 pads_initializer->int64_data().end());
 
           // fill with zeros if needed to reach appropriate size
-          if (pads_data.size() != static_cast<size_t>(2 * input_rank))
+          if (pads_data.size() != 2 * static_cast<size_t>(input_rank))
             pads_data.resize(2 * input_rank, 0);
 
           const auto& output_shape =

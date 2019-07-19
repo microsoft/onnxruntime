@@ -91,7 +91,8 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }
 }  // namespace
 
-InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
+InferenceSession::InferenceSession(const SessionOptions& session_options,
+				   logging::LoggingManager* logging_manager)
     : session_options_{session_options},
       graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
@@ -603,7 +604,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
                                                  const std::vector<OrtValue>* p_fetches) {
-  if (!p_fetches) {
+  if (p_fetches == nullptr) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
   }
@@ -646,8 +647,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     }
 
     ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
-
-    // if the output vector is non-empty, ensure that its the same size as the output_names
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
     FeedsFetchesInfo info(feed_names, output_names);
@@ -886,13 +885,12 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
     run_log_id += run_options.run_tag;
 
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (run_options.run_log_severity_level < 0) {
+    if (run_options.run_log_severity_level == -1) {
       severity = session_logger_->GetSeverity();
     } else {
       ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
-                      run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid run log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   run_options.run_log_severity_level);
       severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
@@ -915,26 +913,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
-  if (logging_manager != nullptr) {
-    std::string session_logid = !session_options_.session_logid.empty()
-                                    ? session_options_.session_logid
-                                    : "InferenceSession";  // there's probably a better default...
-
+  if (logging_manager != nullptr && !session_options_.session_logid.empty()) {
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (session_options_.session_log_severity_level < 0) {
+    if (session_options_.session_log_severity_level == -1) {
       severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
       ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
-                      session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
+                  "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   session_options_.session_log_severity_level);
       severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
 
-    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+    owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid,
+                                                           severity,
+                                                           false,
                                                            session_options_.session_log_verbosity_level);
-
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();
