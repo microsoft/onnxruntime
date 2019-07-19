@@ -31,7 +31,7 @@ TEST(MemcpyTest, copy1) {
   KernelRegistryManager kernel_registry_manager;
   kernel_registry_manager.RegisterKernels(execution_providers);
 
-  onnx::ModelProto mp;
+  ONNX_NAMESPACE::ModelProto mp;
   std::ifstream model_istream("testdata/matmul_1.onnx", std::ifstream::in | std::ifstream::binary);
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   const bool result = mp.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();

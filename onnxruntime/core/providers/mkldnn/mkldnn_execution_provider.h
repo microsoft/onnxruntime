@@ -99,8 +99,7 @@ class MKLDNNExecutionProvider : public IExecutionProvider {
   }
 
   bool UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
-                   const std::vector<const KernelRegistry*>& kernel_registries,
-                   std::vector<std::unique_ptr<ComputeCapability>>& result) const;
+                   const std::vector<const KernelRegistry*>& kernel_registries) const;
 
   // Some dimensions are not supported by MKL-DNN
   // example: Pool with NumDimensions <= 3 is not supported

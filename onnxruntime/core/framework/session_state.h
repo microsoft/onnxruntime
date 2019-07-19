@@ -120,13 +120,13 @@ class SessionState {
   /**
   Get cached memory pattern based on input shapes
   */
-  const MemoryPatternGroup* GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const;
+  const MemoryPatternGroup* GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes. 
   Const as it's an internal cache update only.
   */
-  Status UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
+  Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   /**
