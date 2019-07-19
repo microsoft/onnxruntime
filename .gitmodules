@@ -32,6 +32,9 @@
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://github.com/eigenteam/eigen-git-mirror.git
+[submodule "cmake/external/grpc"]
+	path = cmake/external/grpc
+	url = https://github.com/grpc/grpc
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary

@@ -486,7 +486,7 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         // output size instead of the output width as done in NCHW convolution.
         //
 
-        MlasActivation(Activation, output, nullptr, FilterCount, output,
+        MlasActivation(Activation, output, nullptr, FilterCount,
             BlockedOutputWidth, BlockSize * OutputSize);
     }
 };

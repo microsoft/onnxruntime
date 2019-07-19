@@ -102,7 +102,7 @@ void HttpSession::HandleRequest(http::request<Body, http::basic_fields<Allocator
   const auto path = std::string(context.request.target().to_string());
   // Record how many total requests have been processed by this server
   // this can be used to get QPS metrics
-  MetricRegistry::get().totalRequests->Add(
+  MetricRegistry::get().totalHTTPRequests->Add(
       {{"component", "http"}, {"path", path}}).Increment();
 
   // Special handle the liveness probe endpoint for orchestration systems like Kubernetes.
@@ -131,8 +131,8 @@ http::status HttpSession::ExecuteUserFunction(HttpContext& context) {
   std::string model_name, model_version, action;
   HandlerFn func;
 
-  if (context.request.find("x-ms-client-request-id") != context.request.end()) {
-    context.client_request_id = context.request["x-ms-client-request-id"].to_string();
+  if (context.request.find(util::MS_CLIENT_REQUEST_ID_HEADER) != context.request.end()) {
+    context.client_request_id = context.request[util::MS_CLIENT_REQUEST_ID_HEADER].to_string();
   }
 
   if (path == "/score") {
