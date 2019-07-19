@@ -202,7 +202,11 @@ TEST(NchwcOptimizerTests, ConvNchw) {
       auto* conv_output_arg = output_arg;
       if (!activation_op_type.empty()) {
         conv_output_arg = helper.MakeIntermediate();
-        helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
+        auto& act_node = helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
+        if (activation_op_type == "Clip") {
+          act_node.AddAttribute("min", 0.0f);
+          act_node.AddAttribute("max", 6.0f);
+        }
       }
 
       auto& conv_node = helper.AddConvNode(input_arg, conv_output_arg, {130, 3, 3, 3});
@@ -223,7 +227,7 @@ TEST(NchwcOptimizerTests, ConvNchw) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu"};
+  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu", "Clip"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -238,7 +242,11 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
       auto* conv_output_arg = output_arg;
       if (!activation_op_type.empty()) {
         conv_output_arg = helper.MakeIntermediate();
-        helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
+        auto& act_node = helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
+        if (activation_op_type == "Clip") {
+          act_node.AddAttribute("min", -6.0f);
+          act_node.AddAttribute("max", 6.0f);
+        }
       }
 
       helper.AddConvNode(input_arg, conv_output_arg, {127, 64, 3, 3});
@@ -257,7 +265,7 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   };
 
-  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu"};
+  std::vector<std::string> activation_op_types = {"", "Relu", "LeakyRelu", "Clip"};
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
@@ -365,36 +373,6 @@ TEST(NchwcOptimizerTests, ConvPointwise) {
   for (auto& activation_op_type : activation_op_types) {
     test_case(activation_op_type);
   }
-}
-
-TEST(NchwcOptimizerTests, ConvClip) {
-  auto build_test_case = [&](NchwcTestHelper& helper) {
-    auto* input_arg = helper.MakeInput({1, 3, 28, 28});
-    auto* output_arg = helper.MakeOutput();
-
-    auto* conv_output_arg = helper.MakeIntermediate();
-    helper.AddConvNode(input_arg, conv_output_arg, {128, 3, 1, 1});
-
-    auto* clip_output_arg = helper.MakeIntermediate();
-    auto& clip_node = helper.AddNode("Clip", {conv_output_arg}, {clip_output_arg});
-    clip_node.AddAttribute("min", 0.0f);
-    clip_node.AddAttribute("max", 6.0f);
-
-    helper.AddConvNode(clip_output_arg, output_arg, {192, 128, 1, 1});
-  };
-
-  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
-    auto op_to_count = session.CountOpsInGraph();
-    EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
-    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
-    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
-    EXPECT_EQ(op_to_count["Clip"], 1);
-  };
-
-  // Verify that using Clip with an NCHWc input does not cause unnecessary
-  // reorder nodes to be added. Clip can consume and produce NCHWc as it is an
-  // elementwise operation.
-  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
 TEST(NchwcOptimizerTests, ConvMaxPool) {

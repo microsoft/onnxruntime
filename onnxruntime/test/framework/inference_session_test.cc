@@ -914,23 +914,24 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
 
     // required and optional input
     status = RunOptionalInputTest(true, true, false, version);
-    if (version < 4) {
-      ASSERT_FALSE(status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(),
-                  testing::HasSubstr("Initializers may not be overridden by feeds if model IR version is less than 4"));
+    if (version == 3) {
+      ASSERT_FALSE(status.IsOK()) << status.ErrorMessage();
     } else {
       ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
-
     // required, optional and invalid input
     status = RunOptionalInputTest(true, true, true, version);
     ASSERT_FALSE(status.IsOK());
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
     // missing required
-    status = RunOptionalInputTest(false, false, false, version);
+    status = RunOptionalInputTest(false, true, false, version);
     ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("One or more missing required inputs"));
+    if (version == 3) {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+    } else {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
+    }
   }
 }
 

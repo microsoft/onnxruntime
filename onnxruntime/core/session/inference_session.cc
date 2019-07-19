@@ -91,7 +91,8 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }
 }  // namespace
 
-InferenceSession::InferenceSession(const SessionOptions& session_options, logging::LoggingManager* logging_manager)
+InferenceSession::InferenceSession(const SessionOptions& session_options,
+                                   logging::LoggingManager* logging_manager)
     : session_options_{session_options},
       graph_transformation_mgr_{session_options_.max_num_graph_transformation_steps},
       logging_manager_{logging_manager},
@@ -103,11 +104,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, loggin
 
   InitLogger(logging_manager);
 
-  // Register data transfer methods.
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
-#ifdef USE_CUDA
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
-#endif
   session_state_.SetDataTransferMgr(&data_transfer_mgr_);
 
   // The threadpool is currently evolving.  We will always create a per session threadpool.
@@ -482,6 +478,16 @@ common::Status InferenceSession::Initialize() {
                                                    std::make_unique<CPUExecutionProvider>(epi)));
     }
 
+    // Register data transfer methods.
+    data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+#ifdef USE_CUDA
+    // TODO: this should be refactored later by exposing separate API to allow users to register different data transfers for different devices.
+    bool is_nvidia_gpu_used = (nullptr != execution_providers_.Get(kCudaExecutionProvider)) || (nullptr != execution_providers_.Get(kTensorrtExecutionProvider));
+    if (is_nvidia_gpu_used) {
+      data_transfer_mgr_.RegisterDataTransfer(std::make_unique<GPUDataTransfer>());
+    }
+#endif
+
     if (!session_options_.enable_sequential_execution &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
       LOGS(*session_logger_, ERROR) << "Parallel execution is currently not supported "
@@ -606,34 +612,13 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
                            feeds.size(), " elements.");
   }
 
-  std::unordered_set<std::string> seen_names;
-  seen_names.reserve(feeds.size());
-  size_t seen_required_inputs = 0;
-  const Graph& graph = model_->MainGraph();
-
   for (size_t i = 0; i < feeds.size(); ++i) {
     const auto& feed_name = feed_names[i];
 
-    if (seen_names.insert(feed_name).second == false) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Duplicate name in feeds: ", feed_name);
-    }
-
     auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
-      // if IR < 4 all initializers are required to have a matching graph input with the same name,
-      // however we disallow using that graph input to override the initializer, and treat the initializers as constant.
-      // check for this and output a nicer error message if that is the case.
-      // As we've already moved all initializers to SessionState we need to check if it's in the constant initializers there
-      int idx;
-      bool is_constant_initializer = session_state_.GetOrtValueNameIdxMap().GetIdx(feed_name, idx).IsOK() &&
-                                     session_state_.GetConstantInitializedTensors().find(idx) !=
-                                         session_state_.GetConstantInitializedTensors().cend();
-
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name:", feed_name,
-                             is_constant_initializer ? ". Initializers may not be overridden by feeds"
-                                                       " if model IR version is less than 4."
-                                                     : ".");
+                             "Invalid Feed Input Name:", feed_name);
     }
 
     auto expected_type = iter->second.ml_data_type;
@@ -659,31 +644,6 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR(CheckTypes(input_type, expected_type));
     }
-
-    if (!graph.CanOverrideInitializer() ||  // all entries in input_def_map_ are required.
-        required_inputs_.find(feed_name) != required_inputs_.cend()) {
-      ++seen_required_inputs;
-    }
-  }
-
-  if (seen_required_inputs < required_inputs_.size()) {
-    std::ostringstream req_input_str;
-    auto cur = required_inputs_.cbegin(), end = required_inputs_.cend();
-    req_input_str << "Required inputs: ";
-    req_input_str << *(cur++);
-    while (cur != end) {
-      req_input_str << ", " << *(cur++);
-    }
-
-    req_input_str << " . Got: ";
-    for (size_t i = 0; i < feed_names.size(); ++i) {
-      if (i > 0)
-        req_input_str << ", ";
-      req_input_str << feed_names[i];
-    }
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "One or more missing required inputs. ",
-                           req_input_str.str());
   }
 
   return Status::OK();
@@ -691,7 +651,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
 common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>& output_names,
                                                  const std::vector<OrtValue>* p_fetches) const {
-  if (!p_fetches) {
+  if (p_fetches == nullptr) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                           "Output vector pointer is NULL");
   }
@@ -734,8 +694,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     }
 
     ORT_RETURN_IF_ERROR(ValidateInputs(feed_names, feeds));
-
-    // if the output vector is non-empty, ensure that its the same size as the output_names
     ORT_RETURN_IF_ERROR(ValidateOutputs(output_names, p_fetches));
 
     FeedsFetchesInfo info(feed_names, output_names);
@@ -980,13 +938,12 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
     run_log_id += run_options.run_tag;
 
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (run_options.run_log_severity_level < 0) {
+    if (run_options.run_log_severity_level == -1) {
       severity = session_logger_->GetSeverity();
     } else {
       ORT_ENFORCE(run_options.run_log_severity_level >= 0 &&
                       run_options.run_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid run log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  "Invalid run log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   run_options.run_log_severity_level);
       severity = static_cast<logging::Severity>(run_options.run_log_severity_level);
     }
@@ -1009,26 +966,22 @@ const logging::Logger& InferenceSession::CreateLoggerForRun(const RunOptions& ru
 
 void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
   // create logger for session, using provided logging manager if possible
-  if (logging_manager != nullptr) {
-    std::string session_logid = !session_options_.session_logid.empty()
-                                    ? session_options_.session_logid
-                                    : "InferenceSession";  // there's probably a better default...
-
+  if (logging_manager != nullptr && !session_options_.session_logid.empty()) {
     logging::Severity severity = logging::Severity::kWARNING;
-
-    if (session_options_.session_log_severity_level < 0) {
+    if (session_options_.session_log_severity_level == -1) {
       severity = logging::LoggingManager::DefaultLogger().GetSeverity();
     } else {
       ORT_ENFORCE(session_options_.session_log_severity_level >= 0 &&
                       session_options_.session_log_severity_level <= static_cast<int>(logging::Severity::kFATAL),
-                  "Invalid session log severity level. Must be a valid onnxruntime::logging::Severity value. Got ",
+                  "Invalid session log severity level. Not a valid onnxruntime::logging::Severity value: ",
                   session_options_.session_log_severity_level);
       severity = static_cast<logging::Severity>(session_options_.session_log_severity_level);
     }
 
-    owned_session_logger_ = logging_manager_->CreateLogger(session_logid, severity, false,
+    owned_session_logger_ = logging_manager_->CreateLogger(session_options_.session_logid,
+                                                           severity,
+                                                           false,
                                                            session_options_.session_log_verbosity_level);
-
     session_logger_ = owned_session_logger_.get();
   } else {
     session_logger_ = &logging::LoggingManager::DefaultLogger();

@@ -97,7 +97,7 @@ You can enable ONNX Runtime latency profiling in code:
 import onnxruntime as rt
 
 sess_options = rt.SessionOptions()
-enable_profiling.enable_profiling = True
+sess_options.enable_profiling = True
 ```
 Or, if you are using the onnxruntime_perf_test.exe tool, you can add -p [profile_file] to enable performance profiling.
 
