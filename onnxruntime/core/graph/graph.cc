@@ -64,7 +64,7 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
           dim.clear_dim_param();
         }
       } else if (dim.has_dim_value()) {
-        if (dim.dim_value() < 1) {
+        if (dim.dim_value() < 0) {
           dim.clear_dim_value();
         }
       }
