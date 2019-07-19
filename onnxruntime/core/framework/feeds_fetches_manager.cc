@@ -43,9 +43,7 @@ Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
                                    const std::vector<std::string>& output_names,
                                    const OrtValueNameIdxMap& ort_value_name_idx_map,
                                    std::unique_ptr<FeedsFetchesManager>& feed_fetch_manager) {
-  FeedsFetchesInfo info;
-  info.feed_names = feed_names;
-  info.output_names = output_names;
+  FeedsFetchesInfo info{feed_names, output_names};
 
   ORT_RETURN_IF_ERROR(info.SetMLValueIdxs(ort_value_name_idx_map));
 

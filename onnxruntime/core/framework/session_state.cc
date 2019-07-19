@@ -78,26 +78,27 @@ void SessionState::SetProfiler(profiling::Profiler& profiler) { profiler_ = &pro
 
 ::onnxruntime::profiling::Profiler& SessionState::Profiler() const { return *profiler_; }
 
-static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes) {
+static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
   int64_t key = 0;
-  for (auto& shape : shapes) {
-    for (auto dim : shape.GetDims()) key ^= dim;
+  for (auto shape : shapes) {
+    for (auto dim : shape.get().GetDims()) key ^= dim;
   }
   return key;
 }
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const {
-  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
+
+  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) return nullptr;
 
   return it->second.get();
 }
 
-Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
+Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
                                                    std::unique_ptr<MemoryPatternGroup> mem_patterns) const {
-  int64_t key = CalculateMemoryPatternsKey(input_shape);
+  int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
