@@ -4,7 +4,6 @@
 #include "transformer_memcpy.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
-#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -53,6 +52,19 @@ class TransformerMemcpyImpl {
   onnxruntime::Graph& graph_;
   std::string provider_;
 };
+
+/** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer. 
+@param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
+*/
+const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
+  const onnx::TensorProto* initializer = nullptr;
+  if (graph.GetInitializedTensor(name, initializer)) {
+    return initializer;
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    return GetInitializer(*graph.ParentGraph(), name, check_outer_scope);
+  }
+  return initializer;
+}
 
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
@@ -167,7 +179,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
         [this, &kci, &initializers_consumed](const onnxruntime::NodeArg& arg, size_t index) {
           // check if this NodeArg is an initializer defined in current outer graph level
           const auto* initializer_tensor_proto =
-              graph_utils::GetInitializer(graph_, arg.Name(), true);
+              GetInitializer(graph_, arg.Name(), true);
           if (initializer_tensor_proto != nullptr)
             initializers_consumed[arg.Name()] = initializer_tensor_proto;
           if (kci && kci->kernel_def->IsInputOnCpu(index))
