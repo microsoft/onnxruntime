@@ -780,6 +780,15 @@ TEST(MathOpTest, Equal_int64) {
   test.Run();
 }
 
+TEST(MathOpTest, Equal_float) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
+  test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
 TEST(MathOpTest, Mean_6) {
   OpTester test("Mean", 6);
   std::vector<int64_t> dims{3, 3};
