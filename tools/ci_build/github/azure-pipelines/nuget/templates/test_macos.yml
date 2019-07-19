@@ -1,8 +1,9 @@
 parameters:
   AgentPool : 'Hosted macOS High Sierra'
+  JobName: 'NuGet_Test_MacOS'
 
 jobs:
-- job: NuGet_Test_MacOS
+- job: ${{ parameters.JobName }}
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging

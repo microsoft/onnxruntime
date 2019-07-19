@@ -1,8 +1,9 @@
 parameters:
   AgentPool : 'Win-CPU'
+  JobName: 'NuGet_Test_Win'
 
 jobs:
-- job: NuGet_Test_Win
+- job: ${{ parameters.JobName }}
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging
