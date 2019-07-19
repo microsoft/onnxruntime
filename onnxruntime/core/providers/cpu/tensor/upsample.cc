@@ -39,21 +39,25 @@ Status UpsampleNearest(const T* input,
     return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value is nullptr");
   if (input_shape.NumDimensions() != output_shape.NumDimensions())
     return Status(ONNXRUNTIME, FAIL, "Upsample: input/output value's dimension mismatch");
+  if (input_shape.NumDimensions() == 0) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "Upsample: input shape needs to be at least a single dimension.");
+  }
 
-  auto n_dim = input_shape.NumDimensions();
-  std::vector<int64_t> output_dim_counter(n_dim);
+  int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
+  return std::vector<int64_t> output_dim_counter(n_dim);
   output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
 
   std::vector<int64_t> input_dim_counters(n_dim);
   std::vector<int64_t> input_dim_factor(n_dim);
   input_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
-  for (auto dim_idx = static_cast<int64_t>(n_dim - 2); dim_idx >= 0; dim_idx--) {
+  for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
     input_dim_factor[dim_idx] = input_dim_factor[dim_idx + 1] * input_shape[dim_idx + 1];
   }
 
   int64_t input_idx = 0;
   for (int64_t output_idx = 0; output_idx < output_shape.Size(); output_idx++) {
-    for (auto dim_idx = static_cast<int64_t>(n_dim - 1); dim_idx >= 0; dim_idx--) {
+    for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
       if (++output_dim_counter[dim_idx] < output_shape[dim_idx]) {
         int64_t current_input_dim_counter = 0;
         if (scales[dim_idx] < 1)  //downsample
