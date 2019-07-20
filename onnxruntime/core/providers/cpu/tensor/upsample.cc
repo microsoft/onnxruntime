@@ -55,8 +55,77 @@ Status UpsampleNearest(const T* input,
     input_dim_factor[dim_idx] = input_dim_factor[dim_idx + 1] * input_shape[dim_idx + 1];
   }
 
+  std::vector<int64_t> output_dim_factor(n_dim);
+  output_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
+  for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
+    output_dim_factor[dim_idx] = output_dim_factor[dim_idx + 1] * output_shape[dim_idx + 1];
+  }
+
+  int64_t output_idx = 0;
   int64_t input_idx = 0;
-  for (int64_t output_idx = 0; output_idx < output_shape.Size(); output_idx++) {
+
+#define OneDemensionProcessor(dim_inx)                                                                                                                  \
+  int64_t input_dim##dim_inx##_inx =                                                                                                                    \
+      static_cast<int64_t>(scales[dim_inx] < 1 ? std::ceil(output_dim##dim_inx##_inx / scales[dim_inx]) : output_dim##dim_inx##_inx / scales[dim_inx]); \
+  if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;                                         \
+  if (input_dim##dim_inx##_inx != input_dim_counters[dim_inx]) {                                                                                        \
+    input_idx += (input_dim##dim_inx##_inx - input_dim_counters[dim_inx]) * input_dim_factor[dim_inx];                                                  \
+    input_dim_counters[dim_inx] = input_dim##dim_inx##_inx;                                                                                             \
+  }
+
+  if (n_dim == 1) {
+    for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
+      OneDemensionProcessor(0);
+      output[output_idx++] = input[input_idx];
+    }
+    return Status::OK();
+  }
+
+  if (n_dim == 2) {
+    for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
+      OneDemensionProcessor(0);
+      for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
+        OneDemensionProcessor(1);
+        output[output_idx++] = input[input_idx];
+      }
+    }
+    return Status::OK();
+  }
+
+  if (n_dim == 3) {
+    for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
+      OneDemensionProcessor(0);
+      for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
+        OneDemensionProcessor(1);
+        for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
+          OneDemensionProcessor(2);
+          output[output_idx++] = input[input_idx];
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  if (n_dim == 4) {
+    for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
+      OneDemensionProcessor(0);
+      for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
+        OneDemensionProcessor(1);
+        for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
+          OneDemensionProcessor(2);
+          for (int64_t output_dim3_inx = 0; output_dim3_inx < output_shape[3]; output_dim3_inx++) {
+            OneDemensionProcessor(3);
+            output[output_idx++] = input[input_idx];
+          }
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+#undef OneDemensionProcessor
+
+  for (; output_idx < output_shape.Size(); output_idx++) {
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
       if (++output_dim_counter[dim_idx] < output_shape[dim_idx]) {
         int64_t current_input_dim_counter = 0;
@@ -85,6 +154,7 @@ Status UpsampleNearest(const T* input,
 
     output[output_idx] = input[input_idx];
   }
+
   return Status::OK();
 }
 
