@@ -34,7 +34,7 @@ tar -zxvf inception_v4_2016_09_09.tar.gz
 ```
 
 The [Inception V4] zip file only contains a single checkpoint file: inception_v4.ckpt. It can't be directly used for inferencing. 
-You need the network definition and combine it with the checkpoint. Please follow the steps below:
+You need to combine the network definition and the checkpoint. Please follow the steps below:
 
 1. Export the graph
 Create an new folder. At there, execute
