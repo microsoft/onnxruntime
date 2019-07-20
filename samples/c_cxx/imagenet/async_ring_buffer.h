@@ -18,14 +18,17 @@ class AsyncRingBuffer {
     (*(RunnableTask*)data)(pci);
   }
 
-  template <typename T=float>
+  template <typename T = float>
   static size_t CalcItemSize(const std::vector<int64_t>& tensor_shape) {
     int64_t r = 1;
     for (int64_t i : tensor_shape) r *= i;
     return static_cast<size_t>(r) * sizeof(T);
   }
 
-  enum class BufferState { EMPTY, FILLING, FULL, TAKEN };
+  enum class BufferState { EMPTY,
+                           FILLING,
+                           FULL,
+                           TAKEN };
   const size_t batch_size_;
   using InputType = typename InputIterator::value_type;
   DataProcessing* p_;
@@ -175,9 +178,9 @@ class AsyncRingBuffer {
       std::vector<InputType> task_id_list;
       buffer_id = tensor_id * batch_size_;
       if (buffer_.TakeRange(buffer_id, buffer_id + batch_size_, task_id_list)) {
-        queue_.Put(tensor_id, [&task_id_list](QueueItem& i){
-			i.taskid_list = task_id_list;
-		});
+        queue_.Put(tensor_id, [&task_id_list](QueueItem& i) {
+          i.taskid_list = task_id_list;
+        });
         input_tensor = queue_.Take();
       }
     }
@@ -203,7 +206,7 @@ class AsyncRingBuffer {
     }
   }
 
-  void Fail(_Inout_opt_ ONNXRUNTIME_CALLBACK_INSTANCE pci, const char* errmsg) {    
+  void Fail(_Inout_opt_ ONNXRUNTIME_CALLBACK_INSTANCE pci, const char* errmsg) {
     threadpool_.SetFailBit(pci, errmsg);
   }
 
@@ -221,9 +224,9 @@ class AsyncRingBuffer {
         input_end_(input_end) {
     OrtAllocatorInfo* allocator_info;
     ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
-    uint8_t* output_data = buffer_.Begin();     
+    uint8_t* output_data = buffer_.Begin();
     std::vector<int64_t> input_shape = p_->GetOutputShape(batch_size_);
-	size_t off = CalcItemSize(input_shape);
+    size_t off = CalcItemSize(input_shape);
     queue_.Init([allocator_info, off, &output_data, &input_shape](QueueItem& e) {
       ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, output_data, off, input_shape.data(),
                                                            input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
@@ -255,7 +258,6 @@ class AsyncRingBuffer {
     OrtReleaseValue(input_tensor);
   }
 
- 
   /**
    * call this function when a download task is just finished or any buffer became FREE.
    * \return 0 EOF. No more download task to schedule
@@ -279,9 +281,9 @@ class AsyncRingBuffer {
           (*r->p_)(&s, d, r->buffer_.GetItemSizeInBytes());
           r->OnDownloadFinished(pci, d);
         } catch (const std::exception& ex) {
-		  fprintf(stderr, "%s\n", ex.what());
+          fprintf(stderr, "%s\n", ex.what());
           r->Fail(pci, ex.what());
-		}
+        }
       }
     };
 
