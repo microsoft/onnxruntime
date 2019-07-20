@@ -62,6 +62,7 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
     See https://golang.org/doc/install for installation instructions.
 2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
 
 
 ## Build/Test Flavors for CI
