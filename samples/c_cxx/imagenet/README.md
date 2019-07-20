@@ -57,7 +57,7 @@ python -m tf2onnx.convert --input inception_v4.pb --inputs input:0 --outputs Inc
 ```
 
 # Run the inferencing 
-In your build dir of onnxruntime_samples, search "image_classifier.exe" and run 
+In your build dir of onnxruntime_samples, search for "image_classifier.exe" and run 
 ```
 image_classifier.exe C:\tools\imagnet_validation_data inception_v4.onnx imagenet_lsvrc_2015_synsets.txt imagenet_2012_validation_synset_labels.txt 32
 ```
