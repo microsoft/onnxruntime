@@ -179,6 +179,7 @@ void InceptionPreprocessing::operator()(const void* input_data, void* output_dat
   auto output_data_ = reinterpret_cast<float*>(output_data);
   ResizeImageInMemory(float_file_data_pointer, output_data_, bbox_h_size, bbox_w_size, out_height_, out_width_,
                       channels);
+  free(float_file_data_pointer);
   size_t output_data_len = channels_ * out_height_ * out_width_;
   for (size_t i = 0; i != output_data_len; ++i) {
     output_data_[i] = (output_data_[i] - 0.5f) * 2.f;
