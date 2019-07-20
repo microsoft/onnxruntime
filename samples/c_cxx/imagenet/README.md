@@ -26,7 +26,7 @@ And also, please download the "[imagenet_lsvrc_2015_synsets.txt](https://raw.git
 # Get the model
 Please check [https://github.com/tensorflow/models/tree/master/research/slim/](https://github.com/tensorflow/models/tree/master/research/slim/).
 You may either train the model by yourself, or just download a pretrained model provided by Google. 
-If you don't know which one to download and try, we suggest you may choose the [Inception V4](http://download.tensorflow.org/models/inception_v4_2016_09_09.tar.gz) model as a start point.
+If you don't know which one to download and try, we suggest you choose the [Inception V4](http://download.tensorflow.org/models/inception_v4_2016_09_09.tar.gz) model as a starting point.
 
 After downloading, please uncompress it.
 ```
