@@ -306,6 +306,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
     Equal<int64_t>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Equal,
+    11,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Equal<float>);
+
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Mean,
     6, 7,
