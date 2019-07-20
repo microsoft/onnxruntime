@@ -61,6 +61,6 @@ In your build dir of onnxruntime_samples, search for "image_classifier.exe" and 
 ```
 image_classifier.exe C:\tools\imagnet_validation_data inception_v4.onnx imagenet_lsvrc_2015_synsets.txt imagenet_2012_validation_synset_labels.txt 32
 ```
-Please replace the file names with corresponding file paths.
+Please replace the file names with the corresponding file paths.
 
 The last parameter is batch size, you may need to adjust it according to your GPU memory size.
