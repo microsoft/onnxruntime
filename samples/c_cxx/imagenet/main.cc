@@ -177,11 +177,12 @@ class Validator : public OutputCollector<TCharString> {
         }
         probs = end;
       }
-      finished_count_ += static_cast<int>(remain);
-      float progress = static_cast<float>(finished_count_.load()) / validation_data_.size();
+      size_t finished = finished_count_ += static_cast<int>(remain);
+      float progress = static_cast<float>(finished) / validation_data_.size();
       auto elapsed = system_clock::now() - start_time_;
       auto eta = progress > 0 ? duration_cast<minutes>(elapsed * (1 - progress) / progress).count() : 9999999;
-      printf("progress %.2f%%, expect to be finished in %d minutes\n", progress * 100, eta);
+	  float accuracy = finished > 0 ? top_1_correct_count_ / static_cast<float>(finished) : 0;
+      printf("accuracy = %.2f, progress %.2f%%, expect to be finished in %d minutes\n",accuracy, progress * 100, eta);
       OrtReleaseValue(output_tensor);
     }
   }

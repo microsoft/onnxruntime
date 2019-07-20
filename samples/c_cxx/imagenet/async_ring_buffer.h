@@ -75,8 +75,8 @@ class AsyncRingBuffer {
           input_task_id_for_buffers_(capacity),
           buffer_(item_size_in_bytes * capacity) {}
 
-    size_t GetId(const uint8_t* p) const { return (p - buffer_.data()) / item_size_in_bytes_; }
-
+    size_t GetId(_In_ const uint8_t* p) const { return (p - buffer_.data()) / item_size_in_bytes_; }
+    size_t GetItemSizeInBytes() const { return item_size_in_bytes_; }
     bool CompareAndSet(size_t i, BufferState old, BufferState new_state) {
       if (buffer_state[i] != old) return false;
       buffer_state[i] = new_state;
@@ -105,6 +105,7 @@ class AsyncRingBuffer {
       return true;
     }
 
+	_Success_(return)
     bool TakeAllRemain(_Out_ uint8_t** begin, std::vector<InputType>& task_id_list) {
       auto iter =
           std::find_if(buffer_state.begin(), buffer_state.end(), [](BufferState s) { return s == BufferState::FULL; });
@@ -275,15 +276,12 @@ class AsyncRingBuffer {
         InputType s = source;
         uint8_t* d = dest;
         delete this;
-        try {
-          (*r->p_)(&s, d);
+        try {			
+          (*r->p_)(&s, d, r->buffer_.GetItemSizeInBytes());
           r->OnDownloadFinished(pci, d);
         } catch (const std::exception& ex) {
 		  fprintf(stderr, "%s\n", ex.what());
           r->Fail(pci, ex.what());
-#ifdef _WIN32
-        
-#endif
 		}
       }
     };
