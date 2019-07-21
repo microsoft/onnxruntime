@@ -85,8 +85,14 @@ else
     RUNTIME="--runtime=nvidia"
 fi
 
+if [ $BUILD_OS = "android" ]; then
+    PRIVILEGED="--privileged"
+else
+    PRIVILEGED=
+fi
+
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
-docker run $RUNTIME -h $HOSTNAME \
+docker run $RUNTIME $PRIVILEGED -h $HOSTNAME \
     --name "onnxruntime-$BUILD_DEVICE" \
     --volume "$SOURCE_ROOT:/onnxruntime_src" \
     --volume "$BUILD_DIR:/build" \
