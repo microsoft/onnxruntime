@@ -1014,7 +1014,8 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
     std::vector<std::vector<float>> x_datas(2);
     GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
 
-    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}},
+                                          {{1}, {input_shape, false}}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1026,7 +1027,8 @@ TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
     std::vector<std::vector<float>> x_datas(2);
     GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
 
-    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}}, {{1}}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}},
+                                          {{1}, {input_shape, false}}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -1050,7 +1052,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     TensorInfo x_info({logit_shape});
     TensorInfo index_info(N_1d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}, {logit_shape, false}}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1063,7 +1065,8 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     TensorInfo index_info(N_1d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo weight_info(N_1d, false, &transformer_weight);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info}, {{1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {{1}, {logit_shape, false}}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1075,7 +1078,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     TensorInfo x_info({logit_shape});
     TensorInfo index_info(N_3d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}, {logit_shape, false}}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1088,7 +1091,8 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
     TensorInfo index_info(N_3d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo weight_info(N_3d, false, &transformer_weight);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info}, {{1}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {{1}, {logit_shape, false}}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 }

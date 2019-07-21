@@ -5,6 +5,7 @@
 #include "loss_function_builder.h"
 #include "loss_func/mean_squared_error.h"
 #include "loss_func/bert_loss.h"
+#include "loss_func/softmax_cross_entropy.h"
 
 namespace onnxruntime {
 namespace training {
@@ -55,6 +56,8 @@ void LossFunctionRegistry::RegisterNonOperatorLossFunctions() {
   // Register non-operator loss functions here.
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(MeanSquaredError);
   REGISTER_NON_OPERATOR_LOSS_FUNCTION(BertLoss);
+  REGISTER_NON_OPERATOR_LOSS_FUNCTION(SoftmaxCrossEntropy);
+  REGISTER_NON_OPERATOR_LOSS_FUNCTION(SparseSoftmaxCrossEntropy);
 }
 }  // namespace training
 }  // namespace onnxruntime

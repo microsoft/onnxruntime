@@ -8,7 +8,7 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(Class, T, version)                                \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Class,                                                                    \
-      kOnnxDomain,                                                                \
+      kOnnxDomain,                                                              \
       version,                                                                  \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
@@ -18,12 +18,12 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, version)                     \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                                \
       Class,                                                                        \
-      kOnnxDomain,                                                                    \
+      kOnnxDomain,                                                                  \
       version,                                                                      \
       T, Tin,                                                                       \
       kCudaExecutionProvider,                                                       \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).     \
-                         TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()), \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+                        .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()), \
       Class<T, Tin>);
 
 template <typename T>
@@ -33,27 +33,31 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
-
   ORT_ENFORCE(label_shape == logit_shape, "The shape in logits and labels is not identical");
 
   int64_t N = logit_shape.SizeToDimension(logit_shape.NumDimensions() - 1);
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const TensorShape logit_reshape({N, D});
 
-  IAllocatorUniquePtr<T> temp_X = GetScratchBuffer<T>(N * D);
+  Tensor* probability = ctx->Output(1, logit_shape);
+
+  const T* logit_data = logit.template Data<T>();
+  const T* label_data = label.template Data<T>();
+  T* probability_data = probability->template MutableData<T>();
 
   // calculate softmax
-  ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(logit.template Data<T>(),
+  ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(logit_data,
                                               logit_reshape,
-                                              temp_X.get(),
+                                              probability_data,
                                               CudnnHandle(),
                                               1 /*axis default*/));
 
-  // calculate  (label - log(softmax)) for each element
+  // calculate (label - log(softmax)) for each element
+  IAllocatorUniquePtr<T> temp_X = GetScratchBuffer<T>(N * D);
   SoftMaxCrossEntropyImpl(
-      temp_X.get(),              // softmax
-      label.template Data<T>(),  // label
-      temp_X.get(),              // -(label * log(softmax))
+      probability_data,  // softmax result
+      label_data,        // label
+      temp_X.get(),      // -(label * log(softmax))
       N * D);
 
   std::vector<int64_t> output_dims(2, 1);
@@ -73,37 +77,28 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
 template <typename T>
 Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& dY = *ctx->Input<Tensor>(0);
-  const Tensor& logit = *ctx->Input<Tensor>(1);
+  const Tensor& probability = *ctx->Input<Tensor>(1);
   const Tensor& label = *ctx->Input<Tensor>(2);
 
-  const TensorShape logit_shape{logit.Shape()};
+  const TensorShape probability_shape{probability.Shape()};
   const TensorShape label_shape{label.Shape()};
-  ORT_ENFORCE(label_shape == logit_shape, "The shape in logits and label is not identical");
+  ORT_ENFORCE(label_shape == probability_shape, "The shape in probability and label is not identical");
 
-  int64_t N = logit_shape.SizeToDimension(logit_shape.NumDimensions() - 1);
-  int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
-  const TensorShape logit_reshape({N, D});
+  int64_t ND = probability_shape.Size();
 
-  Tensor* d_logits = ctx->Output(0, logit_shape);
+  Tensor* d_logits = ctx->Output(0, probability_shape);
 
-  const T* logit_data = logit.template Data<T>();
-  const T* label_data = label.template Data<T>();
   const T* dY_data = dY.template Data<T>();
+  const T* probability_data = probability.template Data<T>();
+  const T* label_data = label.template Data<T>();
   T* d_logits_data = d_logits->template MutableData<T>();
 
-  ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(
-      logit_data,
-      logit_reshape,
-      d_logits_data,
-      CudnnHandle(),
-      1 /*axis default*/));
-
   SoftMaxCrossEntropyGradImpl(
-      dY_data,        // Dy
-      d_logits_data,  // pi
-      label_data,     // Label
-      d_logits_data,  // gradient
-      N * D);
+      dY_data,           // Dy
+      probability_data,  // pi
+      label_data,        // Label
+      d_logits_data,     // gradient
+      ND);
 
   return Status::OK();
 }
@@ -126,18 +121,19 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   const TensorShape logit_reshape({N, D});
   const TensorShape label_reshape({N});
 
-  IAllocatorUniquePtr<T> tmp_probability = GetScratchBuffer<T>(N * D);
   IAllocatorUniquePtr<T> tmp_loss_sample = GetScratchBuffer<T>(N);
   Tensor* total_loss = ctx->Output(0, TensorShape({}));
+  Tensor* probability = ctx->Output(1, logit_shape);
 
   const T* logit_data = logit.template Data<T>();
   const Tin* label_data = label.template Data<Tin>();
   T* total_loss_data = total_loss->template MutableData<T>();
+  T* probability_data = probability->template MutableData<T>();
 
   // calculate softmax
   ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(logit_data,
                                               logit_reshape,
-                                              tmp_probability.get(),
+                                              probability_data,
                                               CudnnHandle(),
                                               1 /*axis default*/));
 
@@ -149,7 +145,8 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     ORT_ENFORCE(weight_shape == label_shape, "The shape in weights and labels is different");
     weight_data = weight.template Data<T>();
   }
-  SparseSoftmaxCrossEntropyImpl(tmp_probability.get(), label_data, weight_data, tmp_loss_sample.get(), N, D);
+
+  SparseSoftmaxCrossEntropyImpl(probability_data, label_data, weight_data, tmp_loss_sample.get(), N, D);
 
   // ReduceSum on loss_per_sample
   std::vector<int64_t> output_dims(1, 1);
@@ -167,34 +164,26 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
 template <typename T, typename Tin>
 Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& dY = *ctx->Input<Tensor>(0);
-  const Tensor& logit = *ctx->Input<Tensor>(1);
+  const Tensor& probability = *ctx->Input<Tensor>(1);
   const Tensor& label = *ctx->Input<Tensor>(2);
 
-  const TensorShape logit_shape{logit.Shape()};
+  const TensorShape probability_shape{probability.Shape()};
   const TensorShape label_shape{label.Shape()};
-  ORT_ENFORCE(logit_shape.NumDimensions() == label_shape.NumDimensions() + 1,
-              "logits_shape must be (1 + label_shape)");
+  ORT_ENFORCE(probability_shape.NumDimensions() == label_shape.NumDimensions() + 1,
+              "probability_shape must be (1 + label_shape)");
   for (size_t i = 0; i < label_shape.NumDimensions(); i++) {
-    ORT_ENFORCE(label_shape[i] == logit_shape[i], "The shape in logits and labels does not match");
+    ORT_ENFORCE(label_shape[i] == probability_shape[i], "The shape in probability and labels does not match");
   }
 
   int64_t N = label_shape.Size();
-  int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
-  const TensorShape logit_reshape({N, D});
+  int64_t D = probability_shape[probability_shape.NumDimensions() - 1];
 
-  Tensor* d_logit = ctx->Output(0, logit_shape);
+  Tensor* d_logit = ctx->Output(0, probability_shape);
 
   const T* dY_data = dY.template Data<T>();
-  const T* logit_data = logit.template Data<T>();
+  const T* probability_data = probability.template Data<T>();
   const Tin* label_data = label.template Data<Tin>();
   T* d_logit_data = d_logit->template MutableData<T>();
-
-  ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(
-      logit_data,
-      logit_reshape,
-      d_logit_data,
-      CudnnHandle(),
-      1 /*axis default*/));
 
   const T* weight_data = nullptr;
   if (OpKernel::Node().InputDefs().size() == 4) {
@@ -203,7 +192,8 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
     ORT_ENFORCE(weight_shape == label_shape, "The shape in weights and labels is different");
     weight_data = weight.template Data<T>();
   }
-  SparseSoftmaxCrossEntropyGradImpl(dY_data, d_logit_data, label_data, weight_data, d_logit_data, N, D);
+
+  SparseSoftmaxCrossEntropyGradImpl(dY_data, probability_data, label_data, weight_data, d_logit_data, N, D);
 
   return Status::OK();
 }
