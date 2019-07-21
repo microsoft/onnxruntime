@@ -13,7 +13,7 @@ Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/m
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
-|Windows 10   | YES          | YES         |Must use VS 2017 or the latest VS2015|
+|Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 
@@ -78,6 +78,9 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Additional Build Flavors
 The complete list of build flavors can be seen by running `./build.sh --help` or `./build.bat --help`. Here are some common flavors.
+
+### Windows CMake Generator
+The default generator on Windows is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to build.bat.
 
 ### Windows CUDA Build
 ONNX Runtime supports CUDA builds. You will need to download and install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [CUDNN](https://developer.nvidia.com/cudnn).
