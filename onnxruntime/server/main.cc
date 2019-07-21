@@ -5,6 +5,7 @@
 #include "http_server.h"
 #include "predict_request_handler.h"
 #include "server_configuration.h"
+#include "grpc/grpc_app.h"
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
@@ -69,6 +70,15 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  //Setup GRPC Server
+  auto const grpc_address = config.address;
+  auto const grpc_port = config.grpc_port;
+
+  server::GRPCApp grpc_app{env, grpc_address, grpc_port};
+
+  logger->info("GRPC Listening at: {}:{}", grpc_address, grpc_port);
+
+  //Setup HTTP Server
   auto const boost_address = boost::asio::ip::make_address(config.address);
   server::App app{};
 
@@ -86,9 +96,9 @@ int main(int argc, char* argv[]) {
 
         context.response.result(context.error_code);
         context.response.insert("Content-Type", "application/json");
-        context.response.insert("x-ms-request-id", context.request_id);
+        context.response.insert(server::util::MS_REQUEST_ID_HEADER, context.request_id);
         if (!context.client_request_id.empty()) {
-          context.response.insert("x-ms-client-request-id", (context).client_request_id);
+          context.response.insert(server::util::MS_CLIENT_REQUEST_ID_HEADER, (context).client_request_id);
         }
         context.response.body() = server::CreateJsonError(context.error_code, context.error_message);
       });
@@ -102,6 +112,8 @@ int main(int argc, char* argv[]) {
   app.Bind(boost_address, config.http_port)
       .NumThreads(config.num_http_threads)
       .Run();
+
+  grpc_app.Run();
 
   return EXIT_SUCCESS;
 }

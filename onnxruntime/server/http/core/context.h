@@ -3,17 +3,10 @@
 
 #pragma once
 
-// boost random is using a deprecated header in 1.69
-// See: https://github.com/boostorg/random/issues/49
-#define BOOST_PENDING_INTEGER_LOG2_HPP
-#include <boost/integer/integer_log2.hpp>
-
 #include <string>
 
 #include <boost/beast/http.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_io.hpp>
-#include <boost/uuid/uuid_generators.hpp>
+#include "request_id.h"
 
 namespace onnxruntime {
 namespace server {
@@ -33,7 +26,7 @@ class HttpContext {
   http::status error_code;
   std::string error_message;
 
-  HttpContext() : request_id(boost::uuids::to_string(boost::uuids::random_generator()())),
+  HttpContext() : request_id(util::InternalRequestId()),
                   client_request_id(""),
                   error_code(http::status::internal_server_error),
                   error_message("An unknown server error has occurred") {}
