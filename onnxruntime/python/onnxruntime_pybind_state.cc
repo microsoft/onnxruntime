@@ -296,7 +296,7 @@ void addGlobalMethods(py::module& m) {
         std::vector<onnxruntime::KernelDef> result;
 
         // default logger is needed to create the MklDNNExecutionProvider
-        std::string default_logger_id{"FixtureDefaultLogger"};
+        std::string default_logger_id{"DefaultLogger"};
         std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager = 
                   std::make_unique<LoggingManager>(
                           std::unique_ptr<onnxruntime::logging::ISink>{ new onnxruntime::logging::CLogSink {}}, 
@@ -325,8 +325,8 @@ void addGlobalMethods(py::module& m) {
 #endif          
         };
 
-      for (auto& f: factories){
-        for (auto& m: f->CreateProvider()
+      for (const auto& f: factories){
+        for (const auto& m: f->CreateProvider()
                        ->GetKernelRegistry()
                        ->GetKernelCreateMap()){
           result.emplace_back(*(m.second.kernel_def)); 
@@ -673,7 +673,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       });
 }
 
-#include <iostream>
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";

@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 
 from collections import defaultdict
 import io
@@ -89,7 +92,7 @@ def main(args):  # type: (Type[Args]) -> None
         
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='ONNX Runtime Operator Documentation Generator')
+    parser = argparse.ArgumentParser(description='ONNX Runtime Operator Kernel Documentation Generator')
     parser.add_argument('--output_path', help='output markdown file path', 
                         default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'OperatorKernels.md')
                        )
