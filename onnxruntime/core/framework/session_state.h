@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_registry_manager.h"
@@ -64,23 +65,31 @@ class SessionState {
 
   const ExecutionProviders& GetExecutionProviders() const noexcept { return execution_providers_; }
 
-  const MLValueNameIdxMap& GetMLValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
-  MLValueNameIdxMap& GetMLValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
+  const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
+  OrtValueNameIdxMap& GetOrtValueNameIdxMap() noexcept { return ort_value_name_idx_map_; }
 
   // initialized tensors
   /**
    * Adds an initialized tensor (weight) so that it can be used by the
    * execution frame to setup the appropriate OrtValue vectors.
-   * This function will take a shallow copy of d if d is not NULL
+   * This function will take a shallow copy of d if d is not NULL.
+   * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
    */
-  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d);
+  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant);
 
   /**
-   * Gets the list of all initialized tensors (weights) so that it can be used by the
+   * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
    * execution frame to setup the appropriate OrtValue vectors.
-   * The lifetime of returned MLValues are limited by this SessionState object.
+   * The lifetime of returned OrtValues are limited by this SessionState object.
    */
   const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
+
+  /**
+   * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant 
+   * and cannot be overridden at runtime. 
+   * The lifetime of returned OrtValues are limited by this SessionState object.
+   */
+  const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
@@ -111,13 +120,13 @@ class SessionState {
   /**
   Get cached memory pattern based on input shapes
   */
-  const MemoryPatternGroup* GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const;
+  const MemoryPatternGroup* GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes. 
   Const as it's an internal cache update only.
   */
-  Status UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
+  Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   /**
@@ -174,8 +183,10 @@ class SessionState {
   const FuncManager& GetFuncMgr() const { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() { return fused_funcs_mgr_; }
 
-  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
+  const DataTransferManager& GetDataTransferMgr() const { return *data_transfer_mgr_; }
+  void SetDataTransferMgr(const DataTransferManager* data_transfer_mgr) { data_transfer_mgr_ = data_transfer_mgr; }
 
+  std::vector<BufferUniquePtr>& GetMutableWeightsBuffers() { return weights_buffers_; }
   void CalculateNodeIndexInfo();
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
@@ -188,11 +199,14 @@ class SessionState {
   std::unique_ptr<GraphViewer> graph_viewer_;
 
   const ExecutionProviders& execution_providers_;  // owned by InferenceSession
-  MLValueNameIdxMap ort_value_name_idx_map_;
+  OrtValueNameIdxMap ort_value_name_idx_map_;
 
-  // initialized tensorset
+  // initialized tensors
   std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
-  // This data structure is for unintializing string tensors and
+  // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
+  std::unordered_map<int, OrtValue> constant_initialized_tensors_;
+
+  // This data structure is for uninitializing string tensors and
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::vector<BufferUniquePtr> weights_buffers_;
@@ -221,6 +235,7 @@ class SessionState {
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
+  const DataTransferManager* data_transfer_mgr_;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;

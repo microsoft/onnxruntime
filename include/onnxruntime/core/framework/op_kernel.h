@@ -14,6 +14,7 @@
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
+#include "core/framework/sparse_tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/span"
@@ -39,10 +40,9 @@ class OpKernel {
     return op_kernel_info_.GetKernelDef();
   }
 
-  virtual Status Compute(OpKernelContext* context) const = 0;
+  virtual Status Compute(OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
-  virtual Status ComputeAsync(OpKernelContext*,
-                              DoneCallback) const {
+  virtual Status ComputeAsync(OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
@@ -93,8 +93,7 @@ class OpKernelContext {
     if (index < 0 || index >= OutputCount())
       return nullptr;
 
-    OrtValue* p_ml_value = nullptr;
-    ORT_ENFORCE(GetOrCreateOutputMLValue(index, p_ml_value).IsOK());
+    OrtValue* p_ml_value = GetOrCreateOutputMLValue(index);
     return p_ml_value ? p_ml_value->GetMutable<T>() : nullptr;
   }
 
@@ -102,6 +101,13 @@ class OpKernelContext {
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
+
+  // Fetch a sparse-tensor output corresponding to the specified index.
+  // num_values must specify the number of non-zero values (commonly known as NNZ/nnz),
+  // and shape must specify the shape of the underlying dense-tensor.
+  // Memory allocation for the output may happen when this method is invoked,
+  // unless static optimization pre-allocates it.
+  SparseTensor* Output(int index, size_t num_values, const TensorShape& shape);
 
   const logging::Logger& Logger() const {
     return *logger_;
@@ -162,12 +168,16 @@ class OpKernelContext {
   const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
-  OrtValue* OutputMLValue(int index, const TensorShape& shape);  // Creates the OrtValue* based on the shape, if it does not exist
+
+  // Creates the OrtValue* based on the shape, if it does not exist
+  // The parameter nnz is used only for sparse-tensors and indicates the
+  // number of non-zero values (the number of elements in the values buffer allocated).
+  OrtValue* OutputMLValue(int index, const TensorShape& shape, size_t nnz = 0);
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
 
-  Status GetOrCreateOutputMLValue(int index, OrtValue*& value);
+  OrtValue* GetOrCreateOutputMLValue(int index);
 
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;
@@ -223,6 +233,13 @@ KernelCreateInfo BuildKernelCreateInfo();
 namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace contrib
+
+namespace contrib {
+namespace cuda {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace cuda
 }  // namespace contrib
 
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();

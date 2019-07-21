@@ -246,7 +246,7 @@ TEST(Random, MultinomialGoodCase) {
   const std::vector<int64_t> output_dims{batch_size, num_samples};
 #ifdef _WIN32
   const std::vector<int64_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__)
+#elif defined(__MACH__) || defined (__ANDROID__)
   const std::vector<int64_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
 #else
   const std::vector<int64_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
@@ -274,7 +274,7 @@ TEST(Random, MultinomialDefaultDType) {
   const std::vector<int64_t> output_dims{batch_size, num_samples};
 #ifdef _WIN32
   const std::vector<int32_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__)
+#elif defined(__MACH__) || defined (__ANDROID__)
   const std::vector<int32_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
 #else
   const std::vector<int32_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};

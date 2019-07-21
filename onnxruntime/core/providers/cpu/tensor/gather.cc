@@ -87,8 +87,8 @@ Status Gather::Compute(OpKernelContext* context) const {
   const int64_t data_batch_bytes = input_data_shape.SizeFromDimension(p.axis) * element_bytes;
   const int64_t gathered_batch_bytes = N * block * element_bytes;
 
-  const uint8_t* src_base = static_cast<const uint8_t*>(p.input_tensor->DataRaw());
-  uint8_t* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
+  const auto* src_base = static_cast<const uint8_t*>(p.input_tensor->DataRaw());
+  auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
 
   MLDataType Tind_type = p.indices_tensor->DataType();
   if (Tind_type == DataTypeImpl::GetType<int32_t>()) {

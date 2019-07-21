@@ -36,17 +36,32 @@ void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_s
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
-Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d) {
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
+                                          bool constant) {
   ORT_ENFORCE(ort_value_index >= 0 && ort_value_index <= ort_value_name_idx_map_.MaxIdx());
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-  if (d != nullptr && d->f != nullptr) deleter_for_initialized_tensors_[ort_value_index] = *d;
+
+  if (d != nullptr && d->f != nullptr) {
+    deleter_for_initialized_tensors_[ort_value_index] = *d;
+  }
+
+  if (constant) {
+    constant_initialized_tensors_.insert({ort_value_index, ort_value});
+  }
+
   return Status::OK();
 }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
+const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const {
+  return initialized_tensors_;
+}
+
+const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
+  return constant_initialized_tensors_;
+}
 
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;
@@ -63,26 +78,27 @@ void SessionState::SetProfiler(profiling::Profiler& profiler) { profiler_ = &pro
 
 ::onnxruntime::profiling::Profiler& SessionState::Profiler() const { return *profiler_; }
 
-static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes) {
+static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
   int64_t key = 0;
-  for (auto& shape : shapes) {
-    for (auto dim : shape.GetDims()) key ^= dim;
+  for (auto shape : shapes) {
+    for (auto dim : shape.get().GetDims()) key ^= dim;
   }
   return key;
 }
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes) const {
-  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
+
+  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) return nullptr;
 
   return it->second.get();
 }
 
-Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
+Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
                                                    std::unique_ptr<MemoryPatternGroup> mem_patterns) const {
-  int64_t key = CalculateMemoryPatternsKey(input_shape);
+  int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);

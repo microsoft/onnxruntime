@@ -19,6 +19,7 @@ OrtCreateRunOptions
 OrtCreateSession
 OrtCreateSessionFromArray
 OrtCreateSessionOptions
+OrtCreateStatus
 OrtCreateTensorAsOrtValue
 OrtCreateTensorTypeAndShapeInfo
 OrtCreateTensorWithDataAsOrtValue
@@ -48,6 +49,7 @@ OrtGetTypeInfo
 OrtGetValue
 OrtGetValueCount
 OrtGetValueType
+OrtGetVersionString
 OrtIsTensor
 OrtOnnxTypeFromTypeInfo
 OrtReleaseAllocator
@@ -76,9 +78,9 @@ OrtSessionGetOutputName
 OrtSessionGetOutputTypeInfo
 OrtSessionOptionsAppendExecutionProvider_CPU
 OrtSetDimensions
+OrtSetSessionGraphOptimizationLevel
 OrtSetSessionLogId
 OrtSetSessionLogVerbosityLevel
-OrtSetSessionGraphOptimizationLevel
 OrtSetSessionThreadPoolSize
 OrtSetTensorElementType
 OrtTensorProtoToOrtValue

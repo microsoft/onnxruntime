@@ -549,6 +549,15 @@ const Graph* Node::GetGraphAttribute(const std::string& attr_name) const {
   return const_cast<Node*>(this)->GetMutableGraphAttribute(attr_name);
 }
 
+std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
+  std::vector<gsl::not_null<const Graph*>> subgraphs;
+  subgraphs.reserve(attr_to_subgraph_map_.size());
+  std::transform(attr_to_subgraph_map_.cbegin(), attr_to_subgraph_map_.cend(), std::back_inserter(subgraphs),
+                 [](const auto& entry) { return entry.second; });
+
+  return subgraphs;
+}
+
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
                       bool include_missing_optional_defs) const {
   for (const auto* arg : InputDefs()) {
@@ -1321,8 +1330,9 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                              " inputs and requires ", num_required_subgraph_inputs,
                              " inputs. Either provide all subgraph inputs, or just the required inputs.");
     }
-      subgraph_inputs = &required_subgraph_inputs;
-      num_subgraph_inputs = num_required_subgraph_inputs;
+
+    subgraph_inputs = &required_subgraph_inputs;
+    num_subgraph_inputs = num_required_subgraph_inputs;
   }
 
   // apply type/shape info to the subgraph's inputs
@@ -1619,7 +1629,9 @@ Status Graph::VerifyNodeAndOpMatch() {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
 
-  LexicalScopeContext lsc{resolve_context_.inputs_and_initializers};
+  LexicalScopeContext lsc;
+  lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
+                          resolve_context_.inputs_and_initializers.cend());
 
   // technically we could add values from Node.GetDefinitions().implicit_input_defs on a per-node basis inside
   // the below loop so that we only check against the specific outer dependencies of the node.
@@ -1867,6 +1879,8 @@ Status Graph::Resolve(bool no_proto_sync_required) {
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
+
+  ++num_resolves_;
 
   return Status::OK();
 }
@@ -2222,7 +2236,16 @@ void Graph::CleanUnusedInitializers() {
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
     if (used_args.find(name) == end) {
-      LOGS_DEFAULT(WARNING) << name << " exists in this graph's initializers but it is not used by any node";
+      // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
+      // from the model.
+      // on later calls we are removing initializers that optimizations have made redundant.
+      if (num_resolves_ == 0) {
+        LOGS_DEFAULT(WARNING) << "Removing initializer '"
+                              << name << "'. It is not used by any node and should be removed from the model.";
+      } else {
+        LOGS_DEFAULT(INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+      }
+
       erase_list.push_back(name);
     }
   }
@@ -2284,7 +2307,7 @@ Status Graph::SetGraphInputsOutputs() {
     }
 
     // Set graph outputs.
-    // Graph outputs specified in the model must be nodes' outputs, initailizer or graph inputs.
+    // Graph outputs specified in the model must be nodes' outputs, initializer or graph inputs.
     for (auto& graph_output : graph_proto_->output()) {
       auto& graph_output_name = graph_output.name();
       auto iter = nodes_outputs.find(graph_output_name);
@@ -2353,31 +2376,39 @@ Status Graph::SetGraphInputsOutputs() {
 
         auto output_arg_iter = output_name_to_node_arg_index.find(input_arg->Name());
         if (output_name_to_node_arg_index.end() == output_arg_iter) {
-          // This input arg should be fed when running evaluation.
-          // it should be a graph input.
+          // This input arg is not the output of another node so must come from either a graph input or an initializer.
           const std::string& name = input_arg->Name();
+
           if (added_input_names.end() == added_input_names.find(name)) {
             // This graph input has not been added into <graph_inputs_>.
+            bool is_initializer = name_to_initial_tensor_.find(name) != name_to_initial_tensor_.end();
+
             if (!graph_inputs_manually_set_) {
-              graph_inputs_including_initializers_.push_back(input_arg);
+              // if IR version < 4 all initializers must have a matching graph input
+              // (even though the graph input is not allowed to override the initializer).
+              // if IR version >= 4 initializers are not required to have a matching graph input.
+              // any graph inputs that are to override initializers must be specified by calling SetInputs.
+              if (!is_initializer || ir_version_ < 4) {
+                graph_inputs_including_initializers_.push_back(input_arg);
+              }
             } else {
+              // graph_inputs_including_initializers_ has been manually populated by SetInputs.
               // Validation: the <input_arg> must be in graph inputs or initializers when it's manually set.
-              auto& inputs = GetInputsIncludingInitializers();
-              auto iter = std::find(inputs.begin(), inputs.end(), input_arg);
-              if (inputs.end() == iter) {
-                // it's not in graph inputs.
-                auto initializers = GetAllInitializedTensors();
-                if (initializers.end() == initializers.find(input_arg->Name())) {
-                  // It's not in graph initializers.
-                  return Status(ONNXRUNTIME, FAIL, input_arg->Name() + " must be either specified in graph inputs or graph initailizers.");
+              if (!is_initializer) {
+                const auto& inputs = graph_inputs_including_initializers_;
+                bool in_inputs = std::find(inputs.begin(), inputs.end(), input_arg) != inputs.end();
+                if (!in_inputs) {
+                  return Status(ONNXRUNTIME, FAIL,
+                                name + " must be either specified in graph inputs or graph initializers.");
                 }
               }
             }
-            if (name_to_initial_tensor_.find(name) == name_to_initial_tensor_.end()) {
+
+            if (!is_initializer) {
               graph_inputs_excluding_initializers_.push_back(input_arg);
             }
 
-            added_input_names.insert(input_arg->Name());
+            added_input_names.insert(name);
           }
         } else if (graph_output_args.erase(output_arg_iter->first) >= 1) {
           // Remove the output arg name from graph outputs since it's

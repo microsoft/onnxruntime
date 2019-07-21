@@ -1,0 +1,41 @@
+# Jobs to run on master after every successful merge is committed
+jobs:
+- job: Windows_Debug_CPU_x64
+  pool: 'Win-CPU'
+  variables:
+    - group: dashboard_mysql_secret
+    - name: buildDirectory
+      value: '$(Build.BinariesDirectory)'
+    - name: buildConfig
+      value: 'Debug'
+    - name: buildArch
+      value: 'x64'
+
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
+
+    - template: templates/windows-build-tools-setup-steps.yml
+      parameters:
+        EnvSetupScript: 'setup_env.bat'
+        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
+        setVcvars: false
+
+    - template: templates/windows-build-and-test-steps.yml
+      parameters:
+        buildAdditionalParams: ' --use_openmp '
+        # --use_openmp is added, similar to the build config of the C-api package distribution.
+        # MLAS(default) with OpenMP is known to produce better performance (latency) than without OpenMP. 
+        buildArch: $(buildArch)
+        msbuildPlatform: $(buildArch)
+        buildConfig: $(buildConfig)
+
+    - template: templates/windows-code-coverage-steps.yml
+      parameters:
+        OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
+        GitCommitHash: $(OnnxRuntimeGitCommitHash)    
+        PublishReport: true
+        PostToDashboard: true
+
+    - template: templates/clean-agent-build-directory-step.yml
+

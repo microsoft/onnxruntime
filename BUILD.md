@@ -1,4 +1,5 @@
 # Build ONNX Runtime
+Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.
 
 ## Supported architectures
 
@@ -58,7 +59,11 @@ The complete list of build options can be found by running `./build.sh (or ./bui
 
 ## Build ONNX Runtime Server on Linux
 
-1. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+1. ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL. 
+    See https://golang.org/doc/install for installation instructions.
+2. In the ONNX Runtime root folder, run `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel`
+3. ONNX Runtime Server supports sending log to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`. The build command will look like this: `./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1`
+
 
 ## Build/Test Flavors for CI
 
@@ -136,7 +141,45 @@ You can build from source on Linux by using the following `cmd` from the onnxrun
 ./build.sh --cudnn_home <path to CUDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> (Linux)
 
 ```
+### OpenVINO Build
 
+ONNX Runtime supports OpenVINO Execution Provider to enable deep learning inference using Intel<sup>®</sup> OpenVINO<sup>TM</sup> Toolkit. This execution provider supports several Intel hardware device types - CPU, integrated GPU, Intel<sup>®</sup> Movidius<sup>TM</sup> VPUs and Intel<sup>®</sup> Vision accelerator Design with 8 Intel Movidius<sup>TM</sup> MyriadX VPUs.
+
+The OpenVINO Execution Provider can be built using the following commands:
+
+- Currently supports and validated on two versions of OpenVINO: OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1(Recommended). Install the OpenVINO release along with its dependencies from ([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit)).
+
+- Install the model optimizer prerequisites for ONNX by running
+<code><openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh</code>
+
+- Initialize the OpenVINO environment by running the setupvars.sh in <code>\<openvino\_install\_directory\>\/bin</code> using the below command:
+
+   <code>source setupvars.sh</code>
+
+- To configure Intel<sup>®</sup> Processor Graphics(GPU), please follow the installation steps from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+
+- To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow the getting started guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+
+- To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow the configuration guide from (https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+
+
+- Build ONNX Runtime using the below command.
+
+   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
+
+   <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
+
+   <code><hardware_option></code>: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
+
+| Hardware Option | Target Device |
+| --------------- | ------------------------|
+| <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
+| <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
+| <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
+| <code>VAD-R_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
+
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document OpenVINO-ExecutionProvider.md in <code>$onnxruntime_root/docs/execution_providers</code>
 
 ### OpenBLAS
 #### Windows
@@ -326,3 +369,17 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ### Using other compilers
 (TODO)
+
+## Android Builds
+
+### Cross compiling on Linux
+
+1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
+
+2. Get a pre-compiled protoc:
+
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip. Please unzip it after downloading.
+
+3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
+
+Note: For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` to `-DANDROID_ABI=armeabi-v7a`.

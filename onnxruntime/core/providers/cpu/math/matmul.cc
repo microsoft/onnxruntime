@@ -54,29 +54,23 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   //std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
-  const Tensor* left_X = ctx->Input<Tensor>(0);
-  const Tensor* right_X = ctx->Input<Tensor>(1);
+  const auto* left_X = ctx->Input<Tensor>(0);
+  const auto* right_X = ctx->Input<Tensor>(1);
 
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape()));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
-  // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
-    math::Gemm<T, CPUMathUtil>(
-        CblasNoTrans,
-        CblasNoTrans,
+    math::MatMul<T>(
         static_cast<int>(helper.M()),
         static_cast<int>(helper.N()),
         static_cast<int>(helper.K()),
-        /* alpha */ 1.0f,
         left_X->template Data<T>() + helper.LeftOffsets()[i],
         right_X->template Data<T>() + helper.RightOffsets()[i],
-        /* beta */ 0.0f,
-        Y->template MutableData<T>() + helper.OutputOffsets()[i],
-        &CPUMathUtil::Instance());
+        Y->template MutableData<T>() + helper.OutputOffsets()[i]);
   }
 
   /*auto end_time = std::chrono::high_resolution_clock::now();

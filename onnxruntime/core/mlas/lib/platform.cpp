@@ -88,9 +88,18 @@ Return Value:
     this->KernelAddRoutine = MlasSgemmKernelAddSse;
 #if defined(MLAS_TARGET_AMD64)
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
+    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelSse;
+    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelSse;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ErfKernelRoutine = MlasErfKernel;
+    this->NchwcBlockSize = 8;
+    this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif
 
     //
@@ -121,6 +130,19 @@ Return Value:
 
 #else
 
+            this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
+            this->KernelAddRoutine = MlasSgemmKernelAddAvx;
+            this->KernelM1Routine = MlasSgemmKernelM1Avx;
+            this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
+            this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
+            this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx;
+            this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx;
+            this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx;
+            this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx;
+            this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx;
+
             //
             // Check if the processor supports AVX512F (and the operating
             // system supports saving AVX512F state) or AVX2/FMA3 features.
@@ -136,26 +158,33 @@ Return Value:
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+
                     this->KernelZeroRoutine = MlasSgemmKernelZeroAvx512F;
                     this->KernelAddRoutine = MlasSgemmKernelAddAvx512F;
+                    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
+                    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx512F;
+                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
+                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
+                    this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
+
                 } else {
+
                     this->KernelZeroRoutine = MlasSgemmKernelZeroFma3;
                     this->KernelAddRoutine = MlasSgemmKernelAddFma3;
+                    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
+                    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
+                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
+                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 }
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
-
-            } else {
-
-                this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
-                this->KernelAddRoutine = MlasSgemmKernelAddAvx;
             }
-
-            this->KernelM1Routine = MlasSgemmKernelM1Avx;
-            this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
-            this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
 
 #endif
 
@@ -182,4 +211,34 @@ Return Value:
 
 #endif
 
+}
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    )
+/*++
+
+Routine Description:
+
+    This routine returns the preferred byte alignment for buffers that are used
+    with this library. Buffers that are not bytes aligned to this value will
+    function, but will not achieve best performance.
+
+Arguments:
+
+    None.
+
+Return Value:
+
+    Returns the preferred byte alignment for buffers.
+
+--*/
+{
+#if defined(MLAS_TARGET_AMD64)
+    return MlasPlatform.PreferredBufferAlignment;
+#else
+    return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+#endif
 }

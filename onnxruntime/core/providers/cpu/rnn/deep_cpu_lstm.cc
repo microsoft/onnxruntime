@@ -424,9 +424,6 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   gsl::span<T> last_cell_1 = last_cell.subspan(0, last_cell_size_per_direction);
 
-  std::unique_ptr<detail::UniDirectionalLstm<T>> fw;
-  std::unique_ptr<detail::UniDirectionalLstm<T>> bw;
-
   if (direction_ == Direction::kBidirectional) {
     // spans for second direction
     gsl::span<const T> input_weights_2 = input_weights.subspan(input_weights_size_per_direction,
@@ -455,37 +452,37 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
     gsl::span<T> last_cell_2 = last_cell.subspan(last_cell_size_per_direction,
                                                  last_cell_size_per_direction);
 
-    fw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
-                                                         seq_length, batch_size, input_size,
-                                                         hidden_size_, Direction::kForward, input_forget_,
-                                                         bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-                                                         activation_funcs_.Entries()[0],
-                                                         activation_funcs_.Entries()[1],
-                                                         activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+    detail::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size,
+                                     hidden_size_, Direction::kForward, input_forget_,
+                                     bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
+                                     activation_funcs_.Entries()[0],
+                                     activation_funcs_.Entries()[1],
+                                     activation_funcs_.Entries()[2],
+                                     clip_, ttp_);
 
-    bw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
-                                                         seq_length, batch_size, input_size,
-                                                         hidden_size_, Direction::kReverse, input_forget_,
-                                                         bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2,
-                                                         activation_funcs_.Entries()[3],
-                                                         activation_funcs_.Entries()[4],
-                                                         activation_funcs_.Entries()[5],
-                                                         clip_, ttp_);
+    detail::UniDirectionalLstm<T> bw(alloc, logger, seq_length, batch_size, input_size,
+                                     hidden_size_, Direction::kReverse, input_forget_,
+                                     bias_2, peephole_weights_2, initial_hidden_2, initial_cell_2,
+                                     activation_funcs_.Entries()[3],
+                                     activation_funcs_.Entries()[4],
+                                     activation_funcs_.Entries()[5],
+                                     clip_, ttp_);
 
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
-    bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
+    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
+               output_1, hidden_output_1, last_cell_1);
+    bw.Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2,
+               output_2, hidden_output_2, last_cell_2);
   } else {
-    fw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
-                                                         seq_length, batch_size, input_size,
-                                                         hidden_size_, direction_, input_forget_,
-                                                         bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
-                                                         activation_funcs_.Entries()[0],
-                                                         activation_funcs_.Entries()[1],
-                                                         activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+    detail::UniDirectionalLstm<T> fw(alloc, logger, seq_length, batch_size, input_size,
+                                     hidden_size_, direction_, input_forget_,
+                                     bias_1, peephole_weights_1, initial_hidden_1, initial_cell_1,
+                                     activation_funcs_.Entries()[0],
+                                     activation_funcs_.Entries()[1],
+                                     activation_funcs_.Entries()[2],
+                                     clip_, ttp_);
 
-    fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
+    fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
+               output_1, hidden_output_1, last_cell_1);
   }
 
   if (!output.empty())
@@ -981,6 +978,20 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
       auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
       gsl::copy(src, dest);
+    }
+  }
+
+  // zero any values beyond the evaluated steps
+  if (output_sequence && max_sequence_length < seq_length_) {
+    if (output_step_length == batch_size_ * hidden_size_) {  // contiguous
+      const auto span_to_zero = outputs.subspan(
+          max_sequence_length * output_step_length, (seq_length_ - max_sequence_length) * output_step_length);
+      std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+    } else {
+      for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
+        const auto span_to_zero = outputs.subspan(i * output_step_length, batch_size_ * hidden_size_);
+        std::fill_n(span_to_zero.begin(), span_to_zero.size(), T{});
+      }
     }
   }
 

@@ -12,9 +12,11 @@
 #include "core/common/logging/logging.h"
 
 #include "core/graph/graph_viewer.h"
+#include "core/framework/data_transfer_manager.h"
+#include "core/graph/graph_utils.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/ml_value.h"
-#include "core/framework/ml_value_patterns_planner.h"
+#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
@@ -26,15 +28,17 @@
 namespace onnxruntime {
 
 static common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer,
-                                                  MLValueNameIdxMap& ort_value_name_idx_map,
+                                                  OrtValueNameIdxMap& ort_value_name_idx_map,
                                                   const logging::Logger& logger);
 
 // T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                              const onnxruntime::Graph& graph, const ExecutionProviders& exec_providers,
-                                             const MLValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
-                                             const T& save_tensor_func, const logging::Logger& logger);
+                                             const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                             ITensorAllocator* planner, const T& save_tensor_func,
+                                             const logging::Logger& logger,
+                                             const DataTransferManager& data_transfer_mgr);
 
 static common::Status SaveKernels(const ExecutionProviders& execution_providers,
                                   SessionState& session_state,
@@ -66,8 +70,8 @@ common::Status SessionStateInitializer::CreatePlan(
     bool enable_sequential_execution) {
   auto graph_viewer = std::make_unique<onnxruntime::GraphViewer>(graph_);
 
-  // populate the SessionState MLValueNameIdxMap
-  auto& ort_value_name_idx_map = session_state_.GetMLValueNameIdxMap();
+  // populate the SessionState OrtValueNameIdxMap
+  auto& ort_value_name_idx_map = session_state_.GetOrtValueNameIdxMap();
   ORT_RETURN_IF_ERROR(SaveMLValueNameIndexMapping(*graph_viewer, ort_value_name_idx_map, logger_));
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
@@ -98,7 +102,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
-  const auto& ort_value_name_idx_map{session_state_.GetMLValueNameIdxMap()};
+  const auto& ort_value_name_idx_map{session_state_.GetOrtValueNameIdxMap()};
   std::unique_ptr<ITensorAllocator> tensor_allocator_(ITensorAllocator::Create(
       enable_mem_pattern_, *exec_plan_ptr, execution_providers_, session_state_.GetMutableWeightsBuffers()));
 
@@ -106,10 +110,10 @@ common::Status SessionStateInitializer::InitializeAndSave(
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
       env, graph_loc_, graph_, execution_providers_, ort_value_name_idx_map, tensor_allocator_.get(),
-      [this](int idx, const OrtValue& value, const OrtCallback& d) -> Status {
-        return session_state_.AddInitializedTensor(idx, value, &d);
+      [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
+        return session_state_.AddInitializedTensor(idx, value, &d, constant);
       },
-      logger_));
+      logger_, session_state_.GetDataTransferMgr()));
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
@@ -123,7 +127,7 @@ common::Status SessionStateInitializer::InitializeAndSave(
 }
 
 // Build the OrtValue name->idx mapping
-common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, MLValueNameIdxMap& ort_value_name_idx_map,
+common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, OrtValueNameIdxMap& ort_value_name_idx_map,
                                            const logging::Logger& logger) {
   LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
   int idx = 0;
@@ -131,8 +135,8 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, MLVa
   // we keep all graph inputs (including initializers), even if they are unused, so make sure they all have an entry
   for (const auto* input_def : graph_viewer.GetInputsIncludingInitializers()) {
     idx = ort_value_name_idx_map.Add(input_def->Name());
-    VLOGS(logger, 1)
-        << "Added graph_viewer input with name: " << input_def->Name() << " to MLValueIndex with index: " << idx;
+    VLOGS(logger, 1) << "Added graph_viewer input with name: " << input_def->Name()
+                     << " to OrtValueIndex with index: " << idx;
   }
 
   for (auto& node : graph_viewer.Nodes()) {
@@ -140,24 +144,24 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, MLVa
     for (const auto* input_def : node.InputDefs()) {
       if (input_def->Exists()) {
         idx = ort_value_name_idx_map.Add(input_def->Name());
-        VLOGS(logger, 1)
-            << "Added input argument with name: " << input_def->Name() << " to MLValueIndex with index: " << idx;
+        VLOGS(logger, 1) << "Added input argument with name: " << input_def->Name()
+                         << " to OrtValueIndex with index: " << idx;
       }
     }
 
     for (const auto* input_def : node.ImplicitInputDefs()) {
       if (input_def->Exists()) {
         idx = ort_value_name_idx_map.Add(input_def->Name());
-        VLOGS(logger, 1)
-            << "Added implicit input argument with name: " << input_def->Name() << " to MLValueIndex with index: " << idx;
+        VLOGS(logger, 1) << "Added implicit input argument with name: " << input_def->Name()
+                         << " to OrtValueIndex with index: " << idx;
       }
     }
 
     for (const auto* output_def : node.OutputDefs()) {
       if (output_def->Exists()) {
         ort_value_name_idx_map.Add(output_def->Name());
-        VLOGS(logger, 1)
-            << "Added output argument with name: " << output_def->Name() << " to MLValueIndex with index: " << idx;
+        VLOGS(logger, 1) << "Added output argument with name: " << output_def->Name()
+                         << " to OrtValueIndex with index: " << idx;
       }
     }
   }
@@ -166,8 +170,7 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, MLVa
   for (const auto& output : graph_viewer.GetOutputs()) {
     if (output->Exists()) {
       idx = ort_value_name_idx_map.Add(output->Name());
-      VLOGS(logger, 1)
-          << "Added graph output with name: " << output->Name() << " to MLValueIndex with index: " << idx;
+      VLOGS(logger, 1) << "Added graph output with name: " << output->Name() << " to OrtValueIndex with index: " << idx;
     }
   }
 
@@ -178,7 +181,8 @@ common::Status SaveMLValueNameIndexMapping(const GraphViewer& graph_viewer, MLVa
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
                                              const ExecutionProviders& exec_providers, OrtValue& ort_value,
-                                             OrtCallback& deleter) {
+                                             OrtCallback& deleter,
+                                             const DataTransferManager& data_transfer_mgr) {
   const OrtAllocatorInfo& alloc_info = m.GetAllocInfo();
   if (strcmp(alloc_info.name, CPU) == 0 || alloc_info.mem_type == OrtMemTypeCPUOutput) {
     // deserialize directly to CPU tensor
@@ -217,7 +221,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   p_tensor = std::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
                                       m.GetAllocInfo());
   // TODO: does this function work for string tensor?
-  Status copy_status = provider->CopyTensor(p_deserialize_tensor, *p_tensor);
+  Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);
   if (d.f) d.f(d.param);
   if (!copy_status.IsOK()) {
     if (copy_status.ErrorMessage().empty()) {
@@ -236,8 +240,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 template <typename T>
 common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                       const Graph& graph, const ExecutionProviders& exec_providers,
-                                      const MLValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
-                                      const T& save_tensor_func, const logging::Logger& logger) {
+                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
+                                      const T& save_tensor_func, const logging::Logger& logger,
+                                      const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > 0, "OrtValue indexes should have been populated.");
 
@@ -270,14 +275,15 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
 #endif
     OrtValue ort_value;
-    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter);
+    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter, data_transfer_mgr);
     if (!st.IsOK()) {
       std::ostringstream oss;
       oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
       return Status(st.Category(), st.Code(), oss.str());
     }
 
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter));
+    bool constant = graph_utils::IsConstantInitializer(graph, name, /* check_outer_scope */ false);
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
@@ -412,9 +418,10 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
   for (const auto& graph_input : graph_inputs) {
     const auto& name = graph_input->Name();
     if (input_map.find(name) == end_map) {
-      // dummy entry for an input that we didn't find a use of in the graph. warn about it in case that's a bug.
+      // dummy entry for an input that we didn't find a use of in the graph. log it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input OrtValue as is given we don't believe it's used anywhere.
-      LOGS(session_state.Logger(), WARNING) << "Graph input with name " << name << " is not associated with a node. ";
+      LOGS(session_state.Logger(), INFO) << (graph.IsSubgraph() ? "Subgraph" : "Graph") << " input with name "
+                                         << name << " is not used by any node.";
       ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(name, empty_node_info));
     }
   }

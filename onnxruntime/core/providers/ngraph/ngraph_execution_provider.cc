@@ -34,13 +34,13 @@ constexpr const char* NGRAPH = "nGraph";
 NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNGraphExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
+                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator)); },
                                                           std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(default_allocator_info));
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); },
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_allocator_info));
@@ -55,10 +55,6 @@ NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderIn
     LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
     throw;
   }
-}
-
-std::shared_ptr<KernelRegistry> NGRAPHExecutionProvider::GetKernelRegistry() const {
-  return std::make_shared<KernelRegistry>();
 }
 
 /**
@@ -78,24 +74,6 @@ bool TensorCopyPossible(const std::string& src_location, const std::string& dst_
                      allowed_copy_directions.end(), [&](const auto& copy_direction) {
                        return src_location == copy_direction.first && dst_location == copy_direction.second;
                      });
-}
-
-Status NGRAPHExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
-  const size_t src_bytes = src.DataType()->Size() * src.Shape().Size();
-  const size_t dst_bytes = dst.DataType()->Size() * dst.Shape().Size();
-  if (src_bytes != dst_bytes) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "nGraph: Source and Destination data sizes are not equal - cannot copy tensors");
-  }
-
-  if (!TensorCopyPossible(src.Location().name, dst.Location().name)) {
-    ORT_NOT_IMPLEMENTED("Copying tensors between '", src.Location().name, "' and '", dst.Location().name,
-                        "' is not implemented in NGRAPHExecutionProvider");
-  }
-
-  MEMCPY_S(dst.MutableDataRaw(), src.DataRaw(), dst_bytes, src_bytes);
-
-  return Status::OK();
 }
 
 // Returns true only if op is in a mode that is not currently supported
@@ -359,6 +337,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                       /*out*/ std::vector<std::string>& cluster_inputs,
                                       /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
+  std::vector<std::string> ordered_input_args;
   std::unordered_set<std::string> output_args;
   std::unordered_set<std::string> external_output_args;
 
@@ -367,8 +346,15 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 
     // Collect all inputs and outputs
     node->ForEachDef(
-        [&input_args, &output_args](const NodeArg& node_arg, bool is_input) {
-          is_input ? input_args.insert(node_arg.Name()) : output_args.insert(node_arg.Name());
+        [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
+          if (is_input) {
+            if (!input_args.count(node_arg.Name())) {
+              ordered_input_args.push_back(node_arg.Name());
+            }
+            input_args.insert(node_arg.Name());
+          } else {
+            output_args.insert(node_arg.Name());
+          }
         },
         true);
 
@@ -396,8 +382,6 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
     }
   }
 
-  std::vector<std::string> cluster_initializers;
-
   //Extract initializers used by this_cluster.
   std::unordered_set<std::string> original_graph_inputs;
   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
@@ -405,10 +389,10 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   }
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  for (const auto& in_arg : input_args) {
+  for (const auto& in_arg : ordered_input_args) {
     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
         ng_required_initializers.count(in_arg)) {
-      cluster_initializers.push_back(in_arg);
+      cluster_inputs.push_back(in_arg);
     } else if (!output_args.count(in_arg)) {
       cluster_inputs.push_back(in_arg);
     }
@@ -547,10 +531,7 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-
-      const Status compute_status = ng_custom_op->Compute(api, context);
-
-      return compute_status == Status::OK() ? 0 : 1;
+      return ng_custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);

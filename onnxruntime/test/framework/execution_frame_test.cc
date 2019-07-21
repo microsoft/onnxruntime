@@ -6,8 +6,12 @@
 #include "core/framework/session_state.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/inference_session.h"
 #include "test_utils.h"
+#include "test/test_environment.h"
+
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;
@@ -56,7 +60,7 @@ TEST(ExecutionFrameTest, TensorAllocationTest) {
   SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
-  MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
+  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
   mlvalue_name_idx_map.Add("X");
   mlvalue_name_idx_map.Add("Y");
 
@@ -139,7 +143,7 @@ TEST(ExecutionFrameTest, FeedInDataTest) {
   SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
-  MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
+  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
   auto x_idx = mlvalue_name_idx_map.Add("X");
   auto y_idx = mlvalue_name_idx_map.Add("Y");
 
@@ -191,7 +195,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   SessionState state{execution_providers, true};
   state.SetGraphViewer(std::make_unique<GraphViewer>(graph));
 
-  MLValueNameIdxMap& mlvalue_name_idx_map{state.GetMLValueNameIdxMap()};
+  OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
 
   auto x1_idx = mlvalue_name_idx_map.Add("X1");
   auto x2_idx = mlvalue_name_idx_map.Add("X2");
@@ -259,5 +263,43 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(p->GetBlock(3)->offset_, 0);
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
+
+TEST(ExecutionFrameTest, BadModelInvalidDimParamUsage) {
+  // load model with 2 Scan ops that both incorrectly use shapes of { 'None', 'None' } for their outputs.
+  // as 'None' is not a special value it's treated as a variable name, leading to a runtime error when we
+  // attempt to re-use the output from the first Scan node for the second. validate we detect this and error out.
+  SessionOptions so;
+  so.session_logid = "BadModelInvalidDimParamUsage";
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status st;
+  ASSERT_TRUE((st = session_object.Load("testdata/invalid_dim_param_value_repetition.onnx")).IsOK()) << st;
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+  std::vector<int64_t> dims_X = {10, 6};
+  std::vector<float> values_X;
+  values_X.reserve(60);
+  for (int i = 0; i < 60; ++i) {
+    values_X.push_back(float(i));
+  }
+
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_X, values_X, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Y");
+  std::vector<OrtValue> fetches;
+
+  // Now run
+  RunOptions run_options;
+  st = session_object.Run(run_options, feeds, output_names, &fetches);
+
+  EXPECT_FALSE(st.IsOK()) << st;
+  EXPECT_THAT(st.ErrorMessage(), testing::HasSubstr("Shape mismatch attempting to re-use buffer."));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -130,8 +130,8 @@ class ScanImpl {
   Status CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_state_variables);
   Status TransposeOutput();
 
-  using ConstTensorSlicerIterators = std::vector<MLValueTensorSlicer<const OrtValue>::Iterator>;
-  using MutableTensorSlicerIterators = std::vector<MLValueTensorSlicer<OrtValue>::Iterator>;
+  using ConstTensorSlicerIterators = std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>;
+  using MutableTensorSlicerIterators = std::vector<OrtValueTensorSlicer<OrtValue>::Iterator>;
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
@@ -422,8 +422,7 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
 
 Status ScanImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
   return scan::detail::CreateFeedsFetchesManager(subgraph_, num_variadic_inputs_, implicit_inputs_,
-                                                 subgraph_output_names_, session_state_.GetMLValueNameIdxMap(),
-                                                 ffm);
+                                                 subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
 }
 
 Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
@@ -434,7 +433,7 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   ORT_RETURN_IF_ERROR(status);
 
   // Setup input OrtValue streams
-  std::vector<MLValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
+  std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
   scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
 
   for (int i = 0, end = num_scan_inputs_; i < end; ++i) {
@@ -442,10 +441,10 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
 
     // forward
     if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
-      // the iterator is self contained, so we don't need to keep the MLValueTensorSlicer instance around
-      scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
+      // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
+      scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
     } else {  // reverse
-      scan_input_stream_iterators.push_back(MLValueTensorSlicer<const OrtValue>::Create(ort_value).rbegin());
+      scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).rbegin());
     }
   }
 
@@ -470,7 +469,7 @@ Status ScanImpl::TransposeOutput() {
     if (axis != 0) {
       auto output_index = i + num_loop_state_variables_;
       const OrtValue& temporary_output_mlvalue = output_iterators_[output_index]->GetOutput();
-      const Tensor& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
+      const auto& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
 
       int64_t output_rank = temporary_output_tensor.Shape().NumDimensions();
 
