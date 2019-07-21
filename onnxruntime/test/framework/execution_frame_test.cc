@@ -264,7 +264,7 @@ TEST(ExecutionFrameTest, MemPatternTest) {
   EXPECT_EQ(p->GetBlock(4)->offset_, 64);
 }
 
-TEST(ExecutionFrameTest, DISABLED_BadModelInvalidDimParamUsage) {
+TEST(ExecutionFrameTest, BadModelInvalidDimParamUsage) {
   // load model with 2 Scan ops that both incorrectly use shapes of { 'None', 'None' } for their outputs.
   // as 'None' is not a special value it's treated as a variable name, leading to a runtime error when we
   // attempt to re-use the output from the first Scan node for the second. validate we detect this and error out.
