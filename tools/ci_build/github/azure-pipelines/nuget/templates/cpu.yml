@@ -169,4 +169,39 @@ jobs:
 
 - template: test_all_os.yml
 
+- job: Publish_NuGet_Package_And_Report
+  pool: 
+    name: Hosted Windows 2019 with VS2019
+    # AzureFileCopy@3 task has some bug that it depends on a particular version of azure power shell, 
+    # which is not available in OnnxRuntime build VMs, but available in the latest hosted agents. 
+    # So, all the copy/publish jobs are being run on hosted agent
+    # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
+    demands: azureps
+  dependsOn:
+  - NuGet_Test_Win
+  - NuGet_Test_Linux
+  - NuGet_Test_MacOS
+  steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+
+  - task: CmdLine@1
+    displayName: 'Install conda modules mysql-connector-python'
+    inputs:
+      filename: '$CONDA\conda.exe'
+      arguments: 'install -q --insecure -y mysql-connector-python'
+    timeoutInMinutes: 10
+  - template: ../../templates/set-version-number-variables-step.yml
+  - task: AzureFileCopy@3
+    displayName: 'Copy Signed NuGet Package to Blob Store'
+    condition: ${{ parameters.DoEsrp }}
+    inputs:
+      SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+      Destination: AzureBlob
+      storage: ortpackages
+      ContainerName: ortpackages
 
