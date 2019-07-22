@@ -462,7 +462,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                 if (shape->dim(i).has_dim_value()) {
                   res << shape->dim(i).dim_value();
                 } else if (shape->dim(i).has_dim_param()) {
-                  res << "'" << shape->dim(i).has_dim_param() << "'";
+                  res << "'" << shape->dim(i).dim_param() << "'";
                 } else {
                   res << "None";
                 }
