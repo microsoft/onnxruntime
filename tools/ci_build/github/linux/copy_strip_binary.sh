@@ -32,8 +32,8 @@ then
     ln -s $LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.so
 fi
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
-cp $SOURCE_DIR/include/onnxruntime/core/session/cpu_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
-cp $SOURCE_DIR/include/onnxruntime/core/session/cuda_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/include/onnxruntime/core/providers/cuda/cuda_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
 
 # copy the README, licence and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md

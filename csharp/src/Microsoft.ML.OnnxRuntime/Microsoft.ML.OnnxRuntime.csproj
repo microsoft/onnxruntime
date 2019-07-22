@@ -46,13 +46,13 @@
           CopyToOutputDirectory="Never"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\cpu_provider_factory.h"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
           PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\cuda_provider_factory.h"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
           PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
