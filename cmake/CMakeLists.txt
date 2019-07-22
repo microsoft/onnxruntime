@@ -298,7 +298,7 @@ endif()
 
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
-set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
+set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime ${REPO_ROOT}/include/onnxruntime/core/session)
 
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/gsl EXCLUDE_FROM_ALL)
