@@ -11,7 +11,10 @@ cmake --version
 # Download Android SDK Manager
 wget -qO- -O temp.zip https://dl.google.com/android/repository/sdk-tools-linux-4333796.zip && unzip -oq temp.zip -d /android-sdk && rm temp.zip
 
-mkdir /android-sdk/platforms /android-sdk/platform-tools
+echo "y" | /android-sdk/tools/bin/sdkmanager --install 'system-images;android-28;google_apis;x86_64'
+echo "y" | /android-sdk/tools/bin/sdkmanager --install 'platform-tools'
+
+mkdir /android-sdk/platforms
 
 # Download Android NDK r19c, move /temp_ndk/android-ndk-<version> to /android_ndk
 wget -qO- -O temp.zip https://dl.google.com/android/repository/android-ndk-r20-linux-x86_64.zip && unzip -oq temp.zip -d /temp-ndk && mv /temp-ndk/* /android-ndk && rm temp.zip && rm -rf /temp-ndk && ls /android-ndk
