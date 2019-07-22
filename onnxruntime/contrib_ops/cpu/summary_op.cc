@@ -34,6 +34,13 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryMergeOp);
 
+ONNX_CPU_OPERATOR_KERNEL(
+    SummaryText,
+    9,
+    KernelDefBuilder()
+        .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
+    SummaryTextOp);
+
 SummaryScalarOp::SummaryScalarOp(const OpKernelInfo& info) : OpKernel(info) {
   ORT_ENFORCE(info.GetAttrs("tags", tags_).IsOK(), "Attribute 'tags' must be specified and must be a tensor of strings.");
 }
@@ -212,6 +219,35 @@ Status SummaryMergeOp::Compute(OpKernelContext* context) const {
   }
 
   // Serialize merged Summary output
+  Tensor& output = *context->Output(0, {});
+  *output.MutableData<std::string>() = summary.SerializeAsString();
+  return Status::OK();
+}
+
+SummaryTextOp::SummaryTextOp(const OpKernelInfo& info) : OpKernel(info) {
+  ORT_ENFORCE(info.GetAttr("tag", &tag_).IsOK(), "Attribute 'tag' must be specified and must be a string.");
+}
+
+Status SummaryTextOp::Compute(OpKernelContext* context) const {
+  const Tensor& input = *context->Input<Tensor>(0);
+  const std::string* data = input.Data<std::string>();
+  const TensorShape& shape = input.Shape();
+
+  tensorboard::Summary summary;
+  tensorboard::Summary::Value* summary_value = summary.add_value();
+  summary_value->set_tag(tag_);
+  summary_value->mutable_metadata()->mutable_plugin_data()->set_plugin_name("text");
+
+  // Copy input string tensor to tensorboard tensor.
+  tensorboard::TensorProto* summary_tensor = summary_value->mutable_tensor();
+  summary_tensor->set_dtype(tensorboard::DataType::DT_STRING);
+  for (int64_t dim : shape) {
+    summary_tensor->mutable_tensor_shape()->add_dim()->set_size(dim);
+  }
+  for (int64_t i = 0; i < shape.Size(); i++) {
+    summary_tensor->add_string_val(data[i]);
+  }
+
   Tensor& output = *context->Output(0, {});
   *output.MutableData<std::string>() = summary.SerializeAsString();
   return Status::OK();

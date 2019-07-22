@@ -43,5 +43,15 @@ class SummaryMergeOp final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+class SummaryTextOp final : public OpKernel {
+ public:
+  explicit SummaryTextOp(const OpKernelInfo& info);
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  std::string tag_;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

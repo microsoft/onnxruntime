@@ -1626,6 +1626,23 @@ Example 4:
         updateOutputShape(ctx, 0, {});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryText)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SummaryText")
+      .Attr("tag", "The tag corresponding to the text data.", AttributeProto::STRING)
+      .Input(0, "input", "The string tensor to render in the Tensorboard Text dashboard.", "S")
+      .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
+      .TypeConstraint(
+          "S",
+          {"tensor(string)"},
+          "Constrain input and output types to string tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::STRING);
+        updateOutputShape(ctx, 0, {});
+      });
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
