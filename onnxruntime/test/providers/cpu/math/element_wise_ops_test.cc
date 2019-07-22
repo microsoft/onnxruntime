@@ -65,13 +65,7 @@ TEST(MathOpTest, Add_double) {
                           0.0, 5.0, -36.0,
                           -10.8, 18.6, 0.0});
 
-// TODO: Investigate if this check is really required for this test
-// This check if currently based on this test's float counterpart - Add_float
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_R)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
-#else
-  test.Run();
-#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); // Disabling OpenVINO as this type is not supported
 }
 
 TEST(MathOpTest, Add_Broadcast_Axis) {
