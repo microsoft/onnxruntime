@@ -23,8 +23,7 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
     return false;
   }
 
-  if (!graph_utils::IsSingleInSingleOutNode(node) ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (!graph_utils::CanRemoveNode(graph, node)) {
     return false;
   }
 
@@ -50,10 +49,6 @@ bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) cons
     if (starts[i] != 0 || ends[i] < INT64_MAX) {
       return false;
     }
-  }
-
-  if (!graph_utils::CanRemoveNode(graph, node)) {
-    return false;
   }
 
   return true;

@@ -33,8 +33,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const 
     return false;
   }
 
-  if (!graph_utils::IsSingleInSingleOutNode(node) ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (node.GetOutputEdgesCount() == 0) {
     return false;
   }
 

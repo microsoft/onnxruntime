@@ -77,7 +77,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_B_" + B_input_name);
     new_conv_B_tensor_proto.set_name(new_name);
 
-    conv_node.MutableInputDefs()[2] = &graph_utils::AddConstantInitializer(graph, new_conv_B_tensor_proto);
+    conv_node.MutableInputDefs()[2] = &graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
 
   } else {
     // Create new tensor proto and update shape
@@ -89,7 +89,7 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_Add_B_" + add_B_tensor_proto->name());
     new_conv_B_tensor_proto.set_name(new_name);
 
-    NodeArg& new_add_B_node_arg = graph_utils::AddConstantInitializer(graph, new_conv_B_tensor_proto);
+    NodeArg& new_add_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
 
     conv_node.MutableInputDefs().push_back(&new_add_B_node_arg);
     conv_node.MutableInputArgsCount()[2] = 1;

@@ -119,8 +119,8 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   new_conv_W_tensor_proto.set_name(new_W_name);
   new_conv_B_tensor_proto.set_name(new_B_name);
 
-  conv_node.MutableInputDefs()[1] = &graph_utils::AddConstantInitializer(graph, new_conv_W_tensor_proto);
-  auto& new_conv_B_node_arg = graph_utils::AddConstantInitializer(graph, new_conv_B_tensor_proto);
+  conv_node.MutableInputDefs()[1] = &graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  auto& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
 
   if (conv_inputs.size() == 3) {
     conv_node.MutableInputDefs()[2] = &new_conv_B_node_arg;
@@ -145,7 +145,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
 
   const auto& next_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
-      next_node.GetInputEdgesCount() != 1 || 
+      next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;

@@ -63,10 +63,10 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     }
   }
 
-  auto& new_node_arg = graph_utils::AddConstantInitializer(graph, new_tensor_proto);
+  auto& new_node_arg = graph_utils::AddInitializer(graph, new_tensor_proto);
+  // Remove the Unsqueeze node and replace it with the initializer.
+  graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg);
 
-  // Remove Unsqueeze node and update the downstream nodes to use the new NodeArg
-  graph_utils::RemoveNodeAndUpdateEdges(graph, node, &new_node_arg);
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   return Status::OK();
@@ -75,7 +75,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) const {
   // Attempt to remove an Unsqueeze operator only if it gets a constant initializer as input.
   return graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name()) &&
-         !graph.IsNodeOutputsInGraphOutputs(node);
+         graph_utils::CanRemoveNode(graph, node, false);
 }
 
 }  // namespace onnxruntime

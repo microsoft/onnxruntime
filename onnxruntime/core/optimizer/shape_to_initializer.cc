@@ -40,9 +40,9 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   shape_initializer_proto.set_raw_data(input_dims.data(),
                                        input_dims.size() * sizeof(decltype(input_dims)::value_type));
 
-  auto& new_node_arg = graph_utils::AddConstantInitializer(graph, shape_initializer_proto);
+  auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
 
-  if (graph_utils::RemoveNodeAndUpdateEdges(graph, node, &new_node_arg)) {
+  if (graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
 
@@ -70,9 +70,8 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
     }
   }
 
-  // we're going to create an initializer with the same name as the node output,
-  // so pass that name into the CanRemoveNode check
-  if (!graph_utils::CanRemoveNode(graph, node, &node.InputDefs()[0]->Name())) {
+  // we're going to create an initializer with the same name as the node output, so remove_output is false.
+  if (!graph_utils::CanRemoveNode(graph, node, false)) {
     return false;
   }
 

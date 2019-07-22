@@ -27,11 +27,6 @@ bool MatchesOpSetDomain(const Node& node, const std::string& domain);
 bool IsSupportedProvider(const Node& node,
                          const std::unordered_set<std::string>& compatible_providers);
 
-/** Checks whether the node has a single input and a single output. The single input can be either the output of
-    another node or an initializer, but not an implicit input from a parent subgraph. The single output can be 
-    fed to multiple downstream operators, i.e., it can have multiple output edges. */
-bool IsSingleInSingleOutNode(const Node& node);
-
 /** Checks if the output at the specified index is input to downstream Nodes. */
 bool IsOutputUsed(const Node& node, int index);
 
@@ -50,10 +45,12 @@ cannot be overridden at runtime. If the initializer is not found or is not const
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
                                                           bool check_outer_scope = true);
 
-/** Add a new constant initializer to 'graph'. Checks that new_initializer does not already exist in 'graph'. 
+/** Add a new initializer to 'graph'. 
+Checks that new_initializer does not already exist in 'graph' before adding it.
 @returns The NodeArg for the new initializer. 
+@remarks No matching graph input is created, so the initializer will be constant. 
 */
-NodeArg& AddConstantInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
@@ -86,32 +83,38 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 
 /** Check if it will be possible to remove or fuse a node.
     We support the removal of the Node as long as the following conditions hold:
-    - The node should not produce a graph output unless replacement_output_name provides that output.
-    - Only one of the outputs is used by downstream operators (but it can have multiple output edges).
+    - The node should not produce a graph output unless something else will produce that output.
+    - Only one of the outputs is used by downstream operators (multiple output edges are allowed).
     - If the Node has a single incoming node, we can remove the Node and connect its incoming node to its 
       outgoing nodes, if doing so does not clash with any values in any relevant subgraphs. 
-    - If the Node output will be replaced by replacement_output_name, we can remove or fuse the node 
-      if replacement_output_name does not clash with any values in any relevant subgraphs.  
-@param replacement_output_name 
-  If a new NodeArg will be created to replace the node's output (e.g. creating new initializer) 
-  provide the new name that will be used by the NodeArg.
-  If the node is being fused provide the output name from the last node being fused.
-  If nullptr: If the node has one input edge the name from that edge will be used in the checks, 
-              otherwise the node must have one input definition and the name from that will be used in the checks.
-*/
-bool CanRemoveNode(const Graph& graph, const Node& node, const std::string* replacement_output_name = nullptr);
+@param removing_output 
+       If true the output from the node will be removed and replaced with its input.
+       If false a new Node or initializer is being created that will produce output with the same name. In this case
+       it is safe to remove the node even if it provides a graph output.*/
+bool CanRemoveNode(const Graph& graph, const Node& node, bool removing_output = true);
 
 /** Removes the given Node from the Graph and keeps Graph consistent by rebuilding needed connections.
-See CanRemoveNode for details on when removal is allowed.
-@param replacement_output If we are not connecting the single incoming node with the downstream node/s
-                          provide the NodeArg that will replace the output from 'node' and be connected 
-                          with the downstream node/s.
-*/
-bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node, NodeArg* replacement_output = nullptr);
+See CanRemoveNode for details on when removal is allowed.*/
+bool RemoveNodeAndUpdateEdges(Graph& graph, Node& node);
+
+/** Remove a node with a single output, and replace its output with the provided NodeArg for an initializer.*/
+bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
 
 /** Removes all output edges from the given Node of the Graph. 
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+/** Replace the output of a node.
+Replaces the output edges from node using the replacement information, and removes the output edges from 'node'.  
+@param replacement The node providing the replacement output.
+@param replacement_output_idx The index of the output from 'replacement' to use. 
+*/
+void ReplaceNodeOutput(Graph& graph, Node& node, Node& replacement, int replacement_output_idx);
+
+/** Replace the NodeArg for an input to a node. 
+Use this when replacing the input with an initializer. 
+*/
+void ReplaceInputNodeArg(Node& target, int target_input_idx, NodeArg& replacement);
 
 /** Finalize the fusion of two nodes.
     If replacement_node is nullptr:
