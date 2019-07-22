@@ -268,7 +268,6 @@ TensorrtCompiler::TensorrtCompiler() {
 
 common::Status TensorrtCompiler::Compile(const onnxruntime::Node* fused_node, cudaStream_t stream,
                                          NodeComputeInfo& node_compute_func) {
-  std::cout << "!!!!!TRT in CUDA: TensorrtCompiler" << std::endl;
   std::vector<int> input_indexes;
   std::vector<int> output_indexes;
   std::vector<std::vector<int64_t>> output_shapes;

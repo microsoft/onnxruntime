@@ -95,7 +95,7 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
 
-  if (onnxruntime_USE_TENSORRT) # slx
+  if (onnxruntime_USE_TENSORRT)
     list(APPEND onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_compiler.h"
 	"${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_compiler.cc"
