@@ -26,21 +26,6 @@ TypeProto* BertLoss::GetMaskedLMTypeProto(const NodeArg* prediction_arg,
   return type_proto;
 }
 
-TypeProto* BertLoss::GetNSLabelTypeProto(const NodeArg* prediction_arg,
-                                         GraphAugmenter::GraphDefs& graph_defs) {
-  ORT_ENFORCE(prediction_arg != nullptr, "GetNSLabelTypeProto's prediction_arg is nullptr");
-  const auto* logits_type_proto = prediction_arg->TypeAsProto();
-  const auto& dims = logits_type_proto->tensor_type().shape().dim();
-
-  TypeProto* type_proto = graph_defs.CreateTypeProto();
-  type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-
-  auto* target_shape = type_proto->mutable_tensor_type()->mutable_shape();
-  target_shape->add_dim()->CopyFrom(dims[0]);
-
-  return type_proto;
-}
-
 TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
   TypeProto* type_proto = graph_defs.CreateTypeProto();
   type_proto->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -54,7 +39,7 @@ TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
 GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) {
   const std::string& total_loss = loss_func_info.loss_name;
   const VectorString& args = loss_func_info.loss_builder_args;
-  ORT_ENFORCE(args.size() == 11, " Invalid loss_func_info for BertLoss.");
+  ORT_ENFORCE(args.size() == 12, " Invalid loss_func_info for BertLoss.");
   const std::string& prediction_masked_lm = args[0];
   const std::string& prediction_next_sentence = args[1];
   const std::string& masked_lm_positions = args[2];
@@ -66,6 +51,11 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   const int64_t batch_size = static_cast<int64_t>(stoi(args[8]));
   const int64_t max_sequence_len = static_cast<int64_t>(stoi(args[9]));
   const int64_t max_predictions_per_sequence = static_cast<int64_t>(stoi(args[10]));
+  const std::string& summary_loss = args[11];
+
+  const std::string summary_total_loss = summary_loss + "/" + total_loss;
+  const std::string summary_mlm_loss = summary_loss + "/" + mlm_loss;
+  const std::string summary_nsp_loss = summary_loss + "/" + nsp_loss;
 
   std::vector<NodeDef> new_nodes;
   GraphAugmenter::GraphDefs graph_defs;
@@ -138,8 +128,9 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
                                    {ArgDef(prediction_masked_lm),
                                     ArgDef("scattered_lm_lables"),
-                                    ArgDef("scattered_lm_weights")},                  // Inputs
-                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs))},  // Outputs
+                                    ArgDef("scattered_lm_weights")},  // Inputs
+                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),
+                                    ArgDef("probability_lm", prediction_arg->TypeAsProto())},  // Outputs
                                    NodeAttributes(),
                                    "Masked_LM_Loss"));
 
@@ -151,12 +142,15 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     const NodeArg* ns_prediction_arg = graph.GetNodeArg(prediction_next_sentence);
     ORT_ENFORCE(ns_prediction_arg != nullptr,
                 "Next sentence predition arg ", prediction_next_sentence, " is not found in the graph.");
-    TypeProto* next_sentence_labels_type_proto = GetNSLabelTypeProto(ns_prediction_arg, graph_defs);
+    TypeProto* next_sentence_labels_type_proto = GetSparseTypeProto(ns_prediction_arg,
+                                                                    ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                                                    graph_defs);
 
     new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
                                    {ArgDef(prediction_next_sentence),
                                     ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
-                                   {ArgDef(nsp_loss, GetLossTypeProto(graph_defs))},                 // Outputs
+                                   {ArgDef(nsp_loss, GetLossTypeProto(graph_defs)),
+                                    ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},  // Outputs
                                    NodeAttributes(),
                                    "Next_Sentence_Loss"));
   }
@@ -176,8 +170,48 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                    ));
   }
 
+  // SummaryScalar
+  {
+    new_nodes.emplace_back(NodeDef("SummaryScalar",
+                                   {ArgDef(mlm_loss)},         // Inputs
+                                   {ArgDef(summary_mlm_loss)}, // Outputs
+                                   {MakeAttribute("tags", std::vector<std::string>{summary_mlm_loss})},
+                                   summary_mlm_loss));
+  }
+
+  // SummaryScalar
+  {
+    new_nodes.emplace_back(NodeDef("SummaryScalar",
+                                   {ArgDef(nsp_loss)},         // Inputs
+                                   {ArgDef(summary_nsp_loss)}, // Outputs
+                                   {MakeAttribute("tags", std::vector<std::string>{summary_nsp_loss})},
+                                   summary_nsp_loss));
+  }
+
+  // SummaryScalar
+  {
+    new_nodes.emplace_back(NodeDef("SummaryScalar",
+                                   {ArgDef(total_loss)},         // Inputs
+                                   {ArgDef(summary_total_loss)}, // Outputs
+                                   {MakeAttribute("tags", std::vector<std::string>{summary_total_loss})},
+                                   summary_total_loss));
+  }
+
+  // SummaryMerge
+  {
+    new_nodes.emplace_back(NodeDef("SummaryMerge",
+                                   {                             // Inputs
+                                       ArgDef(summary_mlm_loss),
+                                       ArgDef(summary_nsp_loss),
+                                       ArgDef(summary_total_loss),
+                                   },
+                                   {ArgDef(summary_loss)},       // Outputs
+                                   NodeAttributes(),
+                                   summary_loss));
+  }
+
   graph_defs.AddNodeDefs(new_nodes);
-  graph_defs.AddGraphOutputs({mlm_loss, nsp_loss, total_loss});
+  graph_defs.AddGraphOutputs({mlm_loss, nsp_loss, total_loss, summary_loss});
 
   return graph_defs;
 }

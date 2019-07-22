@@ -16,7 +16,6 @@ struct BertLoss : public ILossFunction {
                                          ONNX_NAMESPACE::TensorProto_DataType data_type,
                                          int64_t max_predictions_per_sequence,
                                          GraphAugmenter::GraphDefs& graph_defs);
-  static TypeProto* GetNSLabelTypeProto(const NodeArg* prediction_arg, GraphAugmenter::GraphDefs& graph_defs);
   static TypeProto* GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs);
 };
 

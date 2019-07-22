@@ -640,7 +640,6 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
-
 if (onnxruntime_USE_HOROVOD)
   if (Win32)
     message( FATAL_ERROR "Horovod is not supported on Windows." )
@@ -653,6 +652,9 @@ if (onnxruntime_USE_HOROVOD)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod  /usr/lib/x86_64-linux-gnu/libnccl.so ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
   endif()
 endif()
+
+add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)

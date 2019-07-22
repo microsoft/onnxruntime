@@ -24,5 +24,9 @@ struct ILossFunction {
   virtual ~ILossFunction(){};
 };
 
+TypeProto* GetSparseTypeProto(const NodeArg* input_arg,
+                              ONNX_NAMESPACE::TensorProto_DataType data_type,
+                              GraphAugmenter::GraphDefs& graph_defs);
+
 }  // namespace training
 }  // namespace onnxruntime

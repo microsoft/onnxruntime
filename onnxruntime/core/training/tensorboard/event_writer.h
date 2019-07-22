@@ -26,6 +26,7 @@ class EventWriter {
   void AddHistogram(const std::string& tag, const ::tensorboard::HistogramProto& histogram, int64_t step = 0);
   void AddScalar(const std::string& tag, float value, int64_t step = 0);
   void AddSummary(const ::tensorboard::Summary& summary, int64_t step = 0);
+  void AddSummary(const std::string& summary, int64_t step = 0);
 
  private:
   void WriteRecord(const std::string& data);

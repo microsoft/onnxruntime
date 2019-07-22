@@ -41,7 +41,7 @@ static inline uint32_t MaskedCrc32c(const char* data, size_t size) {
   return ((value >> 15) | (value << 17)) + 0xa282ead8ul;
 }
 
-template<typename T>
+template <typename T>
 static void Encode(char* buffer, T value) {
   memcpy(buffer, &value, sizeof(value));
 }
@@ -97,6 +97,15 @@ void EventWriter::AddSummary(const ::tensorboard::Summary& summary, int64_t step
   event.set_wall_time(static_cast<double>(std::time(0)));
 
   event.mutable_summary()->CopyFrom(summary);
+  AddEvent(event);
+}
+
+void EventWriter::AddSummary(const std::string& summary, int64_t step) {
+  ::tensorboard::Event event;
+  event.set_step(step);
+  event.set_wall_time(static_cast<double>(std::time(0)));
+
+  event.mutable_summary()->ParseFromString(summary);
   AddEvent(event);
 }
 
