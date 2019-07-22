@@ -7,6 +7,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/session/environment.h"
 #include "core/training/training_session.h"
+#include "core/training/tensorboard/event_writer.h"
 #include "test/training/runner/training_runner.h"
 #include "test/training/runner/training_util.h"
 #include "test/training/runner/data_loader.h"
@@ -19,6 +20,7 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;
+using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
@@ -34,6 +36,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         cxxopts::value<std::string>()->default_value("bert_data/test"))
       ("output_dir", "The output directory where the model checkpoints will be written.",
         cxxopts::value<std::string>())
+      ("log_dir", "The directory to write tensorboard events.",
+        cxxopts::value<std::string>()->default_value("logs/bert"))
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("1"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
@@ -75,8 +79,10 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto test_data_dir = flags["test_data_dir"].as<std::string>();
+    auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
     params.test_data_dir.assign(test_data_dir.begin(), test_data_dir.end());
+    params.log_dir.assign(log_dir.begin(), log_dir.end());
 
     std::string mode = flags["mode"].as<std::string>();
     if (mode == "perf" || mode == "train") {
@@ -125,6 +131,7 @@ void shutdown_horovod() {
 float total_loss = 0.0f;
 float mlm_loss = 0.0f;
 float nsp_loss = 0.0f;
+std::vector<std::string> summary_loss;
 
 void setup_training_params(TrainingRunner::Parameters& params) {
   params.model_path_ = params.model_name + ".onnx";
@@ -146,13 +153,15 @@ void setup_training_params(TrainingRunner::Parameters& params) {
                                              /*nsp_loss*/ "nsp_loss",
                                              /*batch_size*/ std::to_string(params.batch_size_),
                                              /*max_sequence_len*/ std::to_string(512),
-                                             /*max_predictions_per_sequence*/ std::to_string(80)});
+                                             /*max_predictions_per_sequence*/ std::to_string(80),
+                                             /*summary_loss*/ "summary",
+                                            });
   params.model_prediction_name_ = "output1";  //"output2";
   params.weights_not_to_train_ = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
   };
-  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
+  params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss", "summary"};
 
   params.immutable_weigths_ = {
       {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
@@ -189,21 +198,27 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
+    const Tensor& summary_loss_t = fetches[3].Get<Tensor>();
 
     const float* total_loss_val = total_loss_t.template Data<float>();
     const float* mlm_loss_val = mlm_loss_t.template Data<float>();
     const float* nsp_loss_val = nsp_loss_t.template Data<float>();
+    const std::string* summary_loss_val = summary_loss_t.template Data<std::string>();
 
     total_loss += *total_loss_val;
     mlm_loss += *mlm_loss_val;
     nsp_loss += *nsp_loss_val;
+    summary_loss.push_back(*summary_loss_val);
   };
 
-  params.post_evaluation_callback_ = [](size_t num_samples, size_t step) {
+  auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
+  params.post_evaluation_callback_ = [tensorboard](size_t num_samples, size_t step) {
     float average_total_loss = total_loss / float(num_samples);
     float average_mlm_loss = mlm_loss / float(num_samples);
     float average_nsp_loss = nsp_loss / float(num_samples);
 
+    for (const std::string& summary : summary_loss)
+      tensorboard->AddSummary(summary, step);
     printf("Step: %zu, #examples: %d, total_loss: %0.04f, mlm_loss: %0.04f, nsp_loss: %0.04f \n\n",
            step,
            static_cast<int>(num_samples),
@@ -213,6 +228,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     total_loss = 0.0f;
     mlm_loss = 0.0f;
     nsp_loss = 0.0f;
+    summary_loss.clear();
   };
 }
 

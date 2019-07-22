@@ -1534,6 +1534,7 @@ Example 4:
           }
         }
       });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
@@ -1566,6 +1567,65 @@ Example 4:
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SummaryScalar")
+      .Attr("tags", "The tags corresponding to each input scalar.", AttributeProto::STRINGS)
+      .Input(0, "input", "The scalar tensor to summarize as simple values.", "T")
+      .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(double)"},
+          "Constrain input type to float tensors.")
+      .TypeConstraint(
+          "S",
+          {"tensor(string)"},
+          "Constrain output type to string tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::STRING);
+        updateOutputShape(ctx, 0, {});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryHistogram)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SummaryHistogram")
+      .Attr("tag", "The tag corresponding to the histogram data.", AttributeProto::STRING)
+      .Input(0, "input", "The scalar tensor to produce a histogram over.", "T")
+      .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(double)"},
+          "Constrain input type to float tensors.")
+      .TypeConstraint(
+          "S",
+          {"tensor(string)"},
+          "Constrain output type to string tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::STRING);
+        updateOutputShape(ctx, 0, {});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryMerge)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("SummaryMerge")
+      .Input(0, "input", "One or more serialized Tensorboard Summary tensors to merge into a single Summary.", "S", OpSchema::Variadic)
+      .Output(0, "summary", "The serialized Tensorboard Summary.", "S")
+      .TypeConstraint(
+          "S",
+          {"tensor(string)"},
+          "Constrain input and output types to string tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::STRING);
+        updateOutputShape(ctx, 0, {});
+      });
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();
