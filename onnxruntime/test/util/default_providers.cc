@@ -9,27 +9,18 @@
 namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id, bool enable_compiler);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
 
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
   return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
-}
-
-std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
-#ifdef USE_TENSORRT
-  return CreateExecutionProviderFactory_Tensorrt()->CreateProvider();
-#else
-  return nullptr;
-#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
@@ -42,7 +33,7 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  return CreateExecutionProviderFactory_CUDA(0)->CreateProvider();
+  return CreateExecutionProviderFactory_CUDA(0, false)->CreateProvider();
 #else
   return nullptr;
 #endif

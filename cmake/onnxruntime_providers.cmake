@@ -94,6 +94,14 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
+
+  if (onnxruntime_USE_TENSORRT) # slx
+    list(APPEND onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_compiler.h"
+	"${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_compiler.cc"
+    )
+  endif()
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
 

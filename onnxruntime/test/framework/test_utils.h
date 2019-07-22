@@ -13,9 +13,6 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
-#ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_execution_provider.h"
-#endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_execution_provider.h"
 #endif

@@ -5,7 +5,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -62,11 +61,11 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
+  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
+  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
+  CreateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
@@ -87,7 +86,8 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so};
-  session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
+  CUDAExecutionProviderInfo xp_info{ 0 };
+  session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info, true));
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();

@@ -61,8 +61,8 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
 }
 
-CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
+CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler)
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), enable_compiler_(enable_compiler) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
@@ -821,7 +821,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 9, int32_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 9, int64_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int32_t, Slice)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int64_t, Slice)>,      
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 10, int64_t, Slice)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, Compress)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 9, Flatten)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 9, float, Upsample)>,
@@ -1056,7 +1056,52 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
+
+  if (enable_compiler_) {
+#ifdef USE_TENSORRT
+    auto trt_result = GetTensorrtCapability(graph);
+    if (!trt_result.empty() && !result.empty()) {
+      for (int i = result.size() - 1; i >= 0; i--) {
+        bool in_trt = false;
+        for (auto& capability : trt_result) {
+          for (auto& node : capability->sub_graph->nodes) {
+            if (node == result[i]->sub_graph->nodes[0]) {
+              in_trt = true;
+              break;
+            }
+          }
+        }
+        if (in_trt) {
+          result.erase(result.begin() + i);
+        }
+      }
+      for (auto& c : trt_result) {
+        result.push_back(std::move(c));
+      }
+    }
+#endif
+  }
+
   return result;
+}
+
+common::Status CUDAExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
+  if (enable_compiler_) {
+#ifdef USE_TENSORRT
+    int queue_id = 0;
+    for (auto* node : fused_nodes) {
+      NodeComputeInfo compute_info;
+      ORT_RETURN_IF_ERROR(trt_compiler_.Compile(node, streams_[queue_id], compute_info));
+      node_compute_funcs.push_back(compute_info);
+    }
+    return Status::OK();
+#else
+    return Status(ONNXRUNTIME, NOT_IMPLEMENTED);
+#endif
+  } else {
+    return Status(ONNXRUNTIME, NOT_IMPLEMENTED);
+  }
 }
 
 }  // namespace onnxruntime

@@ -11,6 +11,10 @@
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_compiler.h"
+#endif
+
 namespace onnxruntime {
 
 // Information needed to construct CUDA execution providers.
@@ -21,7 +25,7 @@ struct CUDAExecutionProviderInfo {
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
-  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
+  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler = false);
   virtual ~CUDAExecutionProvider();
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
@@ -67,6 +71,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
+
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
   cudaStream_t streams_[kTotalCudaStreams];
@@ -148,6 +155,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   PerThreadContext& GetPerThreadContext() const;
   void ReleasePerThreadStuffs() const;
+
+  bool enable_compiler_;
+
+#ifdef USE_TENSORRT
+  TensorrtCompiler trt_compiler_;
+#endif
 };
 
 }  // namespace onnxruntime

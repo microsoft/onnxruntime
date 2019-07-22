@@ -20,13 +20,6 @@ IExecutionProvider* TestCudaExecutionProvider() {
 }
 #endif
 
-#ifdef USE_TENSORRT
-IExecutionProvider* TestTensorrtExecutionProvider() {
-  static TensorrtExecutionProvider trt_provider;
-  return &trt_provider;
-}
-#endif
-
 #ifdef USE_OPENVINO
 IExecutionProvider* TestOpenVINOExecutionProvider() {
   static OpenVINOExecutionProviderInfo info;
