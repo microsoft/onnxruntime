@@ -490,6 +490,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             for (int i = 0; i < shape->dim_size(); ++i) {
               if (shape->dim(i).has_dim_value()) {
                 arr[i] = py::cast(shape->dim(i).dim_value());
+              } else if (shape->dim(i).has_dim_param()) {
+                arr[i] = py::cast(shape->dim(i).dim_param());
               } else {
                 arr[i] = py::none();
               }
