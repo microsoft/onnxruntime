@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include "core/common/common.h"
+#include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -42,10 +43,16 @@ enum StorageOrder {
   NCHW = 2,
 };
 
+#define FLOAT_TYPE DataTypeImpl::GetType<float>()
+
 namespace math {
 
 template <typename T, class Provider>
 void Exp(int N, const T* x, T* y, Provider* provider);
+template <typename T, class Provider>
+void Log(int N, const T* x, T* y, Provider* provider);
+template <typename T, class Provider>
+void Sqrt(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
 
@@ -67,15 +74,6 @@ template <typename T, class Provider>
 void RowwiseMax(int N, int D, const T* x, T* y,
                 Provider* provider);
 
-template <typename T>
-void MatMul(
-    int M,
-    int N,
-    int K,
-    const T* A,
-    const T* B,
-    T* C);
-
 // Decaf gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
 template <typename T, class Provider>
@@ -90,7 +88,10 @@ void Gemm(
     const T* B,
     float beta,
     T* C,
-    Provider* provider);
+    Provider* provider,
+    //Caffe2 use this type to control on GPU, what presicion do we want to do the calculation
+    //But not sure is this a good design for us. Keep it here for now.
+    MLDataType math_type = FLOAT_TYPE);
 
 // We also provide a gemm that has explicit lda, ldb and ldc specified.
 // In most cases you probably want to use the function above, though.
@@ -111,6 +112,27 @@ void GemmEx(
     int ldc,
     Provider* provider);
 
+// GemmBatched provides a simple abstraction into library routines
+template <typename T, class Provider>
+void GemmBatched(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    int A_size,
+    int A_batches,
+    int B_size,
+    int B_batches,
+    int M,
+    int N,
+    int K,
+    float alpha,
+    const T* A,
+    const T* B,
+    float beta,
+    T* C,
+    Provider* provider,
+    Tensor* scratch = nullptr,
+    MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
+
 // Gemv always takes in a M*N matrix A, and depending on whether we set TransA
 // to Trans, the output is:
 // CblasNoTrans: x is an N dim vector and y is an M dim vector.
@@ -125,7 +147,8 @@ void Gemv(
     const T* x,
     float beta,
     T* y,
-    Provider* provider);
+    Provider* provider,
+    MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
 
 template <typename T, class Provider>
 void Set(int64_t N, T alpha, T* X, Provider* provider);
