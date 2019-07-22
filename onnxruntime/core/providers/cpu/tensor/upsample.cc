@@ -49,11 +49,6 @@ Status UpsampleNearest(const T* input,
   output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
 
   std::vector<int64_t> input_dim_counters(n_dim);
-  std::vector<float> input_dim_value(n_dim);
-  std::vector<float> scales_reciprocal(n_dim);
-  for (int64_t scales_inx = 0; scales_inx < n_dim; scales_inx++) {
-    scales_reciprocal[scales_inx] = 1.0f / scales[scales_inx];
-  }
   std::vector<int64_t> input_dim_factor(n_dim);
   input_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
   for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
@@ -69,16 +64,14 @@ Status UpsampleNearest(const T* input,
   int64_t output_idx = 0;
   int64_t input_idx = 0;
 
-#define OneDemensionProcessor(dim_inx)                                                                            \
-  int64_t input_dim##dim_inx##_inx =                                                                              \
-      static_cast<int64_t>(scales[dim_inx] < 1 ? std::ceil(input_dim_value[dim_inx]) : input_dim_value[dim_inx]); \
-  if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;   \
-  if (input_dim##dim_inx##_inx != input_dim_counters[dim_inx]) {                                                  \
-    input_idx += (input_dim##dim_inx##_inx - input_dim_counters[dim_inx]) * input_dim_factor[dim_inx];            \
-    input_dim_counters[dim_inx] = input_dim##dim_inx##_inx;                                                       \
-  }                                                                                                               \
-  input_dim_value[dim_inx] += scales_reciprocal[dim_inx];                                                         \
-  if (dim_inx + 1 < n_dim) input_dim_value[dim_inx + 1] = 0.0f;
+#define OneDemensionProcessor(dim_inx)                                                                                                                  \
+  int64_t input_dim##dim_inx##_inx =                                                                                                                    \
+      static_cast<int64_t>(scales[dim_inx] < 1 ? std::ceil(output_dim##dim_inx##_inx / scales[dim_inx]) : output_dim##dim_inx##_inx / scales[dim_inx]); \
+  if (input_dim##dim_inx##_inx > input_shape[dim_inx] - 1) input_dim##dim_inx##_inx = input_shape[dim_inx] - 1;                                         \
+  if (input_dim##dim_inx##_inx != input_dim_counters[dim_inx]) {                                                                                        \
+    input_idx += (input_dim##dim_inx##_inx - input_dim_counters[dim_inx]) * input_dim_factor[dim_inx];                                                  \
+    input_dim_counters[dim_inx] = input_dim##dim_inx##_inx;                                                                                             \
+  }
 
   if (n_dim == 1) {
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
