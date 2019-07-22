@@ -130,7 +130,7 @@ Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, Te
 }
 }  // namespace
 
-Status SessionState::GeneratePatternGroupCache(const std::vector<TensorShape>& input_shape, const std::vector<int>& feed_mlvalue_idxs, MemoryPatternGroup* output) const {
+Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape, const std::vector<int>& feed_mlvalue_idxs, MemoryPatternGroup* output) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
     std::string name;

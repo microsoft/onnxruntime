@@ -846,10 +846,10 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   auto add_inputs = [this](const InputDefList& inputs) {
     input_def_map_.reserve(inputs.size());
+    model_input_names_.reserve(inputs.size());
     for (auto elem : inputs) {
-  model_input_names_.reserve(all_inputs.size());
       input_def_map_.insert({elem->Name(), elem});
-    model_input_names_.insert(elem->Name());
+      model_input_names_.insert(elem->Name());
     }
   };
 

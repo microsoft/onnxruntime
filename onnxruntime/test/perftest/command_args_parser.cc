@@ -119,9 +119,6 @@ namespace perftest {
       case 'P':
         test_config.run_config.enable_sequential_execution = false;
         break;
-      case 'P':
-        test_config.run_config.enable_sequential_execution = false;
-        break;
       case 'c':
         test_config.run_config.concurrent_session_runs =
             static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));

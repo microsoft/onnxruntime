@@ -64,9 +64,6 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 may come from outer scope. */
 bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs);
 
-/** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
-bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
-
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
 

@@ -100,7 +100,7 @@ TEST(SessionStateTest, TestInitializerProcessing) {
     status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
     ASSERT_TRUE(status.IsOK()) << status;
 
-    status = session_initializer.CreatePlan(nullptr, nullptr, true);
+    status = session_initializer.CreatePlan(nullptr, nullptr, true, false);
     ASSERT_TRUE(status.IsOK()) << status;
 
     status = session_initializer.InitializeAndSave(nullptr);

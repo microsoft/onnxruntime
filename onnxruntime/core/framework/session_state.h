@@ -132,7 +132,7 @@ class SessionState {
   Get cached memory pattern based on input shapes
   */
   const MemoryPatternGroup* GetMemoryPatternGroup(
-      const std::vector<std::reference_wrapper<TensorShape>>& input_shapes, 
+      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
       const std::vector<int>& feed_mlvalue_idxs) const;
 
   /**
@@ -209,8 +209,8 @@ class SessionState {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   Status GeneratePatternGroupCache(
-	  const std::vector<TensorShape>& input_shape, 
-	  const std::vector<int>& feed_mlvalue_idxs, 
+	  const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+	  const std::vector<int>& feed_mlvalue_idxs,
 	  MemoryPatternGroup* output) const;
 
   // cache of the constructed kernels to avoid spending construction
