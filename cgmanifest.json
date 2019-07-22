@@ -49,7 +49,7 @@
          "component":{
             "type":"git",
             "git": {
-              "commitHash": "d94f99d21a9a0820d58966410ceaf525132f85f1",
+              "commitHash": "65b8e0f9979fbade16e3becbdfa69c0764946f72",
               "repositoryUrl": "https://github.com/onnx/onnx.git"
             }
          }
@@ -301,6 +301,33 @@
       },
       {
          "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"90cb0f8d60b07e96ca7f0ba92fa50884010599ad",
+               "repositoryUrl":"https://github.com/JDAI-CV/DNNLibrary.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"9e7e8cbe9f675123dd41b7c62868acad39188cae",
+               "repositoryUrl":"https://github.com/google/flatbuffers.git"
+            }
+         }
+      },
+      {
+         "component":{
+            "type":"git",
+            "git":{
+               "commitHash":"8d7a107d68c127f3f494bb7807b796c8c5a97a82",
+               "repositoryUrl":"https://github.com/google/glog.git"
+            }
+         }
+      },
+      {
+         "component":{
             "Type":"other",
             "Other":{
                "Name":"Boost",
@@ -309,6 +336,79 @@
             }
          }
       },
+      {
+         "component": {
+             "git": {
+                 "commitHash": "02a2a458ac15912d7d87cc1171e811b0c5219ece",
+                 "repositoryUrl": "https://github.com/grpc/grpc"
+             },
+             "type": "git"
+         }
+      },
+      {
+         "component": {
+             "git": {
+                 "commitHash": "cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
+                 "repositoryUrl": "https://github.com/abseil/abseil-cpp"
+             },
+             "type": "git"
+         }
+     },
+     {
+         "component": {
+             "git": {
+                 "commitHash": "b29b21a81b32ec273f118f589f46d56ad3332420",
+                 "repositoryUrl": "https://github.com/google/boringssl.git"
+             },
+             "type": "git"
+         }
+     },
+     {
+         "component": {
+             "git": {
+                 "commitHash": "3be1924221e1326df520f8498d704a5c4c8d0cce",
+                 "repositoryUrl": "https://github.com/c-ares/c-ares.git"
+             },
+             "type": "git"
+         }
+     },
+     {
+         "component": {
+             "git": {
+                 "commitHash": "6599cac0965be8e5a835ab7a5684bbef033d5ad0",
+                 "repositoryUrl": "https://github.com/llvm-mirror/libcxx.git"
+             },
+             "type": "git"
+         }
+     },
+     {
+         "component": {
+             "git": {
+                 "commitHash": "9245d481eb3e890f708ff2d7dadf2a10c04748ba",
+                 "repositoryUrl": "https://github.com/llvm-mirror/libcxxabi.git"
+             },
+             "type": "git"
+         }
+     },
+     {
+         "component": {
+             "git": {
+                 "commitHash": "9ce4a77f61c134bbed28bfd5be5cd7dc0e80f5e3",
+                 "repositoryUrl": "https://github.com/google/upb.git"
+             },
+             "type": "git"
+         }
+     },
+     {  
+       "component":{  
+          "type":"other",
+          "Other":{  
+             "Name":"Go",
+             "Version":"1.12.6",
+             "DownloadUrl":"https://dl.google.com/go/go1.12.6.linux-amd64.tar.gz"
+          }
+   }
+}
    ],
    "Version":1
 }

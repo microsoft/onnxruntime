@@ -73,8 +73,8 @@ struct Base {
 
  protected:
   Base(const Base&) = delete;
-  Base(Base&& v) : p_{v.p_} { v.p_ = nullptr; }
-  void operator=(Base&& v) {
+  Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
+  void operator=(Base&& v) noexcept {
     OrtRelease(p_);
     p_ = v.p_;
     v.p_ = nullptr;
@@ -252,7 +252,7 @@ struct AllocatorInfo : Base<OrtAllocatorInfo> {
 struct CustomOpApi {
   CustomOpApi(const OrtCustomOpApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float and int64_t
+  template <typename T>  // T is only implemented for float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);

@@ -148,9 +148,9 @@ void RegisterNchwcSchemas() {
           AttributeProto::STRING,
           OPTIONAL)
       .Attr(
-          "alpha",
+          "activation_params",
           "",
-          AttributeProto::FLOAT,
+          AttributeProto::FLOATS,
           OPTIONAL)
       .Input(0, "X", "", "T")
       .Input(1, "W", "", "T")
@@ -862,10 +862,15 @@ activation.)DOC")
           AttributeProto::INTS,
           OPTIONAL)
       .Attr(
-          "strides", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("pads",
-            "",
-            AttributeProto::INTS, OPTIONAL)
+          "strides",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "",
+          AttributeProto::INTS,
+          OPTIONAL)
       .Attr(
           "group",
           "",
@@ -877,9 +882,9 @@ activation.)DOC")
           AttributeProto::STRING,
           OPTIONAL)
       .Attr(
-          "alpha",
+          "activation_params",
           "",
-          AttributeProto::FLOAT,
+          AttributeProto::FLOATS,
           OPTIONAL)
       .Input(
           0,
@@ -891,7 +896,12 @@ activation.)DOC")
           "W",
           "",
           "T")
-      .Input(2, "B", "", "T", OpSchema::Optional)
+      .Input(
+          2,
+          "B",
+          "",
+          "T",
+          OpSchema::Optional)
       .Output(
           0,
           "Y",
@@ -1379,7 +1389,7 @@ Example 4:
                 pads_initializer->int64_data().end());
 
           // fill with zeros if needed to reach appropriate size
-          if (pads_data.size() != static_cast<size_t>(2 * input_rank))
+          if (pads_data.size() != 2 * static_cast<size_t>(input_rank))
             pads_data.resize(2 * input_rank, 0);
 
           const auto& output_shape =

@@ -255,33 +255,13 @@ typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
+(MLASCALL MLAS_ELEMENTWISE_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
     size_t N
     );
 
-typedef MLAS_LOGISTIC_KERNEL_ROUTINE* PMLAS_LOGISTIC_KERNEL_ROUTINE;
-
-typedef
-void
-(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
-    const float* Input,
-    float* Output,
-    size_t N
-    );
-
-typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
-
-typedef
-void
-(MLASCALL MLAS_ERF_KERNEL_ROUTINE)(
-    const float* Input,
-    float* Output,
-    size_t N
-    );
-
-typedef MLAS_ERF_KERNEL_ROUTINE* PMLAS_ERF_KERNEL_ROUTINE;
+typedef MLAS_ELEMENTWISE_KERNEL_ROUTINE* PMLAS_ELEMENTWISE_KERNEL_ROUTINE;
 
 extern "C" {
 
@@ -347,13 +327,13 @@ extern "C" {
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
 #endif
 
-    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
-    MLAS_ERF_KERNEL_ROUTINE MlasErfKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
-    MLAS_ERF_KERNEL_ROUTINE MlasErfKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernelFma3;
 #endif
 
 }
@@ -381,7 +361,7 @@ extern "C" {
 //
 // The number is derived from performance results running SGEMM across a
 // range of workloads and observing the ideal number of threads to complete
-// that workload. See EvaluateThreadingPerformance() in the unit test.
+// that workload.
 //
 
 #if defined(_OPENMP)
@@ -437,9 +417,9 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
-    PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
-    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
-    PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE LogisticKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif

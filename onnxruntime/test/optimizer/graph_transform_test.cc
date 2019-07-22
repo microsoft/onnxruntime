@@ -288,6 +288,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<std::string, std::string> model_to_op_name{{"fusion/conv_relu.onnx", "Relu"},
+                                                                {"fusion/conv_clip.onnx", "Clip"},
                                                                 {"fusion/conv_sigmoid.onnx", "Sigmoid"},
                                                                 {"fusion/conv_tanh.onnx", "Tanh"},
                                                                 {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
