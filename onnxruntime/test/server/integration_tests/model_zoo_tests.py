@@ -70,13 +70,13 @@ class ModelZooTests(unittest.TestCase):
                 test_util.pb_response_validation(self, resp, os.path.join(test, 'response.pb'))
 
                 test_util.test_log('[{0}] GRPC testing ....'.format(model_path))
-                    uri = ("{}:{}".format(self.server_ip, self.grpc_port))
-                    with open(os.path.join(test, 'request.pb'), 'rb') as f:
-                        request_payload = f.read()
-                    with grpc.insecure_channel(uri) as channel:
-                        stub = prediction_service_pb2_grpc.PredictionServiceStub(channel)
-                        resp = stub.Predict(request_payload)
-                    test_util.pb_response_validation(self, resp, os.path.join(test, 'response.pb'))
+                uri = ("{}:{}".format(self.server_ip, self.grpc_port))
+                with open(os.path.join(test, 'request.pb'), 'rb') as f:
+                    request_payload = f.read()
+                with grpc.insecure_channel(uri) as channel:
+                    stub = prediction_service_pb2_grpc.PredictionServiceStub(channel)
+                    resp = stub.Predict(request_payload)
+                test_util.pb_response_validation(self, resp, os.path.join(test, 'response.pb'))
         finally:
             test_util.shutdown_server_app(server_app_proc, self.server_off_in_seconds)
 
