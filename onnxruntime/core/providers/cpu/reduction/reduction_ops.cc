@@ -22,6 +22,14 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), \
       x<int32_t>);
 
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(x, sinceVersion)               \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
+      x,                                                                             \
+      sinceVersion,                                                                  \
+      double,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), \
+      x<double>);
+
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL2, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSum, 1);
@@ -31,7 +39,9 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSum, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 1);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 1);
 
