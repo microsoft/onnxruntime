@@ -369,11 +369,6 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 ### Using other compilers
 (TODO)
 
-
-### Learning capabilities in onnxruntime
-
-You can enable a prototype for running training in onnxruntime by setting the flag --enable_training
-
 ## Android Builds
 
 ### Cross compiling on Linux
