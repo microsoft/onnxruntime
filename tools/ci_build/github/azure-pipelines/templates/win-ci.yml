@@ -38,7 +38,7 @@ jobs:
         displayName: 'Set CUDA path'
         inputs:
           scriptName: 'tools/ci_build/vsts/windows/set_cuda_path.ps1'
-          arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion ${{ CudaVersion }}'
+          arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion ${{ parameters.CudaVersion }}'
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
@@ -179,7 +179,7 @@ jobs:
         displayName: 'Clean up CUDA props files'
         inputs:
           scriptName: 'tools/ci_build/vsts/windows/clean_up_cuda_prop_files.ps1'
-          arguments: '-CudaVersion ${{ CudaVersion }}'
+          arguments: '-CudaVersion ${{ parameters.CudaVersion }}'
 
 
     # Compliance tasks require logs from Debug Build
