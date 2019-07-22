@@ -46,30 +46,6 @@
           CopyToOutputDirectory="Never"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_cxx_api.h"
-          PackagePath="\build\native\include"
-          Pack="true"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_cxx_inline.h"
-          PackagePath="\build\native\include"
-          Pack="true"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_cxx_api.h"
-          PackagePath="\build\native\include"
-          Pack="true"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_cxx_inline.h"
-          PackagePath="\build\native\include"
-          Pack="true"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
