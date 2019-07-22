@@ -39,7 +39,7 @@ class InceptionPreprocessing : public DataProcessing {
  public:
   InceptionPreprocessing(int out_height, int out_width, int channels);
 
-  void operator()(const void* input_data, void* output_data) const override;
+  void operator()(_In_ const void* input_data, _Out_writes_bytes_all_(output_len) void* output_data, size_t output_len) const override;
 
   // output data from this class is in NWHC format
   std::vector<int64_t> GetOutputShape(size_t batch_size) const override {
