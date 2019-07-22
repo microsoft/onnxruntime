@@ -37,7 +37,7 @@ jobs:
       - task: PowerShell@1
         displayName: 'Set CUDA path'
         inputs:
-          scriptName: 'tools/ci_build/vsts/windows/set_cuda_path.ps1'
+          scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
           arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion ${{ parameters.CudaVersion }}'
 
     - task: CmdLine@1
