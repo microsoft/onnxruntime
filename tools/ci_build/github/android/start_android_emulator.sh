@@ -19,7 +19,7 @@ $ANDROID_HOME/platform-tools/adb start-server
 
 echo "Waiting for device to come online"
 # Sometimes wait-for-device hangs, so add a timeout here
-timeout 60 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
+timeout 60 $ANDROID_HOME/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
 
 echo "Emulator is online"
 
