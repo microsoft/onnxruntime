@@ -139,14 +139,17 @@ struct NchwcTestHelper {
 };
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
-                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph) {
+                          const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph,
+                          int opset_version = 10) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
   }
 
   // Build the model for this test.
-  Model model("nchwc");
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = opset_version;
+  Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
@@ -164,7 +167,11 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     ASSERT_TRUE(session.Initialize().IsOK());
 
     RunOptions run_options;
-    ASSERT_TRUE(session.Run(run_options, helper.feeds_, helper.output_names_, &fetches).IsOK());
+    auto status = session.Run(run_options, helper.feeds_, helper.output_names_, &fetches);
+    if (!status.IsOK()) {
+      std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(status.IsOK());
 
     if (level == TransformerLevel::Level3) {
       check_nchwc_graph(session);
@@ -482,7 +489,7 @@ TEST(NchwcOptimizerTests, ConvGlobalPool) {
 }
 
 TEST(NchwcOptimizerTests, ConvAddFusion) {
-  auto test_case = [&](const std::string& op_type, bool do_relu) {
+  auto test_case = [&](const std::string& op_type, int opset_version, bool do_relu) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput({1, 32, 28, 28});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -510,15 +517,18 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
       EXPECT_EQ(op_to_count["Relu"], 0);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Verify that Add or Sum can be fused into a preceding NCHWc Conv node,
   // with an optional Relu node following.
   std::vector<std::string> op_types = {"Add", "Sum"};
+  static const int opset_versions[] = {7, 10};
   for (auto& op_type : op_types) {
-    test_case(op_type, false);
-    test_case(op_type, true);
+    for (auto opset_version : opset_versions) {
+      test_case(op_type, opset_version, false);
+      test_case(op_type, opset_version, true);
+    }
   }
 }
 
@@ -702,7 +712,7 @@ TEST(NchwcOptimizerTests, ShapeInferencing) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(32);
+    type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_height");
     type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("input_width");
 
