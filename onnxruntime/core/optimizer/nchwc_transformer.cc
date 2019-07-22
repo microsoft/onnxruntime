@@ -637,7 +637,7 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {8})) {
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8})) {
       TransformAdd(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4})) {
       TransformConcat(node);

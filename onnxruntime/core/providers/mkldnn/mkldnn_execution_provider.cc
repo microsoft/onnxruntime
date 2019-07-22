@@ -111,8 +111,7 @@ std::shared_ptr<KernelRegistry> MKLDNNExecutionProvider::GetKernelRegistry() con
   return kernel_registry;
 }
 
-bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
-                                          const std::vector<const KernelRegistry*>& kernel_registries) const {
+bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer) const {
   // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
   // MKLDNN_SUBGRAPH environment variable
   bool use_subgraph = true;
@@ -224,7 +223,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
   // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
   // ORT_MKLDNN_SUBGRAPH environment variable
-  if (UseSubgraph(graph_viewer, kernel_registries) == false) {
+  if (UseSubgraph(graph_viewer) == false) {
     return IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   }
 
