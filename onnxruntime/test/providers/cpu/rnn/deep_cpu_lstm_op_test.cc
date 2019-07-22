@@ -1065,46 +1065,6 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
                   &sequence_length, use_bias, use_peepholes);
 }
 
-TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
-  const int seq_len = 2;
-  int batch_size = 3;
-  std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
-
-  bool use_bias = true;
-  bool use_peepholes = false;
-
-  std::vector<float> X_data = {-0.455351f, -0.776391f,
-                               0.0f, 0.0f,
-                               0.348763f, 0.678345f,
-
-                               -0.185934f, -0.169585f,
-                               0.0f, 0.0f,
-                               0.078053f, 0.163457f};
-
-  std::vector<int> sequence_length = {2, 1, 2};
-
-  std::vector<float> Y_data = {0.02907280f, 0.01765226f, -0.06724346f, 0.02957184f, -0.15355367f, 0.04701351f,
-
-                               0.01841230f, 0.04093486f, -0.06724346f, 0.02957184f, -0.17994503f, 0.07397783f,
-
-                               -0.02912546f, 0.04120104f, 0.0f, 0.0f, -0.12768818f, 0.07457943f,
-
-                               -0.04350187f, 0.03531464f, 0.0f, 0.0f, -0.08877515f, 0.03413615f};
-
-  std::vector<float> Y_h_data = {-0.0291254f, 0.04120104f, -0.06724346f, 0.02957184f, -0.12768818f, 0.07457943f,
-
-                                 0.01841230f, 0.04093486f, -0.06724346f, 0.02957184f, -0.17994503f, 0.07397783f};
-
-  std::vector<float> Y_c_data = {-0.06609819f, 0.06838701f, -0.14596788f, 0.04902556f, -0.26768601f, 0.12119407f,
-
-                                 0.04934450f, 0.07126625f, -0.14596788f, 0.04902556f, -0.34139895f, 0.11673255f};
-
-  std::string direction = "bidirectional";
-  LstmOpContext2x1x2x2 context(direction, activations);
-  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
-                  &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
-}
-
 // TODO this test fails for nGraph - need to investigate why
 #ifndef USE_NGRAPH
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
@@ -1166,6 +1126,46 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
   LstmOpContext2x1x2x2 context(direction);
   // CUDA implementation doesn't support peephole
   context.RunTest(X_data, batch_size, seq_len, &initial_h, &initial_c, Y_data, Y_h_data, {}, &sequence_length, false);
+}
+
+TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
+  const int seq_len = 2;
+  int batch_size = 3;
+  std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
+
+  bool use_bias = true;
+  bool use_peepholes = false;
+
+  std::vector<float> X_data = {-0.455351f, -0.776391f,
+                               0.0f, 0.0f,
+                               0.348763f, 0.678345f,
+
+                               -0.185934f, -0.169585f,
+                               0.0f, 0.0f,
+                               0.078053f, 0.163457f};
+
+  std::vector<int> sequence_length = {2, 1, 2};
+
+  std::vector<float> Y_data = {0.02907280f, 0.01765226f, -0.06724346f, 0.02957184f, -0.15355367f, 0.04701351f,
+
+                               0.01841230f, 0.04093486f, -0.06724346f, 0.02957184f, -0.17994503f, 0.07397783f,
+
+                               -0.02912546f, 0.04120104f, 0.0f, 0.0f, -0.12768818f, 0.07457943f,
+
+                               -0.04350187f, 0.03531464f, 0.0f, 0.0f, -0.08877515f, 0.03413615f};
+
+  std::vector<float> Y_h_data = {-0.0291254f, 0.04120104f, -0.06724346f, 0.02957184f, -0.12768818f, 0.07457943f,
+
+                                 0.01841230f, 0.04093486f, -0.06724346f, 0.02957184f, -0.17994503f, 0.07397783f};
+
+  std::vector<float> Y_c_data = {-0.06609819f, 0.06838701f, -0.14596788f, 0.04902556f, -0.26768601f, 0.12119407f,
+
+                                 0.04934450f, 0.07126625f, -0.14596788f, 0.04902556f, -0.34139895f, 0.11673255f};
+
+  std::string direction = "bidirectional";
+  LstmOpContext2x1x2x2 context(direction, activations);
+  context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
+                  &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 #endif // USE_NGRAPH
 
