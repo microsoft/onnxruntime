@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+apt update && apt install -y openjdk-8-jdk
+
 # cmake==3.13.2 is actually 3.12.2 lol
 python3 -m pip install cmake==3.13.2.post1
 
