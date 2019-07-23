@@ -11,6 +11,7 @@
 * Setting the thread pool size for each session.
 * Setting graph optimization level for each session.
 * Dynamically loading custom ops. [Instructions](/docs/AddingCustomOp.md)
+* Ability to load a model from a byte array. See ```OrtCreateSessionFromArray``` in [onnxruntime_c_api.h](/include/onnxruntime/core/session/onnxruntime_c_api.h).
 
 ## Usage Overview
 

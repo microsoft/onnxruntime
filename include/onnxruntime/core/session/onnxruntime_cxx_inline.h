@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Don't include this file directly. Please include "onnxruntime_cxx_api.h" instead.
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
@@ -90,13 +91,13 @@ inline RunOptions::RunOptions() {
   ORT_THROW_ON_ERROR(OrtCreateRunOptions(&p_));
 }
 
-inline RunOptions& RunOptions::SetRunLogVerbosityLevel(unsigned int level) {
+inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
   ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogVerbosityLevel(p_, level));
   return *this;
 }
 
-inline unsigned int RunOptions::GetRunLogVerbosityLevel() const {
-  unsigned int out;
+inline int RunOptions::GetRunLogVerbosityLevel() const {
+  int out;
   ORT_THROW_ON_ERROR(OrtRunOptionsGetRunLogVerbosityLevel(p_, &out));
   return out;
 }
@@ -132,7 +133,7 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_optimization_level) {
+inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(int graph_optimization_level) {
   ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
   return *this;
 }

@@ -85,12 +85,9 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
-if(onnxruntime_USE_OPENMP AND UNIX)
-  #if you enabled both of them, the code can still be built and run, but you may see
-  # 10x performance degradation, because one process should only have one openmp implementation
-  # mkl(or mklml) depends on Intel OpenMP
-  # GCC does not support linking against the Intel OpenMP runtime library
-  # Clang should be ok, but it's not in our consideration right now.
+if(onnxruntime_USE_OPENMP)
+  # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
+  # Disable the options to build mklml/NGraph and OpenMP together.
   if(onnxruntime_USE_MKLML)
     message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
   endif()
@@ -470,7 +467,10 @@ if (onnxruntime_USE_JEMALLOC)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
 endif()
 
-include_directories(${ONNXRUNTIME_INCLUDE_DIR})
+include_directories(
+  ${ONNXRUNTIME_INCLUDE_DIR} 
+  ${REPO_ROOT}/include/onnxruntime/core/session
+)
 
 if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
