@@ -194,7 +194,7 @@ jobs:
   - task: CmdLine@1
     displayName: 'Install conda modules mysql-connector-python'
     inputs:
-      filename: 'conda'
+      filename: '%CONDA%\condabin\conda.bat'
       arguments: 'install -q --insecure -y mysql-connector-python'
     timeoutInMinutes: 10
 
