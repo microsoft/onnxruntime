@@ -467,7 +467,10 @@ if (onnxruntime_USE_JEMALLOC)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES jemalloc)
 endif()
 
-include_directories(${ONNXRUNTIME_INCLUDE_DIR})
+include_directories(
+  ${ONNXRUNTIME_INCLUDE_DIR} 
+  ${REPO_ROOT}/include/onnxruntime/core/session
+)
 
 if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
   include(mkldnn)
