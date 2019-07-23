@@ -24,7 +24,7 @@ def update_version():
                 if line.startswith('|--'):
                     sections = lines[i+1].split('|')
                     # Make sure there are no 'False Positive' version additions
-                    # by making sure the line we are building a new line
+                    # by making sure the line we are building a new line from
                     # contains the current_version
                     if len(sections) > 1 and sections[1].strip() == current_version:
                         sections[1] = ' ' + version + ' '
