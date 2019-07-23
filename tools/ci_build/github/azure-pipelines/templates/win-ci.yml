@@ -178,7 +178,7 @@ jobs:
       - task: PowerShell@1
         displayName: 'Clean up CUDA props files'
         inputs:
-          scriptName: 'tools/ci_build/vsts/windows/clean_up_cuda_prop_files.ps1'
+          scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
           arguments: '-CudaVersion ${{ parameters.CudaVersion }}'
 
 
