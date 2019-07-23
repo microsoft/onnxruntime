@@ -126,5 +126,63 @@ TEST(SummaryOpTest, SummaryMergeOp_DuplicateTag) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "duplicate tag");
 }
 
+TEST(SummaryOpTest, SummaryTextOp_Tag_Missing) {
+  OpTester test("SummaryText", 9, onnxruntime::kOnnxDomain);
+
+  std::vector<std::string> X = {"text 0", "text 1", "text 2", "text 3"};
+  const int64_t N = static_cast<int64_t>(X.size());
+  tensorboard::Summary summary;
+
+  // Attribute 'tag' is missing
+  test.AddInput("input", {N}, X);
+  test.AddOutput("summary", {}, {summary.SerializeAsString()});
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(SummaryOpTest, SummaryTextOp_1D_Tensor) {
+  OpTester test("SummaryText", 9, onnxruntime::kOnnxDomain);
+
+  const std::string tag = "text";
+  std::vector<std::string> X = {"text 0", "text 1", "text 2", "text 3"};
+  const int64_t N = static_cast<int64_t>(X.size());
+  tensorboard::Summary summary;
+  auto* summary_value = summary.add_value();
+  summary_value->set_tag(tag);
+  summary_value->mutable_metadata()->mutable_plugin_data()->set_plugin_name("text");
+  auto* summary_tensor = summary_value->mutable_tensor();
+  summary_tensor->mutable_tensor_shape()->add_dim()->set_size(N);
+  summary_tensor->set_dtype(tensorboard::DataType::DT_STRING);
+  for (const std::string& s : X)
+    summary_tensor->add_string_val(s);
+
+  test.AddAttribute("tag", tag);
+  test.AddInput("input", {N}, X);
+  test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
+  test.Run();
+}
+
+TEST(SummaryOpTest, SummaryTextOp_2D_Tensor) {
+  OpTester test("SummaryText", 9, onnxruntime::kOnnxDomain);
+
+  const std::string tag = "text";
+  std::vector<std::string> X = {"text 0", "text 1", "text 2", "text 3"};
+  const int64_t N = static_cast<int64_t>(X.size());
+  tensorboard::Summary summary;
+  auto* summary_value = summary.add_value();
+  summary_value->set_tag(tag);
+  summary_value->mutable_metadata()->mutable_plugin_data()->set_plugin_name("text");
+  auto* summary_tensor = summary_value->mutable_tensor();
+  summary_tensor->mutable_tensor_shape()->add_dim()->set_size(N/2);
+  summary_tensor->mutable_tensor_shape()->add_dim()->set_size(2);
+  summary_tensor->set_dtype(tensorboard::DataType::DT_STRING);
+  for (const std::string& s : X)
+    summary_tensor->add_string_val(s);
+
+  test.AddAttribute("tag", tag);
+  test.AddInput("input", {N/2, 2}, X);
+  test.AddOutput<std::string>("summary", {}, {summary.SerializeAsString()});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
