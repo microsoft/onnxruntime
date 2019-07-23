@@ -190,7 +190,6 @@ jobs:
       script: |
         echo %PATH%
         echo %CONDA%
-        dir %CONDA% /s
         where conda.exe
         where conda.bat
         where conda
