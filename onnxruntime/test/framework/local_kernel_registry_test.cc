@@ -222,7 +222,7 @@ void RunSession(InferenceSession& session_object,
 TEST(CustomKernelTests, CustomKernelWithBuildInSchema) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "CustomKernelTests.CustomKernelWithBuildInSchema";
 
   // Register a foo kernel which is doing Add, but bind to Mul.
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
@@ -255,7 +255,7 @@ TEST(CustomKernelTests, CustomKernelWithBuildInSchema) {
 TEST(CustomKernelTests, CustomKernelWithCustomSchema) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "CustomKernelTests.CustomKernelWithCustomSchema";
 
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
 
@@ -292,7 +292,7 @@ TEST(CustomKernelTests, CustomKernelWithCustomSchema) {
 TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "CustomKernelTests.CustomKernelWithOptionalOutput";
 
   //reigster optional schema
   auto optional_schema = GetOptionalOpSchema();

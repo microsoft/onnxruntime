@@ -308,7 +308,7 @@ static const std::string MODEL_URI = "testdata/fuse_mul_1.onnx";
 TEST(TVMTest, CodeGen_Demo_for_Fuse_Mul) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "TVMTest.CodeGen_Demo_for_Fuse_Mul";
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
   CPUExecutionProviderInfo info;

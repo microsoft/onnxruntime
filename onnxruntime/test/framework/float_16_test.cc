@@ -132,7 +132,7 @@ void RunSession(InferenceSession& session_object,
 TEST(Float16_Tests, Mul_16_Test) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "Float16_Tests.Mul_16_Test";
 
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
   InferenceSession session_object{so, &DefaultLoggingManager()};

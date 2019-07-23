@@ -112,7 +112,7 @@ struct OrtAllocatorInfo {
 
 inline bool operator==(const OrtAllocatorInfo& left, const OrtAllocatorInfo& other) {
   return left.mem_type == other.mem_type && left.allocator_type == other.allocator_type && left.device.Id() == other.device.Id() &&
-         left.device.Type() == other.device.Type() == 0;
+         left.device.Type() == other.device.Type();
 }
 
 inline bool operator!=(const OrtAllocatorInfo& lhs, const OrtAllocatorInfo& rhs) { return !(lhs == rhs); }
