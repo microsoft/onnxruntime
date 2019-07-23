@@ -2,10 +2,9 @@
 
 @echo off
 
-for /f "usebackq delims=" %%i in (`"%~dp0\vswhere.bat" -version 15.0 -property installationPath`) do (
-  if exist "%%i\VC\Auxiliary\Build\vcvarsall.bat" (
-    set "VcVarsAllPath=%%i\VC\Auxiliary\Build\vcvarsall.bat"
-  )
+for /f "usebackq delims=" %%i in (`powershell -Command "%~dp0\get_vcvarsall_path.ps1" -VsVersion 2017`) do (
+  echo %%i
+  set "VcVarsAllPath=%%i"
 )
 
 if "%VcVarsAllPath%"=="" (
