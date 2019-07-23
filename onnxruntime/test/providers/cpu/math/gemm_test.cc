@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(GemmOpTest, GemmNoTrans) {
+TEST(GemmOpTest, DISABLED_GemmNoTrans) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -28,7 +28,7 @@ TEST(GemmOpTest, GemmNoTrans) {
 
 // Only CUDA kernel has float 16 support
 #ifdef USE_CUDA
-TEST(GemmOpTest, GemmNoTrans_f16) {
+TEST(GemmOpTest, DISABLED_GemmNoTrans_f16) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -60,7 +60,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-TEST(GemmOpTest, GemmBroadcast) {
+TEST(GemmOpTest, DISABLED_GemmBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -79,7 +79,7 @@ TEST(GemmOpTest, GemmBroadcast) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmTrans) {
+TEST(GemmOpTest, DISABLED_GemmTrans) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)1);
@@ -100,7 +100,7 @@ TEST(GemmOpTest, GemmTrans) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmAlphaBeta) {
+TEST(GemmOpTest, DISABLED_GemmAlphaBeta) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -119,7 +119,7 @@ TEST(GemmOpTest, GemmAlphaBeta) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmNaN) {
+TEST(GemmOpTest, DISABLED_GemmNaN) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -138,7 +138,7 @@ TEST(GemmOpTest, GemmNaN) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmScalarBroadcast) {
+TEST(GemmOpTest, DISABLED_GemmScalarBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -157,7 +157,7 @@ TEST(GemmOpTest, GemmScalarBroadcast) {
   test.Run();
 }
 
-TEST(GemmOpTest, Gemm2DBroadcast_1) {
+TEST(GemmOpTest, DISABLED_Gemm2DBroadcast_1) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -176,7 +176,7 @@ TEST(GemmOpTest, Gemm2DBroadcast_1) {
   test.Run();
 }
 
-TEST(GemmOpTest, Gemm2DBroadcast_2) {
+TEST(GemmOpTest, DISABLED_Gemm2DBroadcast_2) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -196,7 +196,7 @@ TEST(GemmOpTest, Gemm2DBroadcast_2) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmFalseBroadcast) {
+TEST(GemmOpTest, DISABLED_GemmFalseBroadcast) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -215,7 +215,7 @@ TEST(GemmOpTest, GemmFalseBroadcast) {
   test.Run();
 }
 
-TEST(GemmOpTest, GemmEmptyTensor) {
+TEST(GemmOpTest, DISABLED_GemmEmptyTensor) {
   OpTester test("Gemm");
 
   test.AddAttribute("transA", static_cast<int64_t>(0));
