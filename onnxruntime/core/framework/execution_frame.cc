@@ -316,14 +316,25 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
   auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
+  auto buffer_num_elements = reuse_tensor->Shape().Size();
+  auto required_num_elements = shape.Size();
 
   // check number of elements matches. shape may not be an exact match (e.g. Reshape op)
-  if (reuse_tensor->Shape().Size() != shape.Size()) {
+  if (buffer_num_elements != required_num_elements) {
     // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
-    // as a dim_param in multiple places making the planner think those shapes are equal.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Shape mismatch attempting to re-use buffer. ", reuse_tensor->Shape(), " != ", shape,
-                           ". Validate usage of dim_param in shapes in the model.");
+    // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
+    auto message = onnxruntime::MakeString(
+        "Shape mismatch attempting to re-use buffer. ",
+        reuse_tensor->Shape(), " != ", shape,
+        ". Validate usage of dim_value (values should be > 0) and "
+        "dim_param (all values with the same string should equate to the same size) in shapes in the model.");
+
+    // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
+    if (buffer_num_elements >= required_num_elements) {
+      LOGS_DEFAULT(WARNING) << message;
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
+    }
   }
 
   void* reuse_buffer = reuse_tensor->MutableDataRaw();

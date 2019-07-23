@@ -790,6 +790,39 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
 }
 
+TEST(GRUTest, ONNXRuntime_TestGRUOpShorterSeqInMiddle) {
+  const std::string direction = "bidirectional";
+  const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
+
+  DeepCpuGruOpTestContext ctx(direction, activations);
+
+  const int batch_size = 3;
+  const int seq_length = 2;
+  std::vector<float> X = {-0.455351f, -0.276391f,
+                          0.855351f, 0.676391f,
+                          -0.185934f, -0.269585f,
+                          -0.585934f, 0.669585f,
+                          -0.351455f, -0.391276f,
+                          0.670351f, 0.894676f};
+  std::vector<int> sequence_length = {2, 1, 2};
+  std::vector<float> initial_h = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                  0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> expected_Y = {-0.0325528607f, 0.0774837881f, -0.275918573f, -0.00228558504f, -0.0456649921f, 0.0462125241f,
+                                   -0.108452908f, 0.15118938684f, -0.2759185731f, -0.0022855850f, -0.1950065642f, 0.0961040258f,
+
+                                   -0.1671274304f, 0.1817691028f, 0.0f, 0.0f, -0.3073617219f, 0.0686715841f,
+                                   -0.1494070887f, 0.1356348693f, 0.0f, 0.0f, -0.2866500020f, 0.0448506586f};
+  std::vector<float> expected_Y_h = {-0.1671274304f, 0.18176910281f,
+                                     -0.2759185731f, -0.00228558504f,
+                                     -0.3073617219f, 0.0686715841f,
+
+                                     -0.1084529086f, 0.15118938684f,
+                                     -0.2759185731f, -0.00228558504f,
+                                     -0.1950065642f, 0.0961040258f};
+
+  ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h, true);
+}
+
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithPartialZero) {
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
