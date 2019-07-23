@@ -9,7 +9,9 @@ Then prepare an image:
 2. With dimension of 720x720
 
 # Run
-> fns_candy_style_transfer.exe <model_path> <input_image_path> <output_image_path>
+```
+fns_candy_style_transfer.exe <model_path> <input_image_path> <output_image_path>
+```
 
 
 
