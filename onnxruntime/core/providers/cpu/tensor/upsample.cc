@@ -30,6 +30,33 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Upsample<uint8_t>);
 
 template <typename T>
+void UpsampleNearest2x(
+    int64_t batch_size,
+    int64_t num_channels,
+    int64_t input_height,
+    int64_t input_width,
+    const T* input,
+    T* output) {
+  const int64_t output_height = input_height * 2;
+  const int64_t output_width = input_width * 2;
+  for (int64_t n = 0; n < batch_size; ++n) {
+    for (int64_t c = 0; c < num_channels; ++c) {
+      for (int64_t y = 0; y < output_height; ++y) {
+        const int64_t in_y = y / 2;
+        for (int64_t x = 0; x < input_width; ++x) {
+          const T v = input[in_y * input_width + x];
+          const int64_t oidx = output_width * y + x * 2;
+          output[oidx + 0] = v;
+          output[oidx + 1] = v;
+        }
+      }
+      input += input_height * input_width;
+      output += output_height * output_width;
+    }
+  }
+}
+
+template <typename T>
 Status UpsampleNearest(const T* input,
                        T* output,
                        const TensorShape& input_shape,
@@ -45,20 +72,12 @@ Status UpsampleNearest(const T* input,
   }
 
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
-  std::vector<int64_t> output_dim_counter(n_dim);
-  output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
 
   std::vector<int64_t> input_dim_counters(n_dim);
   std::vector<int64_t> input_dim_factor(n_dim);
   input_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
   for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
     input_dim_factor[dim_idx] = input_dim_factor[dim_idx + 1] * input_shape[dim_idx + 1];
-  }
-
-  std::vector<int64_t> output_dim_factor(n_dim);
-  output_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
-  for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
-    output_dim_factor[dim_idx] = output_dim_factor[dim_idx + 1] * output_shape[dim_idx + 1];
   }
 
   int64_t output_idx = 0;
@@ -107,6 +126,10 @@ Status UpsampleNearest(const T* input,
   }
 
   if (n_dim == 4) {
+    if (scales[0] == 1 && scales[1] == 1 && scales[2] == 2 && scales[3] == 2) {
+      UpsampleNearest2x<T>(input_shape[0], input_shape[1], input_shape[2], input_shape[3], input, output);
+      return Status::OK();
+    }
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
       OneDemensionProcessor(0);
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
@@ -124,6 +147,9 @@ Status UpsampleNearest(const T* input,
   }
 
 #undef OneDemensionProcessor
+
+  std::vector<int64_t> output_dim_counter(n_dim);
+  output_dim_counter[n_dim - 1] = -1;  // initialize dimension counter
 
   for (; output_idx < output_shape.Size(); output_idx++) {
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
