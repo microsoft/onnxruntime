@@ -190,14 +190,11 @@ jobs:
       script: |
         echo %PATH%
         echo %CONDA%
-        where conda.exe
-        where conda.bat
-        where conda
 
   - task: CmdLine@1
     displayName: 'Install conda modules mysql-connector-python'
     inputs:
-      filename: 'conda.bat'
+      filename: 'conda'
       arguments: 'install -q --insecure -y mysql-connector-python'
     timeoutInMinutes: 10
 
