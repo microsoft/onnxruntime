@@ -90,13 +90,13 @@ inline RunOptions::RunOptions() {
   ORT_THROW_ON_ERROR(OrtCreateRunOptions(&p_));
 }
 
-inline RunOptions& RunOptions::SetRunLogVerbosityLevel(unsigned int level) {
+inline RunOptions& RunOptions::SetRunLogVerbosityLevel(int level) {
   ORT_THROW_ON_ERROR(OrtRunOptionsSetRunLogVerbosityLevel(p_, level));
   return *this;
 }
 
-inline unsigned int RunOptions::GetRunLogVerbosityLevel() const {
-  unsigned int out;
+inline int RunOptions::GetRunLogVerbosityLevel() const {
+  int out;
   ORT_THROW_ON_ERROR(OrtRunOptionsGetRunLogVerbosityLevel(p_, &out));
   return out;
 }
@@ -132,7 +132,7 @@ inline SessionOptions& SessionOptions::SetThreadPoolSize(int session_thread_pool
   return *this;
 }
 
-inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(uint32_t graph_optimization_level) {
+inline SessionOptions& SessionOptions::SetGraphOptimizationLevel(int graph_optimization_level) {
   ORT_THROW_ON_ERROR(OrtSetSessionGraphOptimizationLevel(p_, graph_optimization_level));
   return *this;
 }

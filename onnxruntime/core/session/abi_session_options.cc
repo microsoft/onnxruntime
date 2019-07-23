@@ -89,23 +89,25 @@ ORT_API_STATUS_IMPL(OrtSetSessionLogId, _In_ OrtSessionOptions* options, const c
 }
 
 ///< applies to session load, initialization, etc
-ORT_API_STATUS_IMPL(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level) {
+ORT_API_STATUS_IMPL(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level) {
   options->value.session_log_verbosity_level = session_log_verbosity_level;
   return nullptr;
 }
 
 // Set Graph optimization level.
-// Returns 0 on success and -1 otherwise
 // Available options are : 0, 1, 2.
-ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level) {
-  if (graph_optimization_level >= static_cast<uint32_t>(onnxruntime::TransformerLevel::MaxTransformerLevel))
+ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, int graph_optimization_level) {
+  if (graph_optimization_level < 0) {
+    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+  }
+  if (graph_optimization_level >= static_cast<int>(onnxruntime::TransformerLevel::MaxTransformerLevel))
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
   options->value.graph_optimization_level = static_cast<onnxruntime::TransformerLevel>(graph_optimization_level);
   return nullptr;
 }
 
 ///How many threads in the session thread pool.
-ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, unsigned int session_thread_pool_size) {
+ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
   if (session_thread_pool_size <= 0)
     return OrtCreateStatus(ORT_INVALID_ARGUMENT, "session_thread_pool_size is not valid");
   options->value.session_thread_pool_size = session_thread_pool_size;

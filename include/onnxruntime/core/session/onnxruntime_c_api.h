@@ -187,15 +187,15 @@ ORT_API_STATUS(OrtCreateEnvWithCustomLogger, OrtLoggingFunction logging_function
 // and continue to access throughout the OrtSession lifetime?
 //  What sort of access is needed to model_path : read or read/write?
 ORT_API_STATUS(OrtCreateSession, _In_ OrtEnv* env, _In_ const ORTCHAR_T* model_path,
-               _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** sess);
+               _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
 ORT_API_STATUS(OrtCreateSessionFromArray, _In_ OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
-               _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** sess);
+               _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
-ORT_API_STATUS(OrtRun, _In_ OrtSession* sess,
+ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess,
                _In_opt_ const OrtRunOptions* run_options,
                _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len,
-               _In_ const char* const* output_names, size_t output_names_len, _Outptr_ OrtValue** output);
+               _In_ const char* const* output_names, size_t output_names_len, _Outptr_ OrtValue** out);
 
 /**
  * \return A pointer of the newly created object. The pointer should be freed by OrtReleaseSessionOptions after use
@@ -229,17 +229,17 @@ ORT_API_STATUS(OrtDisableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS(OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
 
 // < applies to session load, initialization, etc
-ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level);
+ORT_API_STATUS(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level);
 
 // Set Graph optimization level.
 // Available options are : 0, 1, 2.
 // 0 -> Disable all optimizations
 // 1 -> Enable basic optimizations
 // 2 -> Enable all optimizations
-ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, uint32_t graph_optimization_level);
+ORT_API_STATUS(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options, int graph_optimization_level);
 
 // How many threads in the session thread pool.
-ORT_API_STATUS(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, unsigned int session_thread_pool_size);
+ORT_API_STATUS(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size);
 
 /**
   * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
@@ -278,15 +278,16 @@ ORT_API_STATUS(OrtSessionGetOutputName, _In_ const OrtSession* sess, size_t inde
  */
 ORT_API_STATUS(OrtCreateRunOptions, _Outptr_ OrtRunOptions** out);
 
-ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions*, unsigned int);
+ORT_API_STATUS(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* options, int value);
 ORT_API_STATUS(OrtRunOptionsSetRunTag, _In_ OrtRunOptions*, _In_ const char* run_tag);
 
-ORT_API_STATUS(OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions*, _Out_ unsigned int* out);
-ORT_API_STATUS(OrtRunOptionsGetRunTag, _In_ OrtRunOptions*, _Out_ const char** out);
+ORT_API_STATUS(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
+ORT_API_STATUS(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const char** out);
 
 // Set a flag so that any running OrtRun* calls that are using this instance of OrtRunOptions
 // will exit as soon as possible if the flag is true.
-ORT_API_STATUS(OrtRunOptionsSetTerminate, _In_ OrtRunOptions*, _In_ int flag);
+// flag can be either 1 (true) or 0 (false)
+ORT_API_STATUS(OrtRunOptionsSetTerminate, _In_ OrtRunOptions* options, _In_ int flag);
 
 /**
  * Create a tensor from an allocator. OrtReleaseValue will also release the buffer inside the output value
@@ -451,10 +452,10 @@ ORT_ALL_ARGS_NONNULL;
 /**
  * Do not free the returned value
  */
-ORT_API_STATUS(OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr, _Out_ const char** out);
-ORT_API_STATUS(OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr, _Out_ int* out);
-ORT_API_STATUS(OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtMemType* out);
-ORT_API_STATUS(OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out);
+ORT_API_STATUS(OrtAllocatorInfoGetName, _In_ const OrtAllocatorInfo* ptr, _Out_ const char** out);
+ORT_API_STATUS(OrtAllocatorInfoGetId, _In_ const OrtAllocatorInfo* ptr, _Out_ int* out);
+ORT_API_STATUS(OrtAllocatorInfoGetMemType, _In_ const OrtAllocatorInfo* ptr, _Out_ OrtMemType* out);
+ORT_API_STATUS(OrtAllocatorInfoGetType, _In_ const OrtAllocatorInfo* ptr, _Out_ OrtAllocatorType* out);
 
 ORT_API_STATUS(OrtAllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out);
 ORT_API_STATUS(OrtAllocatorFree, _Inout_ OrtAllocator* ptr, void* p);

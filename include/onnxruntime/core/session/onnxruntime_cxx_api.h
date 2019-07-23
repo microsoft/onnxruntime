@@ -101,8 +101,8 @@ struct Value;
 
 struct Env : Base<OrtEnv> {
   Env(nullptr_t) {}
-  Env(OrtLoggingLevel default_warning_level, _In_ const char* logid);
-  Env(OrtLoggingLevel default_warning_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+  Env(OrtLoggingLevel default_logging_level, _In_ const char* logid);
+  Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 };
 
@@ -117,8 +117,8 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions(nullptr_t) {}
   RunOptions();
 
-  RunOptions& SetRunLogVerbosityLevel(unsigned int);
-  unsigned int GetRunLogVerbosityLevel() const;
+  RunOptions& SetRunLogVerbosityLevel(int);
+  int GetRunLogVerbosityLevel() const;
 
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
@@ -134,7 +134,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions Clone() const;
 
   SessionOptions& SetThreadPoolSize(int session_thread_pool_size);
-  SessionOptions& SetGraphOptimizationLevel(uint32_t graph_optimization_level);
+  SessionOptions& SetGraphOptimizationLevel(int graph_optimization_level);
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
