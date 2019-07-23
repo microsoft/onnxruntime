@@ -25,71 +25,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
   return std::vector<NodeDef>{
-      NodeDef("Cos",
-              {I(0)},
-              {IA("cosx")}),
-      NodeDef("Mul",
-              {IA("cosx"), GO(0)},
+      NodeDef("SinGradient",
+              {I(0), GO(0)},
               {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
-  std::vector<NodeDef> result;
-  NodeDef one_constant_node = OneConstantNode();
-  ArgDef ONE = one_constant_node.output_args[0];
-  result.push_back(one_constant_node);
-
-  result.push_back(NodeDef("Mul",
-                           {O(0), O(0)},
-                           {IA("Squared_output")}));
-  result.push_back(NodeDef("Sub",
-                           {ONE, IA("Squared_output")},
-                           {IA("Tanh_Grad")}));
-  result.push_back(NodeDef("Mul",
-                           {GO(0), IA("Tanh_Grad")},
-                           {GI(0)}));
-  return result;
+  return std::vector<NodeDef>{
+      NodeDef("TanhGradient",
+              {O(0), GO(0)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
-  std::vector<NodeDef> result;
-  NodeDef constant_node = ConstantValueNode(0.5f, "OneHalfConstant");
-  ArgDef ONE_HALF = constant_node.output_args[0];
-  result.push_back(constant_node);
-
-  // TODO: Gradient of sqrt is unstable for x = 0, find a fix for this
-  result.push_back(NodeDef("Div",
-                           {ONE_HALF, O(0)},
-                           {IA("Sqrt_Grad")}));
-  result.push_back(NodeDef("Mul",
-                           {GO(0), IA("Sqrt_Grad")},
-                           {GI(0)}));
-  return result;
+  return std::vector<NodeDef>{
+      NodeDef("SqrtGradient",
+              {O(0), GO(0)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
-  std::vector<NodeDef> result;
-  // M_2_SQRTPI = 2 / sqrt(pi)
-  NodeDef constant_node = ConstantValueNode(static_cast<float>(M_2_SQRTPI), "TWO_SQRTPI");
-  ArgDef TWO_SQRTPI = constant_node.output_args[0];
-  result.push_back(constant_node);
-
-  result.push_back(NodeDef("Mul",
-                           {I(0), I(0)},
-                           {IA("Square_x")}));
-  result.push_back(NodeDef("Neg",
-                           {IA("Square_x")},
-                           {IA("Neg_Square_x")}));
-  result.push_back(NodeDef("Exp",
-                           {IA("Neg_Square_x")},
-                           {IA("Exp_Neg_Square_x")}));
-  result.push_back(NodeDef("Mul",
-                           {TWO_SQRTPI, IA("Exp_Neg_Square_x")},
-                           {IA("Erf_Grad")}));
-  result.push_back(NodeDef("Mul",
-                           {GO(0), IA("Erf_Grad")},
-                           {GI(0)}));
-  return result;
+  return std::vector<NodeDef>{
+      NodeDef("ErfGradient",
+              {I(0), GO(0)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
@@ -441,11 +400,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
   return std::vector<NodeDef>{
-      NodeDef("Shape",
-              {I(0)},
-              {IA("x_shape")}),
-      NodeDef("Reshape",
-              {GO(0), IA("x_shape")},
+      NodeDef("ReshapeGradient",
+              {I(0), GO(0)},
               {GI(0)})};
 }
 
@@ -772,29 +728,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
   if (IsGradientRequiredForSrcNodeInput(1)) {
     ORT_THROW("GradientBuilder is not implemented for CUDA Pow's input exponent.");
   }
-
-  std::vector<NodeDef> result;
-  NodeDef one_constant_node = OneConstantNode();
-  ArgDef ONE = one_constant_node.output_args[0];
-  result.push_back(one_constant_node);
-
-  result.push_back(
-      NodeDef("Sub",
-              {I(1), ONE},
-              {IA("p_minus_one")}));
-  result.push_back(
-      NodeDef("Pow",
-              {I(0), IA("p_minus_one")},
-              {IA("X_Pow_p_minus_one")}));
-  result.push_back(
-      NodeDef("Mul",
-              {IA("X_Pow_p_minus_one"), I(1)},
-              {IA("a_X_Pow_p_minus_one")}));
-  result.push_back(
-      NodeDef("Mul",
-              {IA("a_X_Pow_p_minus_one"), GO(0)},
-              {GI(0)}));
-  return result;
+  return std::vector<NodeDef>{
+      NodeDef("PowGradient",
+              {I(0), I(1), GO(0)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
@@ -838,7 +775,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
       ORT_ENFORCE(false, "Dimension missing");
     }
   }
-
   return std::vector<NodeDef>{
       NodeDef("Scale",
               {GO(0)},
@@ -850,7 +786,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
       NodeDef("Expand",
               {IA("scaled_dY"), IA("x_shape")},
               {GI(0)})};
-}
+}  // namespace training
 
 }  // namespace training
 }  // namespace onnxruntime

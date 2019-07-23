@@ -8,6 +8,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
+#include "onnx/defs/function.h"
 
 #ifdef MICROSOFT_INTERNAL
 #include "core/graph/contrib_ops/internal_schema_defs.h"
@@ -1567,6 +1568,195 @@ Example 4:
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SinGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient function for Sin")
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "dY", "Sin output's grad", "T")
+      .Output(0, "dX", "Sin input's grad", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to all numeric tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           {
+               {"X_1"},
+               "Cos",
+               {"X"},
+           },
+           {{"dX"},
+            "Mul",
+            {"X_1", "dY"}}}));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient function for Tanh")
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "dY", "Tanh output's grad", "T")
+      .Output(0, "dX", "Tanh input's grad", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to all numeric tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+           {
+               {"Squared_output"},
+               "Mul",
+               {"X", "X"},
+           },
+           {
+               {"Tanh_Grad"},
+               "Sub",
+               {"One", "Squared_output"},
+           },
+           {
+               {"dX"},
+               "Mul",
+               {"dY", "Tanh_Grad"},
+           }}));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SqrtGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient function for Sqrt")
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "dY", "Sqrt output's grad", "T")
+      .Output(0, "dX", "Sqrt input's grad", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to all numeric tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("OneHalf", 0.5f),
+           {
+               {"Sqrt_Grad"},
+               "Div",
+               {"OneHalf", "X"},
+           },
+           {
+               {"dX"},
+               "Mul",
+               {"dY", "Sqrt_Grad"},
+           }}));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ErfGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient function for Erf")
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "dY", "Erf output's grad", "T")
+      .Output(0, "dX", "Erf input's grad", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to all numeric tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("TWO_SQRTPI", static_cast<float>(M_2_SQRTPI)),
+           {
+               {"Square_x"},
+               "Mul",
+               {"X", "X"},
+           },
+           {
+               {"Neg_Square_x"},
+               "Neg",
+               {"Square_x"},
+           },
+           {
+               {"Exp_Neg_Square_x"},
+               "Exp",
+               {"Neg_Square_x"},
+           },
+           {
+               {"Erf_Grad"},
+               "Mul",
+               {"TWO_SQRTPI", "Exp_Neg_Square_x"},
+           },
+           {
+               {"dX"},
+               "Mul",
+               {"dY", "Erf_Grad"},
+           }}));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReshapeGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient function for Reshape")
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "dY", "Reshape output's grad", "T")
+      .Output(0, "dX", "REshape input's grad", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to all numeric tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           {
+               {"x_shape"},
+               "Shape",
+               {"X"},
+           },
+           {
+               {"dX"},
+               "Reshape",
+               {"dY", "x_shape"},
+           }}));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PowGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gradient function for Pow")
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "Exponent", "Input tensor", "T")
+      .Input(2, "dY", "Reshape output's grad", "T")
+      .Output(0, "dX", "Pow input's grad", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to all numeric tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
+           {
+               {"p_minus_one"},
+               "Sub",
+               {"Exponent", "One"},
+           },
+           {
+               {"X_Pow_p_minus_one"},
+               "Pow",
+               {"X", "p_minus_one"},
+           },
+           {
+               {"a_X_Pow_p_minus_one"},
+               "Mul",
+               {"X_Pow_p_minus_one", "Exponent"},
+           },
+           {
+               {"dX"},
+               "Mul",
+               {"a_X_Pow_p_minus_one", "dY"},
+           }}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kOnnxDomain)

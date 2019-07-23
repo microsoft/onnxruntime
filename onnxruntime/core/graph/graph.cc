@@ -2507,10 +2507,54 @@ Status Graph::InlineFunction(Node& node) {
   auto output_edges = node.GetRelationships().output_edges;
   for (auto output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
+  } 
+  std::unordered_map<std::string, NodeArg*> remap_input_output;
+  if (node.MutableInputDefs().size() != subgraph.GetInputsIncludingInitializers().size())
+	  return Status(ONNXRUNTIME, FAIL);
+  for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
+    auto* input = subgraph.GetInputsIncludingInitializers()[i];
+    if (input->Name() != node.MutableInputDefs()[i]->Name())
+      remap_input_output[input->Name()] = node.MutableInputDefs()[i];
   }
+
+  ORT_ENFORCE(node.MutableOutputDefs().size() == subgraph.GetOutputs().size());
+  for (size_t i = 0; i < subgraph.GetOutputs().size(); ++i) {
+    auto* output = subgraph.GetOutputs()[i];
+    if (output->Name() != node.MutableOutputDefs()[i]->Name())
+      remap_input_output[output->Name()] = node.MutableOutputDefs()[i];
+  }
+
   RemoveNode(node.Index());
   for (const auto& subgraph_node : subgraph.Nodes()) {
-    AddNode(subgraph_node);
+    if (subgraph_node.OpType() == kConstant) {
+      // Copy constant nodes _value to name_to_initial_tensor_
+      const gsl::not_null<TensorProto*>
+          tensor{graph_proto_->add_initializer()};
+      *tensor = subgraph_node.GetAttributes().at("value").t();
+      *(tensor->mutable_name()) = subgraph_node.OutputDefs()[0]->Name();
+      name_to_initial_tensor_[tensor->name()] = tensor;
+    } else {
+      std::vector<NodeArg*> inputs, outputs;
+      for (auto* input : subgraph_node.InputDefs()) {
+        auto it = remap_input_output.find(input->Name());
+        if (it != remap_input_output.end())
+          inputs.push_back(it->second);
+        else
+          inputs.push_back(const_cast<NodeArg*>(input));
+      }
+      for (auto* output : subgraph_node.OutputDefs()) {
+        auto it = remap_input_output.find(output->Name());
+        if (it != remap_input_output.end())
+          outputs.push_back(it->second);
+        else
+          outputs.push_back(const_cast<NodeArg*>(output));
+      }
+      AddNode(subgraph_node.Name(), subgraph_node.OpType(), subgraph_node.Description(),
+              inputs,
+              outputs,
+              &subgraph_node.GetAttributes(),
+              subgraph_node.Domain());
+    }
   }
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
