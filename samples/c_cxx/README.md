@@ -31,7 +31,7 @@ Open cmd.exe, change your current directory to samples\c_cxx, then run
 mkdir build
 cmake .. -A x64 -T host=x64 -DLIBPNG_ROOTDIR=C:\path\to\your\libpng\binary
 ```
-You may omit the "-DLIBPNG_ROOTDIR=..." argument if you don't have the libpng library.
+You may omit the "-DLIBPNG_ROOTDIR=..." argument if you don't have the libpng library.     
 You may append "-Donnxruntime_USE_CUDA=ON" to the last command args if your onnxruntime binary was built with CUDA support.
 
 Then you can open the onnxruntime_samples.sln file in the "build" directory and build the solution.
