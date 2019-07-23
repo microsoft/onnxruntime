@@ -73,9 +73,9 @@ struct OrtDevice {
 };
 
 struct OrtAllocatorInfo {
-  OrtMemType mem_type;
   OrtAllocatorType allocator_type;
   OrtDevice device;
+  OrtMemType mem_type;
 
   constexpr OrtAllocatorInfo(OrtAllocatorType allocator_type_, OrtDevice device_ = OrtDevice(), OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
