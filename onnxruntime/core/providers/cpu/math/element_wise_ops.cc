@@ -20,6 +20,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Add,
     7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Add<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Add,
+    7,
     int32_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),
     Add<int32_t>);
@@ -173,23 +180,47 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Reciprocal<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sqrt,
     6,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sqrt<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Sqrt,
+    6,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sqrt<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Pow,
     7,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pow<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pow,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Pow<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Exp,
     6,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Exp<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Exp,
+    6,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Exp<double>);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Log,
@@ -227,11 +258,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Max_6<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Max,
     8,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Max_8<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Max,
+    8,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Max_8<double>);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Not,
@@ -305,6 +344,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     int64_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
     Equal<int64_t>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Equal,
+    11,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Equal<float>);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Mean,
@@ -390,43 +436,43 @@ Status Reciprocal<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Sqrt<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Sqrt<T>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
 
-  EigenMap<float>(Y) = EigenMap<float>(X).cwiseSqrt();
+  EigenMap<T>(Y) = EigenMap<T>(X).cwiseSqrt();
 
   return Status::OK();
 }
 
-template <>
-Status Pow<float>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status Pow<T>::Compute(OpKernelContext* context) const {
   const Tensor& Y = *context->Input<Tensor>(1);
-  std::function<void(EigenVectorMap<float>, ConstEigenVectorMap<float>, float)> input1scalar =
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = Eigen::pow(input0.array(), input1); };
+  std::function<void(EigenVectorMap<T>, ConstEigenVectorMap<T>, T)> input1scalar =
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = Eigen::pow(input0.array(), input1); };
   if (Y.Shape().Size() == 1) {
-    float value = *Y.Data<float>();
+    T value = *Y.Data<T>();
     if (value == 2.0) {
-      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::square(input0.array()); };
+      input1scalar = [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T) { output = Eigen::square(input0.array()); };
     } else if (value == 3.0) {
-      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::cube(input0.array()); };
+      input1scalar = [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T) { output = Eigen::cube(input0.array()); };
     }
   }
 
-  return BroadcastTwo<float, float>(
+  return BroadcastTwo<T, T>(
       *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0, input1.array()); },
+      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = Eigen::pow(input0, input1.array()); },
       input1scalar,
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0.array(), input1.array()); });
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = Eigen::pow(input0.array(), input1.array()); });
 }
 
-template <>
-Status Exp<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Exp<T>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
 
-  EigenMap<float>(Y) = EigenMap<float>(X).array().exp();
+  EigenMap<T>(Y) = EigenMap<T>(X).array().exp();
 
   return Status::OK();
 }
@@ -520,13 +566,13 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Max_8<float>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<float, float>(
+template <typename T>
+Status Max_8<T>::Compute(OpKernelContext* context) const {
+  return BroadcastVariadic<T, T>(
       Node(), *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input1.array().max(input0); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array().max(input1); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0.array().max(input1.array()); });
+      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
 }
 
 Status Not::Compute(OpKernelContext* context) const {
@@ -675,16 +721,24 @@ class Sin final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).sin();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).sin();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sin,
     7,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sin<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Sin,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sin<double>);
 
 template <typename T>
 class Cos final : public OpKernel {

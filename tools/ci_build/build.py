@@ -146,6 +146,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
+    parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'], 
+                        default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -375,6 +377,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     if args.gen_doc:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
+    else:
+        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -488,6 +492,8 @@ def setup_cuda_vars(args):
                                  "Current version is {}. CUDA 9.2 requires version 14.11.*".format(vc_ver_str),
                                  "If necessary manually install the 14.11 toolset using the Visual Studio 2017 updater.",
                                  "See 'Windows CUDA Build' in build.md in the root directory of this repository.")
+            
+            # TODO: check if cuda_version >=10.1, when cuda is enabled and VS version >=2019
 
     return cuda_home, cudnn_home
 
@@ -648,14 +654,13 @@ def split_server_binary_and_symbol(build_dir, configs):
 def run_server_tests(build_dir, configs):
     pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
     installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
-    if not (('requests' in installed_packages) and ('protobuf' in installed_packages) and ('numpy' in installed_packages)):
+    if not (('requests' in installed_packages) and ('protobuf' in installed_packages) and ('numpy' in installed_packages) and ('grpcio' in installed_packages)):
         if hasattr(sys, 'real_prefix'):
             # In virtualenv
-            run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy', 'grpcio'])
         else:
             # Outside virtualenv
-            run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy'])
-
+            run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy', 'grpcio'])
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -706,7 +711,7 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_openvino')
         run_subprocess(args, cwd=cwd)
 
-def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
+def build_protoc_for_windows_host(cmake_path, source_dir, build_dir, cmake_generator):
     if not is_windows():
         raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
 
@@ -719,7 +724,7 @@ def build_protoc_for_windows_host(cmake_path, source_dir, build_dir):
                 '-T',
                 'host=x64',
                 '-G',
-                'Visual Studio 15 2017',
+                cmake_generator,
                 '-Dprotobuf_BUILD_TESTS=OFF',
                 '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
                 '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
@@ -803,16 +808,16 @@ def main():
         cmake_extra_args = []
         if(is_windows()):
           if (args.x86):
-            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', 'Visual Studio 15 2017']
+            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
           elif (args.arm or args.arm64):
             # Cross-compiling for ARM(64) architecture
             # First build protoc for host to use during cross-compilation
-            build_protoc_for_windows_host(cmake_path, source_dir, build_dir)
+            build_protoc_for_windows_host(cmake_path, source_dir, build_dir, args.cmake_generator)
             if args.arm:
                 cmake_extra_args = ['-A', 'ARM']
             else:
                 cmake_extra_args = ['-A', 'ARM64']
-            cmake_extra_args += ['-G', 'Visual Studio 15 2017']
+            cmake_extra_args += ['-G', args.cmake_generator]
             # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
             if args.test:
                 log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
@@ -824,7 +829,7 @@ def main():
             if (args.cuda_version):
                 toolset += ',cuda=' + args.cuda_version
 
-            cmake_extra_args = ['-A','x64','-T', toolset, '-G', 'Visual Studio 15 2017']
+            cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
         if is_ubuntu_1604():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")

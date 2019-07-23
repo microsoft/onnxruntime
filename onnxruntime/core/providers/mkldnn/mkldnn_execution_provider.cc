@@ -111,14 +111,14 @@ std::shared_ptr<KernelRegistry> MKLDNNExecutionProvider::GetKernelRegistry() con
   return kernel_registry;
 }
 
-bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer,
-                                          const std::vector<const KernelRegistry*>& kernel_registries,
-                                          std::vector<std::unique_ptr<ComputeCapability>>& result) const {
+bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer) const {
   // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
   // MKLDNN_SUBGRAPH environment variable
   bool use_subgraph = true;
 
   bool FP16_graph = false;
+  bool mkldnn_nodes_in_the_graph = false;
+
   if (graph_viewer.MaxNodeIndex() > 0) {
     int index = 0;
     auto node = graph_viewer.GetNode(index);
@@ -130,16 +130,27 @@ bool MKLDNNExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_
       FP16_graph = node->InputDefs()[0]->Type()->find("16") != std::string::npos;
   }
 
-  if (FP16_graph) {
+  for (auto node_index = 0; node_index < graph_viewer.MaxNodeIndex(); node_index++) {
+    auto node = graph_viewer.GetNode(node_index);
+    if (node == nullptr) {
+      node_index++;
+      continue;
+    }
+    auto op_it = mkldnn_ops_.find(node->OpType());
+    if (op_it != mkldnn_ops_.end()) {
+      mkldnn_nodes_in_the_graph = true;
+      break;
+    }
+  }
+
+  if (FP16_graph || !mkldnn_nodes_in_the_graph) {
     // FP16 not supported yet.
     use_subgraph = false;
-    result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   } else {
     const char* env = getenv("ORT_MKLDNN_SUBGRAPH");
     if (env != nullptr) {
       if (atoi(env) == 0) {
         use_subgraph = false;
-        result = IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
       }
     }
   }
@@ -209,16 +220,16 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
-  std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
   // ORT_MKLDNN_SUBGRAPH environment variable
-  if (UseSubgraph(graph_viewer, kernel_registries, result) == false) {
-    return result;
+  if (UseSubgraph(graph_viewer) == false) {
+    return IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   }
 
   LOGS_DEFAULT(INFO) << "Using MKL-DNN Subgraph";
   // use sub-graph implementation
+  std::vector<std::unique_ptr<ComputeCapability>> result;
   mkl_dnn::Subgraph::SubgraphVariables sub_var;
   std::shared_ptr<mkl_dnn::Subgraph> subgraph_ptr;
 
@@ -243,6 +254,12 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
 
     if (IsDimensionSupported(node) == false) {
       node_index++;
+      if (subgraph_ptr->mkldnn_nodes.size() > 0) {
+        CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
+        subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+        subgraph_attributes.clear();
+        output_to_source_node_map.clear();
+      }
       continue;
     }
 
@@ -436,7 +453,7 @@ Status MKLDNNExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       onnxruntime::mkl_dnn::MkldnnFuncKernel<float>* custom_op = reinterpret_cast<mkl_dnn::MkldnnFuncKernel<float>*>(state);
-      return  custom_op->Compute(api, context);
+      return custom_op->Compute(api, context);
     };
 
     node_compute_funcs.push_back(compute_info);
