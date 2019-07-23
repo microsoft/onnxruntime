@@ -61,6 +61,7 @@ if (onnxruntime_USE_MKLDNN)
   set(MKLDNN_INCLUDE_DIR ${MKLDNN_INSTALL}/include)
   if(NOT onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/platform.cmake.patch)
+    set(MKLDNN_PATCH_COMMAND2 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/mem-patch.cmake.patch)
     # discard prior changes due to patching in mkldnn source to unblock incremental builds.
     set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
   endif()
@@ -69,6 +70,7 @@ if (onnxruntime_USE_MKLDNN)
     GIT_REPOSITORY ${MKLDNN_URL}
     GIT_TAG ${MKLDNN_TAG}
     PATCH_COMMAND ${MKLDNN_PATCH_DISCARD_COMMAND} COMMAND ${MKLDNN_PATCH_COMMAND1}
+    COMMAND ${MKLDNN_PATCH_COMMAND2}
     SOURCE_DIR ${MKLDNN_SOURCE}
     CMAKE_ARGS -DMKLDNN_PRODUCT_BUILD_MODE=OFF -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_INSTALL_PREFIX=${MKLDNN_INSTALL} -DMKLROOT=${MKML_DIR}
   )

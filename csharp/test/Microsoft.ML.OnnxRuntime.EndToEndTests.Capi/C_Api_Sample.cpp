@@ -55,6 +55,7 @@ int main(int argc, char* argv[]) {
   const char* model_path = "squeezenet.onnx";
 #endif
 
+  printf("Using Onnxruntime C API\n");
   CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************

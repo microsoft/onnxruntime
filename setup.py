@@ -118,6 +118,7 @@ elif platform.system() == "Darwin":
   libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib'] # TODO add libmklml and libiomp5 later.
 else:
   libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
+  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll'])
 
 if is_manylinux2010:
     data = []
@@ -139,7 +140,7 @@ if '--use_openvino' in sys.argv:
   sys.argv.remove('--use_openvino')
 
 # Additional examples
-examples_names = ["mul_1.pb", "logreg_iris.onnx", "sigmoid.onnx"]
+examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices

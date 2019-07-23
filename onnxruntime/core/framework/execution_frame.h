@@ -73,7 +73,7 @@ class IExecutionFrame {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
-            const std::unordered_map<int, OrtValue>& initializers, const std::vector<int>& fetch_mlvalue_idxs,
+            const std::unordered_map<int, OrtValue>& initializers,
             const std::vector<OrtValue>& fetches, const OrtValueNameIdxMap& ort_value_idx_map);
 
   const OrtValue& GetMLValue(int ort_value_index) const {
