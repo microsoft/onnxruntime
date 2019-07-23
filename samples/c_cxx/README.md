@@ -9,6 +9,9 @@ This directory contains a few C/C++ sample applications for demoing onnxruntime 
 ## Prerequisites
 1. Visual Studio 2015/2017/2019
 2. cmake(version >=3.13)
+3. (optional) [libpng 1.6](http://www.libpng.org/pub/png/libpng.html)
+
+You may get a precompiled libpng library from [https://onnxruntimetestdata.blob.core.windows.net/models/libpng.zip](https://onnxruntimetestdata.blob.core.windows.net/models/libpng.zip)
 
 ## Install ONNX Runtime
 You may either get a prebuit onnxruntime from nuget.org, or build it from source by following the [BUILD.md document](../../../BUILD.md). 
@@ -26,8 +29,9 @@ When the solution is loaded, change the build configuration to "RelWithDebInfo"(
 Open cmd.exe, change your current directory to samples\c_cxx, then run
 ```bat
 mkdir build
-cmake .. -A x64 -T host=x64
+cmake .. -A x64 -T host=x64 -DLIBPNG_ROOTDIR=C:\path\to\your\libpng\binary
 ```
+You may omit the "-DLIBPNG_ROOTDIR=..." argument if you don't have the libpng library.
 You may append "-Donnxruntime_USE_CUDA=ON" to the last command args if your onnxruntime binary was built with CUDA support.
 
 Then you can open the onnxruntime_samples.sln file in the "build" directory and build the solution.
