@@ -1,6 +1,6 @@
 // Copyright 2019 JD.com Inc. JD AI
 
-#include "core/session/onnxruntime_c_api.h"
+#include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
 extern "C" {

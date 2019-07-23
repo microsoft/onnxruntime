@@ -412,19 +412,21 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
     auto& graph_outputs = subgraph_.GetOutputs();
 
     for (int i = num_loop_carried_vars_; i < num_outputs_; ++i) {
-      std::vector<int64_t> output_dims;
-      output_dims.push_back(0);  // num iterations is first dim
-
       // get shape from subgraph output if possible to attempt to have the correct rank
       auto* graph_output = graph_outputs.at(i + 1);  // + 1 as first subgraph output is condition value
       auto* graph_output_shape = graph_output->Shape();
 
-      if (graph_output_shape) {
-        output_dims.reserve(graph_output_shape->dim_size() + 1);
+      std::vector<int64_t> output_dims;
+      output_dims.reserve((graph_output_shape ? graph_output_shape->dim_size() : 0) + 1);
+      output_dims.push_back(0);  // num iterations is first dim
 
+      if (graph_output_shape) {
         const auto& tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
         const auto& dims = tensor_shape.GetDims();
-        std::copy(dims.cbegin(), dims.cend(), std::back_inserter(output_dims));
+
+        // copy to output dims and use 0 for any symbolic dim
+        std::for_each(dims.cbegin(), dims.cend(),
+                      [&output_dims](const int64_t dim) { output_dims.push_back(dim < 0 ? 0 : dim); });
       } else {
         // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,
         // however that could still fail as we would potentially be passing in invalid data.
