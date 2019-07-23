@@ -190,7 +190,8 @@ jobs:
       script: |
         echo %PATH%
         echo %CONDA%
-
+        where python.exe
+        python.exe --version
   - task: CmdLine@1
     displayName: 'Install conda modules mysql-connector-python'
     inputs:
@@ -201,7 +202,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'Post binary sizes to the dashboard database'
     inputs:
-      filename: 'python'
+      filename: 'python.exe'
       arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
     condition: ${{ parameters.DoEsrp }}
     env: 
