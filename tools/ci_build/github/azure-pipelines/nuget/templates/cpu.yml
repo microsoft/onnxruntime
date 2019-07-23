@@ -191,11 +191,14 @@ jobs:
         echo %PATH%
         echo %CONDA%
         dir %CONDA% /s
+        where conda.exe
+        where conda.bat
+        where conda
 
   - task: CmdLine@1
     displayName: 'Install conda modules mysql-connector-python'
     inputs:
-      filename: 'conda.exe'
+      filename: 'conda.bat'
       arguments: 'install -q --insecure -y mysql-connector-python'
     timeoutInMinutes: 10
 
