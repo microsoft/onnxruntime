@@ -201,9 +201,8 @@ jobs:
   - task: BatchScript@1
     displayName: 'Post binary sizes to the dashboard database'
     inputs:
-      filename: 'python.exe'
-      arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-      workingFolder: "$(Build.BinariesDirectory)"
+      filename: 'python'
+      arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
     condition: ${{ parameters.DoEsrp }}
     env: 
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
