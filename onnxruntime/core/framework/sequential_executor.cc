@@ -15,6 +15,8 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 
+// #define TRACE_EXECUTION
+
 namespace onnxruntime {
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
@@ -51,10 +53,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  const bool f_profiler_enabled = session_state.Profiler().FEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
+  size_t input_activation_sizes = 0;
+  size_t input_parameter_sizes = 0;
+  size_t total_output_sizes = 0;
 
   if (f_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
@@ -76,9 +81,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-  // uncomment the line below to dump execution plan
-  //std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-  
+  // Enable TRACE_EXECUTION compile flag to dump execution plan
+#if defined(TRACE_EXECUTION)
+  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+#endif
+
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -98,6 +105,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
                              session_state.GetGraphViewer()->GetNode(node_index)->Name());
+
+    std::string node_name = p_op_kernel->Node().Name();
+    if (node_name.empty()) {
+      // Node name field is often blank in execution graph, so derive something meaningful for profile traces and logs.
+      node_name = p_op_kernel->Node().OpType() + "_" + std::to_string(node_index);
+    }
 
     // construct OpKernelContext
     // TODO: log kernel inputs?
@@ -145,33 +158,94 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_before",
+                                                     node_name + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
 
       // call compute on the kernel
-      VLOGS(logger, 1) << "Computing kernel: " << p_op_kernel->Node().Name();
+      VLOGS(logger, 1) << "Computing kernel: " << node_name;
 
       kernel_begin_time = session_state.Profiler().StartTime();
+    }
+
+    if (f_profiler_enabled) {
+      // Calculate total input sizes for this operation.
+      input_activation_sizes = 0;
+      input_parameter_sizes = 0;
+      for (auto i = 0; i < op_kernel_context.InputCount(); i++) {
+        const OrtValue* p_input = op_kernel_context.GetInputMLValue(i);
+        if (p_input->IsTensor()) {
+          const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
+          size_t tensor_size;
+          const Tensor* p_tensor = nullptr;
+          bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+          if (is_param) {
+            tensor_size = p_tensor->Size();
+          }
+          else {
+              const Tensor &tensor = p_input->Get<Tensor>();
+              tensor_size = tensor.Size();
+          }
+#if defined(TRACE_EXECUTION)
+          std::cout << node_name << " input[" << i << "] is_param=" << is_param << " size=" << tensor_size << std::endl;
+#endif
+          if (is_param) {
+            input_parameter_sizes += tensor_size;
+          }
+          else {
+            input_activation_sizes += tensor_size;
+          }
+        }
+      }
     }
 
     const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
     if (!compute_status.IsOK()) {
       std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " <<
-            p_op_kernel->Node().Name() <<
-            " Status Message: " <<
-            compute_status.ErrorMessage();
+      ss << "Non-zero status code returned while running Node: " << node_name
+         << " Status Message: " << compute_status.ErrorMessage();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
     if (f_profiler_enabled) {
+
+      // Calculate total output sizes for this operation.
+      total_output_sizes = 0;
+      for (auto i = 0; i < op_kernel_context.OutputCount(); i++) {
+        const OrtValue* p_output = op_kernel_context.GetOutputMLValue(i);
+        if (p_output->IsTensor()) {
+          total_output_sizes += p_output->Get<Tensor>().Size();
+        }
+      }
+
+#if defined(TRACE_EXECUTION)
+      // Trace execution step.
+      const Node& node = p_op_kernel->Node();
+      std::cout << "Executing op kernel node " << node_name
+                << " Index=" << node.Index()
+                << " OpType=" << node.OpType()
+                << " Name=" << node.Name()
+                << " Activation_Size=" << input_activation_sizes
+                << " Parameter_Size=" << input_parameter_sizes
+                << " Output_Size=" << total_output_sizes
+                << std::endl;
+#endif
+
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_kernel_time",
+                                                     node_name + "_kernel_time",
                                                      kernel_begin_time,
-                                                     {{"op_name", p_op_kernel->KernelDef().OpName()}, {"provider", p_op_kernel->KernelDef().Provider()}});
+                                                     // Log additional operation args / info.
+                                                     {
+                                                         {"op_name", p_op_kernel->KernelDef().OpName()},
+                                                         {"provider", p_op_kernel->KernelDef().Provider()},
+                                                         {"graph_index", std::to_string(p_op_kernel->Node().Index())},
+                                                         {"exec_plan_index", std::to_string(node_index)},
+                                                         {"activation_size", std::to_string(input_activation_sizes)},
+                                                         {"parameter_size", std::to_string(input_parameter_sizes)},
+                                                         {"output_size", std::to_string(total_output_sizes)},
+                                                     });
 
       sync_time_begin = session_state.Profiler().StartTime();
     }
@@ -200,7 +274,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                     p_op_kernel->Node().Name() + "_fence_after",
+                                                     node_name + "_fence_after",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
@@ -210,7 +284,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     // free ml-values corresponding to this node
-    VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
+    VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << node_name;
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 

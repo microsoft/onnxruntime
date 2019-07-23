@@ -14,9 +14,9 @@ namespace onnxruntime {
 namespace test {
 
 constexpr auto ORIGINAL_MODEL_PATH = "testdata/test_training_model.onnx";
-constexpr auto BACKWARD_MODEL_PATH = "backward_model.onnx";
+constexpr auto BACKWARD_MODEL_PATH = "testdata/temp_backward_model.onnx";
 
-const std::string TAB = "\t";
+constexpr auto TAB = "\t";
 
 AllocatorPtr GetAllocator() {
   static CPUExecutionProviderInfo info;
@@ -51,7 +51,7 @@ static std::string BuildBackPropGraph(const std::string& forward_model_file, con
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
-  SessionOptions so;
+  SessionOptions so{};
   TrainingSession training_session{so};
 
   std::cout << "Loading source model file = " << forward_model_file << std::endl;
@@ -154,11 +154,15 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   std::cout << "]" << std::endl;
 
   for (Node& node : graph.Nodes()) {
+    const NodeIndex node_index = node.Index();
+    const std::string& node_name = node.Name();
+    const std::string& op_type = node.OpType();
+
     std::cout << "Operation node:"
-              << " Index=" << node.Index()
+              << " Index=" << node_index
               << (node.NodeType() == Node::Type::Fused ? "-(FUSED)" : "")
-              << " OpType=" << node.OpType()
-              << " Name=" << node.Name()
+              << " OpType=" << op_type
+              << " Name=" << node_name
               << std::endl;
   }
 }
@@ -223,26 +227,38 @@ TEST(GradientGraphBuilderTest, RunTrainingSessionTest_WithProfiler) {
   std::ifstream profile(profile_file);
   ASSERT_TRUE(profile);
 
-  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+  std::vector<std::string> core_trace_fields = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+  std::vector<std::string> fiddle_profile_data_fields = {"dur", "activation_size", "parameter_size", "output_size"};
+
   int count = 0;
   std::string line;
   while (std::getline(profile, line)) {
     if (count == 0) {
-      ASSERT_TRUE(line.find('[') != std::string::npos);
+      ASSERT_TRUE(line.find('[') != std::string::npos)
+          << "Missing opening array marker in first trace record: " << line;
       // Opening array marker found.
     } else if (line.find(']') != std::string::npos) {
       // Closing array marker found.
       break;
     } else if (count >= 1) {
-#ifdef DEBUG
-      std::cout << count << ": " << line << std::endl;
-#endif
       if (count == 1) {
-        ASSERT_TRUE(line.find("model_loading_uri") != std::string::npos);
+        auto s = "model_loading_uri";
+        ASSERT_TRUE(line.find(s) != std::string::npos)
+            << "Missing field '" << s << "' in trace record: " << line;
       }
 
-      for (auto& s : tags) {
-        ASSERT_TRUE(line.find(s) != std::string::npos);
+      // Check we have the core fields in each trace record.
+      for (auto& s : core_trace_fields) {
+        ASSERT_TRUE(line.find(s) != std::string::npos)
+            << "Missing core trace field '" << s << "' in trace record: " << line;
+      }
+
+      // Check we have the data profile fields output for each kernel operation.
+      if (line.find("_kernel_time") != std::string::npos) {
+        for (auto& s : fiddle_profile_data_fields) {
+          ASSERT_TRUE(line.find(s) != std::string::npos)
+              << "Missing data profile field '" << s << "' in trace record: " << line;
+        }
       }
     }
 
