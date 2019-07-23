@@ -35,6 +35,42 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
 }
 
 template <>
+void Check<double>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<double>();
+  auto* output = output_tensor.template Data<double>();
+  auto size = output_tensor.Shape().Size();
+
+  bool has_abs_err = expected_data.absolute_error_.has_value();
+  bool has_rel_err = expected_data.relative_error_.has_value();
+
+  double threshold = 0.001;
+#ifdef USE_CUDA
+  threshold = 0.005;
+#endif
+
+  for (int i = 0; i < size; ++i) {
+    if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]);
+    } else if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i << " to be NaN";
+    } else {
+      if (!has_abs_err && !has_rel_err) {
+        // the default for existing tests
+        EXPECT_NEAR(expected[i], output[i], threshold) << "provider_type: " << provider_type;
+      } else {
+        if (has_abs_err) {
+          EXPECT_NEAR(expected[i], output[i], expected_data.absolute_error_.value()) << "provider_type: " << provider_type;
+        }
+        if (has_rel_err) {
+          EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i])) << "provider_type: " << provider_type;
+        }
+      }
+    }
+  }
+}
+
+template <>
 void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<float>();

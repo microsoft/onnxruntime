@@ -16,7 +16,7 @@ jobs:
     BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
-    DoCompliance: $${ parameters.DoCompliance }}
+    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
@@ -91,7 +91,13 @@ jobs:
      cd $cwd
 
 - job: NuGet_Packaging
-  pool: $(AgentPoolWin)
+  pool: 
+    name: Hosted Windows 2019 with VS2019
+    # AzureFileCopy@3 task has some bug that it depends on a particular version of azure power shell, 
+    # which is not available in OnnxRuntime build VMs, but available in the latest hosted agents. 
+    # So, all the copy/publish jobs are being run on hosted agent
+    # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
+    demands: azureps
   dependsOn:
   - Windows_CI_Dev
   - Windows_CI_Dev_x86
@@ -150,4 +156,17 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
+  - template: ../../templates/set-version-number-variables-step.yml
+  - task: AzureFileCopy@3
+    displayName: 'Copy Signed NuGet Package to Blob Store'
+    condition: ${{ parameters.DoEsrp }}
+    inputs:
+      SourcePath: '$(Build.ArtifactStagingDirectory)/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+      Destination: AzureBlob
+      storage: ortpackages
+      ContainerName: ortpackages
+
 - template: test_all_os.yml
+
+
