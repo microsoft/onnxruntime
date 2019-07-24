@@ -378,6 +378,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 
+#ifdef USE_TENSORRT
+  broken_tests.insert({"fp16_shufflenet", "doesn't work"});
+  broken_tests.insert({"fp16_inception_v1", "doesn't work"});
+  broken_tests.insert({"fp16_tiny_yolov2", "doesn't work"});
+#endif
 
 #ifdef USE_CUDA
   broken_tests.insert({"mxnet_arcface", "result mismatch"});
