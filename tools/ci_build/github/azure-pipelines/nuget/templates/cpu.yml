@@ -221,13 +221,13 @@ jobs:
   #     DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
   - template: ../../templates/set-version-number-variables-step.yml
-  - task: AzureFileCopy@3
-    displayName: 'Copy Signed NuGet Package to Blob Store'
-    condition: ${{ parameters.DoEsrp }}
-    inputs:
-      SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-      azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
-      Destination: AzureBlob
-      storage: ortpackages
-      ContainerName: ortpackages
+  # - task: AzureFileCopy@3
+  #   displayName: 'Copy Signed NuGet Package to Blob Store'
+  #   condition: ${{ parameters.DoEsrp }}
+  #   inputs:
+  #     SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+  #     azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+  #     Destination: AzureBlob
+  #     storage: ortpackages
+  #     ContainerName: ortpackages
 
