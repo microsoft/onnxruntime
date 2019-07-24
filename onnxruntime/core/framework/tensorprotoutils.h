@@ -24,7 +24,7 @@ class TensorShapeProto;
 namespace onnxruntime {
 class Tensor;
 namespace utils {
-TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
+std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
 /**
  * deserialize a TensorProto into a preallocated memory buffer.
  * \param tensor_proto_path A local file path of where the 'input' was loaded from. Can be NULL if the tensor proto doesn't
@@ -47,7 +47,7 @@ ONNX_NAMESPACE::TensorProto::DataType GetTensorProtoType(const Tensor& tensor);
     TODO Once the GetTensorProtoType supports all data types, we can remove the tensor_proto_type parameter and 
     instead get the type from the tensor. */
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type);
+                                                const onnx::TypeProto& tensor_proto_type);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);

@@ -13,7 +13,6 @@ __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div
                              const fast_divmod block_size_inside_axis_dim_div,
                              const int64_t* split_sizes,
                              const int64_t* split_sizes_range,
-                             const int64_t* axis_dimension_input_output_mapping,
                              const int num_outputs,
                              const T* input_data,
                              void** output_ptr,
@@ -25,12 +24,20 @@ __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div
   int block_index = 0;
   int offset = 0;
 
+  int output_index = 0;
+  int block_offset = 0;
+
   block_size_including_axis_dim_div.divmod(id, outter_block_index, offset);
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
-  int output_index = axis_dimension_input_output_mapping[block_index];
-  int64_t range_left = (output_index == 0) ? 0 : split_sizes_range[output_index - 1];
-  int block_offset = block_index - range_left;
+  for (int i = 0; i < num_outputs; ++i) {
+    int64_t range_left = (i == 0) ? 0 : split_sizes_range[i - 1];
+    if ((range_left <= block_index) && (block_index < split_sizes_range[i])) {
+      output_index = i;
+      block_offset = block_index - range_left;
+      break;
+    }
+  }
 
   output_pos = (outter_block_index * split_sizes[output_index] + block_offset) * 
                block_size_inside_axis_dim_div.d_ +
@@ -44,7 +51,6 @@ Status SplitImpl(const size_t element_size,
                  const int block_size_inside_axis_dim,
                  const int64_t* split_sizes,
                  const int64_t* split_sizes_range,
-                 const int64_t* axis_dimension_input_output_mapping,
                  const int num_outputs,
                  const void* input_data,
                  void** output_ptr,
@@ -58,7 +64,7 @@ Status SplitImpl(const size_t element_size,
     case sizeof(int8_t):
       _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_sizes, split_sizes_range, axis_dimension_input_output_mapping, num_outputs,
+          split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
@@ -66,7 +72,7 @@ Status SplitImpl(const size_t element_size,
     case sizeof(int16_t):
       _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_sizes, split_sizes_range, axis_dimension_input_output_mapping, num_outputs,
+          split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
@@ -74,7 +80,7 @@ Status SplitImpl(const size_t element_size,
     case sizeof(int32_t):
       _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_sizes, split_sizes_range, axis_dimension_input_output_mapping, num_outputs,
+          split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
@@ -82,7 +88,7 @@ Status SplitImpl(const size_t element_size,
     case sizeof(int64_t):
       _SplitKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_sizes, split_sizes_range, axis_dimension_input_output_mapping, num_outputs,
+          split_sizes, split_sizes_range, num_outputs,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);

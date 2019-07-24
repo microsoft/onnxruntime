@@ -28,7 +28,6 @@ class ConcatBase {
     int64_t output_num_elements;
     int64_t output_axis_pitch;
     Tensor* output_tensor;
-    uint64_t axis;
   };
 
   Status PrepareForCompute(OpKernelContext* ctx, int input_count, Prepare& p) const;

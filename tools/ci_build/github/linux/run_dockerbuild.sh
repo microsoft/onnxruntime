@@ -21,7 +21,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
-# openvino version tag: 2018_R5, 2019_R1.1 (Default is 2019_R1.1)
+# openvino version tag: 2018_R5, 2019_R1 (Default is 2018_R5)
 v) OPENVINO_VERSION=${OPTARG};;
 esac
 done
@@ -80,13 +80,13 @@ if [ -z "$NIGHTLY_BUILD" ]; then
 fi
 
 if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ]; then
-    RUNTIME=
+    ONNX_DOCKER=docker
 else
-    RUNTIME="--runtime=nvidia"
+    ONNX_DOCKER=nvidia-docker
 fi
 
 docker rm -f "onnxruntime-$BUILD_DEVICE" || true
-docker run $RUNTIME -h $HOSTNAME \
+$ONNX_DOCKER run -h $HOSTNAME \
     --name "onnxruntime-$BUILD_DEVICE" \
     --volume "$SOURCE_ROOT:/onnxruntime_src" \
     --volume "$BUILD_DIR:/build" \

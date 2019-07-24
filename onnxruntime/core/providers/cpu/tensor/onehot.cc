@@ -45,7 +45,6 @@ REG_ONE_HOT_OP(int64_t, int64_t, int64_t);
 REG_ONE_HOT_OP(float, int64_t, int64_t);
 REG_ONE_HOT_OP(int64_t, string, int64_t);
 REG_ONE_HOT_OP(float, string, int64_t);
-REG_ONE_HOT_OP(int64_t, float, int64_t);
 REG_ONE_HOT_OP(float, float, float);      // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model tests
 
@@ -121,28 +120,16 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   const auto& indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();
   std::vector<int64_t> output_shape(indices_shape.GetDims());
-
-  // output rank is always 1 more than the input rank as a new dimension is added to the input shape
-  const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
-  if (axis_ >= output_rank || axis_ < -output_rank) {
-    std::ostringstream oss;
-    oss << "'axis' attribute must have a value in the range [" << -output_rank 
-        << "," << indices_num_dims << "]";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, oss.str());
-  }
-
-  auto true_axis = axis_;
-  if (true_axis < 0)
-    true_axis += output_rank;
-
-  output_shape.insert(output_shape.begin() + true_axis, depth_val);
+  output_shape.insert(axis_ == -1 ? output_shape.end() : output_shape.begin() + axis_,
+                      depth_val);
 
   // allocate output
   const auto* values_data = values->Data<out_type>();
   Tensor* output = p_op_kernel_context->Output(0, TensorShape(output_shape));
 
+  const int64_t axis = (axis_ == -1) ? indices_num_dims : axis_;
   int64_t prefix_dim_size = 1;
-  for (int64_t i = 0; i < true_axis; ++i) {
+  for (int64_t i = 0; i < axis; ++i) {
     prefix_dim_size *= indices_dims[i];
   }
   const int64_t suffix_dim_size = indices_shape.Size() / prefix_dim_size;

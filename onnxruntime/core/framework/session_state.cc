@@ -38,32 +38,17 @@ void SessionState::SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_s
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
 
-Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
-                                          bool constant) {
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d) {
   ORT_ENFORCE(ort_value_index >= 0 && ort_value_index <= ort_value_name_idx_map_.MaxIdx());
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-
-  if (d != nullptr && d->f != nullptr) {
-    deleter_for_initialized_tensors_[ort_value_index] = *d;
-  }
-
-  if (constant) {
-    constant_initialized_tensors_.insert({ort_value_index, ort_value});
-  }
-
+  if (d != nullptr && d->f != nullptr) deleter_for_initialized_tensors_[ort_value_index] = *d;
   return Status::OK();
 }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const {
-  return initialized_tensors_;
-}
-
-const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
-  return constant_initialized_tensors_;
-}
+const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
 NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const {
   NameMLValMap result;
@@ -102,10 +87,10 @@ void SessionState::SetProfiler(profiling::Profiler& profiler) { profiler_ = &pro
 
 ::onnxruntime::profiling::Profiler& SessionState::Profiler() const { return *profiler_; }
 
-static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
+static int64_t CalculateMemoryPatternsKey(const std::vector<TensorShape>& shapes) {
   int64_t key = 0;
-  for (auto shape : shapes) {
-    for (auto dim : shape.get().GetDims()) key ^= dim;
+  for (auto& shape : shapes) {
+    for (auto dim : shape.GetDims()) key ^= dim;
   }
   return key;
 }
@@ -130,7 +115,7 @@ Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, Te
 }
 }  // namespace
 
-Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape, const std::vector<int>& feed_mlvalue_idxs, MemoryPatternGroup* output) const {
+Status SessionState::GeneratePatternGroupCache(const std::vector<TensorShape>& input_shape, const std::vector<int>& feed_mlvalue_idxs, MemoryPatternGroup* output) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
     std::string name;
@@ -200,10 +185,9 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   return Status::OK();
 }
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes, const std::vector<int>& feed_mlvalue_idxs) const {
-  int64_t key = CalculateMemoryPatternsKey(input_shapes);
-
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<TensorShape>& input_shapes, const std::vector<int>& feed_mlvalue_idxs) const {
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
+  int64_t key = CalculateMemoryPatternsKey(input_shapes);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
@@ -234,9 +218,9 @@ void SessionState::ResolveMemoryPatternFlag() {
   }
 }
 
-Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<TensorShape>& input_shape,
                                                    std::unique_ptr<MemoryPatternGroup> mem_patterns) const {
-  int64_t key = CalculateMemoryPatternsKey(input_shapes);
+  int64_t key = CalculateMemoryPatternsKey(input_shape);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);

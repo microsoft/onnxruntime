@@ -43,27 +43,13 @@ std::string escape_string(const std::string& message) {
   std::ostringstream o;
   for (char c : message) {
     switch (c) {
-      case '"':
-        o << "\\\"";
-        break;
-      case '\\':
-        o << "\\\\";
-        break;
-      case '\b':
-        o << "\\b";
-        break;
-      case '\f':
-        o << "\\f";
-        break;
-      case '\n':
-        o << "\\n";
-        break;
-      case '\r':
-        o << "\\r";
-        break;
-      case '\t':
-        o << "\\t";
-        break;
+      case '"': o << "\\\""; break;
+      case '\\': o << "\\\\"; break;
+      case '\b': o << "\\b"; break;
+      case '\f': o << "\\f"; break;
+      case '\n': o << "\\n"; break;
+      case '\r': o << "\\r"; break;
+      case '\t': o << "\\t"; break;
       default:
         if ('\x00' <= c && c <= '\x1f') {
           o << "\\u"

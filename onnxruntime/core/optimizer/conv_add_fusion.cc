@@ -15,14 +15,19 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& add_inputs = add_node.InputDefs();
 
-  const auto* conv_W_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[1]->Name());
-  ORT_ENFORCE(conv_W_tensor_proto);
+  const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
+  if (!graph.GetInitializedTensor(conv_inputs[1]->Name(), conv_W_tensor_proto)) {
+    return Status::OK();
+  }
 
-  const auto* add_B_tensor_proto = graph_utils::GetConstantInitializer(graph, add_inputs[1]->Name());
-  ORT_ENFORCE(add_B_tensor_proto);
+  const ONNX_NAMESPACE::TensorProto* add_B_tensor_proto = nullptr;
+  if (!graph.GetInitializedTensor(add_inputs[1]->Name(), add_B_tensor_proto)) {
+    return Status::OK();
+  }
 
   // Currently, fusion is only supported for float or double data type.
-  if (!Initializer::IsSupportedDataType(add_B_tensor_proto) || conv_W_tensor_proto->dims_size() < 4) {
+  if (!Initializer::IsSupportedDataType(add_B_tensor_proto) ||
+      conv_W_tensor_proto->dims_size() < 4) {
     return Status::OK();
   }
 
@@ -46,9 +51,11 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     }
   }
 
+  const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (conv_inputs.size() == 3) {
-    const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
-    ORT_ENFORCE(conv_B_tensor_proto);
+    if (!graph.GetInitializedTensor(conv_inputs[2]->Name(), conv_B_tensor_proto)) {
+      return Status::OK();
+    }
 
     if (!Initializer::IsSupportedDataType(conv_B_tensor_proto) ||
         conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
@@ -71,7 +78,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     conv_B->ToProto(&new_conv_B_tensor_proto);
 
     // Replace initializers of conv node
-    graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
+    graph.RemoveInitializedTensor(conv_inputs[2]->Name());
+    graph.AddInitializedTensor(new_conv_B_tensor_proto);
   } else {
     NodeArg* add_B_node_arg = graph.GetNodeArg(add_B_tensor_proto->name());
     if (add_B_node_arg == nullptr) {
@@ -84,7 +92,8 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     new_conv_B_tensor_proto.clear_dims();
     new_conv_B_tensor_proto.add_dims(dim);
 
-    graph_utils::ReplaceInitializer(graph, add_B_tensor_proto->name(), new_conv_B_tensor_proto);
+    graph.RemoveInitializedTensor(add_B_tensor_proto->name());
+    graph.AddInitializedTensor(new_conv_B_tensor_proto);
 
     // Update shape of NodeArg
     TensorShapeProto shape;

@@ -43,6 +43,14 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
+common::Status IExecutionProvider::CopyTensor(const Tensor& src,
+                                              Tensor& dst,
+                                              int exec_queue_id) const {
+  // execution provider may override this to support different exec queues
+  ORT_ENFORCE(exec_queue_id == 0);
+  return CopyTensor(src, dst);
+}
+
 common::Status IExecutionProvider::Sync() const { return Status::OK(); };
 
 common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }

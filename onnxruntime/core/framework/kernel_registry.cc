@@ -240,12 +240,9 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   return Status::OK();
 }
 
-Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
-                                       const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                       const FuncManager& funcs_mgr,
-                                       const DataTransferManager& data_transfer_mgr,
+Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
+                                       const std::unordered_map<int, OrtValue>& initialized_tensors,
+                                       const OrtValueNameIdxMap& ort_value_name_idx_map, const FuncManager& funcs_mgr,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = TryFindKernel(node, execution_provider.Type());
 
@@ -253,13 +250,8 @@ Status KernelRegistry::TryCreateKernel(const onnxruntime::Node& node,
     return Status(ONNXRUNTIME, FAIL, "Failed to find kernel for " + node.OpType());
   }
 
-  OpKernelInfo kernel_info(node,
-                           *kernel_create_info->kernel_def,
-                           execution_provider,
-                           constant_initialized_tensors,
-                           ort_value_name_idx_map,
-                           funcs_mgr,
-                           data_transfer_mgr);
+  OpKernelInfo kernel_info(node, *kernel_create_info->kernel_def, execution_provider, initialized_tensors,
+                           ort_value_name_idx_map, funcs_mgr);
   op_kernel.reset(kernel_create_info->kernel_create_func(kernel_info));
   return Status::OK();
 }

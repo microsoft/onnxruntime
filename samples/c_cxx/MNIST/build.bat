@@ -1,1 +1,0 @@
-cl MNIST.cpp /Zi /EHsc /I..\..\..\include\onnxruntime\core\session /link /LIBPATH:..\..\..\build\Windows\Debug\Debug

@@ -35,6 +35,8 @@ provider using the GetCapability() API.
 
 ![ONNXRuntime high level system architecture](https://azurecomcdn.azureedge.net/mediahandler/acomblog/media/Default/blog/228d22d3-6e3e-48b1-811c-1d48353f031c.png)
 
+*Note: TensorRT and nGraph support are in progress*
+
 ### More about partitioning
 ONNXRuntime partitions a model graph into subgraphs based on the available execution providers, one for each distinct provider. ONNXRuntime provides
 a default execution provider that is used as the fallback execution for the
@@ -75,7 +77,7 @@ different representation if they choose to, but it is their responsibility to
 convert the values from/to the standard representation at the boundaries of
 their subgraph.
 
-## Extensibility Options
+## Extensibility points
 * [Add a custom operator/kernel](AddingCustomOp.md)
 * [Add an execution provider](AddingExecutionProvider.md)
 * [Add a new graph

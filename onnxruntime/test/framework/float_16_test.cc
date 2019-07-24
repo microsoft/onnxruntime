@@ -96,7 +96,7 @@ ONNX_NAMESPACE::OpSchema GetMulFP16Schema() {
   return schema;
 }
 
-static const std::string MUL_MODEL_URI = "testdata/mul_16.onnx";
+static const std::string MUL_MODEL_URI = "testdata/mul_16.pb";
 
 void RunSession(InferenceSession& session_object,
                 RunOptions& run_options,

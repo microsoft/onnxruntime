@@ -62,6 +62,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
+
   void SetMaxBatchSize(const int batch_size) {
     max_batch_size_ = batch_size;
   }

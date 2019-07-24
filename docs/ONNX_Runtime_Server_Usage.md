@@ -62,10 +62,6 @@ curl -X POST --data-binary "@predict_request_0.pb" -H "Content-Type: application
 
 Clients can control the response type by setting the request with an `Accept` header field and the server will serialize in your desired format. The choices currently available are the same as the `Content-Type` header field.
 
-## Interactive tutorial notebook
-
-A simple Jupyter notebook demonstrating the usage of ONNX Runtime server to host an ONNX model and perform inferencing can be found [here](https://github.com/onnx/tutorials/blob/master/tutorials/OnnxRuntimeServerSSDModel.ipynb).
-
 ## Advanced Topics
 
 ### Number of HTTP Threads

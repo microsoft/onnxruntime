@@ -49,7 +49,7 @@ class TestAllocator : public IAllocator {
   }
 
   virtual const OrtAllocatorInfo& Info() const override {
-    static OrtAllocatorInfo info("test", OrtDeviceAllocator);
+    static OrtAllocatorInfo info("test", OrtDeviceAllocator, 0);
     return info;
   }
 

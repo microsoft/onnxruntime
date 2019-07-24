@@ -11,7 +11,10 @@
 
 namespace onnxruntime {
 
-template <typename T>
+template <typename T_X,
+          typename T_W,
+          typename T_B,
+          typename T_Y>
 class Gemm : public OpKernel {
  public:
   Gemm(const OpKernelInfo& info) : OpKernel(info) {
@@ -37,47 +40,75 @@ class Gemm : public OpKernel {
 
     int64_t M = helper.M();
     int64_t N = helper.N();
-    auto Y = context->Output(0, {M, N});
+    int64_t K = helper.K();
+    auto Y = context->Output(0, TensorShape({M, N}));
     // if input is emtpy tensor, return directly as nothing need to be calculated.
     if (M == 0 || N == 0)
       return Status::OK();
-    T* y_data = Y->template MutableData<T>();
+    T_Y* y_data = Y->template MutableData<T_Y>();
 
-    // Broadcast the bias as needed.
+    //bias
+    // Todo: we might should move this part into math::gemm to let eigen
+    // have better chance to further optimize it.
     if (beta_ != 0) {
-      auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
-      const auto& b_shape = B->Shape();
-      const T* b_data = B->template Data<T>();
+      auto output_mat = EigenMatrixMapRowMajor<T_Y>(
+          Y->template MutableData<T_Y>(),
+          M,
+          N);
+      output_mat.setZero();
+
+      auto& b_shape = B->Shape();
+      // if B is (), (1,) or (1, 1), add the scalar
       if (b_shape.Size() == 1) {
-        // B is (), (1,) or (1, 1), set the scalar
-        output_mat.setConstant(*b_data);
-      } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
-        // B is (N,) or (1, N)
-        output_mat.rowwise() = ConstEigenVectorMap<T>(b_data, N).transpose();
-      } else if (b_shape[1] == 1) {
+        output_mat.array() += *(B->template Data<T_B>());
+      }
+      // B is (N,)
+      else if (b_shape.NumDimensions() == 1) {
+        auto bias_vec = ConstEigenVectorMap<T_B>(
+            B->template Data<T_B>(),
+            N);
+        output_mat.rowwise() += bias_vec.transpose();
+      } else if (b_shape.NumDimensions() == 2) {
         // B is (M, 1)
-        output_mat.colwise() = ConstEigenVectorMap<T>(b_data, M);
-      } else {
+        if (b_shape[1] == 1) {
+          auto bias_vec = ConstEigenVectorMap<T_B>(
+              B->template Data<T_B>(),
+              M);
+          output_mat.colwise() += bias_vec;
+        }
+        // B is (1, N)
+        else if (b_shape[0] == 1) {
+          auto bias_vec = ConstEigenVectorMap<T_B>(
+              B->template Data<T_B>(),
+              N);
+          output_mat.rowwise() += bias_vec.transpose();
+        }
         // B is (M, N), no broadcast needed.
-        output_mat = ConstEigenMatrixMapRowMajor<T>(b_data, M, N);
+        else {
+          auto bias_mat = ConstEigenMatrixMapRowMajor<T_B>(
+              B->template Data<T_B>(),
+              M,
+              N);
+          output_mat += bias_mat;
+        }
       }
     }
 
     // W * x
-    math::Gemm<T, CPUMathUtil>(
+    math::Gemm<T_X, CPUMathUtil>(
         trans_A_,
         trans_B_,
         M,
         N,
-        helper.K(),
+        K,
         alpha_,
-        X->template Data<T>(),
-        W->template Data<T>(),
+        X->template Data<T_X>(),
+        W->template Data<T_W>(),
         beta_,
         y_data,
         &CPUMathUtil::Instance());
 
-    FuseActivation<T>(activation_, y_data, M * N, leaky_relu_alpha_);
+    FuseActivation<T_Y>(activation_, y_data, M * N, leaky_relu_alpha_);
 
     return Status::OK();
   }
@@ -88,7 +119,7 @@ class Gemm : public OpKernel {
   float alpha_;
   float beta_;
 
- protected:
+protected:
   // For fused gemm + activation
   std::string activation_;
   float leaky_relu_alpha_;

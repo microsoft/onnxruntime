@@ -15,80 +15,21 @@
 #include "core/framework/fence.h"
 #include "core/session/onnxruntime_c_api.h"
 
-// Struct to represent a physical device.
-struct OrtDevice {
-  using DeviceType = int8_t;
-  using MemoryType = int8_t;
-  using DeviceId = int16_t;
-
-  // Pre-defined device types.
-  static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;  //CUDA
-  static const DeviceType FPGA = 2;
-
-  struct MemType {
-    // Pre-defined memory types.
-    static const MemoryType DEFAULT = 0;
-    static const MemoryType CUDA_PINNED = 1;
-  };
-
-  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
-      : device_type(device_type_),
-        memory_type(memory_type_),
-        device_id(device_id_) {}
-
-  constexpr OrtDevice() : OrtDevice(CPU, MemType::DEFAULT, 0) {}
-
-  DeviceType Type() const {
-    return device_type;
-  }
-
-  MemoryType MemType() const {
-    return memory_type;
-  }
-
-  DeviceId Id() const {
-    return device_id;
-  }
-
-  std::string ToString() const {
-    std::ostringstream ostr;
-    ostr << "Device: ["
-         << " type:" << static_cast<int>(device_type)
-         << " memory_type:" << static_cast<int>(memory_type)
-         << " device_id:" << device_id
-         << "]";
-    return ostr.str();
-  }
-
- private:
-  // Device type.
-  DeviceType device_type;
-
-  // Memory type.
-  MemoryType memory_type;
-
-  // Device index.
-  DeviceId device_id;
-};
-
 struct OrtAllocatorInfo {
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
   int id;
   OrtMemType mem_type;
   OrtAllocatorType type;
-  OrtDevice device;
 
-  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
       : name(name_),
         id(id_),
         mem_type(mem_type_),
-        type(type_),
-        device(device_) {
+        type(type_) {
   }
 
   // To make OrtAllocatorInfo become a valid key in std map
@@ -126,8 +67,6 @@ std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info);
 
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
-constexpr const char* CUDA = "Cuda";
-constexpr const char* CUDA_PINNED = "CudaPinned";
 
 // forward declaration
 class SessionState;

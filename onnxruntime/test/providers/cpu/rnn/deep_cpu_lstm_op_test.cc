@@ -1090,37 +1090,6 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength)
   LstmOpContext2x1x2x2 context(direction);
   context.RunTest(X_data, batch_size, seq_len, &initial_h, &initial_c, Y_data, Y_h_data, {}, &sequence_length);
 }
-
-TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthNoP) {
-  const int seq_len = 2;
-  const int batch_size = 1;
-
-  std::vector<float> X_data = {-0.455351f, -0.276391f,
-                               -0.185934f, -0.269585f};
-
-  std::vector<int> sequence_length = {1};
-
-  std::vector<float> initial_h = {0.0f, 0.0f,
-                                  -0.0306872f, 0.028035f};
-
-  std::vector<float> initial_c = {0.0f, 0.0f,
-                                  -0.07243599f, 0.0467052f};
-
-  std::vector<float> Y_data = {0.0415416f, 0.0196912f,
-                               0.0295027f, 0.0334400f,
-
-                               0.0f, 0.0f,
-                               0.0f, 0.0f};
-
-  std::vector<float> Y_h_data = {0.0415416f, 0.0196912f,
-                                 0.0295027f, 0.0334400f};
-
-  std::string direction = "bidirectional";
-
-  LstmOpContext2x1x2x2 context(direction);
-  // CUDA implementation doesn't support peephole
-  context.RunTest(X_data, batch_size, seq_len, &initial_h, &initial_c, Y_data, Y_h_data, {}, &sequence_length, false);
-}
 #endif // USE_NGRAPH
 
 }  // namespace test

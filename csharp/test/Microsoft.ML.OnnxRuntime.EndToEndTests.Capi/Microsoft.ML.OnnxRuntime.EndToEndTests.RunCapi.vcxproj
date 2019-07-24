@@ -4,7 +4,6 @@
   <PropertyGroup>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
     <PackageName Condition="'$(PackageName)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
-    <OnnxRuntimeSampleCode Condition="'$(OnnxRuntimeSampleCode)' == ''">C_Api_Sample.cpp</OnnxRuntimeSampleCode>
   </PropertyGroup>
   <Import Project="..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).props" Condition="Exists('..\packages\$(PackageName).$(CurrentOnnxRuntimeVersion)\build\native\$(PackageName).props')" />
 
@@ -109,7 +108,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="$(OnnxRuntimeSampleCode)" />
+    <ClCompile Include="C_Api_Sample.cpp" />
   </ItemGroup>
   <ItemGroup>
    <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">

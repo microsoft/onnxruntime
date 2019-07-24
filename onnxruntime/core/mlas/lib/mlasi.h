@@ -255,13 +255,33 @@ typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_ELEMENTWISE_KERNEL_ROUTINE)(
+(MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
     size_t N
     );
 
-typedef MLAS_ELEMENTWISE_KERNEL_ROUTINE* PMLAS_ELEMENTWISE_KERNEL_ROUTINE;
+typedef MLAS_LOGISTIC_KERNEL_ROUTINE* PMLAS_LOGISTIC_KERNEL_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
+
+typedef
+void
+(MLASCALL MLAS_ERF_KERNEL_ROUTINE)(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+typedef MLAS_ERF_KERNEL_ROUTINE* PMLAS_ERF_KERNEL_ROUTINE;
 
 extern "C" {
 
@@ -327,33 +347,16 @@ extern "C" {
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
 #endif
 
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernel;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernel;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernel;
+    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
+    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
+    MLAS_ERF_KERNEL_ROUTINE MlasErfKernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernelFma3;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernelFma3;
-    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernelFma3;
+    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
+    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_ERF_KERNEL_ROUTINE MlasErfKernelFma3;
 #endif
 
 }
-
-//
-// Define the default preferred byte alignment for buffers.
-//
-// MLAS_TARGET_AMD64_IX86: The typical architecture uses AVX instructions
-// accessing 256-bit vectors. MLAS_TARGET_AMD64 returns a larger value if the
-// platform supports 512-bit vectors to ensure that vectors are not split.
-//
-// MLAS_TARGET_ARM64: The kernels use "load pair" instructions to access 128-bit
-// vectors, so this value keeps both vectors in the same cache line.
-//
-// MLAS_TARGET_ARM: Using 16 for a single 128-bit vector may be sufficient for
-// this architecture, but the ONNX Runtime has historically used this larger
-// value.
-//
-
-#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
 
 //
 // Define the target number of per-thread multiplies before using another
@@ -361,7 +364,7 @@ extern "C" {
 //
 // The number is derived from performance results running SGEMM across a
 // range of workloads and observing the ideal number of threads to complete
-// that workload.
+// that workload. See EvaluateThreadingPerformance() in the unit test.
 //
 
 #if defined(_OPENMP)
@@ -417,11 +420,10 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
-    PMLAS_ELEMENTWISE_KERNEL_ROUTINE LogisticKernelRoutine;
-    PMLAS_ELEMENTWISE_KERNEL_ROUTINE TanhKernelRoutine;
-    PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
+    PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
+    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_ERF_KERNEL_ROUTINE ErfKernelRoutine;
     uint32_t NchwcBlockSize;
-    uint32_t PreferredBufferAlignment;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)

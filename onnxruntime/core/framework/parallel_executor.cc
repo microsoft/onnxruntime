@@ -84,7 +84,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   VLOGS(logger, 1) << "Done execution.";
 
   if (root_frame_->HasMemoryPatternPlanner()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
+    std::vector<TensorShape> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
@@ -92,7 +92,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
         break;
       }
       auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(std::cref(tensor.Shape()));
+      input_shapes.push_back(tensor.Shape());
     }
 
     if (all_tensors) {

@@ -34,13 +34,13 @@ constexpr const char* NGRAPH = "nGraph";
 NGRAPHExecutionProvider::NGRAPHExecutionProvider(const NGRAPHExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNGraphExecutionProvider} {
   DeviceAllocatorRegistrationInfo default_allocator_info({OrtMemTypeDefault,
-                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator)); },
+                                                          [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault)); },
                                                           std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(default_allocator_info));
 
   DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
+                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_allocator_info));
@@ -74,6 +74,24 @@ bool TensorCopyPossible(const std::string& src_location, const std::string& dst_
                      allowed_copy_directions.end(), [&](const auto& copy_direction) {
                        return src_location == copy_direction.first && dst_location == copy_direction.second;
                      });
+}
+
+Status NGRAPHExecutionProvider::CopyTensor(const Tensor& src, Tensor& dst) const {
+  const size_t src_bytes = src.DataType()->Size() * src.Shape().Size();
+  const size_t dst_bytes = dst.DataType()->Size() * dst.Shape().Size();
+  if (src_bytes != dst_bytes) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "nGraph: Source and Destination data sizes are not equal - cannot copy tensors");
+  }
+
+  if (!TensorCopyPossible(src.Location().name, dst.Location().name)) {
+    ORT_NOT_IMPLEMENTED("Copying tensors between '", src.Location().name, "' and '", dst.Location().name,
+                        "' is not implemented in NGRAPHExecutionProvider");
+  }
+
+  MEMCPY_S(dst.MutableDataRaw(), src.DataRaw(), dst_bytes, src_bytes);
+
+  return Status::OK();
 }
 
 // Returns true only if op is in a mode that is not currently supported

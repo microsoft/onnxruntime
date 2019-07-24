@@ -1,19 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cuda_allocator.h"
 #include "cuda_common.h"
+#include "cuda_allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/session_state.h"
 #include "cuda_fence.h"
-#include "gpu_data_transfer.h"
 
 namespace onnxruntime {
 
-static const GPUDataTransfer* GetGPUDataTransfer(const SessionState* session_state) {
-  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
-  OrtDevice cpu_device;
-  return dynamic_cast<const GPUDataTransfer*>(session_state->GetDataTransferMgr().GetDataTransfer(gpu_device, cpu_device));
+static const CUDAExecutionProvider* GetCUDAExecutionProvider(const SessionState* session_state) {
+  return dynamic_cast<const CUDAExecutionProvider*>(
+      session_state->GetExecutionProviders().Get(onnxruntime::kCudaExecutionProvider));
 }
 
 void CUDAAllocator::CheckDevice() const {
@@ -46,7 +44,7 @@ const OrtAllocatorInfo& CUDAAllocator::Info() const {
 }
 
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
+  return std::make_shared<CUDAFence>(GetCUDAExecutionProvider(session_state));
 }
 
 void* CUDAPinnedAllocator::Alloc(size_t size) {
@@ -62,12 +60,12 @@ void CUDAPinnedAllocator::Free(void* p) {
 }
 
 const OrtAllocatorInfo& CUDAPinnedAllocator::Info() const {
-  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0), 0, OrtMemTypeCPUOutput);
+  static constexpr OrtAllocatorInfo cuda_allocator_info(CUDA_PINNED, OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
   return cuda_allocator_info;
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
+  return std::make_shared<CUDAFence>(GetCUDAExecutionProvider(session_state));
 }
 
 }  // namespace onnxruntime

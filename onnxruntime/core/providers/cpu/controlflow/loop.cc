@@ -422,8 +422,7 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
       if (graph_output_shape) {
         output_dims.reserve(graph_output_shape->dim_size() + 1);
 
-        const auto& tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-        const auto& dims = tensor_shape.GetDims();
+        auto dims = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
         std::copy(dims.cbegin(), dims.cend(), std::back_inserter(output_dims));
       } else {
         // TODO: We could try and call ExecuteGraph to get the output shape from fetches so the rank is correct,

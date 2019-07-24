@@ -1,11 +1,11 @@
 parameters:
+  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
   DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
   NuPackScript : ''
-  ArtifactName: 'drop-nuget'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64'
@@ -17,6 +17,7 @@ parameters:
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
@@ -162,7 +163,7 @@ jobs:
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: drop-nuget'
         inputs:
-          artifactName: ${{ parameters.ArtifactName }}
+          artifactName: 'drop-nuget'
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
     # Compliance tasks require logs from Debug Build

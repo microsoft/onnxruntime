@@ -19,7 +19,6 @@
 #include <google/protobuf/stubs/common.h>
 #include "core/framework/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/graph_transformer_level.h"
 
 using namespace onnxruntime;
 
@@ -38,11 +37,10 @@ void usage() {
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'openvino'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0 through 3. Default is 1.\n"
+      "\t-o [optimization level]: Specifies the graph optimization level to enable. Valid values are 0, 1 or 2. Default is 1.\n"
       "\t\t0 -> Disable all optimizations\n"
       "\t\t1 -> Enable basic optimizations\n"
-      "\t\t2 -> Enable extended optimizations\n"
-      "\t\t3 -> Enable extended+layout optimizations\n"
+      "\t\t2 -> Enable all optimizations\n"
       "\t-h: help\n"
       "\n"
       "onnxruntime version: %s\n",
@@ -165,7 +163,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           break;
         case 'o':
           graph_optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-          if (graph_optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
+          if (graph_optimization_level > 2) {
             fprintf(stderr, "See usage for valid values of graph optimization level\n");
             usage();
             return -1;
@@ -227,7 +225,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableSequentialExecution();
     else
       sf.DisableSequentialExecution();
-
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
       ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf));
@@ -344,29 +341,28 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "disable reason"},
-      {"convtranspose_3d", "disable reason"},
+      {"convtranspose_3d", "disable reason"},      
       {"cast_STRING_to_FLOAT", "Cast opset 9 not supported yet"},
       {"cast_FLOAT_to_STRING", "Cast opset 9 not supported yet"},
+      {"tf_inception_resnet_v2", "Cast opset 9 not supported yet"},
+      {"tf_inception_v4", "Cast opset 9 not supported yet"},
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
       {"shrink", "test case is wrong", {"onnx141"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
+      {"tf_mobilenet_v2_1.0_224", "result mismatch"},
+      {"tf_mobilenet_v2_1.4_224", "result mismatch"},
+      {"tf_mobilenet_v1_1.0_224", "result mismatch"},
+      {"mobilenetv2-1.0", "result mismatch"},
       {"mxnet_arcface", "result mismatch"}
   };
 
 #ifdef USE_NGRAPH
   broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
   broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-#endif
-
-#ifdef USE_MKLDNN
-  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
-  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
-  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
-  broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});  
 #endif
 
 #ifdef USE_OPENVINO

@@ -274,14 +274,14 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
   return Status::OK();
 }
 
-TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
+std::vector<int64_t> GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& dims = tensor_shape_proto.dim();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
     tensor_shape_vec[i] = dims[i].has_dim_param() ? -1 /* symbolic dimensions are represented as -1 in onnxruntime*/
                                                   : dims[i].dim_value();
   }
-  return TensorShape(std::move(tensor_shape_vec));
+  return tensor_shape_vec;
 }
 
 struct UnInitializeParam {
@@ -538,7 +538,7 @@ TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                const ONNX_NAMESPACE::TypeProto& tensor_proto_type) {
+                                                const onnx::TypeProto& tensor_proto_type) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
   ORT_ENFORCE(IsLittleEndianOrder());
 

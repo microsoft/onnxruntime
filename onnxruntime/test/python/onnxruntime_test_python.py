@@ -32,7 +32,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel(self):
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.pb"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -47,7 +47,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModelFromBytes(self):
-        with open(self.get_name("mul_1.onnx"), "rb") as f:
+        with open(self.get_name("mul_1.pb"), "rb") as f:
             content = f.read()
         sess = onnxrt.InferenceSession(content)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -64,7 +64,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel2(self):
-        sess = onnxrt.InferenceSession(self.get_name("matmul_1.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("matmul_1.pb"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -82,7 +82,7 @@ class TestInferenceSession(unittest.TestCase):
         so = onnxrt.SessionOptions()
         so.session_log_verbosity_level = 1
         so.session_logid = "MultiThreadsTest"
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.pb"), sess_options=so)
         ro1 = onnxrt.RunOptions()
         ro1.run_tag =  "thread1"
         t1 = threading.Thread(target=self.run_model, args = (sess, ro1))
@@ -99,7 +99,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue('CPU' in device or 'GPU' in device)
 
     def testRunModelSymbolicInput(self):
-        sess = onnxrt.InferenceSession(self.get_name("matmul_2.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("matmul_2.pb"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -116,7 +116,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testBooleanInputs(self):
-        sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("logicaland.pb"))
         a = np.array([[True, True], [False, False]], dtype=np.bool)
         b = np.array([[True, False], [True, False]], dtype=np.bool)
 
@@ -148,7 +148,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(output_expected, res[0])
 
     def testStringInput1(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("identity_string.pb"))
         x = np.array(['this', 'is', 'identity', 'test'], dtype=np.str).reshape((2,2))
 
         x_name = sess.get_inputs()[0].name
@@ -169,7 +169,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testStringInput2(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("identity_string.pb"))
         x = np.array(['Olá', '你好', '여보세요', 'hello'], dtype=np.unicode).reshape((2,2))
 
         x_name = sess.get_inputs()[0].name
@@ -190,7 +190,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
         
     def testInputBytes(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("identity_string.pb"))
         x = np.array([b'this', b'is', b'identity', b'test']).reshape((2,2))
 
         x_name = sess.get_inputs()[0].name
@@ -211,7 +211,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0].astype('|S8'))        
 
     def testInputObject(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("identity_string.pb"))
         x = np.array(['this', 'is', 'identity', 'test'], object).reshape((2,2))
 
         x_name = sess.get_inputs()[0].name
@@ -232,7 +232,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])        
 
     def testInputVoid(self):
-        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("identity_string.pb"))
         x = np.array([b'this', b'is', b'identity', b'test'], np.void).reshape((2,2))
 
         x_name = sess.get_inputs()[0].name
@@ -256,7 +256,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(expr, res[0])
 
     def testConvAutoPad(self):
-        sess = onnxrt.InferenceSession(self.get_name("conv_autopad.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("conv_autopad.pb"))
         x = np.array(25 * [1.0], dtype=np.float32).reshape((1,1,5,5))
 
         x_name = sess.get_inputs()[0].name
@@ -282,7 +282,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0])
 
     def testZipMapStringFloat(self):
-        sess = onnxrt.InferenceSession(self.get_name("zipmap_stringfloat.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("zipmap_stringfloat.pb"))
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2,3))
 
         x_name = sess.get_inputs()[0].name
@@ -301,7 +301,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testZipMapInt64Float(self):
-        sess = onnxrt.InferenceSession(self.get_name("zipmap_int64float.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("zipmap_int64float.pb"))
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2,3))
 
         x_name = sess.get_inputs()[0].name
@@ -320,7 +320,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testRaiseWrongNumInputs(self):
         with self.assertRaises(ValueError) as context:
-            sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
+            sess = onnxrt.InferenceSession(self.get_name("logicaland.pb"))
             a = np.array([[True, True], [False, False]], dtype=np.bool)
             res = sess.run([], {'input:0': a})
 
@@ -340,7 +340,7 @@ class TestInferenceSession(unittest.TestCase):
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()
         so.enable_profiling = True
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.pb"), sess_options=so)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run([], {'X': x})
         profile_file = sess.end_profiling()
@@ -399,7 +399,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testLabelEncoder(self):
-        sess = onnxrt.InferenceSession(self.get_name("LabelEncoder.onnx"))
+        sess = onnxrt.InferenceSession(self.get_name("LabelEncoder.pb"))
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "input")
         input_type = str(sess.get_inputs()[0].type)

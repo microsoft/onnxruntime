@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "concat.h"
-#include "concat_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -25,46 +24,25 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   if (p.output_num_elements == 0)
     return Status::OK();
 
-  int device_id = GetDeviceId();
-  std::vector<int64_t> concat_sizes(input_count);
-
-  CudaAsyncBuffer<const void*> input_ptr(this, device_id, input_count);
-  gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
-  int index = 0;
-  for (int i = 0; i < input_count; ++i) {
-    auto input = p.inputs[i];
-    concat_sizes[i] = input.tensor->Shape()[p.axis];
-    input_ptr_cpuspan[i] = input.tensor->DataRaw();
-    for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
-      axis_dimension_input_output_mapping.at(index++) = i;
-    }
-  }
-  std::vector<int64_t> concat_sizes_range(concat_sizes);
-  for (int i = 1; i < concat_sizes_range.size(); ++i) {
-    concat_sizes_range[i] += concat_sizes_range[i - 1];
-  }
-
-  CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, device_id, concat_sizes);
-  CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, device_id, axis_dimension_input_output_mapping);
-  CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, device_id, concat_sizes_range);
-  concat_sizes_gpu.CopyToGpu();
-  axis_dimension_input_output_mapping_gpu.CopyToGpu();
-  concat_sizes_range_gpu.CopyToGpu();
-  input_ptr.CopyToGpu();
-  int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
-  int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
+  int64_t output_offset = 0;
   auto element_bytes = p.output_tensor->DataType()->Size();
-  ORT_RETURN_IF_ERROR(ConcatImpl(element_bytes,
-                                 block_size_including_axis_dim,
-                                 block_size_inside_axis_dim,
-                                 concat_sizes_gpu.GpuPtr(),
-                                 concat_sizes_range_gpu.GpuPtr(),
-                                 axis_dimension_input_output_mapping_gpu.GpuPtr(),
-                                 input_count,
-                                 p.output_tensor->MutableDataRaw(),
-                                 input_ptr.GpuPtr(),
-                                 p.output_num_elements));
+  for (int input_index = 0; input_index < input_count; input_index++) {
+    const auto& prep = p.inputs[input_index];
+    // No data in this tensor - so skip it
+    if (prep.num_elements == 0)
+        continue;
+    // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
+    CUDA_RETURN_IF_ERROR(cudaMemcpy2DAsync(
+        static_cast<uint8_t*>(p.output_tensor->MutableDataRaw()) + output_offset * element_bytes,
+        p.output_axis_pitch * element_bytes,
+        prep.tensor->DataRaw(),
+        prep.axis_pitch * element_bytes,
+        prep.axis_pitch * element_bytes,
+        prep.num_elements / prep.axis_pitch,
+        cudaMemcpyDeviceToDevice));
+
+    output_offset += prep.axis_pitch;
+  }
   return Status::OK();
 }
 

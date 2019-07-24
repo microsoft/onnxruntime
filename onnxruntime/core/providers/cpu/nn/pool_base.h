@@ -7,7 +7,6 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/autopad_type.h"
-#include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {

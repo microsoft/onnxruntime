@@ -19,9 +19,6 @@
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_execution_provider.h"
 #endif
-#ifdef USE_NNAPI
-#include "core/providers/nnapi/nnapi_execution_provider.h"
-#endif
 
 namespace onnxruntime {
 class Graph;
@@ -42,10 +39,6 @@ IExecutionProvider* TestTensorrtExecutionProvider();
 
 #ifdef USE_OPENVINO
 IExecutionProvider* TestOpenVINOExecutionProvider();
-#endif
-
-#ifdef USE_NNAPI
-IExecutionProvider* TestNnapiExecutionProvider();
 #endif
 
 template <typename T>

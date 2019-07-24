@@ -21,7 +21,7 @@ That's the most simple way.
 """
 
 from onnxruntime.datasets import get_example
-example1 = get_example("mul_1.onnx")
+example1 = get_example("mul_1.pb")
 
 import onnx
 model = onnx.load(example1)  # model is a ModelProto protobuf message

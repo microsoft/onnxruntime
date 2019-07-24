@@ -152,7 +152,7 @@ void Gemm<int32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSP
                                 float beta, int32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No int32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<int32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
+}  // namespace math
 
 template <>
 void Gemm<uint32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
@@ -160,7 +160,7 @@ void Gemm<uint32_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANS
                                  float beta, uint32_t* C, CPUMathUtil* /*provider*/, MLDataType /*math_type*/) {
   // No uint32_t Gemm offering from MLAS or MKLDNN. Directly fallback to Eigen.
   GemmEigen<uint32_t>(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-}
+}  // namespace onnxruntime
 
 template <>
 void Gemm<int64_t, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
@@ -445,15 +445,15 @@ void GemmBatched<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, const CBLAS_T
   }
 }
 
-  // MKL will be implmenet as an execution provider
-  ////////////////////////////////////////////////////////////////////////////////
-  // MKL VML alternatives.
-  // Depending on whether we are using MKL, we will delegate the Caffe math
-  // functions that are VML-related to either the VML call or the Eigen
-  // implementation. If you are setting the flags (such as AVX) right for your CPU
-  // architecture, usually Eigen will deliver a throughput as fast as the VML
-  // functions.
-  ////////////////////////////////////////////////////////////////////////////////
+// MKL will be implmenet as an execution provider
+////////////////////////////////////////////////////////////////////////////////
+// MKL VML alternatives.
+// Depending on whether we are using MKL, we will delegate the Caffe math
+// functions that are VML-related to either the VML call or the Eigen
+// implementation. If you are setting the flags (such as AVX) right for your CPU
+// architecture, usually Eigen will deliver a throughput as fast as the VML
+// functions.
+////////////////////////////////////////////////////////////////////////////////
 
 #define DELEGATE_SIMPLE_UNARY_FUNCTION(T, Funcname, expr)                  \
   template <>                                                              \

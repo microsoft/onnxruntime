@@ -7,9 +7,6 @@ about: Use this template for reporting a bug or a performance issue.
 **Describe the bug**
 A clear and concise description of what the bug is.
 
-**Urgency**
-If there are particular important use cases blocked by this or strict project-related timelines, please share more information and dates. If there are no hard deadlines, please specify none.
-
 **System information**
 - OS Platform and Distribution (e.g., Linux Ubuntu 16.04):
 - ONNX Runtime installed from (source or binary):
@@ -30,4 +27,4 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Additional context**
-Add any other context about the problem here. If the issue is about a particular model, please share the model details as well to facilitate debugging.
+Add any other context about the problem here.

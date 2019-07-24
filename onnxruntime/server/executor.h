@@ -8,7 +8,6 @@
 #include "environment.h"
 #include "predict.pb.h"
 #include "util.h"
-#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace server {
@@ -22,7 +21,7 @@ class Executor {
   // Prediction method
   google::protobuf::util::Status Predict(const std::string& model_name,
                                          const std::string& model_version,
-                                         const onnxruntime::server::PredictRequest& request,
+                                         onnxruntime::server::PredictRequest& request,
                                          /* out */ onnxruntime::server::PredictResponse& response);
 
  private:
@@ -33,10 +32,9 @@ class Executor {
   google::protobuf::util::Status SetMLValue(const onnx::TensorProto& input_tensor,
                                             MemBufferArray& buffers,
                                             OrtAllocatorInfo* cpu_allocator_info,
-                                            /* out */ Ort::Value& ml_value);
+                                            /* out */ MLValue& ml_value);
 
-  google::protobuf::util::Status SetNameMLValueMap(/* out */ std::vector<std::string>& input_names,
-                                                   /* out */ std::vector<Ort::Value>& input_values,
+  google::protobuf::util::Status SetNameMLValueMap(onnxruntime::NameMLValMap& name_value_map,
                                                    const onnxruntime::server::PredictRequest& request,
                                                    MemBufferArray& buffers);
 };

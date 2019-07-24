@@ -267,7 +267,7 @@ TEST(NonMaxSuppressionOpTest, InconsistentBoxAndScoreShapes) {
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
   test.AddOutput<int64_t>("selected_indices", {0, 3}, {});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "boxes and scores should have same spatial_dimension.");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "boxes and scores should have same spatial_dimention.");
 }
 
 TEST(NonMaxSuppressionOpTest, InvalidIOUThreshold) {

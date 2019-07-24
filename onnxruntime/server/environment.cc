@@ -2,80 +2,70 @@
 // Licensed under the MIT License.
 
 #include <memory>
+#include "core/common/logging/logging.h"
+
 #include "environment.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "log_sink.h"
 
 namespace onnxruntime {
 namespace server {
 
-static spdlog::level::level_enum Convert(OrtLoggingLevel in) {
-  switch (in) {
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE:
-      return spdlog::level::level_enum::debug;
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO:
-      return spdlog::level::level_enum::info;
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING:
-      return spdlog::level::level_enum::warn;
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR:
-      return spdlog::level::level_enum::err;
-    case OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL:
-      return spdlog::level::level_enum::critical;
-    default:
-      return spdlog::level::level_enum::off;
+ServerEnvironment::ServerEnvironment(logging::Severity severity, logging::LoggingManager::InstanceType instance_type, bool env_init) : severity_(severity),
+                                                                     logger_id_("ServerApp"),
+                                                                     default_logging_manager_(
+                                                                         std::unique_ptr<logging::ISink>{new LogSink{}},
+                                                                         severity,
+                                                                         /* default_filter_user_data */ false,
+                                                                         instance_type,
+                                                                         &logger_id_) {
+  if (env_init) {
+    auto status = onnxruntime::Environment::Create(runtime_environment_);
   }
+
+  // The session initialization MUST BE AFTER environment creation
+  session = std::make_unique<onnxruntime::InferenceSession>(options_, &default_logging_manager_);
 }
 
-void ORT_API_CALL Log(void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
-                      const char* message) {
-  spdlog::logger* logger = static_cast<spdlog::logger*>(param);
-  logger->log(Convert(severity), "[{} {} {}]: {}", logid, category, code_location, message);
-  return;
-}
-
-ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_init_list sink) : severity_(severity),
-                                                                                               logger_id_("ServerApp"),
-                                                                                               sink_(sink),
-                                                                                               default_logger_(std::make_shared<spdlog::logger>(logger_id_, sink)),
-                                                                                               runtime_environment_(severity, logger_id_.c_str(), Log, default_logger_.get()),
-                                                                                               session(nullptr) {
-  spdlog::set_automatic_registration(false);
-  spdlog::set_level(Convert(severity_));
-  spdlog::initialize_logger(default_logger_);
-}
-
-void ServerEnvironment::InitializeModel(const std::string& model_path) {
-  session = Ort::Session(runtime_environment_, model_path.c_str(), Ort::SessionOptions());
-
-  auto output_count = session.GetOutputCount();
-
-  auto allocator = Ort::Allocator::CreateDefault();
-  for (size_t i = 0; i < output_count; i++) {
-    auto name = session.GetOutputName(i, allocator);
-    model_output_names_.push_back(name);
-    allocator.Free(name);
+common::Status ServerEnvironment::InitializeModel(const std::string& model_path) {
+  auto status = session->Load(model_path);
+  if (!status.IsOK()) {
+    return status;
   }
+
+  auto outputs = session->GetModelOutputs();
+  if (!outputs.first.IsOK()) {
+    return outputs.first;
+  }
+
+  for (const auto* output_node : *(outputs.second)) {
+    model_output_names_.push_back(output_node->Name());
+  }
+
+  return common::Status::OK();
 }
 
 const std::vector<std::string>& ServerEnvironment::GetModelOutputNames() const {
   return model_output_names_;
 }
 
-OrtLoggingLevel ServerEnvironment::GetLogSeverity() const {
+const logging::Logger& ServerEnvironment::GetAppLogger() const {
+  return default_logging_manager_.DefaultLogger();
+}
+
+logging::Severity ServerEnvironment::GetLogSeverity() const {
   return severity_;
 }
 
-const Ort::Session& ServerEnvironment::GetSession() const {
-  return session;
+std::unique_ptr<logging::Logger> ServerEnvironment::GetLogger(const std::string& id) {
+  if (id.empty()) {
+    LOGS(GetAppLogger(), WARNING) << "Request id is null or empty string";
+  }
+
+  return default_logging_manager_.CreateLogger(id, severity_, false);
 }
 
-std::shared_ptr<spdlog::logger> ServerEnvironment::GetLogger(const std::string& request_id) const {
-  auto logger = std::make_shared<spdlog::logger>(request_id, sink_.begin(), sink_.end());
-  spdlog::initialize_logger(logger);
-  return logger;
-}
-
-std::shared_ptr<spdlog::logger> ServerEnvironment::GetAppLogger() const {
-  return default_logger_;
+onnxruntime::InferenceSession* ServerEnvironment::GetSession() const {
+  return session.get();
 }
 
 }  // namespace server
