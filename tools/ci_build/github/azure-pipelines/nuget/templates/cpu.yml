@@ -194,6 +194,7 @@ jobs:
         python.exe --version
         echo $(pythonLocation)
         echo $(.pythonLocation)
+        where 7z.exe
   - task: CmdLine@1
     displayName: 'Install conda modules mysql-connector-python'
     inputs:
