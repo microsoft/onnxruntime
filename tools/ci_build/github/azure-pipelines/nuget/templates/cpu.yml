@@ -192,6 +192,8 @@ jobs:
         echo %CONDA%
         where python.exe
         python.exe --version
+        echo $(pythonLocation)
+        echo $(.pythonLocation)
   - task: CmdLine@1
     displayName: 'Install conda modules mysql-connector-python'
     inputs:
@@ -199,14 +201,24 @@ jobs:
       arguments: 'install -q --insecure -y mysql-connector-python'
     timeoutInMinutes: 10
 
-  - task: BatchScript@1
-    displayName: 'Post binary sizes to the dashboard database'
+  - task: CmdLine@2
+    displayName: 'Post binary sizes to the dashboard database using command line'
     inputs:
-      filename: 'python.exe'
-      arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      script: |
+      python $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg
+      $(pythonLocation)\python $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg
     condition: ${{ parameters.DoEsrp }}
     env: 
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+
+  # - task: BatchScript@1
+  #   displayName: 'Post binary sizes to the dashboard database'
+  #   inputs:
+  #     filename: 'python.exe'
+  #     arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+  #   condition: ${{ parameters.DoEsrp }}
+  #   env: 
+  #     DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
   - template: ../../templates/set-version-number-variables-step.yml
   - task: AzureFileCopy@3
