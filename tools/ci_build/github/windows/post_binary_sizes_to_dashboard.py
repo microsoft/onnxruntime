@@ -14,9 +14,8 @@ import sys
 import os
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="ONNXRuntime test coverge report uploader for dashboard")
-    parser.add_argument("--report_url", help="URL to the Cobertura XML report")
-    parser.add_argument("--report_file", help="Path to the local cobertura XML report")
+    parser = argparse.ArgumentParser(description="ONNXRuntime binary size uploader for dashboard")
+    parser.add_argument("--package_file", help="Path to the local nuget package")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
     return parser.parse_args()
 
