@@ -206,7 +206,7 @@ jobs:
     inputs:
       script: |
       python $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg
-      $(pythonLocation)\python $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg
+      rem $(pythonLocation)\python $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg
     condition: ${{ parameters.DoEsrp }}
     env: 
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
