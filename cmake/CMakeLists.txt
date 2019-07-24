@@ -85,7 +85,7 @@ set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 
-if(onnxruntime_USE_OPENMP)
+if(onnxruntime_USE_OPENMP AND WIN32)
   # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
   # Disable the options to build mklml/NGraph and OpenMP together.
   if(onnxruntime_USE_MKLML)
