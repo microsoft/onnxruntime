@@ -36,7 +36,7 @@ docker run -h $HOSTNAME \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
-        -e "IsReleaseBuild=$IsReleaseBuild" \
+        -e "IsReleaseBuild=$ISRELEASEBUILD" \
         -e "PackageName=$PackageName" \
         -e "DisableContribOps=$DISABLECONTRIBOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \

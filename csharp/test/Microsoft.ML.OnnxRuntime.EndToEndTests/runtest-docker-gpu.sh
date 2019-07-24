@@ -37,7 +37,7 @@ docker run -h $HOSTNAME \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
-        -e "IsReleaseBuild=$IsReleaseBuild" \
+        -e "IsReleaseBuild=$ISRELEASEBUILD" \
         -e "PackageName=$PackageName" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-gpu.sh \
