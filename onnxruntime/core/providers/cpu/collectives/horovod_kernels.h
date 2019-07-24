@@ -16,8 +16,6 @@ public:
  Status Compute(OpKernelContext* context) const override;
 private:
   std::string unique_name;
-  mutable std::mutex mutex_;
-  mutable std::condition_variable cv_;
 };
 
 }
