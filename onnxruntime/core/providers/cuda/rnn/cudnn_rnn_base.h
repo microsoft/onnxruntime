@@ -21,43 +21,6 @@ enum RNN_Input_Index {
   initial_c = 6
 };
 
-class CudnnDropout {
- public:
-  CudnnDropout() : dropout_desc_(nullptr) {
-  }
-
-  Status Set(const cudnnHandle_t& cudnnHandle, float dropout = 0.0f, unsigned long long seed = 1) {
-    CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc_));
-    size_t stateSize;
-    void* states;
-    CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));
-
-    CUDA_CALL(cudaMalloc(&states, stateSize));
-
-    CUDNN_RETURN_IF_ERROR(cudnnSetDropoutDescriptor(dropout_desc_,
-                                                    cudnnHandle,
-                                                    dropout,
-                                                    states,
-                                                    stateSize,
-                                                    seed));
-
-    return Status::OK();
-  }
-
-  ~CudnnDropout() {
-    if (dropout_desc_ != nullptr) {
-      cudnnDestroyDropoutDescriptor(dropout_desc_);
-    }
-  }
-
-  operator cudnnDropoutDescriptor_t() const {
-    return dropout_desc_;
-  }
-
- private:
-  cudnnDropoutDescriptor_t dropout_desc_;
-};
-
 class CudnnRNN {
  public:
   CudnnRNN() : rnn_desc_(nullptr) {
@@ -167,6 +130,8 @@ class CudnnRnnBase : public CudaKernel {
   CudnnFilterDescriptor filter_desc_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
+  IAllocatorUniquePtr<void> state_buffer_;
+  size_t state_size_;
 
   enum Output_Index {
     Y = 0,
