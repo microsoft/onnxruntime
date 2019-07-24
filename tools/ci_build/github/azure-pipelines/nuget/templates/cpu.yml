@@ -208,23 +208,20 @@ jobs:
     displayName: 'Post binary sizes to the dashboard database using command line'
     inputs:
       script: |
-        set PACKAGE_DIR = $(Build.BinariesDirectory)\nuget-artifact\final-package
-        echo dir %PACKAGE_DIR%
-        dir $(Build.BinariesDirectory)\nuget-artifact\final-package
-        set PACKAGE_PATH_PREFIX = $(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort)
-        echo copy %PACKAGE_PATH_PREFIX%.nupkg %PACKAGE_PATH_PREFIX%.zip
-        copy $(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg $(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).zip
-        where 7z.exe
-        7z.exe l -slt %PACKAGE_PATH_PREFIX%.zip runtimes\linux-x64\native\libonnxruntime.so 
-        rem | grep "Size"
-        7z.exe l -slt %PACKAGE_PATH_PREFIX%.zip runtimes\linux-x86\native\libonnxruntime.so 
-        rem | grep "Size"
-        7z.exe l -slt %PACKAGE_PATH_PREFIX%.zip runtimes\osx-x64\native\libonnxruntime.dylib | grep "Size"
-        7z.exe l -slt %PACKAGE_PATH_PREFIX%.zip runtimes\win-x64\native\onnxruntime.dll 
-        rem | grep "Size"
-        7z.exe l -slt %PACKAGE_PATH_PREFIX%.zip runtimes\win-x86\native\onnxruntime.dll | grep "Size"
+        pushd $(Build.BinariesDirectory)\nuget-artifact\final-package
+        FOR /R %%i IN (*.nupkg) do (
+          copy %%~ni.nupkg %%~ni.zip
+          7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so 
+          rem | grep "Size"
+          7z.exe l -slt %%~ni.zip runtimes\linux-x86\native\libonnxruntime.so 
+          rem | grep "Size"
+          7z.exe l -slt %%~ni.zip runtimes\osx-x64\native\libonnxruntime.dylib | grep "Size"
+          7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll 
+          rem | grep "Size"
+          7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | grep "Size"
+          %CONDA%\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file=%%~ni.nupkg
+        )
 
-        %CONDA%\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --package_file="$(Build.BinariesDirectory)\nuget-artifact\final-package\Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg
     condition: ${{ parameters.DoEsrp }}
     env: 
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
