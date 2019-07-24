@@ -59,8 +59,7 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
     for (int i = 0, end = shape->dim_size(); i < end; ++i) {
       auto& dim = *shape->mutable_dim(i);
       if (dim.has_dim_param()) {
-        auto dim_param = dim.dim_param();
-        if (dim_param.empty() || dim_param == "None") {
+        if (dim.dim_param().empty()) {
           dim.clear_dim_param();
         }
       } else if (dim.has_dim_value()) {
