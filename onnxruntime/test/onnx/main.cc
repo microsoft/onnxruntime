@@ -382,6 +382,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_shufflenet", "doesn't work"});
   broken_tests.insert({"fp16_inception_v1", "doesn't work"});
   broken_tests.insert({"fp16_tiny_yolov2", "doesn't work"});
+  broken_tests.insert({"tf_inception_resnet_v2", "doesn't work"});
+  broken_tests.insert({"tf_inception_v3", "doesn't work"});
+  broken_tests.insert({"tf_inception_v4", "doesn't work"});
+  broken_tests.insert({"tf_resnet_v1_101", "doesn't work"});
+  broken_tests.insert({"tf_resnet_v1_152", "doesn't work"});
+  broken_tests.insert({"tf_resnet_v1_50", "doesn't work"});
+  broken_tests.insert({"tf_resnet_v2_101", "doesn't work"});
+  broken_tests.insert({"tf_resnet_v2_152", "doesn't work"});
+  broken_tests.insert({"tf_resnet_v2_50", "doesn't work"});
 #endif
 
 #ifdef USE_CUDA
