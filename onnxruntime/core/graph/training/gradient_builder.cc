@@ -543,6 +543,31 @@ IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
+  std::vector<NodeDef> result;
+  auto attributes = SrcNodeAttributes();
+  std::vector<int64_t> axes_values;
+  if (attributes.find("axes") != attributes.end()) {
+    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    result.push_back(
+        NodeDef("Unsqueeze",
+                {GO(0)},
+                {GI(0)},
+                {MakeAttribute("axes", axes_values)}));
+  // if axes attribute not provided for squeeze
+  } else {
+	result.push_back(
+        NodeDef("Shape",
+                {I(0)},
+                {IA("I0_shape")}));
+    result.push_back(
+        NodeDef("Reshape",
+                {GO(0), IA("I0_shape")},
+                {GI(0)}));
+  }
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   bool is_sub = (SrcNodeOpType() == "Sub");
 

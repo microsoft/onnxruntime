@@ -780,6 +780,58 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
   }
 }
 
+TEST(GradientCheckerTest, SqueezeGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Squeeze"};
+  float error_tolerance = 1e-3f;
+
+  {
+    TensorShape x_shape({1, 2, 3, 1});
+    TensorShape y_shape({2, 3});
+    std::vector<int64_t> axes{0, 3};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  {
+    TensorShape x_shape({1, 1, 2, 3, 4});
+    TensorShape y_shape({2, 3, 4});
+    std::vector<int64_t> axes{0, 1};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  {
+    TensorShape x_shape({1, 2, 1, 3, 1});
+    TensorShape y_shape({2, 3});
+    std::vector<int64_t> axes{0, 2, 4};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+  
+  {
+    TensorShape x_shape({1, 2, 1, 3, 1});
+    TensorShape y_shape({1, 2, 3, 1});
+    std::vector<int64_t> axes{2};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          {MakeAttribute("axes", axes)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+
+  /* TODO: enable test with no axis when squeeze kernel is fixed (separate bug filed)
+  {
+    TensorShape x_shape({1, 2, 1, 3, 1});
+    TensorShape y_shape({2, 3});
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+  */
+}
+
 // TODO: Reshape missing
 
 TEST(GradientCheckerTest, SoftMaxGrad) {
