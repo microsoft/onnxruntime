@@ -43,6 +43,7 @@ docker run -h $HOSTNAME \
         -e "PackageName=$PackageName" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
+        -e "TESTONGPU=ON" \
         "onnxruntime-$IMAGE" \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev &
