@@ -3,9 +3,10 @@
 #   AgentPoolWin : 'Win-CPU'
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
+#
 
 schedules:
-- cron: "*/6 * * * *"
+- cron: "*/5 * * * *"
   displayName: Daily Build
   branches:
     include:
