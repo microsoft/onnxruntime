@@ -113,8 +113,13 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
-inline RunOptions& RunOptions::SetTerminate(bool flag) {
-  ORT_THROW_ON_ERROR(OrtRunOptionsSetTerminate(p_, flag ? 1 : 0));
+inline RunOptions& RunOptions::EnableTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsEnableTerminate(p_));
+  return *this;
+}
+
+inline RunOptions& RunOptions::DisableTerminate() {
+  ORT_THROW_ON_ERROR(OrtRunOptionsDisableTerminate(p_));
   return *this;
 }
 
@@ -405,7 +410,7 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
     OrtReleaseStatus(status);
     out.resize(size);
     ORT_THROW_ON_ERROR(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
-    out.resize(size - 1); // remove the terminating character '\0'
+    out.resize(size - 1);  // remove the terminating character '\0'
   } else {
     ORT_THROW_ON_ERROR(status);
   }

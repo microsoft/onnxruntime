@@ -69,7 +69,8 @@ OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
 OrtRunOptionsSetRunTag
-OrtRunOptionsSetTerminate
+OrtRunOptionsEnableTerminate
+OrtRunOptionsDisableTerminate
 OrtSessionGetInputCount
 OrtSessionGetInputName
 OrtSessionGetInputTypeInfo
