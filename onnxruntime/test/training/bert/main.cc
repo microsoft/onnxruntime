@@ -44,9 +44,9 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("100000"))
       ("num_warmup_steps", "Number of warmup steps.", cxxopts::value<int>()->default_value("10000"))
-      ("evaluation_period", 
-        "How many training steps to make before making an evaluation.", 
-        cxxopts::value<size_t>()->default_value("100"))  
+      ("evaluation_period",
+        "How many training steps to make before making an evaluation.",
+        cxxopts::value<size_t>()->default_value("100"))
       ("save_checkpoint_steps", "How often to save the model checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
@@ -154,8 +154,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
                                              /*batch_size*/ std::to_string(params.batch_size_),
                                              /*max_sequence_len*/ std::to_string(512),
                                              /*max_predictions_per_sequence*/ std::to_string(80),
-                                             /*summary_loss*/ "summary",
-                                            });
+                                             /*summary_loss*/ "summary"});
   params.model_prediction_name_ = "output1";  //"output2";
   params.weights_not_to_train_ = {
       "position_01",            // Slice's dat input
@@ -191,10 +190,10 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
   params.skip_evaluation_ = params.is_perf_test;
 
-  params.error_function_ = [](const std::vector<std::string>& /*feed_names*/,
-                              const std::vector<OrtValue>& /*feeds*/,
-                              const std::vector<std::string>& /*fetch_names*/,
-                              const std::vector<OrtValue>& fetches) {
+  params.error_function_ = [params](const std::vector<std::string>& /*feed_names*/,
+                                    const std::vector<OrtValue>& /*feeds*/,
+                                    const std::vector<std::string>& fetch_names,
+                                    const std::vector<OrtValue>& fetches) {
     const Tensor& total_loss_t = fetches[0].Get<Tensor>();
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
@@ -209,6 +208,14 @@ void setup_training_params(TrainingRunner::Parameters& params) {
     mlm_loss += *mlm_loss_val;
     nsp_loss += *nsp_loss_val;
     summary_loss.push_back(*summary_loss_val);
+
+    if (params.dump_fetches) {
+      ofstream ofs("fetches_dump.txt");
+      for (size_t i = 0; i < fetch_names.size(); ++i) {
+        TrainingUtil::PrintTensor(fetch_names[i], fetches[i].Get<Tensor>(), ofs);
+      }
+      ofs.close();
+    }
   };
 
   auto tensorboard = std::make_shared<EventWriter>(params.log_dir);
@@ -219,6 +226,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 
     for (const std::string& summary : summary_loss)
       tensorboard->AddSummary(summary, step);
+
     printf("Step: %zu, #examples: %d, total_loss: %0.04f, mlm_loss: %0.04f, nsp_loss: %0.04f \n\n",
            step,
            static_cast<int>(num_samples),
@@ -299,7 +307,7 @@ int main(int argc, char* argv[]) {
 
     auto random_perf_data = std::make_shared<RandomDataSet>(params.num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
 
-    runner = std::make_unique<TrainingRunner>(random_perf_data, nullptr, params);
+    runner = std::make_unique<TrainingRunner>(random_perf_data, random_perf_data, params);
 
   } else {
     const size_t max_num_files_preload = 2;

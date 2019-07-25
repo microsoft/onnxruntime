@@ -35,7 +35,7 @@ class TrainingRunner {
 
     PATH_STRING_TYPE train_data_dir;
     PATH_STRING_TYPE test_data_dir;
-    PATH_STRING_TYPE log_dir; // Path to write Tensorboard events to.
+    PATH_STRING_TYPE log_dir;  // Path to write Tensorboard events to.
 
     bool is_perf_test;
     int num_of_perf_samples;
@@ -93,6 +93,7 @@ class TrainingRunner {
     int world_size_ = 1;
 
     bool skip_evaluation_ = false;
+    bool dump_fetches = false;
 
     VectorString fetch_names;
   };

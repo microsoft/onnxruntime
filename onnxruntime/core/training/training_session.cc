@@ -67,6 +67,15 @@ Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_
   return DoPostLoadProcessing(*model_);
 }
 
+Status TrainingSession::ExposeAsGraphOutput(const std::vector<std::string>& node_args) {
+  GraphAugmenter::GraphDefs graph_defs;
+  graph_defs.AddGraphOutputs(node_args);
+
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(model_->MainGraph(), graph_defs));
+
+  return DoPostLoadProcessing(*model_);
+}
+
 NameMLValMap TrainingSession::GetWeights() const {
   return session_state_.GetInitializedTensors(weights_to_train_);
 }

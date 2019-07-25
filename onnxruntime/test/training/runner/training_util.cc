@@ -187,5 +187,30 @@ void TrainingUtil::PrintNameMLValMap(const NameMLValMap& mlvalue_map) {
   }
 }
 
+void TrainingUtil::PrintTensor(const string& name, const Tensor& tensor, ostream& os) {
+  auto data_type = tensor.DataType();
+
+  os << name << "\n";
+  if (DataTypeImpl::GetType<float>() == data_type) {
+    const float* data = tensor.template Data<float>();
+    for (int i = 0; i < tensor.Shape().Size(); ++i) {
+      os << data[i] << "\t";
+    }
+  } else if (DataTypeImpl::GetType<int64_t>() == data_type) {
+    const int64_t* data = tensor.template Data<int64_t>();
+    for (int i = 0; i < tensor.Shape().Size(); ++i) {
+      os << data[i] << "\t";
+    }
+  } else if (DataTypeImpl::GetType<bool>() == data_type) {
+    const bool* data = tensor.template Data<bool>();
+    for (int i = 0; i < tensor.Shape().Size(); ++i) {
+      os << data[i] << "\t";
+    }
+  } else {
+    os << "Unsupported data type.";
+  }
+  os << "\n\n";
+}
+
 }  // namespace training
 }  // namespace onnxruntime

@@ -115,6 +115,8 @@ class TrainingUtil {
   static AllocatorPtr GetCpuAllocator();
 
   static void PrintNameMLValMap(const NameMLValMap& mlvalue_map);
+
+  static void PrintTensor(const std::string& name, const Tensor& tensor, std::ostream& os = std::cout);
 };
 }  // namespace training
 }  // namespace onnxruntime

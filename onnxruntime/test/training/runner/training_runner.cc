@@ -80,6 +80,10 @@ Status TrainingRunner::Initialize() {
 
   // Add gradient graph
   ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, params_.loss_func_info_.loss_name, opt_info));
+
+  // Expose all fetches as graph outputs
+  ORT_RETURN_IF_ERROR(session_.ExposeAsGraphOutput(params_.fetch_names));
+
   if (params_.world_rank_ == 0 && !params_.model_with_training_graph_path_.empty()) {
     Status s = session_.Save(params_.model_with_training_graph_path_, TrainingSession::SaveOption::NO_RELOAD);
     // TODO(bahuang): Currently AdamOptimizer's Moment_1 and Moment_2 are stored as graph initializers

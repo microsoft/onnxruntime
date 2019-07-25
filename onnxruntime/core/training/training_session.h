@@ -57,6 +57,8 @@ class TrainingSession : public InferenceSession {
                                     const std::string& loss_function_output_name,
                                     const std::unordered_map<std::string, OptimizerInfo>& opt_info = {});
 
+  common::Status ExposeAsGraphOutput(const std::vector<std::string>& node_args);
+
   /** Save a model, 3 options:
   1. save with updated weights
   2. save with updated weights and loss function
