@@ -8,7 +8,8 @@ steps:
   displayName: 'Download Pipeline Artifact - Signed NuGet Package'
   inputs:
     artifactName: {{ parameters.nugetArtifactName }}
-    targetPath: {{ parameters.downloadPath }}
+    targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+    #{{ parameters.downloadPath }}
 
 - task: UsePythonVersion@0
   inputs:
