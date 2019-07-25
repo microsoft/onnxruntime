@@ -1053,8 +1053,13 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
-      .SetDomain(kMSDomain)
+      .SetDomain(kOnnxDomain)
       .SinceVersion(1)
+      .Attr(
+          "axis",
+          "The number of batch dims. The gather of indexing starts from dimension of data[axis:]",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .Input(0, "data", "Tensor of rank r >= 1.", "T")
       .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
       .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
@@ -1075,10 +1080,12 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
         auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         auto data_rank = data_shape.dim_size();
         auto indices_rank = indices_shape.dim_size();
+        auto axis = ctx.getAttribute("axis");
+        int64_t axis_data = axis ? static_cast<int>(axis->i()) : 0;
         if (data_rank < 1 || indices_rank < 1) {
           fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
         }
-        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
+        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value() + axis_data;
         if (last_indice_dimension > data_rank) {
           fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
         }
@@ -1115,6 +1122,31 @@ Example 4:
   indices = [[[0,1]],[[1,0]]]
   output  = [[[2,3]],[[4,5]]]
 )DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherNDGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .Attr(
+          "axis",
+          "The number of batch dims. The gather of indexing starts from dimension of data[axis+1:]",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(0, "shape", "The shape of source data input of GatherND.", "T1")
+      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
+      .Input(2, "update", "The gradient of the output.", "T")
+      .Output(0, "output", "Tensor graident of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indice type to int32 or int64")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int64)"},
+          "Constrain shape type to int64");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(WordConvEmbedding)
       .SetDomain(kMSDomain)
