@@ -15,7 +15,7 @@ import sys
 import os
 ov_root = os.environ['INTEL_CVSDK_DIR']
 if '2019' in ov_root:
-    version = 'R1'
+    version = '2019'
 else:
     version = 'R5'
 mo_path = ov_root + "/deployment_tools/model_optimizer"

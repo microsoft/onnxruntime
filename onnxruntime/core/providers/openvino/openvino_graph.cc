@@ -26,32 +26,33 @@ namespace openvino_ep {
 const std::string OpenVINOGraph::log_tag = "[OpenVINO-EP] ";
 
 OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
-  device_id_ = "CPU";
+  device_id_ = "MKLDNNPlugin";
+  //device_name_ = "MKLDNNPlugin"
   precision_ = InferenceEngine::Precision::FP32;
   std::string precision_str = "FP32";
 
 #ifdef OPENVINO_CONFIG_CPU_FP32
-  device_id_ = "CPU";
+  device_id_ = "MKLDNNPlugin";
   precision_ = InferenceEngine::Precision::FP32;
   precision_str = "FP32";
 #endif
 #ifdef OPENVINO_CONFIG_GPU_FP32
-  device_id_ = "GPU";
+  device_id_ = "clDNNPlugin";
   precision_ = InferenceEngine::Precision::FP32;
   precision_str = "FP32";
 #endif
 #ifdef OPENVINO_CONFIG_GPU_FP16
-  device_id_ = "GPU";
+  device_id_ = "clDNNPlugin";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str = "FP16";
 #endif
 #ifdef OPENVINO_CONFIG_MYRIAD
-  device_id_ = "MYRIAD";
+  device_id_ = "myriadPlugin";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str = "FP16";
 #endif
 #ifdef OPENVINO_CONFIG_VAD_R
-  device_id_ = "HDDL";
+  device_id_ = "HDDLPlugin";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str = "FP16";
 #endif
@@ -68,7 +69,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   // In VAD-R (HDDL) accelerator, there are 8 parallel execution units. So, creating 8 instances
   // of Infer Requests only if the VAD-R accelerator is being used.
   // sets number of maximum parallel inferences
-  num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
+  num_inf_reqs_ = (device_id_ == "HDDLPlugin") ? 8 : 1;
 
   fused_node_ = fused_node;
 
@@ -93,17 +94,22 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
     input_indexes_.push_back(index);
   }
 
+  LOGS_DEFAULT(INFO) << log_tag << "Entering BuildOpenVINONetworkWithMO";
+
   // Create hardware agnostic OpenVINO network representation
   openvino_network_ = BuildOpenVINONetworkWithMO();
 
+  LOGS_DEFAULT(INFO) << log_tag << "Exiting BuildOpenVINONetworkWithMO";
+  LOGS_DEFAULT(INFO) << log_tag << "Entering GetExecutableHandle";
   // Create hardware specific OpenVINO network representation
   GetExecutableHandle(openvino_network_);
+  LOGS_DEFAULT(INFO) << log_tag << "Exiting GetExecutableHandle";
 
   std::vector<std::string> plugin_path = GetEnvLdLibraryPath();
   plugin_path.push_back("");
   plugin_ = InferenceEngine::PluginDispatcher(
                 plugin_path)
-                .getPluginByDevice(device_id_);
+                .getPluginByName(device_id_);
 
   //Loading model to the plugin
   InferenceEngine::ExecutableNetwork exeNetwork = plugin_.LoadNetwork(*openvino_network_, {});
@@ -199,9 +205,10 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetwork
   const auto& attributes = fused_node_->GetAttributes();
   std::string xml_string = attributes.at("xml_str").s();
   std::string weights_string = attributes.at("weights_str").s();
-  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
-      new InferenceEngine::TBlob<uint8_t>(InferenceEngine::Precision::U8,
-                                          InferenceEngine::Layout::C, {weights_string.size()}));
+  InferenceEngine::TensorDesc tensorDesc(InferenceEngine::Precision::U8,
+                                          {weights_string.size()},InferenceEngine::Layout::C);
+  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(new InferenceEngine::TBlob<uint8_t>(tensorDesc));
+
   weightsPtr->allocate();
 
   std::memcpy(weightsPtr->buffer(), static_cast<const void*>(weights_string.c_str()), weights_string.size());

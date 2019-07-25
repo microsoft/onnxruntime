@@ -186,7 +186,7 @@ bool IsOpSupported(std::string name) {
   return iter != supported_ops.end();
 }
 
-//Checks if the entire graph is supported by OpenVINO EP and throws eception if any.
+//Checks if the entire graph is supported by OpenVINO EP and throws exception if any.
 
 void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::string dev_id) {
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
@@ -229,6 +229,7 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     //Check if the Operation is Supported by OpenVINO
     if (!IsOpSupported(node->OpType())) {
       {
+        std::cout << "Operation: " << node->OpType() << "\n";
         throw "Operation is not supported by OpenVINO";
       }
     }
@@ -257,6 +258,31 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
         throw "Conv: Cannot take more than 1 input";
       }
     }
+
+    //GEMM must have at least 2 dimensions and all input dimensions must match
+    /*
+    if (node->OpType() == "Gemm") {
+      int x_dim = -1;
+      int y_dim = -1;
+      for (size_t i = 0; i < node_inputs.size(); i++) {
+        if (node_inputs[i]->Shape() != nullptr) {
+          if (node_inputs[i]->Shape()->dim_size() < 2) {
+            throw "Gemm input must have at least 2 dimensions";
+          }
+          if(x_dim == -1) {
+            x_dim = node_inputs[i]->Shape()->dim(0).dim_value();
+            y_dim = node_inputs[i]->Shape()->dim(1).dim_value();
+          }
+          else {
+            if(x_dim != node_inputs[i]->Shape()->dim(0).dim_value() ||
+               y_dim != node_inputs[i]->Shape()->dim(1).dim_value()) {
+                throw "Gemm inputs must have the same dimensions";
+            }
+          }
+        }
+      }
+    }
+    */
 
     //Reshape should have shape as initializer
     if (node->OpType() == "Reshape") {
@@ -288,6 +314,15 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       if (dev_id == "MYRIAD" || dev_id == "HDDL") {
         if (axis != 1) {
           throw "Only default axis is supported for MYRIAD and HDDL plugins";
+        }
+      }
+    }
+
+    //Add and Mat is only supported if it is followed by Add
+    if (node->OpType() == "Mul" || node->OpType() == "Add") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+          throw "int64 inputs not supported";
         }
       }
     }
@@ -529,6 +564,10 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   meta_def->domain = "OpenVINO";
   meta_def->since_version = 1;
 
+  LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "SubGraph Name: " << meta_def->name << "\n";
+  //LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "SubGraph XML: " << xml_string << "\n";
+  //LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "SubGraph Weights: " << weights_string << "\n";
+
   for (auto input : fused_inputs) {
     meta_def->inputs.push_back(input->Name());
   }
@@ -540,6 +579,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   sub_graph->SetMetaDef(meta_def);
   result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
 
+  LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "Returning result of GetCapability Function";
   return result;
 }
 
