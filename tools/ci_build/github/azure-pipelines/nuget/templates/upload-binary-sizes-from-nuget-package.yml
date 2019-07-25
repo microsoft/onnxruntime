@@ -4,11 +4,11 @@ parameters:
   gitCommitHash: ''
 
 steps:
-# - task: DownloadPipelineArtifact@0
-#   displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-#   inputs:
-#     artifactName: {{ parameters.nugetArtifactName }}
-#     targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+- task: DownloadPipelineArtifact@0
+  displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+  inputs:
+    artifactName: 'drop-signed-nuget'
+    targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
     #{{ parameters.downloadPath }}
 
 - task: UsePythonVersion@0
