@@ -3,10 +3,6 @@
 # Licensed under the MIT License.
 
 
-# command line arguments
-# --package_file=<string, local file path of the nuget package containing all the binaries>
-# --commit_hash=<string, full git commit hash>
-
 import argparse
 import mysql.connector
 import xml.etree.ElementTree as ET
@@ -15,21 +11,38 @@ import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime binary size uploader for dashboard")
-    parser.add_argument("--package_file", help="Path to the local nuget package")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
+    parser.add_argument("--build_project", default='Lotus', choices=['Lotus','onnxruntime'], help="Lotus or onnxruntime build project, to construct the build URL")
+    parser.add_argument("--build_id", help="Build Id")
+    parser.add_argument("--size_data_file", help="Path to file that contains the binary size data")
+
     return parser.parse_args()
 
-def parse_xml_report(report_file):
-    tree = ET.parse(report_file) # may throw exception
-    root = tree.getroot()
-    result = {}
-    
-    result['coverage'] = float(root.get('line-rate'))
-    result['lines_covered'] = int(root.get('lines-covered'))
-    result['lines_valid'] = int(root.get('lines-valid'))
-    return result
+# Assumes size_data_file is a csv file with a header line, containing binary sizes and other attributes
+# CSV fields are:
+#    os,arch,build_config,size
+# No empty line or space between fields expected
+def get_binary_sizes(size_data_file):
+    binary_size = []
+    with open(size_data_file, 'r') as f:
+        line = f.readline()
+        headers = line.split(',')
+        while line:
+            line = f.readline()
+            if not line:
+                break;    
+            linedata = line.split(',') 
+            tablerow = {}
+            for i in range(1,len(headers)):
+                if headers[i] == 'size':
+                    tablerow[headers[i]] = int(linedata[i])
+                else:
+                    tablerow[headers[i]] = linedata[i]
+            binary_size.append(tablerow)
+    return binary_size
 
-def write_to_db(coverage_data, args):
+
+def write_to_db(binary_size_data, args):
     # connect to database
 
     cnx = mysql.connector.connect(
@@ -42,30 +55,38 @@ def write_to_db(coverage_data, args):
         cursor = cnx.cursor()
 
         #delete old records
-        delete_query = ('DELETE FROM onnxruntime.test_coverage '
-            'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 30 DAY);'
+        delete_query = ('DELETE FROM onnxruntime.binary_size '
+            'WHERE build_time < DATE_SUB(Now(), INTERVAL 30 DAY);'
         )
         
         cursor.execute(delete_query)
 
-        #insert current record
-        insert_query = ('INSERT INTO onnxruntime.test_coverage '
-            '(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, ReportURL) '
-            'VALUES (Now(), "%s", %f, %d, %d, "%s") '
-            'ON DUPLICATE KEY UPDATE '
-            'UploadTime=Now(), Coverage=%f, LinesCovered=%d, TotalLines=%d, ReportURL="%s";'
-        ) % (args.commit_hash, 
-             coverage_data['coverage'], 
-             coverage_data['lines_covered'],  
-             coverage_data['lines_valid'],
-             args.report_url,
-             coverage_data['coverage'], 
-             coverage_data['lines_covered'],  
-             coverage_data['lines_valid'],
-             args.report_url
-        )
+        #insert current records
+        for row in binary_size_data:
+            insert_query = ('INSERT INTO onnxruntime.binary_size '
+                '(build_time, build_project, build_id, commit_id, os, arch, build_config, size) '
+                'VALUES (Now(), "%s", "%s", "%s", "%s", "%s", "%s", %d) '
+                'ON DUPLICATE KEY UPDATE '
+                'build_time=Now(), build_project="%s", build_id="%s", commit_id="%s", os="%s", arch="%s", build_config="%s", size=%d;'
+            ) % (
+                args.commit_hash, 
+                args.build_project,
+                args.build_id,
+                row['os'],
+                row['arch'],
+                row['build_config'],
+                row['size'],
 
-        cursor.execute(insert_query) 
+                args.build_project,
+                args.build_id,
+                row['os'],
+                row['arch'],
+                row['build_config'],
+                row['size']
+            )
+
+            cursor.execute(insert_query) 
+    
         cnx.commit()
 
         # # Use below for debugging:
@@ -84,8 +105,8 @@ if __name__ == "__main__":
     try:
         args = parse_arguments()
         print(args)
-        # coverage_data = parse_xml_report(args.report_file)
-        # write_to_db(coverage_data, args)
+        binary_size_data = get_binary_sizes(args.size_data_file)
+        write_to_db(binary_size_data, args)
     except BaseException as e:
         print(str(e))
         sys.exit(1)
