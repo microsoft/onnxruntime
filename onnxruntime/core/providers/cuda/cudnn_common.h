@@ -98,7 +98,7 @@ class CudnnDropout final {
   }
 
  private:
-  Status CudnnDropout::CreateDescriptorIfNeeded() {
+  Status CreateDescriptorIfNeeded() {
     if (!dropout_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc_));
     return Status::OK();
