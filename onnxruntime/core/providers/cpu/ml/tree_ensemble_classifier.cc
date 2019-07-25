@@ -358,23 +358,20 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   int64_t N = x_dims.size() == 1 ? 1 : x_dims[0];
   Tensor* Y = context->Output(0, TensorShape({N}));
   auto* Z = context->Output(1, TensorShape({N, class_count_}));
+
+  int64_t zindex = 0;
   const T* x_data = X.template Data<T>();
 
-  common::Status status;
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
+  // for each class
+  std::vector<float> scores;
+  scores.reserve(class_count_);
   for (int64_t i = 0; i < N; ++i) {
-    int64_t zindex = i * class_count_;
-    std::vector<float> scores;
+    scores.clear();
     int64_t current_weight_0 = i * stride;
     std::map<int64_t, float> classes;
     // walk each tree from its root
     for (size_t j = 0, end = roots_.size(); j < end; ++j) {
-      auto process_status = ProcessTreeNode(classes, roots_[j], x_data, current_weight_0);
-      if (!process_status.IsOK()) {
-        status = process_status;
-      }
+      ORT_RETURN_IF_ERROR(ProcessTreeNode(classes, roots_[j], x_data, current_weight_0));
     }
     float maxweight = 0.f;
     int64_t maxclass = -1;
@@ -445,8 +442,9 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
       }
     }
     write_scores(scores, post_transform_, zindex, Z, write_additional_scores);
+    zindex += scores.size();
   }  // namespace ml
-  return status;
+  return Status::OK();
 }  // namespace ml
 
 template <typename T>
