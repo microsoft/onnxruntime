@@ -107,3 +107,4 @@ jobs:
 - template: test_linux.yml
   parameters:
     AgentPool : $(AgentPoolLinux)
+    TestGPU : 'true'
