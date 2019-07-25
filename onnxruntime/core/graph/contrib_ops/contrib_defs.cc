@@ -1833,6 +1833,145 @@ Example 4:
         updateOutputShape(ctx, 0, {});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gelu")
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+      { // nodes: {outputs, op, inputs, attributes}
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
+        {
+          {"X_1"},
+          "Mul",
+          {"X", "multiplier"},
+        },
+        {
+          {"X_2"},
+          "Div",
+          {"X", "sqrt_two" }
+        },
+        {
+          {"X_3"},
+          "Erf",
+          {"X_2"}
+        },
+        {
+          {"X_4"},
+          "Add",
+          {"X_3", "one"}
+        },
+        {
+          {"Y"},
+          "Mul",
+          {"X_1", "X_4"}
+        },
+      }));
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGradient)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("GeluGrad")
+      .AllowUncheckedAttributes()
+      .Input(1, "X", "The input tensor. ", "T")
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+      { // nodes: {outputs, op, inputs, attributes}
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
+        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("two_sqrt_pi", 1.128379225730896f),
+        {
+          {"X_1"},
+          "Mul",
+          {"X", "multiplier"},
+        },
+        {
+          {"X_2"},
+          "Div",
+          {"X", "sqrt_two" }
+        },
+        {
+          {"X_3"},
+          "Erf",
+          {"X_2"}
+        },
+        {
+          {"X_4"},
+          "Add",
+          {"X_3", "one"}
+        },
+        {
+          {"X_5_grad"},
+          "Mul",
+          {"dY", "X_4"}
+        },
+        {
+          {"X_6_grad"},
+          "Mul",
+          {"X_5_grad", "multiplier"}
+        },
+        {
+          {"X_7"},
+          "Mul",
+          {"X_2", "X_2"}
+        },
+        {
+          {"X_8"},
+          "Neg",
+          {"X_7"}
+        },
+        {
+          {"X_9"},
+          "Exp",
+          {"X_8"}
+        },
+        {
+          {"X_10_grad"},
+          "Mul",
+          {"two_sqrt_pi", "X_9"}
+        },
+        {
+          {"X_11_grad"},
+          "Mul",
+          {"dY", "X_1"}
+        },
+        {
+          {"X_12_grad"},
+          "Mul",
+          {"X_11_grad", "X_10_grad"}
+        },
+        {
+          {"X_13"},
+          "Div",
+          {"one", "sqrt_two" }
+        },
+        {
+          {"X_14_grad"},
+          "Mul",
+          {"X_12_grad", "X_13"}
+        },
+        {
+          {"dX"},
+          "Sum",
+          {"X_14_grad", "X_6_grad"}
+        },
+      }));
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

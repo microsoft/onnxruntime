@@ -50,6 +50,7 @@ DECLARE_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER_DISABLE_COPY_ATTRIBUTES(GetGemmGradient)
 DECLARE_GRADIENT_BUILDER(GetTrainableDropoutGradient)
+DECLARE_GRADIENT_BUILDER(GetGeluGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

@@ -788,5 +788,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
               {GI(0)})};
 }  // namespace training
 
+IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("GeluGradient",
+              {GO(0), I(0)},
+              {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

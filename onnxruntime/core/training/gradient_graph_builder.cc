@@ -12,6 +12,8 @@
 #include "core/graph/training/gradient_builder_registry.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/optimizer/insert_output_rewriter.h"
+#include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;
@@ -28,9 +30,19 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_map<string, OptimizerInfo>& opt_info)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
-      pre_training_graph_transformer_{"pre_training_graph_transformer"},
       opt_info_(opt_info) {
-  pre_training_graph_transformer_.Register(make_unique<InsertMaxPoolOutput>());
+  auto rule_based_graph_transformer = 
+    std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
+  rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
+
+  graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
+                                     TransformerLevel::Level2);
+
+  // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
+  // If we give values here, the check in transformer will fail.
+  std::unordered_set<std::string> compatible_eps = {};
+  auto gelu_transformer = std::make_unique<GeluFusion>(compatible_eps);
+  graph_transformation_mgr_.Register(std::move(gelu_transformer), TransformerLevel::Level2);
 
   for (const auto& name : y_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
@@ -112,8 +124,8 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
 }
 
 Status GradientGraphBuilder::Build() {
-  bool modified = false;
-  ORT_RETURN_IF_ERROR(pre_training_graph_transformer_.Apply(*graph_, modified));
+  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2);
+  ORT_RETURN_IF_ERROR(opt_ret);
 
   GraphAugmenter::GraphDefs gradient_graph_defs;
   // add "gradient of the loss" node, always 1.

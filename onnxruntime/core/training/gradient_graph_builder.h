@@ -19,7 +19,7 @@
 #include "core/graph/training/gradient_schema_defs.h"
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/graph/training/in_graph_training_optimizer.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/graph_transformer_mgr.h"
 
 namespace onnxruntime {
 namespace training {
@@ -70,7 +70,7 @@ class GradientGraphBuilder {
 
   std::string loss_node_arg_name_;
 
-  RuleBasedGraphTransformer pre_training_graph_transformer_;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
 
   std::unordered_map<std::string, OptimizerInfo> opt_info_;
 
