@@ -63,6 +63,13 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   precision_str = "FP16";
 #endif
 
+#ifdef OPENVINO_CONFIG_HETERO_FPGA
+  device_id_ = "HETERO:FPGA,CPU";
+  precision_ = InferenceEngine::Precision::FP32;
+  precision_str = "FP32";
+#endif
+
+
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
