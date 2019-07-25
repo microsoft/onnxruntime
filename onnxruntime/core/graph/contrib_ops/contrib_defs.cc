@@ -7,6 +7,7 @@
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
+#include "onnx/defs/function.h"
 #include "onnx/defs/shape_inference.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -839,6 +840,45 @@ Sample echo operator.)DOC");
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicQuantizeLinear)
+      .SinceVersion(11)
+      .SetDoc("")
+      .Input(0, "x", "Input tensor", "T1")
+      .Output(0, "y", "Output tensor", "T2")
+      .Output(1, "y_scale", "Output tensor", "T1")
+      .Output(2, "y_zero_point", "Output tensor", "T2")
+      .Attr(
+          "to",
+          "The data type to which the elements of the input tensor are quantized too. Strictly must be one of the types from DataType enum in TensorProto",
+          AttributeProto::INT,
+          static_cast<int64_t>(2))
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain 'X' to float or int32 tensor.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(uint8)"},
+          "Constrain 'y_zero_point' and 'y' to 8-bit unsigned integer tensor.")
+      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+          {// nodes: {outputs, op, inputs, attributes}
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Min", 0.0f),
+           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Max", 255.f),
+           {{"X_Min"}, "ReduceMin", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
+           {{"X_Min_Adjusted"}, "Min", {"X_Min", "Q_Min"}},
+           {{"X_Max"}, "ReduceMax", {"x"}, {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))}},
+           {{"X_Max_Adjusted"}, "Max", {"X_Max", "Q_Min"}},
+           {{"X_Range"}, "Sub", {"X_Max_Adjusted", "X_Min_Adjusted"}},
+           {{"Scale"}, "Div", {"X_Range", "Q_Max"}},
+           {{"Min_Scaled"}, "Div", {"X_Min_Adjusted", "Scale"}},
+           {{"Initial_ZeroPoint_FP"}, "Sub", {"Q_Min", "Min_Scaled"}},
+           {{"Clipped_ZeroPoint_FP"}, "Clip", {"Initial_ZeroPoint_FP"}, {ONNX_NAMESPACE::MakeAttribute("min", 0.f), ONNX_NAMESPACE::MakeAttribute("max", 255.f)}},
+          // {{"Rounded_ZeroPoint_FP"}, "Round", {"Clipped_ZeroPoint_FP"}},
+           {{"Zeropoint"}, "Cast", {"Clipped_ZeroPoint_FP"}, {ONNX_NAMESPACE::MakeRefAttribute("to", AttributeProto::INT)}},
+           {{"y_scale"}, "Identity", {"Scale"}},
+           {{"y_zero_point"}, "Identity", {"Zeropoint"}},
+           {{"y"}, "QuantizeLinear", {"x", "Scale", "Zeropoint"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)
