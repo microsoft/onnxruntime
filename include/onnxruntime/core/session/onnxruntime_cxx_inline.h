@@ -467,7 +467,7 @@ inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndSh
   return output;
 }
 
-inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input) {
+inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo* input) {
   api_.ReleaseTensorTypeAndShapeInfo(input);
 }
 
