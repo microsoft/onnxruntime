@@ -51,13 +51,34 @@ static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
                          graph_proto->value_info_size() != 0);
 }
 
-NodeArg::NodeArg(const std::string& name,
-                 const TypeProto* p_node_arg_type) {
+// there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
+// they don't affect shape inferencing or the allocation planner
+static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
+  if (type.has_tensor_type() && type.tensor_type().has_shape()) {
+    auto* shape = type.mutable_tensor_type()->mutable_shape();
+    for (int i = 0, end = shape->dim_size(); i < end; ++i) {
+      auto& dim = *shape->mutable_dim(i);
+      if (dim.has_dim_param()) {
+        auto dim_param = dim.dim_param();
+        if (dim_param.empty() || dim_param == "None") {
+          dim.clear_dim_param();
+        }
+      } else if (dim.has_dim_value()) {
+        if (dim.dim_value() < 0) {
+          dim.clear_dim_value();
+        }
+      }
+    }
+  }
+}
+
+NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
   exists_ = !(name.empty());
   if (nullptr != p_node_arg_type) {
     (*node_arg_info_.mutable_type()) = *p_node_arg_type;
+    RemoveInvalidValues(*node_arg_info_.mutable_type());
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
   } else {
     type_ = nullptr;

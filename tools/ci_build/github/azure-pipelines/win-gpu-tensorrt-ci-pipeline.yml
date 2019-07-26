@@ -17,6 +17,13 @@ jobs:
         buildArch: 'amd64'
         setVcvars: true
 
+    # Copy CUDA 10.0 props files
+    - task: PowerShell@1
+      displayName: 'Set CUDA path'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
+
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
       inputs:
@@ -103,6 +110,13 @@ jobs:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()      
+
+    # Remove CUDA 10.0 props files after build
+    - task: PowerShell@1
+      displayName: 'Clean up CUDA props files'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion 10.0'
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'

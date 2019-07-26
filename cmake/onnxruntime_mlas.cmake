@@ -79,70 +79,65 @@ if(MSVC)
     )
 
   endif()
-
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
-
-  if(CMAKE_ANDROID_ARCH_ABI MATCHES "^arm.*")
-
-    if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
+else()
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+      set(ARM TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+      set(ARM TRUE) # Android NDK fails to compile sgemma.s
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+      set(X86_64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+      set(X86 TRUE)
     endif()
-
-    set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
-    )
-
   else()
+    execute_process(
+      COMMAND ${CMAKE_C_COMPILER} -dumpmachine
+      OUTPUT_VARIABLE dumpmachine_output
+      ERROR_QUIET
+      )
 
-    message(FATAL_ERROR "Android build is not supported on non-ARM platform now")
-
+    if(dumpmachine_output MATCHES "^arm.*")
+      set(ARM TRUE)
+    elseif(dumpmachine_output MATCHES "^aarch64.*")
+      set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      set(X86 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+      set(X86_64 TRUE)
+    endif()
   endif()
 
-else()
-
-  execute_process(
-    COMMAND ${CMAKE_C_COMPILER} -dumpmachine
-    OUTPUT_VARIABLE dumpmachine_output
-    ERROR_QUIET
-  )
-
-  if(dumpmachine_output MATCHES "^arm.*")
-
+  if (ARM)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
 
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
-    )
-
-  elseif(dumpmachine_output MATCHES "^aarch64.*")
-
+      )
+  elseif (ARM64)
     enable_language(ASM)
 
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/sgemma.s
-    )
-
-  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
-
+      )
+  elseif (X86)
     enable_language(ASM)
 
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
-    )
+      )
     set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
 
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
-    )
+      )
     set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}
       ${mlas_platform_srcs_avx}
-    )
-
-  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-
+      )
+  elseif (X86_64)
     enable_language(ASM)
 
     # The LLVM assmebler does not support the .arch directive to enable instruction

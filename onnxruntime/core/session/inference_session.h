@@ -77,7 +77,7 @@ struct SessionOptions {
   /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use default logger severity)
   int session_log_severity_level = -1;
-  unsigned session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
+  int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
 
   unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
 
@@ -367,11 +367,13 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  static common::Status CheckTypes(MLDataType actual, MLDataType expected);
+  common::Status CheckShapes(const std::string& input_name,
+                             const TensorShape& input_shape,
+                             const TensorShape& expected_shape) const;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds);
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds) const;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches);
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches) const;
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
@@ -391,14 +393,15 @@ class InferenceSession {
   std::vector<std::string> transformers_to_enable_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
+  logging::LoggingManager* logging_manager_ = nullptr;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_;
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
+  // The list of execution providers.
   ExecutionProviders execution_providers_;
 
  protected:
@@ -415,7 +418,16 @@ class InferenceSession {
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
-  std::unordered_map<std::string, const NodeArg*> input_def_map_;
+
+  struct InputDefMetaData {
+    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
+    }
+    const NodeArg* node_arg;
+    MLDataType ml_data_type;
+    TensorShape tensor_shape;  // not applicable if the input is non-tensor type
+  };
+  std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
   // Threadpool for this session
