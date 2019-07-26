@@ -15,15 +15,13 @@ class SqueezeBase {
     std::vector<int64_t> axes;
     // Parse attribute 'axes'
     Status status = info.GetAttrs<int64_t>("axes", axes); 
-    // to avoid the unused variable warning
-    (void)(status);
 
-    // Handle out of order and repeating dims for non-empty 'axes'.
-    if (axes.size() > 0) {
+    // Handle out of order and repeating dims when 'axes' exists.
+    if (status.IsOK()) {
       std::sort(axes.begin(), axes.end());
       axes.erase(std::unique(axes.begin(), axes.end()), axes.end());
+      axes_ = axes;
     }
-    axes_ = axes;
   }
 
   static std::vector<int64_t> ComputeOutputShape(
