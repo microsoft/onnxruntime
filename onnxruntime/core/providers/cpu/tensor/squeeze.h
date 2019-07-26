@@ -14,7 +14,9 @@ class SqueezeBase {
   explicit SqueezeBase(const OpKernelInfo& info) {
     std::vector<int64_t> axes;
     // Parse attribute 'axes'
-    info.GetAttrs<int64_t>("axes", axes);
+    Status status = info.GetAttrs<int64_t>("axes", axes); 
+    // to avoid the unused variable warning
+    (void)(status);
 
     // Handle out of order and repeating dims for non-empty 'axes'.
     if (axes.size() > 0) {
