@@ -23,5 +23,14 @@ TEST(Dropout, Opset10) {
   test.Run();
 }
 
+TEST(Dropout, WithOptionalOutput) {
+  OpTester test("Dropout", 10, kOnnxDomain);
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f, 5.0f});
+  test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 3.0f, 5.0f});
+  test.AddOutput<bool>("mask", dims, {false, false, false, false});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
