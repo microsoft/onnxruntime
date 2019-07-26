@@ -566,9 +566,12 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
   auto input_shape_sz = input_shape.NumDimensions();
   auto expected_shape_sz = expected_shape.NumDimensions();
   if (input_shape_sz != expected_shape_sz) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for input: ",
-                           input_name,
-                           " Got: ", input_shape_sz, " Expected: ", expected_shape_sz);
+    std::ostringstream ostr;
+    ostr << "Invalid rank for input: " << input_name
+         << " Got: " << input_shape_sz << " Expected: " << expected_shape_sz
+         << " Please fix either the inputs or the model.";
+    LOGS(*session_logger_, WARNING) << ostr.str();
+    return Status::OK();
   }
 
   std::vector<int> invalid_dim_indices;
@@ -588,7 +591,8 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
       int idx = invalid_dim_indices[i];
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+    ostr << " Please fix either the inputs or the model.";
+    LOGS(*session_logger_, WARNING) << ostr.str();
   }
 
   return Status::OK();
