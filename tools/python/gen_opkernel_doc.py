@@ -36,6 +36,18 @@ def format_type_constraints(tc):
             tcstr += ', '
         tcstr += tcitem
     return tcstr
+
+def format_param_strings(params):
+    firstparam = True
+    s = ''
+    if params:
+        for param in params:
+            if firstparam:
+                firstparam = False
+            else:
+                s += ' or '
+            s += param
+    return s
     
 def main(args):  # type: (Type[Args]) -> None
     
@@ -46,25 +58,38 @@ def main(args):  # type: (Type[Args]) -> None
             "            [def files](/onnxruntime/core/providers/cpu/cpu_execution_provider.cc) via [this script](/tools/python/gen_opkernel_doc.py).\n"
             "            Do not modify directly and instead edit operator definitions.*\n")
         opdef = rtpy.get_all_operator_schema()
+        paramdict = {}
         for schema in opdef:
-            print('OpName = '+schema.name)
             inputs = schema.inputs
-            s = ''
+            domain = schema.domain
+            if (domain == ''):
+                domain = 'ai.onnx.ml'
+            fullname = domain+'.'+schema.name
+            paramstr = '('
+            firstinput = True
             if inputs:
-                s += '\n'
                 for inp in inputs:
-                    option_str = ""
-                    if OpSchema.FormalParameterOption.Optional == inp.option:
-                        option_str = " (optional)"
-                    elif OpSchema.FormalParameterOption.Variadic == inp.option:
-                        if inp.isHomogeneous:
-                            option_str = " (variadic)"
-                        else:
-                            option_str = " (variadic, heterogeneous)"
-                    s += 'name:{}, option:{}, type:{}\n'.format(inp.name, option_str, inp.typeStr)
-                    s += 'description: {}\n'.format(inp.description)
-            print(s)
+                    if firstinput:
+                        firstinput = False
+                    else:
+                        paramstr += ', '
+                    paramstr += '*in* {}:**{}**'.format(inp.name, inp.typeStr)
 
+            outputs = schema.outputs
+            if outputs:
+                for outp in outputs:
+                    if firstinput:
+                        firstinput = False
+                    else:
+                        paramstr += ', '
+                    paramstr += '*out* {}:**{}**'.format(outp.name, outp.typeStr)
+
+            paramstr += ')'
+            paramset = paramdict.get(fullname,None)
+            if paramset == None:
+                paramdict[fullname] = set()
+            
+            paramdict[fullname].add(paramstr)
 
         index = defaultdict(lambda: defaultdict(lambda: defaultdict(list))) 
         for op in rtpy.get_all_opkernel_def():
@@ -77,8 +102,8 @@ def main(args):  # type: (Type[Args]) -> None
         fout.write('\n')
         for provider, domainmap in sorted(index.items()):
             fout.write('\n\n## Operators implemented by '+provider+'\n\n')
-            fout.write('| Op Name | OpSet Versions | Parameter | Types Supported |\n')
-            fout.write('|---------|----------------|-----------|------------------|\n')
+            fout.write('| Op Name | Parameters | OpSet Version | Types Supported |\n')
+            fout.write('|---------|------------|---------------|-----------------|\n')
             for domain, namemap in sorted(domainmap.items()):
                 fout.write('**Operator Domain:** *'+domain+'*\n')
                 for name, ops in sorted(namemap.items()):
@@ -95,10 +120,11 @@ def main(args):  # type: (Type[Args]) -> None
                         versionfirsttime = True
                         for tname, tcset in sorted(typemap.items()):
                             if (namefirsttime):
-                                fout.write('|'+name+'|')
+                                params = paramdict.get(domain+'.'+name, None)
+                                fout.write('|'+name+'|'+format_param_strings(params) +'|')
                                 namefirsttime = False
                             else:
-                                fout.write('| |')
+                                fout.write('| | |')
                             if (versionfirsttime):
                                 versionfirsttime = False
                                 fout.write(version+'|')
@@ -108,7 +134,7 @@ def main(args):  # type: (Type[Args]) -> None
                             tclist = []
                             for tc in tcset:
                                 tclist.append(tc)
-                            fout.write(tname+'|'+format_type_constraints(tclist)+'|\n')
+                            fout.write('**'+tname+'** = '+format_type_constraints(tclist)+'|\n')
                         
                 fout.write('| |\n| |\n')
         
