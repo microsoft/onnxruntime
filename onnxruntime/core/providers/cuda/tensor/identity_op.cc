@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(),
                               DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>())
         .Alias(0, 0),
     IdentityOp<true>);
 
