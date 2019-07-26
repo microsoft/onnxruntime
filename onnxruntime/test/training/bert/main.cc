@@ -37,7 +37,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("output_dir", "The output directory where the model checkpoints will be written.",
         cxxopts::value<std::string>())
       ("log_dir", "The directory to write tensorboard events.",
-        cxxopts::value<std::string>()->default_value("logs/bert"))
+        cxxopts::value<std::string>()->default_value("logs"))
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("1"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
@@ -51,6 +51,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_fp16", "Whether to use fp32 or fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
       ("num_of_perf_samples", "Num of samples to run for the perf test", cxxopts::value<int>()->default_value("100"))
       ("max_seq_length",
@@ -76,6 +77,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       params.eval_batch_size = params.batch_size_;
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
+    params.use_profiler = flags.count("use_profiler") > 0;
 
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto test_data_dir = flags["test_data_dir"].as<std::string>();

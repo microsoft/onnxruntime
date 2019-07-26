@@ -37,11 +37,12 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     .allow_unrecognised_options()
     .add_options()
       ("model_name", "model to be trained", cxxopts::value<std::string>())
-      ("mnist_data_dir", "MNIST training and test data path.",
+      ("train_data_dir", "MNIST training and test data path.",
         cxxopts::value<std::string>()->default_value("mnist_data"))
       ("log_dir", "The directory to write tensorboard events.",
-        cxxopts::value<std::string>()->default_value("logs/poc"))
-      ("use_cuda", "Use CUDA execution provider for training.")
+        cxxopts::value<std::string>()->default_value("logs"))
+      ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
+      ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_of_epoch", "Num of epoch", cxxopts::value<int>()->default_value("2"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
@@ -65,10 +66,11 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
 
-    auto train_data_dir = flags["mnist_data_dir"].as<std::string>();
+    auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();
     params.train_data_dir.assign(train_data_dir.begin(), train_data_dir.end());
     params.log_dir.assign(log_dir.begin(), log_dir.end());
+    params.use_profiler = flags.count("use_profiler") > 0;
 
   } catch (const exception& e) {
     std::string msg = "Failed to parse the command line arguments";

@@ -72,6 +72,11 @@ std::string Profiler::EndProfiling() {
     profile_with_logger_ = false;
     return std::string();
   }
+
+  if (session_logger_) {
+    LOGS(*session_logger_, INFO) << "Writing profiler data to file " << profile_stream_file_;
+  }
+
   std::lock_guard<OrtMutex> lock(mutex_);
   profile_stream_ << "[\n";
 

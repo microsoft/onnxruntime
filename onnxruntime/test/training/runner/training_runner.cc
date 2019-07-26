@@ -100,6 +100,11 @@ Status TrainingRunner::Initialize() {
   }
 #endif
 
+  if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
+    // Profiling has not already been enabled, so override from command line options.
+    session_.StartProfiling(SESSION_OPTION.profile_file_prefix);
+  }
+
   return session_.Initialize();
 }
 
@@ -205,6 +210,13 @@ Status TrainingRunner::TrainingLoop() {
 }
 
 Status TrainingRunner::EndTraining() {
+  if (params_.use_profiler) {
+    // Write profiler data to disk.
+    // We do this first in case there are any problems saving the trained model.
+    std::string profile_file = session_.EndProfiling();
+    std::cout << "Profiler data written to file " << profile_file;
+  }
+
   if (params_.world_rank_ != 0) {
     printf("Skipping end-training on Device #%d, as it's not the root.", params_.world_rank_);
     return Status::OK();

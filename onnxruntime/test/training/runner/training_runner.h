@@ -89,6 +89,9 @@ class TrainingRunner {
     // TODO: support a list of providers.
     bool use_cuda_ = false;
 
+    // Whether we collect execution profile trace during this run.
+    bool use_profiler = false;
+
     int world_rank_ = 0;
     int world_size_ = 1;
 

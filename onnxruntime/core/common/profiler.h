@@ -44,7 +44,7 @@ class Profiler {
   */
   TimePoint StartTime() const;
 
-  bool FEnabled() const {
+  bool IsEnabled() const {
     return enabled_;
   }
 
