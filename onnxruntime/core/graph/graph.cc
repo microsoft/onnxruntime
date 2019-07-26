@@ -59,8 +59,7 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
     for (int i = 0, end = shape->dim_size(); i < end; ++i) {
       auto& dim = *shape->mutable_dim(i);
       if (dim.has_dim_param()) {
-        auto dim_param = dim.dim_param();
-        if (dim_param.empty() || dim_param == "None") {
+        if (dim.dim_param().empty()) {
           dim.clear_dim_param();
         }
       } else if (dim.has_dim_value()) {
@@ -2460,7 +2459,7 @@ Status Graph::SetGraphInputsOutputs() {
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
-  ORT_ENFORCE(nodes_.size() < std::numeric_limits<int>::max());
+  ORT_ENFORCE(nodes_.size() < static_cast<unsigned int>(std::numeric_limits<int>::max()));
   std::unique_ptr<Node> new_node(new Node(nodes_.size(), *this));
   Node* node{new_node.get()};
 

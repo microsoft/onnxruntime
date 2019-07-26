@@ -114,12 +114,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_name, "X")
         input_shape = sess.get_inputs()[0].shape
         # Input X has an unknown dimension.
-        self.assertEqual(input_shape, [None, 2])
+        self.assertEqual(input_shape, ['None', 2])
         output_name = sess.get_outputs()[0].name
         self.assertEqual(output_name, "Y")
         output_shape = sess.get_outputs()[0].shape
         # Output X has an unknown dimension.
-        self.assertEqual(output_shape, [None, 1])
+        self.assertEqual(output_shape, ['None', 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
         np.testing.assert_allclose(

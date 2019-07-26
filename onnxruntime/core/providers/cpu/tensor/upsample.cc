@@ -256,15 +256,15 @@ void upsampleBilinear(
   auto output_width = static_cast<int64_t>(input_width * width_scale);
   auto output_height = static_cast<int64_t>(input_height * height_scale);
 
-  size_t inx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
+  size_t idx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
   size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
-  auto inx_scale_data_buffer = alloc->Alloc(inx_buffer_size + scale_buffer_size);
-  BufferUniquePtr inx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
-  auto* inx_data = static_cast<int64_t*>(inx_scale_data_buffer_holder.get());
-  int64_t* input_width_mul_y1 = inx_data;
-  int64_t* input_width_mul_y2 = inx_data + output_height;
-  int64_t* in_x1 = inx_data + 2 * output_height;
-  int64_t* in_x2 = inx_data + 2 * output_height + output_width;
+  auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
+  BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+  auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
+  int64_t* input_width_mul_y1 = idx_data;
+  int64_t* input_width_mul_y2 = idx_data + output_height;
+  int64_t* in_x1 = idx_data + 2 * output_height;
+  int64_t* in_x2 = idx_data + 2 * output_height + output_width;
 
   auto* scale_data = reinterpret_cast<float*>(in_x2 + output_width);
   float* dy1 = scale_data;
@@ -331,11 +331,20 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Upsample: input tensor's dimension does not match the scales.");
   }
 
+  bool no_scale = true;
   std::vector<int64_t> Y_dims;
+  Y_dims.reserve( dims.size() );
   for (std::size_t i = 0; i < dims.size(); i++) {
-    Y_dims.push_back(static_cast<int64_t>(scales[i] * dims[i]));
+    int64_t dim_y = static_cast<int64_t>(scales[i] * dims[i]);
+    if (no_scale && dim_y != dims[i]) no_scale = false;
+    Y_dims.push_back(dim_y);
   }
   Tensor* Y = context->Output(0, Y_dims);
+
+  if (no_scale) {
+    memcpy(Y->MutableDataRaw(), X->DataRaw(), Y->Size());
+    return Status::OK();
+  }
 
   switch (mode_) {
     case UpsampleMode::NN:
