@@ -62,9 +62,9 @@ if (onnxruntime_USE_MKLDNN)
   set (MKLDNN_CMAKE_EXTRA_ARGS)
   if(NOT onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     # pre-v1.0
-    list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DARCH_OPT_FLAGS=\"\"")
+    list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DARCH_OPT_FLAGS=")
     # v1.0
-    list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DMKLDNN_ARCH_OPT_FLAGS=\"\"")
+    list(APPEND MKLDNN_CMAKE_EXTRA_ARGS "-DMKLDNN_ARCH_OPT_FLAGS=")
     set(MKLDNN_PATCH_COMMAND1 git apply ${CMAKE_SOURCE_DIR}/patches/mkldnn/mem-patch.cmake.patch)
     # discard prior changes due to patching in mkldnn source to unblock incremental builds.
     set(MKLDNN_PATCH_DISCARD_COMMAND cd ${MKLDNN_SOURCE} && git checkout -- .)
