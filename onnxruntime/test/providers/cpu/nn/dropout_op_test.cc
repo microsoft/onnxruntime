@@ -29,7 +29,8 @@ TEST(Dropout, WithOptionalOutput) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f, 5.0f});
   test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 3.0f, 5.0f});
   test.AddOutput<bool>("mask", dims, {false, false, false, false});
-  test.Run();
+  // The NGraph execution provider doesn't seem to support 'Dropout' with optional mask output
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 }  // namespace test

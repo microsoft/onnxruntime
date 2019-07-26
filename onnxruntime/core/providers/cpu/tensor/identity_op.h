@@ -44,7 +44,7 @@ class IdentityOp final : public OpKernel {
 
     if (is_dropout) {
       Tensor* mask = context->Output(1, shape);
-      // a 'nullptr' would make it an unused optional tensor
+      // a 'nullptr' returned would make it an unused optional output
       if (mask != nullptr) {
         bool* mask_data = mask->template MutableData<bool>();
         // In 'test'/'inference' mode, there are no input values dropped out
