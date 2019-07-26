@@ -4,14 +4,6 @@
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
-schedules:
-- cron: "*/6 * * * *"
-  displayName: Daily Build
-  branches:
-    include:
-    - master
-    - jignparm/test_yaml_schedule_trigger
-  always: true
 
 jobs: 
 - job: myjob
