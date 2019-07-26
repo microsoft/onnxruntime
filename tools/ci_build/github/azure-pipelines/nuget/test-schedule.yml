@@ -6,7 +6,7 @@
 #
 
 schedules:
-- cron: "*/5 * * * *"
+- cron: "*/10 * * * *"
   displayName: Daily Build
   branches:
     include:
@@ -18,4 +18,4 @@ jobs:
 - job: myjob
   steps:
     - script: |
-       echo hello
+       echo helloo
