@@ -46,9 +46,14 @@ class IdentityOp final : public OpKernel {
       Tensor* mask = context->Output(1, shape);
       // a 'nullptr' returned would make it an unused optional output
       if (mask != nullptr) {
-        bool* mask_data = mask->template MutableData<bool>();
+        // Opset 7 differs with Opset 10 in that the type of the 'mask'
+        // output is tied with the type of the input in Opset 7 whereas
+        // the type of 'mask' in Opset 10 is 'bool' always
+        // so we have a common solution
+        void* mask_data = mask->MutableDataRaw();
         // In 'test'/'inference' mode, there are no input values dropped out
-        std::fill(mask_data, mask_data + shape.Size(), false);
+        // so fill the buffer with 0/false
+        memset(mask_data, 0, shape.Size() * mask->DataType()->Size());
       }
     }
 
