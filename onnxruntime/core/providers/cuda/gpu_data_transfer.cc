@@ -18,7 +18,7 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
-  size_t bytes = src.Size();
+  size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
 
