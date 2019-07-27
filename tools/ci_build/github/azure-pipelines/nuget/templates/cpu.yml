@@ -9,18 +9,18 @@ parameters:
   DoCompliance: 'false'
 
 jobs: 
-- template: ../../templates/win-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolWin)
-    JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+# - template: ../../templates/win-ci.yml
+#   parameters:
+#     AgentPool : $(AgentPoolWin)
+#     JobName: 'Windows_CI_Dev'
+#     BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)'
+#     DoDebugBuild: 'false'
+#     DoNugetPack : 'true'
+#     DoCompliance: ${{ parameters.DoCompliance }}
+#     DoEsrp: ${{ parameters.DoEsrp }}
+#     NuPackScript: |
+#      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
+#      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 
 # - template: ../../templates/win-x86-ci.yml
@@ -38,21 +38,21 @@ jobs:
 #      ren *.nupkg win-x86.zip
 #      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x64
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
+# - template: ../../templates/linux-ci.yml
+#   parameters:
+#     AgentPool : $(AgentPoolLinux)
+#     JobName: 'Linux_CI_Dev'
+#     BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
+#     DoNugetPack : 'true'
+#     ArtifactName: 'drop-linux'
+#     NuPackScript: |
+#      set -e -x
+#      mkdir $(Build.BinariesDirectory)/linux-x64
+#      cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
+#      cd $(Build.BinariesDirectory)
+#      zip -r linux-x64.zip linux-x64
+#      cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+#      ls -al $(Build.ArtifactStagingDirectory)
 
 # - template: ../../templates/linux-ci.yml
 #   parameters:
@@ -70,36 +70,50 @@ jobs:
 #      cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
 #      ls -al $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/mac-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolMacOS)
-    JobName: 'MacOS_CI_Dev'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
-    DoNugetPack : 'true'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/osx-x64
-     find $(Build.BinariesDirectory)
-     cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
-     dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
-     strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
-     find $(Build.BinariesDirectory)/osx-x64 -ls
-     cwd=`pwd`
-     cd $(Build.BinariesDirectory)
-     zip -r osx-x64.zip osx-x64
-     cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)
-     cd $cwd
+# - template: ../../templates/mac-ci.yml
+#   parameters:
+#     AgentPool : $(AgentPoolMacOS)
+#     JobName: 'MacOS_CI_Dev'
+#     BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
+#     DoNugetPack : 'true'
+#     NuPackScript: |
+#      set -e -x
+#      mkdir $(Build.BinariesDirectory)/osx-x64
+#      find $(Build.BinariesDirectory)
+#      cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
+#      dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
+#      strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
+#      find $(Build.BinariesDirectory)/osx-x64 -ls
+#      cwd=`pwd`
+#      cd $(Build.BinariesDirectory)
+#      zip -r osx-x64.zip osx-x64
+#      cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)
+#      cd $cwd
 
 - job: NuGet_Packaging
   pool: $(AgentPoolWin)
   dependsOn:
-  - Windows_CI_Dev
+#  - Windows_CI_Dev
 #   # - Windows_CI_Dev_x86
-  - Linux_CI_Dev
+#  - Linux_CI_Dev
 #   # - Linux_CI_Dev_x86
-  - MacOS_CI_Dev
+#  - MacOS_CI_Dev
   condition: succeeded()
   steps:  
+  - task: CmdLine@2
+    displayName: 'check envinronment'
+    inputs:
+      script: |
+        echo check python
+        where python.exe
+        python --version
+        where conda
+        echo dump env vars
+        set
+        echo changing directory to artifact download path
+
+
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
