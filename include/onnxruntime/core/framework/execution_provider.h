@@ -55,6 +55,8 @@ class IExecutionProvider {
   // * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
   // */
   //virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const;
+
 
   /**
      Get execution provider's capability for the specified <graph>.
