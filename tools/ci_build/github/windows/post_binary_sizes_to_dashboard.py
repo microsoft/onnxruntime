@@ -26,19 +26,20 @@ def get_binary_sizes(size_data_file):
     binary_size = []
     with open(size_data_file, 'r') as f:
         line = f.readline()
-        headers = line.split(',')
+        headers = line.strip().split(',')
         while line:
             line = f.readline()
             if not line:
                 break;    
-            linedata = line.split(',') 
+            linedata = line.strip().split(',') 
             tablerow = {}
-            for i in range(1,len(headers)):
+            for i in range(0,len(headers)):
                 if headers[i] == 'size':
                     tablerow[headers[i]] = int(linedata[i])
                 else:
                     tablerow[headers[i]] = linedata[i]
             binary_size.append(tablerow)
+    print(binary_size)        
     return binary_size
 
 
@@ -63,15 +64,16 @@ def write_to_db(binary_size_data, args):
 
         #insert current records
         for row in binary_size_data:
+            print (row)
             insert_query = ('INSERT INTO onnxruntime.binary_size '
                 '(build_time, build_project, build_id, commit_id, os, arch, build_config, size) '
                 'VALUES (Now(), "%s", "%s", "%s", "%s", "%s", "%s", %d) '
                 'ON DUPLICATE KEY UPDATE '
-                'build_time=Now(), build_project="%s", build_id="%s", commit_id="%s", os="%s", arch="%s", build_config="%s", size=%d;'
+                'build_time=Now(), build_project="%s", build_id="%s", size=%d;'
             ) % (
-                args.commit_hash, 
                 args.build_project,
                 args.build_id,
+                args.commit_hash, 
                 row['os'],
                 row['arch'],
                 row['build_config'],
@@ -79,20 +81,17 @@ def write_to_db(binary_size_data, args):
 
                 args.build_project,
                 args.build_id,
-                row['os'],
-                row['arch'],
-                row['build_config'],
                 row['size']
             )
-
+            print (insert_query)
             cursor.execute(insert_query) 
-    
+
         cnx.commit()
 
         # # Use below for debugging:
-        # cursor.execute('select * from onnxruntime.test_coverage')
-        # for r in cursor:
-        #     print(r)
+        cursor.execute('select * from onnxruntime.binary_size')
+        for r in cursor:
+            print(r)
             
         cursor.close()
         cnx.close()
