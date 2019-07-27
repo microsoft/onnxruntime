@@ -106,6 +106,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     auto input_arg = parent_graph_->GetNodeArg(input);
     auto& sub_graph_input_arg = sub_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
     sub_graph_inputs[i] = &sub_graph_input_arg;
+    ORT_ENFORCE(input_arg->Type() != nullptr);
     op_schema_->Input(i, input, "", *input_arg->Type());
     ++i;
   }

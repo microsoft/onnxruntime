@@ -302,7 +302,7 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
 
 Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_output, int output_index) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
-  size_t bytes_per_iteration = first_output.Size();
+  size_t bytes_per_iteration = first_output.SizeInBytes();
   const auto& per_iteration_shape = first_output.Shape();
   const auto& per_iteration_dims = per_iteration_shape.GetDims();
 
@@ -317,19 +317,19 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   // we can't easily use a C++ template for the tensor element type,
   // so use a span for some protection but work in bytes
   gsl::span<gsl::byte> output_span = gsl::make_span<gsl::byte>(static_cast<gsl::byte*>(output->MutableDataRaw()),
-                                                               output->Size());
+                                                               output->SizeInBytes());
 
   for (int64_t i = 0; i < num_iterations; ++i) {
     auto& ort_value = per_iteration_output[i];
     auto& iteration_data = ort_value.Get<Tensor>();
 
     // sanity check
-    if (bytes_per_iteration != iteration_data.Size()) {
+    if (bytes_per_iteration != iteration_data.SizeInBytes()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Inconsistent shape in loop output for output ", output_index,
                              " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
-    auto num_bytes = iteration_data.Size();
+    auto num_bytes = iteration_data.SizeInBytes();
     auto src = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(iteration_data.DataRaw()), num_bytes);
     auto dst = output_span.subspan(i * bytes_per_iteration, bytes_per_iteration);
     gsl::copy(src, dst);
@@ -382,8 +382,8 @@ Status LoopImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
   auto copy_tensor_from_mlvalue_to_output = [this](const OrtValue& input, int output_idx) {
     auto& data = input.Get<Tensor>();
     Tensor* output = context_.Output(output_idx, data.Shape());
-    auto src = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(data.DataRaw()), data.Size());
-    auto dst = gsl::make_span<gsl::byte>(static_cast<gsl::byte*>(output->MutableDataRaw()), output->Size());
+    auto src = gsl::make_span<const gsl::byte>(static_cast<const gsl::byte*>(data.DataRaw()), data.SizeInBytes());
+    auto dst = gsl::make_span<gsl::byte>(static_cast<gsl::byte*>(output->MutableDataRaw()), output->SizeInBytes());
     gsl::copy(src, dst);
   };
 

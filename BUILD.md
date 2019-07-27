@@ -30,32 +30,43 @@ OS/Compiler Matrix:
 
 ONNX Runtime python binding only supports Python 3.5, 3.6 and 3.7.
 
-## Build
+## Getting Started
+You may either get a prebuilt onnxruntime from nuget.org, or do it yourself using the following steps:
 1. Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
 2. Install cmake-3.13 or better from https://cmake.org/download/.
-3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF on Windows and turned ON on Linux. After the installation, you should have the 'protoc' executable in your PATH. On Linux it is recommended to run `ldconfig` to make sure protobuf libraries are found.
-4. If you installed your protobuf in a non standard location it would be helpful on Linux build to set the following env var:
-`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it.
-On Linux also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
+
+On Windows:
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH.
+4. (optional) Install onnx from source code (cmake/external/onnx)
+    ```
+    export ONNX_ML=1
+    python3 setup.py bdist_wheel
+    pip3 install --upgrade dist/*.whl
+    ```
+5. Run `build.bat --config RelWithDebInfo --build_shared_lib --parallel`. 
+
+On Linux:
+3. (optional) Install protobuf 3.6.1 from source code (cmake/external/protobuf). CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned ON. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
+4. If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 5. (optional) Install onnx from source code (cmake/external/onnx)
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
-6. Run `./build.sh --config RelWithDebInfo --build_wheel` for Linux (or `build.bat --config RelWithDebInfo --build_wheel` for Windows). Upon successful build you should be able to find the wheel under `dist` folder.
+6. Run `./build.sh --config RelWithDebInfo --build_shared_lib --parallel`.
 
 The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
 
 The complete list of build options can be found by running `./build.sh (or ./build.bat) --help`
 
 ## Build x86
-1. For Windows, just add --x86 argument when launching build.bat
-2. For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
+ - For Windows, just add --x86 argument when launching build.bat
+ - For Linux, it must be built out of a x86 os, --x86 argument also needs be specified to build.sh
 
 ## Build ONNX Runtime Server on Linux
 
