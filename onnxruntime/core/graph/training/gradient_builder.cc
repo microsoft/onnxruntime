@@ -833,5 +833,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("LayerNormalizationGrad",
+              {GO(0), I(0), I(1), O(1), O(2)},
+              {GI(0), GI(1), GI(2)},
+              {SrcNodeAttributes()})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

@@ -2004,6 +2004,77 @@ Example 4:
         },
       }));
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("LayerNormalization")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
+      .AllowUncheckedAttributes()
+      .Input(0, "X", "Input data tensor from the previous layer.", "T")
+      .Input(1, "scale", "Scale tensor.", "T")
+      .Input(2, "B", "Bias tensor.", "T")
+      .Output(0, "Y", "Output data tensor.", "T")
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "T", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+        auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+        int64_t axis = -1;
+        auto axis_proto = ctx.getAttribute("axis");
+        if (axis_proto) {
+          axis = axis_proto->i();
+        }
+        if (axis < 0) {
+          axis += input_ndim;
+        }
+        for (int i = 0; i < input_ndim; ++i) {
+          if (i != axis) {
+            auto dim = saved_mean_shape->add_dim();
+            dim->CopyFrom(input_shape.dim(i));
+          } else {
+            auto dim = saved_mean_shape->add_dim();
+            dim->set_dim_value(1);
+          }
+        }
+        saved_inv_std_var_shape->CopyFrom(*saved_mean_shape);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("LayerNormalization")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .AllowUncheckedAttributes()
+      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(1, "X", "Input data tensor from the forward path", "T")
+      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(3, "mean", "mean of X.", "T")
+      .Input(4, "inv_std_var", "inverse std variance of X.", "T")
+      .Output(0, "X_grad", "Gradient of the input.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

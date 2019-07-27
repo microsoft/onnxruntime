@@ -81,6 +81,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("TrainableDropout", GetTrainableDropoutGradient)
   REGISTER_GRADIENT_BUILDER("GatherND", GetGatherNDGradient)
   REGISTER_GRADIENT_BUILDER("Gelu", GetGeluGradient)
+  REGISTER_GRADIENT_BUILDER("LayerNormalization", GetLayerNormalizationGradient);
 };
 
 }  // namespace training

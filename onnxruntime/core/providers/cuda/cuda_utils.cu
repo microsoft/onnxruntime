@@ -72,5 +72,9 @@ SPECIALIZED_FILL(int8_t)
 SPECIALIZED_FILL(int16_t)
 SPECIALIZED_FILL(int32_t)
 SPECIALIZED_FILL(int64_t)
+SPECIALIZED_FILL(float)
+SPECIALIZED_FILL(double)
+SPECIALIZED_FILL(__half)
+
 }  // namespace cuda
 }  // namespace onnxruntime

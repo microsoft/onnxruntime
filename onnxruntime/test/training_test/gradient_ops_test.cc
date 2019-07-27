@@ -7,6 +7,7 @@
 #include <bitset>
 
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/gradient_checker.h"
 #include "test/providers/gradient_op_test_utils.h"
@@ -1229,6 +1230,85 @@ TEST(OptimizerTest, AdamOptimizerTest) {
 
   test.Run();
 }
+
+
+static void TestLayerNormGradient(const std::vector<int64_t>& X_dims,
+                   const std::vector<int64_t>& scale_dims,
+                   const std::vector<int64_t>& B_dims,
+                   const std::vector<int64_t>& Y_dims,
+                   const std::vector<int64_t>& mean_dims,
+                   const std::vector<int64_t>& var_dims,
+                   optional<float> epsilon,
+                   int64_t axis = -1,
+                   int64_t keep_dims = 1) {
+  OpTester test("LayerNormalization", 9, onnxruntime::kOnnxDomain, false);
+  test.AddAttribute("axis", axis);
+  test.AddAttribute("keep_dims", keep_dims);
+  if (epsilon.has_value()) {
+    test.AddAttribute("epsilon", epsilon.value());
+  }
+
+  int64_t X_size = std::accumulate(X_dims.cbegin(), X_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  int64_t scale_size = std::accumulate(scale_dims.cbegin(), scale_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  int64_t B_size = std::accumulate(B_dims.cbegin(), B_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  int64_t Y_size = std::accumulate(Y_dims.cbegin(), Y_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  int64_t mean_size = std::accumulate(mean_dims.cbegin(), mean_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  int64_t var_size = std::accumulate(var_dims.cbegin(), var_dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+
+  // create rand inputs
+  std::vector<float> X_data(X_size, 1.0f);
+  std::vector<float> scale_data(scale_size, 1.0f);
+  std::vector<float> B_data(B_size, 2.0f);
+  std::vector<float> Y_data(Y_size);
+  std::vector<float> mean_data(mean_size);
+  std::vector<float> var_data(var_size);
+
+  FillRandom<float>(X_data, 0.0f, 1.0f);
+  FillRandom<float>(scale_data, 0.0f, 1.0f);
+  FillRandom<float>(B_data, 0.0f, 1.0f);
+
+  test.AddInput<float>("X", X_dims, X_data);
+  test.AddInput<float>("scale", scale_dims, scale_data, true);
+  test.AddInput<float>("B", B_dims, B_data, true);
+
+  test.AddOutput<float>("output", Y_dims, Y_data);
+  test.AddOutput<float>("mean", mean_dims, mean_data);
+  test.AddOutput<float>("var", var_dims, var_data);
+  test.Run();
+}
+
+TEST(LayerNormGradientTest, BERTLayerNorm) {
+  float epsilon = 1e-05f;
+
+  std::vector<int64_t> X_dims{4, 512, 128};
+  std::vector<int64_t> scale_dims{128};
+  std::vector<int64_t> B_dims{128};
+  std::vector<int64_t> Y_dims{4, 512, 128};
+  std::vector<int64_t> mean_dims{4, 512, 1};
+  std::vector<int64_t> var_dims{4, 512, 1};
+
+  TestLayerNormGradient(X_dims, scale_dims, B_dims, Y_dims, mean_dims, var_dims, epsilon);
+}
+
+TEST(GradientCheckerTest, LayerNormGrad) {
+  GradientChecker<float, float, float> gradient_checker;
+  {
+    TensorShape shape({2, 3, 4});
+    TensorInfo x_info{shape, true};
+    TensorInfo scale_info{{4}, true};
+    TensorInfo B_info{{4}, true};
+    TensorInfo mean_info{{2, 3, 1}, false};
+    TensorInfo var_info{{2, 3, 1}, false};
+
+    float max_error;
+    float error_tolerance = 1e-2f;
+
+    OpDef op_def{"LayerNormalization"};
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, B_info}, {shape, mean_info, var_info}, &max_error);
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
+}
+
 #endif
 
 }  // namespace test
