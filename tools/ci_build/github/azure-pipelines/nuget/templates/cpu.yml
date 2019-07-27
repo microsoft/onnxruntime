@@ -132,13 +132,6 @@ jobs:
       arguments: 'install -q --insecure -y mysql-connector-python'
     timeoutInMinutes: 10
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet'
-    inputs:
-      artifactName: 'drop-nuget'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
-
   - task: CmdLine@2
     displayName: 'Post binary sizes to the dashboard database using command line'
     inputs:
@@ -148,6 +141,16 @@ jobs:
         echo win,x64,openmp,3276987 >> binary_size_data.txt
         echo calling python script to post to database
         $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{ parameters.gitCommitHash }} --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId) 
+    env: 
+      DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet'
+  #   inputs:
+  #     artifactName: 'drop-nuget'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  #   continueOnError: true
+
 
   # - task: DownloadPipelineArtifact@0
   #   displayName: 'Download Pipeline Artifact - Win-x86'
@@ -156,12 +159,12 @@ jobs:
   #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
   #   continueOnError: true
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Linux'
-    inputs:
-      artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - Linux'
+  #   inputs:
+  #     artifactName: 'drop-linux'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  #   continueOnError: true
 
   # - task: DownloadPipelineArtifact@0
   #   displayName: 'Download Pipeline Artifact - Linux-x86'
@@ -170,30 +173,30 @@ jobs:
   #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
   #   continueOnError: true
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - MacOS'
-    inputs:
-      artifactName: 'drop-osx'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - MacOS'
+  #   inputs:
+  #     artifactName: 'drop-osx'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  #   continueOnError: true
 
-  - template: bundle_dlls.yml
+  # - template: bundle_dlls.yml
 
-  - template: ../../templates/esrp_nuget.yml
-    parameters:
-      DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      DoEsrp: ${{ parameters.DoEsrp }}
-
-
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline NuGet Artifact'
-    inputs:
-      artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+  # - template: ../../templates/esrp_nuget.yml
+  #   parameters:
+  #     DisplayName: 'ESRP - sign NuGet package'
+  #     FolderPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  #     DoEsrp: ${{ parameters.DoEsrp }}
 
 
-- template: test_all_os.yml
+  # - task: PublishPipelineArtifact@0
+  #   displayName: 'Publish Pipeline NuGet Artifact'
+  #   inputs:
+  #     artifactName: 'drop-signed-nuget'
+  #     targetPath: '$(Build.ArtifactStagingDirectory)'
+
+
+# - template: test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
   pool: 
