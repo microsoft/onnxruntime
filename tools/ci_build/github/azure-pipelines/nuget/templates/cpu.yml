@@ -100,17 +100,6 @@ jobs:
 #  - MacOS_CI_Dev
   condition: succeeded()
   steps:  
-  - task: CmdLine@2
-    displayName: 'check envinronment'
-    inputs:
-      script: |
-        echo check python
-        where python.exe
-        python --version
-        where conda
-        echo dump env vars
-        set
-        echo changing directory to artifact download path
 
   - task: PowerShell@2
     displayName: 'Download python'
@@ -136,6 +125,13 @@ jobs:
     displayName: 'Post binary sizes to the dashboard database using command line'
     inputs:
       script: |
+        echo checking env var for MYSQL password
+        set DASHBOARD_MYSQL_ORT_PASSWORD
+        echo %DASHBOARD_MYSQL_ORT_PASSWORD%
+
+        echo checking all env
+        set
+
         echo changing directory to artifact download path
         echo os,arch,build_config,size > binary_size_data.txt
         echo win,x64,openmp,3276987 >> binary_size_data.txt
@@ -144,6 +140,7 @@ jobs:
     env: 
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
+  - template: ../../templates/clean-agent-build-directory-step.yml
   # - task: DownloadPipelineArtifact@0
   #   displayName: 'Download Pipeline Artifact - NuGet'
   #   inputs:
