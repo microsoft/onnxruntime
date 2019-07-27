@@ -15,6 +15,12 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 
+#define CONCURRENCY_VISUALIZER
+#ifdef CONCURRENCY_VISUALIZER
+#include <cvmarkersobj.h>
+using namespace Concurrency;
+#endif
+
 namespace onnxruntime {
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
@@ -45,6 +51,17 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   // uncomment the line below to dump execution plan
   //std::cout << std::make_pair(p_seq_exec_plan, &session_state) << "\n";
+  const auto* graph_viewer = session_state.GetGraphViewer();
+
+#ifdef CONCURRENCY_VISUALIZER
+  // need unique name for the series. number of nodes should be good enough for a subgraph
+  const char* series_name = "MainGraph";
+  if (graph_viewer->IsSubgraph()) {
+    series_name = graph_viewer->ParentNode()->Name().c_str();
+  }
+
+  diagnostic::marker_series series(series_name);
+#endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
@@ -53,17 +70,23 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     auto node_index = node_exec_plan.node_index;
+    const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
+
+#ifdef CONCURRENCY_VISUALIZER
+    series.write_flag(node.Name().c_str());
+#endif
+
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-                             session_state.GetGraphViewer()->GetNode(node_index)->Name());
+                             node.Name());
 
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger,
-                                              p_op_kernel->Node().ImplicitInputDefs(), terminate_flag_);
+                                              node.ImplicitInputDefs(), terminate_flag_);
     // TODO: log kernel outputs?
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
@@ -116,13 +139,22 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
-    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
+    Status compute_status;
+
+#ifdef CONCURRENCY_VISUALIZER
+    {
+      diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
+#endif
+
+      compute_status = p_op_kernel->Compute(&op_kernel_context);
+
+#ifdef CONCURRENCY_VISUALIZER
+    }
+#endif
+
     if (!compute_status.IsOK()) {
       std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " <<
-            p_op_kernel->Node().Name() <<
-            " Status Message: " <<
-            compute_status.ErrorMessage();
+      ss << "Non-zero status code returned while running Node: " << p_op_kernel->Node().Name() << " Status Message: " << compute_status.ErrorMessage();
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
       return Status(compute_status.Category(), compute_status.Code(), msg_string);

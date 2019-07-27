@@ -10,6 +10,7 @@
 #include <mutex>
 #include <iostream>
 #include <random>
+#include <chrono>
 // onnxruntime dependencies
 #include <core/common/common.h>
 #include <core/common/status.h>
@@ -27,6 +28,8 @@ namespace onnxruntime {
 namespace perftest {
 
 struct PerformanceResult {
+  std::chrono::time_point<std::chrono::high_resolution_clock> start_;
+  std::chrono::time_point<std::chrono::high_resolution_clock> end_;
   size_t peak_workingset_size{0};
   short average_CPU_usage{0};
   double total_time_cost{0};

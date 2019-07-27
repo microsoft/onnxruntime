@@ -3,6 +3,7 @@
 
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/common/logging/logging.h"
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
 
@@ -14,22 +15,28 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
     return Status::OK();
   }
 
+  bool graph_changed = false;
   for (unsigned step = 0; step < steps_; ++step) {
-    bool graph_changed = false;
+    graph_changed = false;
     for (const auto& transformer : transformers->second) {
       bool modified = false;
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified));
       graph_changed = graph_changed || modified;
     }
+
     if (!graph_changed) {
       break;
     }
   }
 
+  if (graph_changed) {
+    LOGS_DEFAULT(WARNING) << "Graph was still being optimized by transformers but ran out of steps.";
+  }
+
   return Status::OK();
 }
 
-common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level){ 
+common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level) {
   const auto& name = transformer->Name();
   if (transformers_info_.find(name) != transformers_info_.end()) {
     return Status(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);

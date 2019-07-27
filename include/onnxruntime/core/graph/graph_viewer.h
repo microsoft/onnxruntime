@@ -105,6 +105,8 @@ class GraphViewer {
   /** Check if this is a Subgraph */
   bool IsSubgraph() const;
 
+  const Node* ParentNode() const { return graph_->ParentNode(); }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
 

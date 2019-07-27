@@ -51,6 +51,7 @@ Status PerformanceRunner::Run() {
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
+  performance_result_.start_ = std::chrono::high_resolution_clock::now();
 
   std::unique_ptr<utils::ICPUUsage> p_ICPUUsage = utils::CreateICPUUsage();
   switch (performance_test_config_.run_config.test_mode) {
@@ -63,16 +64,19 @@ Status PerformanceRunner::Run() {
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
   }
+  performance_result_.end_ = std::chrono::high_resolution_clock::now();
 
   performance_result_.average_CPU_usage = p_ICPUUsage->GetUsage();
   performance_result_.peak_workingset_size = utils::GetPeakWorkingSetSize();
 
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
+  std::chrono::duration<double> duration = performance_result_.end_ - performance_result_.start_;
 
-  std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
-            << "Total iterations:" << performance_result_.time_costs.size() << std::endl
-            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
+  std::cout << "Total time cost:" << performance_result_.total_time_cost << "\n"
+            << "Total iterations:" << performance_result_.time_costs.size() << "\n"
+            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
+            << "Total time:" << duration.count() << " s" << std::endl;
   return Status::OK();
 }
 
@@ -143,7 +147,11 @@ Status PerformanceRunner::ForkJoinRepeat() {
     for (size_t i = 0; i != performance_test_config_.run_config.concurrent_session_runs; ++i) {
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
-        session_->ThreadSafeRun();
+        // session_->ThreadSafeRun();
+        auto status = RunOneIteration<false>();
+        if (!status.IsOK())
+          std::cerr << status.ErrorMessage();
+
         // Simplified version of Eigen::Barrier
         std::lock_guard<std::mutex> lg(m);
         counter--;
