@@ -164,7 +164,9 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   //TYPED_GRAD_FUNCTION_CALL(uint16_t)
   TYPED_GRAD_FUNCTION_CALL(uint32_t)
   //TYPED_GRAD_FUNCTION_CALL(uint64_t)
-  //TYPED_GRAD_FUNCTION_CALL(MLFloat16)
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 700
+  TYPED_GRAD_FUNCTION_CALL(MLFloat16)
+#endif
   TYPED_GRAD_FUNCTION_CALL(float)
   //TYPED_GRAD_FUNCTION_CALL(double)
   //TYPED_GRAD_FUNCTION_CALL(bool)
