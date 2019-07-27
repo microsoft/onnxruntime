@@ -342,7 +342,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
   Tensor* Y = context->Output(0, Y_dims);
 
   if (no_scale) {
-    memcpy(Y->MutableDataRaw(), X->DataRaw(), Y->Size() * sizeof(T));
+    memcpy(Y->MutableDataRaw(), X->DataRaw(), Y->SizeInBytes());
     return Status::OK();
   }
 

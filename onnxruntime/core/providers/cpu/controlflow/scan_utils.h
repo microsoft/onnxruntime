@@ -103,7 +103,7 @@ class OutputIterator {
   // set the output for the current iteration to zeros. used for short sequence lengths
   void ZeroOutCurrent() {
     auto* tensor = (**this).GetMutable<Tensor>();
-    memset(tensor->MutableDataRaw(), 0, tensor->Size());
+    memset(tensor->MutableDataRaw(), 0, tensor->SizeInBytes());
   }
 
   const OrtValue& GetOutput() const {
