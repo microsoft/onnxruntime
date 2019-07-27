@@ -17,13 +17,13 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }
 }  // namespace
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  auto iter = allocators_.find(MakeKey(id, mem_type));
-  if (iter != allocators_.end()) {
-    return iter->second;
-  }
-  return nullptr;
-}
+//AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+//  auto iter = allocators_.find(MakeKey(id, mem_type));
+//  if (iter != allocators_.end()) {
+//    return iter->second;
+//  }
+//  return nullptr;
+//}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
@@ -49,16 +49,16 @@ common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
 
 common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  const OrtAllocatorInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
-  auto iter = allocators_.find(key);
-  if (iter != allocators_.end()) {
-    ORT_THROW("duplicated allocator");
-  }
-  allocators_.insert(iter, {key, allocator});
-  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
-}
+//void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
+//  const OrtAllocatorInfo& info = allocator->Info();
+//  const int key = MakeKey(info.id, info.mem_type);
+//  auto iter = allocators_.find(key);
+//  if (iter != allocators_.end()) {
+//    ORT_THROW("duplicated allocator");
+//  }
+//  allocators_.insert(iter, {key, allocator});
+//  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
+//}
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {

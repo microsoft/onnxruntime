@@ -3,8 +3,10 @@
 
 #pragma once
 
+
 #include "core/common/common.h"
 #include "core/framework/arena.h"
+#include "gsl/pointers"
 
 namespace onnxruntime {
 
@@ -18,25 +20,46 @@ struct DeviceAllocatorRegistrationInfo {
 
 AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id = 0);
 
-class DeviceAllocatorRegistry {
+using AllocatorMap = std::map<int, AllocatorPtr>;
+
+class AllocatorManager {
  public:
-  void RegisterDeviceAllocator(std::string&& name, DeviceAllocatorFactory factory, size_t max_mem,
-                               OrtMemType mem_type = OrtMemTypeDefault) {
-    DeviceAllocatorRegistrationInfo info({mem_type, factory, max_mem});
-    device_allocator_registrations_.emplace(std::move(name), std::move(info));
+  /**
+     Get all IAllocators for <*this> execution provider.
+  */
+  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+    return allocator_list_;
   }
 
-  const std::map<std::string, DeviceAllocatorRegistrationInfo>& AllRegistrations() const {
-    return device_allocator_registrations_;
-  }
+  /**
+   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
+   */
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(const std::string& execution_provider_type, int id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
-  static DeviceAllocatorRegistry& Instance();
+  /*AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info) const {
+    auto exec_provider = Get(allocator_info);
+    if (exec_provider == nullptr) {
+      return nullptr;
+    }
 
- private:
-  DeviceAllocatorRegistry() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DeviceAllocatorRegistry);
+    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
+  }*/
 
-  std::map<std::string, DeviceAllocatorRegistrationInfo> device_allocator_registrations_;
+  /*OrtAllocatorInfo GetDefaultCpuAllocatorInfo() const {
+    return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
+  }*/
+
+  void InsertAllocator(AllocatorPtr allocator);
+
+private:
+
+  AllocatorMap allocators_;
+
+  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
+  // contains the same instances as allocators_
+  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
 };
 
 }  // namespace onnxruntime

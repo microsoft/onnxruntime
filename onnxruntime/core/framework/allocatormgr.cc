@@ -21,9 +21,30 @@ AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id
   return device_allocator;
 }
 
-DeviceAllocatorRegistry& DeviceAllocatorRegistry::Instance() {
-  static DeviceAllocatorRegistry s_instance;
-  return s_instance;
+namespace {
+//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
+inline int MakeKey(int id, OrtMemType mem_type) {
+  return id << 2 | (mem_type + 2);
+}
+}  // namespace
+
+AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
+  auto iter = allocators_.find(MakeKey(id, mem_type));
+  if (iter != allocators_.end()) {
+    return iter->second;
+  }
+  return nullptr;
+}
+
+void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
+  const OrtAllocatorInfo& info = allocator->Info();
+  const int key = MakeKey(info.id, info.mem_type);
+  auto iter = allocators_.find(key);
+  if (iter != allocators_.end()) {
+    ORT_THROW("duplicated allocator");
+  }
+  allocators_.insert(iter, {key, allocator});
+  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
 }
 
 }  // namespace onnxruntime

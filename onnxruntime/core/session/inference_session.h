@@ -10,6 +10,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/common/status.h"
+#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
@@ -434,6 +435,7 @@ class InferenceSession {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
+  AllocatorManager allocator_mgr_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_;
