@@ -12,6 +12,11 @@ GPUDataTransfer::GPUDataTransfer() {
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 }
 
+GPUDataTransfer::~GPUDataTransfer() {
+  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
+  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
+}
+
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::CUDA_PINNED
          || dst_device.Type() == OrtDevice::GPU || dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED;
