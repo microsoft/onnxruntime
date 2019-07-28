@@ -219,13 +219,13 @@ jobs:
       downloadPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
-  # - task: AzureFileCopy@3
-  #   displayName: 'Copy Signed NuGet Package to Blob Store'
-  #   condition: ${{ parameters.DoEsrp }}
-  #   inputs:
-  #     SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-  #     azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
-  #     Destination: AzureBlob
-  #     storage: ortpackages
-  #     ContainerName: ortpackages
+  - task: AzureFileCopy@3
+    displayName: 'Copy Signed NuGet Package to Blob Store'
+    condition: ${{ parameters.DoEsrp }}
+    inputs:
+      SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+      Destination: AzureBlob
+      storage: ortpackages
+      ContainerName: ortpackages
 
