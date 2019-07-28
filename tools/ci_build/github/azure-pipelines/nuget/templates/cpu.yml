@@ -92,6 +92,8 @@ jobs:
 
 - job: NuGet_Packaging
   pool: $(AgentPoolWin)
+  variables:
+  - group: Dashboard_MySQL_Secret
   dependsOn:
 #  - Windows_CI_Dev
 #   # - Windows_CI_Dev_x86
