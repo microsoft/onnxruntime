@@ -152,7 +152,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     // Fence is created only if queue_id != 0. Retrieving fence with input_index is costly,
     // so we can do fence check only when queue_id != 0.
-    if (queue_id != 0) {
+    if (p_op_kernel->Node().NeedFenceCheck()) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
@@ -214,7 +214,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
 
     // Sync after compute for outputs.
-    if (queue_id != 0) {
+    if (p_op_kernel->Node().NeedFenceCheck()) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {

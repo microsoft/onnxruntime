@@ -271,16 +271,26 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
                                   std::vector<onnxruntime::NodeArg*>{src_arg},
                                   std::vector<onnxruntime::NodeArg*>{dst_arg});
   new_node.SetExecutionProviderType(provider_);
+  
+  // Enable fence check for memcpy node
+  new_node.SetFenceCheck(true);
+
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
   auto it = provider_input_nodes_.find(arg);
   if (it != provider_input_nodes_.end()) {
-    for (auto* node : it->second)
+    for (auto* node : it->second) {
       node->ReplaceDefs(map);
+      // Enable fence check for parent nodes of memcpy.
+      node->SetFenceCheck(true);
+    }
   }
   it = provider_output_nodes_.find(arg);
   if (it != provider_output_nodes_.end()) {
-    for (auto* node : it->second)
+    for (auto* node : it->second) {
       node->ReplaceDefs(map);
+      // Enable fence check for child nodes of memcpy.
+      node->SetFenceCheck(true);
+    }
   }
 }
 

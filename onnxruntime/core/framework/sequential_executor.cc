@@ -74,7 +74,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     
     // Fence is created only if queue_id != 0. Retrieving fence with input_index is costly,
     // so we can do fence check only when queue_id != 0.
-    if (queue_id != 0) {
+    if (p_op_kernel->Node().NeedFenceCheck()) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
@@ -142,7 +142,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       sync_time_begin = session_state.Profiler().StartTime();
     }
 
-    if (queue_id != 0) {
+    if (p_op_kernel->Node().NeedFenceCheck()) {
       // sync after compute for outputs
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);

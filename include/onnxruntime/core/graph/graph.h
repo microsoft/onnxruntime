@@ -167,6 +167,16 @@ class Node {
     return definitions_.output_defs;
   }
 
+  /** Whether current node needs fence check or not. Fence check is needed when either one input or output
+  data needs to be copied cross devices asynchronously, etc CPU<->GPU **/
+  bool NeedFenceCheck() const noexcept {
+    return need_fence_check_;
+  }
+
+  void SetFenceCheck(bool needCheck = false) noexcept {
+    need_fence_check_ = needCheck;
+  }
+
   /** Struct to provide sorting between EdgeEnd instances based on NodeIndex first, and NodeArg::Name second. */
   struct EdgeEndCompare {
     bool operator()(const EdgeEnd& lhs, const EdgeEnd& rhs) const {
@@ -380,7 +390,7 @@ class Node {
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
 
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
+  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), need_fence_check_(false) {}
 
   void Init(const std::string& name,
             const std::string& op_type,
@@ -441,6 +451,9 @@ class Node {
 
   // Device.
   std::string execution_provider_type_;
+
+  // Needs Fence Check or Not.
+  bool need_fence_check_;
 
   // Map from attribute name to attribute.
   // This allows attribute adding and removing.
