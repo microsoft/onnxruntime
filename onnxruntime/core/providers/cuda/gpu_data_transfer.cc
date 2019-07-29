@@ -13,8 +13,8 @@ GPUDataTransfer::GPUDataTransfer() {
 }
 
 GPUDataTransfer::~GPUDataTransfer() {
-  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
-  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
+  CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
+  CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
 }
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
