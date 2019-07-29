@@ -1,6 +1,4 @@
 parameters:
-  nugetArtifactName: 'drop-signed-nuget'
-  downloadPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   gitCommitHash: ''
 
 steps:
@@ -9,7 +7,6 @@ steps:
   inputs:
     artifactName: 'drop-signed-nuget'
     targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-    #{{ parameters.downloadPath }}
 
 - task: UsePythonVersion@0
   inputs:
