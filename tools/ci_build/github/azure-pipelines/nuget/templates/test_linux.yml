@@ -1,10 +1,8 @@
 parameters:
   AgentPool: 'Linux-CPU'
-  JobName: 'NuGet_Test_Linux'
-  TestGPU: 'false'
 
 jobs:
-- job: ${{ parameters.JobName }}
+- job: NuGet_Test_Linux
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging
@@ -20,21 +18,12 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - ${{ if eq(parameters['TestGPU'], 'false') }}:
-    - script: |
-       set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
-      displayName: 'Run Package Test (x64)'
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-
-  - ${{ if eq(parameters['TestGPU'], 'true') }}:
-    - script: |
-       set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker-gpu.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
-      displayName: 'Run Package Test GPU (x64)'
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+  - script: |
+     set -e -x
+     $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
+    displayName: 'Run Package Test (x64)'
+    env:
+      OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
