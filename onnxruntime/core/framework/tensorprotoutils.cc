@@ -557,7 +557,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 
   tensor_proto.set_data_type(tensor_proto_type.tensor_type().elem_type());
 
-  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.Size());
+  tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
 
   return tensor_proto;
 }
