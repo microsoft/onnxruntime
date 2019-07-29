@@ -83,7 +83,9 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
     reverse_ = true;
   }
 
-  cudnn_dropout_desc_.Set(CudnnHandle());
+  cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size_);
+  state_buffer_ = GetScratchBuffer<void>(state_size_);
+  cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size_);
   ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
                                             cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
@@ -133,9 +135,9 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   const Tensor* W;
   const Tensor* R;
   const Tensor* B;
-  bool get_W = info.TryGetConstantInput(Input_Index::W, &W);
-  bool get_R = info.TryGetConstantInput(Input_Index::R, &R);
-  bool get_B = info.TryGetConstantInput(Input_Index::B, &B);
+  bool get_W = info.TryGetConstantInput(RNN_Input_Index::W, &W);
+  bool get_R = info.TryGetConstantInput(RNN_Input_Index::R, &R);
+  bool get_B = info.TryGetConstantInput(RNN_Input_Index::B, &B);
 
   if (get_W && get_R) {
     if (get_B) {
@@ -154,15 +156,15 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // inputs
-  const Tensor* X = ctx->Input<Tensor>(Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
+  const Tensor* X = ctx->Input<Tensor>(RNN_Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
   ORT_ENFORCE(nullptr != X);
 
   // optional inputs
-  const Tensor* sequence_lens = ctx->Input<Tensor>(Input_Index::sequence_lens);  // [batch_size]
-  const Tensor* initial_h = ctx->Input<Tensor>(Input_Index::initial_h);          // initial hidden. [num_directions_, batch_size, hidden_size_]
+  const Tensor* sequence_lens = ctx->Input<Tensor>(RNN_Input_Index::sequence_lens);  // [batch_size]
+  const Tensor* initial_h = ctx->Input<Tensor>(RNN_Input_Index::initial_h);          // initial hidden. [num_directions_, batch_size, hidden_size_]
   const Tensor* initial_c(nullptr);
   if (rnn_mode_ == CUDNN_LSTM) {
-    initial_c = ctx->Input<Tensor>(Input_Index::initial_c);  // initial cell. [num_directions_, batch_size, hidden_size_]
+    initial_c = ctx->Input<Tensor>(RNN_Input_Index::initial_c);  // initial cell. [num_directions_, batch_size, hidden_size_]
   }
 
   int64_t seq_length = X->Shape()[0];
@@ -200,25 +202,26 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   IAllocatorUniquePtr<void> w_data;
   CudnnFilterDescriptor w_desc;
   if (!weight_cached_) {
-    const Tensor& W = *ctx->Input<Tensor>(Input_Index::W);
-    const Tensor& R = *ctx->Input<Tensor>(Input_Index::R);
-    const Tensor* B = ctx->Input<Tensor>(Input_Index::B);
+    const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
+    const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
+    const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
     ReorganizeWeights(&W, &R, B, w_data, w_desc);
   }
 
   IAllocatorUniquePtr<T> x_reversed_data;
-  T* x_data = const_cast<T*>(X->template Data<T>());
+  const T* x_data = X->template Data<T>();
   if (reverse_) {
     // reverse input data
     x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size);
     ReverseBySequence(gsl::narrow_cast<int32_t>(seq_length),
                       gsl::narrow_cast<int32_t>(batch_size),
                       gsl::narrow_cast<int32_t>(input_size),
-                      reinterpret_cast<CudaT*>(x_data),
+                      reinterpret_cast<const CudaT*>(x_data),
                       reinterpret_cast<CudaT*>(x_reversed_data.get()),
                       seq_length * batch_size * input_size);
-    x_data = x_reversed_data.get();
   }
+
+  const T* x_data_input = reverse_ ? x_reversed_data.get() : x_data;
 
   const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->template Data<T>();
   const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->template Data<T>();
@@ -233,32 +236,68 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     y_alloc_data = GetScratchBuffer<T>(output_size);
     y_data = y_alloc_data.get();
   }
+
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
+
+  // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
+  CUDNN_RETURN_IF_ERROR(cudnnSetRNNPaddingMode(rnn_desc_, CUDNN_RNN_PADDED_IO_ENABLED));
 
   size_t workspace_bytes;
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc_, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
-  workspace_bytes *= num_directions_;
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
 
-  CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
-                                                 rnn_desc_,
-                                                 gsl::narrow_cast<int>(seq_length),
-                                                 x_desc.data(),
-                                                 x_data,
-                                                 hx_desc,
-                                                 hx_data,
-                                                 cx_desc,
-                                                 cx_data,
-                                                 weight_cached_ ? w_desc_cache_ : w_desc,
-                                                 weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                                 y_desc.data(),
-                                                 y_data,
-                                                 y_h_desc,
-                                                 y_h_data,
-                                                 y_c_desc,
-                                                 y_c_data,
-                                                 workspace_cuda.get(),
-                                                 workspace_bytes));
+  if (CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_ || nullptr == sequence_lens_data) {
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInference(CudnnHandle(),
+                                                   rnn_desc_,
+                                                   gsl::narrow_cast<int>(seq_length),
+                                                   x_desc.data(),
+                                                   x_data_input,
+                                                   hx_desc,
+                                                   hx_data,
+                                                   cx_desc,
+                                                   cx_data,
+                                                   weight_cached_ ? w_desc_cache_ : w_desc,
+                                                   weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                                   y_desc.data(),
+                                                   y_data,
+                                                   y_h_desc,
+                                                   y_h_data,
+                                                   y_c_desc,
+                                                   y_c_data,
+                                                   workspace_cuda.get(),
+                                                   workspace_bytes));
+  } else {
+    CudnnDataTensor x_desc;
+    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, sequence_lens_data);
+    CudnnDataTensor y_desc;
+    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, sequence_lens_data);
+
+    CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
+                                                     rnn_desc_,
+                                                     x_desc,
+                                                     x_data_input,
+                                                     hx_desc,
+                                                     hx_data,
+                                                     cx_desc,
+                                                     cx_data,
+                                                     weight_cached_ ? w_desc_cache_ : w_desc,
+                                                     weight_cached_ ? w_data_cache_.get() : w_data.get(),
+                                                     y_desc,
+                                                     y_data,
+                                                     y_h_desc,
+                                                     y_h_data,
+                                                     y_c_desc,
+                                                     y_c_data,
+                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     nullptr, nullptr, nullptr, nullptr,
+                                                     workspace_cuda.get(),
+                                                     workspace_bytes));
+    // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
+    if (nullptr == Y) {
+      return Status::OK();
+    }
+  }
+
   IAllocatorUniquePtr<T> y_reorganized_data;
   if (reverse_ || num_directions_ == 2) {
     //reverse output
@@ -288,12 +327,16 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  if (sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
+  if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
+    auto count = sequence_lens->Shape().Size();
+    CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, GetDeviceId(), count);
+    memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, count * sizeof(int32_t));
+    sequence_lens_buffer.CopyToGpu();
     RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
                 gsl::narrow_cast<int32_t>(batch_size),
                 gsl::narrow_cast<int32_t>(hidden_size_),
-                sequence_lens_data,
+                sequence_lens_buffer.GpuPtr(),
                 reinterpret_cast<CudaT*>(y_data),
                 reinterpret_cast<CudaT*>(y_h_data),
                 output_size);

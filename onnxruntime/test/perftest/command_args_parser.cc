@@ -16,6 +16,7 @@
 
 #include <core/graph/constants.h>
 #include <core/framework/path_lib.h>
+#include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"
 
@@ -31,7 +32,7 @@ namespace perftest {
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt' or 'ngraph'. "
+      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph' or 'openvino'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -39,14 +40,15 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x [thread_size]: Use parallel executor, default (without -x): sequential executor.\n"
-      "\t-o [optimization level]: 0: No transformer optimization, 1:basic optimization, 2: full optimization. \n"
+      "\t-x [thread_size]: Session thread pool size.\n"
+      "\t-P: Use parallel executor instead of sequential executor.\n"
+      "\t-o [optimization level]: 0: disable optimization, 1: basic optimization, 2: extended optimization, 3: extended+layout optimization. \n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:c:o:AMvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:c:o:AMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -82,6 +84,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
         } else {
           return false;
         }
@@ -107,11 +111,13 @@ namespace perftest {
         test_config.run_config.f_verbose = true;
         break;
       case 'x':
-        test_config.run_config.enable_sequential_execution = false;
         test_config.run_config.session_thread_pool_size = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.session_thread_pool_size <= 0) {
           return false;
         }
+        break;
+      case 'P':
+        test_config.run_config.enable_sequential_execution = false;
         break;
       case 'c':
         test_config.run_config.concurrent_session_runs =
@@ -122,8 +128,7 @@ namespace perftest {
         break;
       case 'o':
         test_config.run_config.optimization_level = static_cast<uint32_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        // Valid values are: 0, 1, 2.
-        if (test_config.run_config.optimization_level > 2) {
+        if (test_config.run_config.optimization_level >= static_cast<uint32_t>(TransformerLevel::MaxTransformerLevel)) {
           return false;
         }
         break;

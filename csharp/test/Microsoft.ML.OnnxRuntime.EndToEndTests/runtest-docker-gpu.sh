@@ -9,18 +9,21 @@ set -x
 SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
-#CUDA_VER=cuda10.0-cudnn7.3, cuda9.1-cudnn7.1
-CUDA_VER=${4:-cuda9.1-cudnn7.1}
+PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime.Gpu}
+RunTestCsharp=${RunTestCsharp:-true}
+RunTestNative=${RunTestNative:-true}
+#CUDA_VER=cuda10.0-cudnn7.3, cuda9.1-cudnn7.1, cuda10.0-cudnn7.3
+CUDA_VER=${4:-cuda10.0-cudnn7.3}
 
-IMAGE="ubuntu16.04-$CUDA_VER"
 PYTHON_VER=3.5
+IMAGE="ubuntu16.04-$CUDA_VER"
 OldDir=$(pwd)
 
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
 
 DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
 if [ $CUDA_VER = "cuda10.0-cudnn7.3" ]; then
-DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda
+DOCKER_FILE=Dockerfile.ubuntu_gpu
 fi
 
 docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
@@ -36,9 +39,12 @@ docker run -h $HOSTNAME \
         --volume "$BUILD_DIR:/home/onnxruntimedev" \
         --volume "$HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime" \
         -e "OnnxRuntimeBuildDirectory=/home/onnxruntimedev" \
-        -e "IsReleaseBuild=$IsReleaseBuild" \
+        -e "IsReleaseBuild=$ISRELEASEBUILD" \
+        -e "PackageName=$PackageName" \
+        -e "RunTestCsharp=$RunTestCsharp" \
+        -e "RunTestNative=$RunTestNative" \
         "onnxruntime-$IMAGE" \
-        /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-gpu.sh \
+        /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev &
 
 wait -n

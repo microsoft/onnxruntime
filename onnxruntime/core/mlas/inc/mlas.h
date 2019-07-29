@@ -18,8 +18,8 @@ Abstract:
 #pragma once
 // clang-format off
 
-#include <stdlib.h>
-#include <stdint.h>
+#include <cstdlib>
+#include <cstdint>
 
 //
 // Define the calling convention for Windows targets.
@@ -46,7 +46,7 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 //
 // Forward declare the thread pool implementation class.
 //
-// N.B. Avoid including onnxruntime headers here to keep the dependencies for
+// N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
 // standalone MLAS test executables smaller.
 //
 
@@ -59,6 +59,16 @@ namespace onnxruntime {
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
 
 //
+// Platform routines.
+//
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    );
+
+//
 // Activation routines.
 //
 
@@ -68,21 +78,30 @@ enum MLAS_ACTIVATION_KIND {
     MlasLeakyReluActivation,
     MlasTanhActivation,
     MlasLogisticActivation,
+    MlasClipActivation,
 };
 
 struct MLAS_ACTIVATION {
     MLAS_ACTIVATION_KIND ActivationKind;
-    float alpha;
+    union {
+        struct {
+            float alpha;
+        } LeakyRelu;
+        struct {
+            float minimum;
+            float maximum;
+        } Clip;
+        float Values[2];
+    } Parameters;
 };
 
 void
 MLASCALL
 MlasActivation(
     const MLAS_ACTIVATION* Activation,
-    const float* Input,
+    float* Buffer,
     const float* Bias,
     size_t M,
-    float* Output,
     size_t N,
     size_t ldc
     );
@@ -189,6 +208,7 @@ enum MLAS_POOLING_KIND {
     MlasMaximumPooling,
     MlasAveragePoolingExcludePad,
     MlasAveragePoolingIncludePad,
+    MlasPoolingKindCount,
 };
 
 void
@@ -245,4 +265,86 @@ MlasConvertHalfToFloatBuffer(
     const unsigned short* Source,
     float* Destination,
     size_t Count
+    );
+
+//
+// Buffer reordering routines.
+//
+
+void
+MLASCALL
+MlasReorderInput(
+    const int64_t* InputShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderOutput(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderFilterOIHWBiBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderFilterOIHWBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
+
+//
+// Single precision NCHWc routines.
+//
+
+size_t
+MLASCALL
+MlasNchwcGetBlockSize(
+    void
+    );
+
+void
+MLASCALL
+MlasNchwcConv(
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t GroupCount,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* Output,
+    const MLAS_ACTIVATION* Activation,
+    bool ZeroMode,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasNchwcPool(
+    MLAS_POOLING_KIND PoolingKind,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const float* Input,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     );

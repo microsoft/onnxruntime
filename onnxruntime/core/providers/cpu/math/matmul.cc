@@ -61,21 +61,15 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
-  // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
   size_t max_len = helper.OutputOffsets().size();
   for (size_t i = 0; i < max_len; i++) {
-    math::Gemm<T, CPUMathUtil>(
-        CblasNoTrans,
-        CblasNoTrans,
+    math::MatMul<T>(
         static_cast<int>(helper.M()),
         static_cast<int>(helper.N()),
         static_cast<int>(helper.K()),
-        /* alpha */ 1.0f,
         left_X->template Data<T>() + helper.LeftOffsets()[i],
         right_X->template Data<T>() + helper.RightOffsets()[i],
-        /* beta */ 0.0f,
-        Y->template MutableData<T>() + helper.OutputOffsets()[i],
-        &CPUMathUtil::Instance());
+        Y->template MutableData<T>() + helper.OutputOffsets()[i]);
   }
 
   return Status::OK();

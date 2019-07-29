@@ -28,6 +28,7 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/shape_to_initializer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -37,16 +38,6 @@ namespace test {
 
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
-// Returns a map with the number of occurrences of each operator in the graph.
-// Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int> CountOpsInGraph(const Graph& graph) {
-  std::map<std::string, int> op_to_count;
-  for (auto& node : graph.Nodes()) {
-    op_to_count[node.OpType()] =
-        op_to_count.count(node.OpType()) == 0 ? 1 : ++op_to_count[node.OpType()];
-  }
-  return op_to_count;
-}
 TEST(GraphTransformationTests, IdentityElimination) {
   string model_uri = MODEL_FOLDER + "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -65,7 +56,7 @@ TEST(GraphTransformationTests, IdentityElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 0);
 }
 
-TEST(GraphTransformationTests, DropoutEliminationSingleOutput) {
+TEST(GraphTransformationTests, DropoutElimination) {
   string model_uri = MODEL_FOLDER + "dropout.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -107,7 +98,7 @@ TEST(GraphTransformationTests, SliceElimination) {
   ASSERT_TRUE(op_to_count["Slice"] == 4);
 }
 
-TEST(GraphTransformationTests, ConstantFolding1) {
+TEST(GraphTransformationTests, ConstantFolding) {
   string model_uri = MODEL_FOLDER + "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
@@ -122,6 +113,102 @@ TEST(GraphTransformationTests, ConstantFolding1) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
+  TensorProto value_tensor;
+  value_tensor.add_dims(1);
+  value_tensor.add_float_data(1.f);
+  value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  TypeProto float_tensor_type;
+  float_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto create_subgraph = [&](GraphProto& graph_proto) {
+    // create subgraph that has an Add node to add a local and parent graph initializer
+    Model model("ConstantFoldingSubgraphTest_subgraph");
+    auto& graph = model.MainGraph();
+
+    TensorProto local_constant(value_tensor);
+    local_constant.set_name("local_constant");
+    graph.AddInitializedTensor(local_constant);
+
+    auto& local_constant_arg = graph.GetOrCreateNodeArg("local_constant", &float_tensor_type);
+    auto& parent_constant_arg = graph.GetOrCreateNodeArg("parent_constant", &float_tensor_type);
+    graph.AddOuterScopeNodeArg("parent_constant");
+
+    auto& add_out = graph.GetOrCreateNodeArg("add_out", &float_tensor_type);
+    graph.AddNode("add", "Add", "Add two inputs.", {&parent_constant_arg, &local_constant_arg}, {&add_out});
+
+    auto& subgraph_out = graph.GetOrCreateNodeArg("subgraph_out", &float_tensor_type);
+    graph.AddNode("identity", "Identity", "So Add isn't providing graph output.", {&add_out}, {&subgraph_out});
+
+    auto status = graph.Resolve();
+    ASSERT_TRUE(status.IsOK()) << status;
+    graph_proto = graph.ToGraphProto();
+  };
+
+  Model model("ConstantFoldingSubgraphTest_main_graph");
+  auto& graph = model.MainGraph();
+
+  // add initializer at parent level
+  TensorProto parent_value_tensor(value_tensor);
+  parent_value_tensor.set_name("parent_constant");
+  graph.AddInitializedTensor(parent_value_tensor);
+
+  // put the subgraph in an If node
+  TypeProto if_cond_type;
+  if_cond_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  if_cond_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  auto& if_cond_input = graph.GetOrCreateNodeArg("if_in", &if_cond_type);
+  auto& if_output = graph.GetOrCreateNodeArg("if_out", &float_tensor_type);
+
+  auto& if_node = graph.AddNode("if", "If", "If node", {&if_cond_input}, {&if_output});
+
+  GraphProto subgraph;
+  create_subgraph(subgraph);
+
+  if_node.AddAttribute("then_branch", {subgraph});
+  if_node.AddAttribute("else_branch", {subgraph});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 2);  // one in each subgraph
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+
+  status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0)
+      << "Constant folding should have been able to remove the Add node in both subgraphs";
+}
+
+TEST(GraphTransformationTests, ShapeToInitializer) {
+  string model_uri = MODEL_FOLDER + "shape-add.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 4);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  rule_transformer_L1->Register(std::make_unique<ShapeToInitializer>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  // Two of the Shapes are not eliminated because:
+  // One includes a symbolic dimension.
+  // Another one includes a negative dimension
+  ASSERT_TRUE(op_to_count["Shape"] == 2);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -201,6 +288,7 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<std::string, std::string> model_to_op_name{{"fusion/conv_relu.onnx", "Relu"},
+                                                                {"fusion/conv_clip.onnx", "Clip"},
                                                                 {"fusion/conv_sigmoid.onnx", "Sigmoid"},
                                                                 {"fusion/conv_tanh.onnx", "Tanh"},
                                                                 {"fusion/conv_leakyrelu.onnx", "LeakyRelu"}};
@@ -271,6 +359,34 @@ TEST(GraphTransformationTests, FuseConvAddNoBias) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+}
+
+// if IR version is 4 or higher the weights can be overridden if there's a matching graph input.
+// check that we don't fuse if that is the case
+TEST(GraphTransformationTests, NegativeFuseConvAddNoBias) {
+  string model_uri = MODEL_FOLDER + "fusion/negative-fuse-conv-add-no-bias.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<UnsqueezeElimination>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto rule_transformer_L2 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL2");
+  rule_transformer_L2->Register(std::make_unique<ConvAddFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L2), TransformerLevel::Level2);
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1).IsOK());
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2).IsOK());
+
+  // Nodes are not fused because the weights to conv/add are not constants (they appear in the graph inputs).
+  // Unsqueeze is also not eliminated as the initializer that is its input is also not constant
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] != 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
 TEST(GraphTransformationTests, FuseConvAddMul3D) {

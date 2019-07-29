@@ -100,6 +100,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
+#if defined DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
+#endif
+
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_before",
@@ -162,6 +166,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
     }
 
+#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
+    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
+
     // free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values after computing kernel: " << p_op_kernel->Node().Name();
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
@@ -173,7 +181,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   VLOGS(logger, 1) << "Done with execution.";
 
   if (frame.HasMemoryPatternPlanner()) {
-    std::vector<TensorShape> input_shapes;
+    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
@@ -181,7 +189,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         break;
       }
       auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(tensor.Shape());
+      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {

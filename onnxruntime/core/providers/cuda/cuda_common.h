@@ -4,6 +4,7 @@
 #pragma once
 #include "cuda_pch.h"
 #include "core/common/status.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
 #include "shared_inc/cuda_call.h"
@@ -137,8 +138,10 @@ class CudaKernel : public OpKernel {
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
-    return provider_->CopyTensor(src, dst);
+    return Info().GetDataTransferManager().CopyTensor(src, dst);
   }
+
+  inline int GetDeviceId() const { return provider_->GetDeviceId(); }
 
  private:
   CUDAExecutionProvider* provider_;

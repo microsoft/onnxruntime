@@ -54,6 +54,8 @@ using google::protobuf::RepeatedPtrField;
 
 using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(&OrtReleaseValue)>;
 
+const std::string TestModelInfo::unknown_version = "unknown version";
+
 namespace {
 
 template <typename T>
@@ -90,7 +92,7 @@ OrtValue* CreateTensorWithDataAsOrtValue(OrtAllocatorInfo* info, std::vector<T>&
 template <typename key_type, typename value_type>
 OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
   OrtAllocatorInfo* info;
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
   const size_t ele_count = map.size();
   std::vector<int64_t> dims(1, ele_count);
@@ -120,7 +122,7 @@ OrtValue* PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map
 template <typename T>
 void VectorProtoToOrtValue(const RepeatedPtrField<T>& input, ORT_VALUE_HOLDER& output) {
   OrtAllocatorInfo* info;
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &info));
+  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtDeviceAllocator, OrtMemTypeDefault, &info));
   std::unique_ptr<OrtAllocatorInfo, decltype(&OrtReleaseAllocatorInfo)> rel_info(info, OrtReleaseAllocatorInfo);
   OrtValueArray in(input.size());
   size_t j = 0;
@@ -177,7 +179,7 @@ using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
-  std::string onnx_commit_tag_ = "";
+  std::string onnx_commit_tag_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
 
@@ -210,6 +212,8 @@ class OnnxModelInfo : public TestModelInfo {
     const std::regex onnx_tag_regex("onnx[0-9a-z]{3}"); //e.g. onnx141, onnx150, onnxtip
     if (std::regex_search(url_string, match, onnx_tag_regex)) {
       onnx_commit_tag_ = match[0].str();   
+    } else {
+      onnx_commit_tag_ = TestModelInfo::unknown_version;
     }
 #endif
     const ONNX_NAMESPACE::GraphProto& graph = model_pb.graph();
