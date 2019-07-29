@@ -117,6 +117,17 @@ void RegisterGradientSchemas() {
           "Constrain indices to integer types")
       .ReferenceAttributes("Gather");
 
+  ONNX_GRADIENT_OPERATOR_SCHEMA(DivGrad)
+      .Input(0, "dY", "Gradient of output", "T")
+      .Input(1, "A", "dividend", "T")
+      .Input(2, "B", "divisor", "T")
+      .Output(0, "dA", "Gradient of dividend", "T", OpSchema::Optional)
+      .Output(1, "dB", "Gradient of divisor", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          { "tensor(float16)", "tensor(float)", "tensor(double)" },
+          "Constrain input and output types to numeric tensors.");
+
   //TODO: Move this to the right location. Its only here for quick experimentation.
   //TODO: Use the mutli weight / grad version.
   ONNX_CONTRIB_OPERATOR_SCHEMA(SGDOptimizer)

@@ -620,9 +620,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   return output;
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
-  bool is_div = (SrcNodeOpType() == "Div");
-
+IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
   const ArgDef &a = I(0), b = I(1);
 
   std::vector<Dimension> a_shape = GetShape(a);
@@ -632,25 +630,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
 
   std::vector<NodeDef> output;
 
-  if (is_div) {
-    NodeDef one_constant_node = OneConstantNode();
-    ArgDef ONE = one_constant_node.output_args[0];
-    output.push_back(one_constant_node);
-    output.push_back(NodeDef("Div", {ONE, I(1)}, {IA("Inv_I1")}));
-  }
-
   if (IsGradientRequiredForSrcNodeInput(0)) {
-    if (is_div) {
-      output.push_back(
-          NodeDef("Mul",
-                  {GO(0), IA("Inv_I1")},
-                  {IA("PreReduceGrad0")}));
-    } else {
-      output.push_back(
-          NodeDef("Mul",
-                  {GO(0), I(1)},
-                  {IA("PreReduceGrad0", OType(0))}));
-    }
+    output.push_back(
+        NodeDef("Mul",
+                {GO(0), I(1)},
+                {IA("PreReduceGrad0", OType(0))}));
 
     if (a_axes.size() > 0) {
       HandleBroadcasting(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes, output);
@@ -663,29 +647,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
   }
 
   if (IsGradientRequiredForSrcNodeInput(1)) {
-    if (is_div) {
-      output.push_back(
-          NodeDef("Mul",
-                  {IA("Inv_I1"), IA("Inv_I1")},
-                  {IA("Squared_Inv_I1")}));
-      output.push_back(
-          NodeDef("Neg",
-                  {IA("Squared_Inv_I1")},
-                  {IA("Neg_Squared_Inv_I1")}));
-      output.push_back(
-          NodeDef("Mul",
-                  {I(0), IA("Neg_Squared_Inv_I1")},
-                  {IA("I0_Mul_Neg_Squared_Inv_I1")}));
-      output.push_back(
-          NodeDef("Mul",
-                  {GO(0), IA("I0_Mul_Neg_Squared_Inv_I1")},
-                  {IA("PreReduceGrad1")}));
-    } else {
-      output.push_back(
-          NodeDef("Mul",
-                  {GO(0), I(0)},
-                  {IA("PreReduceGrad1", OType(0))}));
-    }
+    output.push_back(
+        NodeDef("Mul",
+                {GO(0), I(0)},
+                {IA("PreReduceGrad1", OType(0))}));
 
     if (b_axes.size() > 0) {
       HandleBroadcasting(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes, output);
@@ -697,6 +662,28 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulDivGradient) {
     }
   }
   return output;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
+  if (IsGradientRequiredForSrcNodeInput(0) && IsGradientRequiredForSrcNodeInput(1))
+    return std::vector<NodeDef>{
+        NodeDef("DivGrad",
+                {GO(0), I(0), I(1)},
+                {GI(0), GI(1)})};
+  else if (IsGradientRequiredForSrcNodeInput(0))
+    return std::vector<NodeDef>{
+        NodeDef("DivGrad",
+                {GO(0), I(0), I(1)},
+                {GI(0)})};
+  else if (IsGradientRequiredForSrcNodeInput(1))
+    return std::vector<NodeDef>{
+        NodeDef("DivGrad",
+                {GO(0), I(0), I(1)},
+                // TODO: this IA("") does not cause kernel to know it is unneeded.
+                // Gradient for the first input is still calculated.
+                {IA(""), GI(1)})};
+  else
+    return std::vector<NodeDef>{};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {

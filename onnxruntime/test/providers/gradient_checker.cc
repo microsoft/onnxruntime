@@ -141,12 +141,14 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       op_session.Run(y_idx, c);
       auto gradients = op_session.GetFetches();
 
-      for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
+      for (int x_idx = 0, grad_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
         if (!x_infos[x_idx].has_gradient) {
           continue;
         }
+
         const int64_t x_size = x_infos[x_idx].shape.Size();
-        auto dx_flat = gradients[x_idx].Get<Tensor>().Data<X_T>();
+        auto dx_flat = gradients[grad_idx].Get<Tensor>().Data<X_T>();
+        grad_idx++;
 
         for (int r = 0; r < static_cast<int>(x_size); ++r) {
           auto calc_index = CalculateJacobianTransposeIndex(
@@ -273,15 +275,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
     JAC_T* max_error,
-    const std::vector<AttributeProto>& attributes) {
-  // Initialize theoretical Jacobians to zeros.
-  std::vector<std::vector<JAC_T>> jacobian_ts;
-  InitJacobians(x_infos, y_infos, &jacobian_ts);
-
-  // Compute theoretical Jacobian.
-  ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(
-      op_def, x_infos, y_infos, x_datas, y_datas, &jacobian_ts, attributes));
-
+    const std::vector<AttributeProto>& attributes, 
+    bool check_not_have_gradient) {
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
   InitJacobians(x_infos, y_infos, &jacobian_ns);
@@ -292,18 +287,62 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
-  for (size_t i = 0; i < jacobian_ts.size(); i++) {
-    auto jac_t = jacobian_ts[i];
-    auto jac_n = jacobian_ns[i];
-    for (size_t r = 0; r < jacobian_ts[i].size(); ++r) {
-      auto cur_error = std::fabs(jac_t[r] - jac_n[r]);
-      // Treat any NaN as max_error and immediately return.
-      // (Note that std::max may ignore NaN arguments.)
-      if (std::isnan(cur_error)) {
-        *max_error = cur_error;
-        return Status::OK();
+
+  // It is necessary to test for inputs with or without gradient.
+  // We simply set each input without gradient to test the rest inputs' gradient.
+  // In the last loop it tests for the case where all inputs are with gradient.
+  size_t total_gradient_variations = check_not_have_gradient ? x_infos.size() + 1 : 1;
+  for (int x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
+    // Initialize theoretical Jacobians to zeros.
+    std::vector<std::vector<JAC_T>> jacobian_ts;
+    InitJacobians(x_infos, y_infos, &jacobian_ts);
+
+    std::vector<TensorInfo> x_infos_gradient_variation = x_infos;
+
+    if (check_not_have_gradient && x_gradient_variation < x_infos.size())
+      x_infos_gradient_variation[x_gradient_variation].has_gradient = false;
+
+    if (std::all_of(x_infos_gradient_variation.cbegin(), x_infos_gradient_variation.cend(),
+                    [](const TensorInfo& info) { return !info.has_gradient; }))
+      // a gradient node cannot get created without any has_gradient node.
+      continue;
+
+    // Compute theoretical Jacobian.
+    ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(
+        op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, attributes));
+
+    // We have numeric jacobians regardless of has_gradient (computed once).
+    // We only have theoretical jacobians for those has_gradient.
+    // Theoretical jacobians are 0 for those not has_gradient.
+    int64_t j = 0;
+    for (auto& x_info : x_infos_gradient_variation) {
+      if (!x_info.has_gradient) {
+        // TODO: These 4 test failed at following ORT_ENFORCE. need investigate before enable it.
+        //GradientCheckerTest.MatMulGrad
+        //GradientCheckerTest.GemmGrad
+        //GradientCheckerTest.GatherNDGrad_int64_indice_repeat_float_data
+        //GradientCheckerTest.GatherNDGrad_int64_indice_unique_float_data
+        //auto jac_t = jacobian_ts[j];
+        //ORT_ENFORCE(std::all_of(
+        //    &jac_t[0], &jac_t[0] + x_info.shape.Size(), [](auto dx) { return dx == 0; }));
+        j += x_info.shape.Size();
+      } else {
+        for (int r = 0; r < x_info.shape.Size(); j++, r++) {
+          auto jac_t = jacobian_ts[j];
+          auto jac_n = jacobian_ns[j];
+          for (size_t i = 0; i < jac_t.size(); i++) {
+            // dy_i/dx_j for x with gradient.
+            auto cur_error = std::fabs(jac_t[i] - jac_n[i]);
+            // Treat any NaN as max_error and immediately return.
+            // (Note that std::max may ignore NaN arguments.)
+            if (std::isnan(cur_error)) {
+              *max_error = cur_error;
+              return Status::OK();
+            }
+            *max_error = std::max(*max_error, cur_error);
+          }
+        }
       }
-      *max_error = std::max(*max_error, cur_error);
     }
   }
   return Status::OK();
@@ -315,7 +354,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const std::vector<TensorInfo>& x_infos,
     const std::vector<TensorInfo>& y_infos,
     JAC_T* max_error,
-    const std::vector<AttributeProto>& attributes) {
+    const std::vector<AttributeProto>& attributes,
+    bool check_not_have_gradient/* = true*/) {
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
@@ -344,7 +384,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes);
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, 
+      attributes, check_not_have_gradient);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
