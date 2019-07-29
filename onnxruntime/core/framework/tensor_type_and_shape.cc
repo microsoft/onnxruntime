@@ -30,7 +30,7 @@ ORT_API_STATUS_IMPL(OrtCreateTensorTypeAndShapeInfo, _Out_ OrtTensorTypeAndShape
   API_IMPL_END
 }
 
-ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ const OrtTensorTypeAndShapeInfo* ptr) {
+ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorTypeAndShapeInfo* ptr) {
   delete ptr;
 }
 

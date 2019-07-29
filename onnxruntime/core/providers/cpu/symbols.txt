@@ -51,7 +51,7 @@ OrtGetValueCount
 OrtGetValueType
 OrtGetVersionString
 OrtIsTensor
-OrtOnnxTypeFromTypeInfo
+OrtGetOnnxTypeFromTypeInfo
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseCustomOpDomain

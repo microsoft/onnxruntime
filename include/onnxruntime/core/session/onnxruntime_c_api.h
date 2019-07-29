@@ -373,7 +373,7 @@ ORT_API_STATUS(OrtCastTypeInfoToTensorInfo, _In_ const OrtTypeInfo*, _Out_ const
 /**
  * Return OnnxType from OrtTypeInfo
  */
-ORT_API_STATUS(OrtOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
+ORT_API_STATUS(OrtGetOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);
 
 /**
  * The 'out' value should be released by calling OrtReleaseTensorTypeAndShapeInfo
@@ -561,7 +561,7 @@ struct OrtCustomOpApi {
   OrtStatus*(ORT_API_CALL* SetDimensions)(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
   OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Outptr_ void** data);
 
-  void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(_In_ const OrtTensorTypeAndShapeInfo* input);
+  void(ORT_API_CALL* ReleaseTensorTypeAndShapeInfo)(_In_ OrtTensorTypeAndShapeInfo* input);
 
   OrtStatus*(ORT_API_CALL* KernelContext_GetInputCount)(_In_ const OrtKernelContext* context, _Out_ size_t* out);
   OrtStatus*(ORT_API_CALL* KernelContext_GetInput)(_In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out);
@@ -607,13 +607,13 @@ ORT_API_STATUS(OrtCreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCus
  * Add custom ops to the OrtCustomOpDomain
  *  Note: The OrtCustomOp* pointer must remain valid until the OrtCustomOpDomain using it is released
 */
-ORT_API_STATUS(OrtCustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ const OrtCustomOp* op);
+ORT_API_STATUS(OrtCustomOpDomain_Add, _Inout_ OrtCustomOpDomain* custom_op_domain, _In_ OrtCustomOp* op);
 
 /*
  * Add a custom op domain to the OrtSessionOptions
  *  Note: The OrtCustomOpDomain* must not be deleted until the sessions using it are released
 */
-ORT_API_STATUS(OrtAddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ const OrtCustomOpDomain* custom_op_domain);
+ORT_API_STATUS(OrtAddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
 /*
  * END EXPERIMENTAL
 */

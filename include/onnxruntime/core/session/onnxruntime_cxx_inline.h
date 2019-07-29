@@ -289,7 +289,7 @@ inline Unowned<TensorTypeAndShapeInfo> TypeInfo::GetTensorTypeAndShapeInfo() con
 
 inline ONNXType TypeInfo::GetONNXType() const {
   ONNXType out;
-  ORT_THROW_ON_ERROR(OrtOnnxTypeFromTypeInfo(p_, &out));
+  ORT_THROW_ON_ERROR(OrtGetOnnxTypeFromTypeInfo(p_, &out));
   return out;
 }
 
@@ -467,7 +467,7 @@ inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndSh
   return output;
 }
 
-inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo* input) {
+inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input) {
   api_.ReleaseTensorTypeAndShapeInfo(input);
 }
 
