@@ -54,16 +54,16 @@ class NchwcTransformerImpl {
         bool is_dim_equal = false;
         // Test if this dimension is derived from the same NodeArg.
         if (dims_[dim] == other.dims_[dim]) {
-           if (dim >= kNchwcBatchChannelDims) {
-             // Test if the NodeArg has been shifted down the same number of
-             // times due to striding.
-             int spatial_dim = dim - kNchwcBatchChannelDims;
-             if (shifts_[spatial_dim] == other.shifts_[spatial_dim]) {
-               is_dim_equal = true;
-             }
-           } else {
-             is_dim_equal = true;
-           }
+          if (dim >= kNchwcBatchChannelDims) {
+            // Test if the NodeArg has been shifted down the same number of
+            // times due to striding.
+            int spatial_dim = dim - kNchwcBatchChannelDims;
+            if (shifts_[spatial_dim] == other.shifts_[spatial_dim]) {
+              is_dim_equal = true;
+            }
+          } else {
+            is_dim_equal = true;
+          }
         }
         return is_dim_equal;
       }
