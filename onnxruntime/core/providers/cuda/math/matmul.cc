@@ -10,10 +10,19 @@ namespace onnxruntime {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      MatMul,                                                     \
+      kOnnxDomain,                                                \
+      1, 8,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      MatMul<T>);                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       MatMul,                                                     \
       kOnnxDomain,                                                \
-      1,                                                          \
+      9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -58,7 +67,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.N())));
     return Status::OK();
   }
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<const CudaT*> left_arrays(this, device_id, helper.LeftOffsets().size());
   CudaAsyncBuffer<const CudaT*> right_arrays(this, device_id, helper.RightOffsets().size());
   CudaAsyncBuffer<CudaT*> output_arrays(this, device_id, helper.OutputOffsets().size());
@@ -69,7 +78,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
 
-  // note that onnxruntime MLValue is row major, while cublas is column major,
+  // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
       Base::CublasHandle(),

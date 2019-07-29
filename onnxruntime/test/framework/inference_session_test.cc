@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
@@ -25,12 +26,17 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/gpu_data_transfer.h"
+#endif
 #include "core/session/IOBinding.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/optimizer/dummy_graph_transformer.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 
 #include "gtest/gtest.h"
 
@@ -110,24 +116,13 @@ class FuseExecutionProvider : public IExecutionProvider {
     static std::shared_ptr<KernelRegistry> kernel_registry = GetFusedKernelRegistry();
     return kernel_registry;
   }
-
-  common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_UNUSED_PARAMETER(src);
-    ORT_UNUSED_PARAMETER(dst);
-    return Status::OK();
-  }
-
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
 };
 
 namespace test {
-static void VerifyOutputs(const std::vector<MLValue>& fetches,
-                          const std::vector<int64_t>& expected_dims,
+static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
-static const std::string MODEL_URI = "testdata/mul_1.pb";
-static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.pb.noopset";
+static const std::string MODEL_URI = "testdata/mul_1.onnx";
+static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.noopset.onnx";
 //static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
@@ -165,8 +160,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
-void VerifyOutputs(const std::vector<MLValue>& fetches,
-                   const std::vector<int64_t>& expected_dims,
+void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
@@ -183,7 +177,7 @@ void RunModel(InferenceSession& session_object,
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value);
   NameMLValMap feeds;
@@ -192,7 +186,7 @@ void RunModel(InferenceSession& session_object,
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("Y");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
@@ -235,11 +229,11 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       */
   // bind one input to cpu allocator from bind_provider_type, and another on user provided CPU memory
   // so both code pathes are covered
-  MLValue input_ml_value_A;
+  OrtValue input_ml_value_A;
   std::vector<int64_t> dims_mul_x_A = {3, 4};
   CreateMLValue<float>(input_allocator, dims_mul_x_A, values_mul_x, &input_ml_value_A);
 
-  MLValue input_ml_value_B;
+  OrtValue input_ml_value_B;
   std::vector<int64_t> dims_mul_x_B = {4, 3};
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
                        &input_ml_value_B);
@@ -249,7 +243,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   // prepare outputs
   std::vector<int64_t> expected_output_dims = {3, 3};
-  MLValue output_ml_value;
+  OrtValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
       AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
@@ -279,7 +273,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       allocation_provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
     // in this case we need to copy the tensor from cuda to cpu
-    vector<MLValue>& outputs = io_binding->GetOutputs();
+    vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
@@ -288,9 +282,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
                                                                   shape,
                                                                   cpu_allocator);
-    st = TestCudaExecutionProvider()->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
-    MLValue ml_value;
+    OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -312,8 +306,9 @@ TEST(InferenceSessionTests, NoTimeout) {
   so.session_logid = "InferenceSessionTests.NoTimeout";
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  Status st;
+  ASSERT_TRUE((st = session_object.Load(MODEL_URI)).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
 
   RunOptions run_options;
   run_options.run_tag = "one session/one tag";
@@ -351,8 +346,8 @@ static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
     if (!x->Shape()) {
       continue;
     }
-    vector<int64_t> x_shape = utils::GetTensorShapeFromTensorShapeProto(*x->Shape());
-    vector<int64_t> y_shape = utils::GetTensorShapeFromTensorShapeProto(*y->Shape());
+    auto x_shape = utils::GetTensorShapeFromTensorShapeProto(*x->Shape());
+    auto y_shape = utils::GetTensorShapeFromTensorShapeProto(*y->Shape());
     if (x->Name() == y->Name() && x_shape == y_shape && *x->Type() == *y->Type()) {
       continue;
     }
@@ -442,6 +437,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 
   RunOptions run_options;
   run_options.run_tag = "RunTag";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModel(session_object, run_options);
 
 #ifndef NDEBUG
@@ -581,6 +577,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   SessionOptions so;
 
   so.session_logid = "ConfigureVerbosityLevel";
+  so.session_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   so.session_log_verbosity_level = 1;
 
   // create CapturingSink. LoggingManager will own it, but as long as the logging_manager
@@ -599,6 +596,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   RunOptions run_options;
   run_options.run_tag = "ConfigureVerbosityLevel";
+  run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   run_options.run_log_verbosity_level = 1;
   RunModel(session_object, run_options);
 
@@ -681,9 +679,10 @@ static void TestBindHelper(const std::string& log_str,
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, run_provider_type);
 
-  std::stringstream s1;
-  p_model->ToProto().SerializeToOstream(&s1);
-  ASSERT_TRUE(session_object.Load(s1).IsOK());
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
   RunOptions run_options;
@@ -709,15 +708,16 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   std::unique_ptr<Model> p_model;
   CreateMatMulModel(p_model, kCpuExecutionProvider);
 
-  std::stringstream s1;
-  p_model->ToProto().SerializeToOstream(&s1);
-  ASSERT_TRUE(session_object.Load(s1).IsOK());
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::stringstream sstr(s1);
+  ASSERT_TRUE(session_object.Load(sstr).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
 
-  MLValue ml_value1;
+  OrtValue ml_value1;
   vector<float> v1{2.f};
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v1, &ml_value1);
   io_binding->BindOutput("foo", ml_value1);
@@ -728,7 +728,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
     ASSERT_TRUE(v1[i] == span[i]);
   }
 
-  MLValue ml_value2;
+  OrtValue ml_value2;
   vector<float> v2{3.f};
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v2, &ml_value2);
   io_binding->BindOutput("foo", ml_value2);
@@ -755,7 +755,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                          &ml_value);
   NameMLValMap feeds;
@@ -764,7 +764,7 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("Y");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_y = {3, 2};
@@ -826,55 +826,19 @@ TEST(InferenceSessionTests, ModelWithoutOpset) {
   }
 }
 
-static ONNX_NAMESPACE::ModelProto CreateModelWithOptionalInputs() {
-  Model model("ModelWithOptionalInputs");
-  auto& graph = model.MainGraph();
-
-  // create an initializer, which is an optional input that can be overridden
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.add_dims(1);
-  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
-  tensor_proto.add_float_data(1.f);
-  tensor_proto.set_name("optional_input");
-
-  graph.AddInitializedTensor(tensor_proto);
-
-  TypeProto single_float;
-  single_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  single_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-
-  auto& required_input = graph.GetOrCreateNodeArg("required_input", &single_float);
-  auto& optional_input = graph.GetOrCreateNodeArg("optional_input", nullptr);
-  auto& add_output = graph.GetOrCreateNodeArg("add_output", &single_float);
-
-  EXPECT_TRUE(optional_input.Shape() != nullptr) << "AddInitializedTensor should have created the NodeArg with shape.";
-
-  graph.AddNode("add", "Add", "Add required and optional inputs", {&required_input, &optional_input}, {&add_output});
-
-  auto status = graph.Resolve();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-  auto model_proto = model.ToProto();
-
-  return model_proto;
-}
-
 static common::Status RunOptionalInputTest(bool add_required_input,
                                            bool add_optional_input,
-                                           bool add_invalid_input) {
-  auto model_proto = CreateModelWithOptionalInputs();
-
+                                           bool add_invalid_input,
+                                           int model_ir_version) {
   SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestOptionalInputs";
+  so.session_logid = "RunOptionalInputTest";
 
   InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status status;
+  std::string model_path = "testdata/optional_inputs_ir" + std::to_string(model_ir_version) + ".onnx";
 
-  std::stringstream s1;
-  model_proto.SerializeToOstream(&s1);
-  auto status = session_object.Load(s1);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  status = session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ORT_RETURN_IF_ERROR(session_object.Load(model_path));
+  ORT_RETURN_IF_ERROR(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
@@ -882,18 +846,23 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   // prepare inputs
   std::vector<int64_t> dims = {1};
   std::vector<float> required_input_val = {1.f};
+  std::vector<float> other_required_input_val = {0.f};
   std::vector<float> optional_input_val = {10.f};  // override initializer value of 1
   std::vector<float> unknown_input_val = {20.f};
 
-  MLValue required_input_mlvalue;
+  OrtValue required_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, required_input_val, &required_input_mlvalue);
 
-  MLValue optional_input_mlvalue;
+  OrtValue other_required_input_mlvalue;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       dims, other_required_input_val, &other_required_input_mlvalue);
+
+  OrtValue optional_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, optional_input_val, &optional_input_mlvalue);
 
-  MLValue unknown_input_mlvalue;
+  OrtValue unknown_input_mlvalue;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        dims, unknown_input_val, &unknown_input_mlvalue);
 
@@ -901,6 +870,9 @@ static common::Status RunOptionalInputTest(bool add_required_input,
 
   if (add_required_input)
     feeds.insert(std::make_pair("required_input", required_input_mlvalue));
+
+  // always add this one
+  feeds.insert(std::make_pair("other_required_input", other_required_input_mlvalue));
 
   if (add_optional_input)
     feeds.insert(std::make_pair("optional_input", optional_input_mlvalue));
@@ -911,7 +883,7 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("add_output");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   float expected_value = required_input_val[0];
   expected_value += add_optional_input ? optional_input_val[0] : 1.f;
@@ -919,7 +891,7 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   status = session_object.Run(run_options, feeds, output_names, &fetches);
 
   if (status.IsOK()) {
-    MLValue& output = fetches.front();
+    OrtValue& output = fetches.front();
     const auto& tensor = output.Get<Tensor>();
     float output_value = *tensor.Data<float>();
     if (output_value != expected_value) {
@@ -930,24 +902,37 @@ static common::Status RunOptionalInputTest(bool add_required_input,
   return status;
 }
 
+// test the change in handling of graph inputs that match initializers between IR version 3 and 4
+// in V3 disallow overriding an initializer via the feeds
+// for V4 allow it
 TEST(InferenceSessionTests, TestOptionalInputs) {
-  // required input only
-  auto status = RunOptionalInputTest(true, false, false);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  std::vector<int> ir_versions{3, 4};
+  for (auto version : ir_versions) {
+    // required input only
+    auto status = RunOptionalInputTest(true, false, false, version);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  // required and optional input
-  status = RunOptionalInputTest(true, true, false);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    // required and optional input
+    status = RunOptionalInputTest(true, true, false, version);
+    if (version == 3) {
+      ASSERT_FALSE(status.IsOK()) << status.ErrorMessage();
+    } else {
+      ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
+    // required, optional and invalid input
+    status = RunOptionalInputTest(true, true, true, version);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
 
-  // required, optional and invalid input
-  status = RunOptionalInputTest(true, true, true);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Names"));
-
-  // missing required
-  status = RunOptionalInputTest(false, true, false);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing required input:"));
+    // missing required
+    status = RunOptionalInputTest(false, true, false, version);
+    ASSERT_FALSE(status.IsOK());
+    if (version == 3) {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid Feed Input Name"));
+    } else {
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
+    }
+  }
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
@@ -1000,11 +985,11 @@ TEST(ExecutionProviderTest, FunctionTest) {
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value_x;
+  OrtValue ml_value_x;
   CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_x);
-  MLValue ml_value_y;
+  OrtValue ml_value_y;
   CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_y);
-  MLValue ml_value_z;
+  OrtValue ml_value_z;
   CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x, &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -1014,7 +999,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("M");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {3, 2};
@@ -1104,13 +1089,13 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
 
   std::vector<int64_t> dims_mul_x = {2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f};
-  MLValue ml_value_x;
+  OrtValue ml_value_x;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
-  MLValue ml_value_y;
+  OrtValue ml_value_y;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_y);
-  MLValue ml_value_z;
+  OrtValue ml_value_z;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_z);
   NameMLValMap feeds;
@@ -1121,7 +1106,7 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("M");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {2, 2};
@@ -1135,7 +1120,8 @@ TEST(ExecutionProviderTest, FunctionInlineTest) {
 
 TEST(InferenceSessionTests, TestTruncatedSequence) {
   // model/data generated by <repo>/onnxruntime/test/testdata/CNTK/gen.py GenScan()
-  static const std::string LSTM_MODEL_URI = "testdata/scan_1.pb";
+  // Manually updated to have IR version of 4.
+  static const std::string LSTM_MODEL_URI = "testdata/scan_1.onnx";
   // This model is a 4x forward LSTM. Parse it to find out mapping between init_state input/output
   ONNX_NAMESPACE::ModelProto model_proto;
   int model_fd;
@@ -1204,7 +1190,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
                                -2.5120965e-04f, -2.9920202e-03f,
                                3.0980256e-05f, -3.5933927e-03f};
 
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_dims, X, &ml_value);
 
   std::string input_name = "Input13165";
@@ -1222,7 +1208,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   }
 
   std::vector<std::string> output_names = {final_output_name};
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // Now run the full sequence
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
@@ -1234,7 +1220,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  for (int i = 0; i < Y_data.size(); ++i)
+  for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
@@ -1250,20 +1236,20 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   for (auto truncated_len : truncated_lengths) {
     std::vector<int64_t> truncated_input_dims = X_dims;
     truncated_input_dims[0] = truncated_len;
-    MLValue truncated_ml_value;
+    OrtValue truncated_ml_value;
     std::vector<float> truncated_input(X.begin() + seq_start * seq_stride, X.begin() + (seq_start + truncated_len) * seq_stride);
     CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), truncated_input_dims, truncated_input, &truncated_ml_value);
     NameMLValMap truncated_feeds = {{input_name, truncated_ml_value}};
     if (seq_start > 0) {
       // continue from truncated sequence
       ASSERT_TRUE(fetches.size() == output_names.size());
-      for (int i_output = 0; i_output < output_names.size(); ++i_output) {
+      for (size_t i_output = 0; i_output < output_names.size(); ++i_output) {
         auto iter = init_state_map.find(output_names[i_output]);
         if (iter != init_state_map.end())
           truncated_feeds.insert(std::make_pair(iter->second, fetches[i_output]));
       }
     }
-    std::vector<MLValue> truncated_fetches;
+    std::vector<OrtValue> truncated_fetches;
     st = session_object.Run(run_options, truncated_feeds, output_names, &truncated_fetches);
     if (!st.IsOK()) {
       std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
@@ -1303,12 +1289,12 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<float>(p_dummy_provider->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value);
 
   std::vector<std::string> feed_names;
-  std::vector<MLValue> feeds;
+  std::vector<OrtValue> feeds;
   feed_names.push_back("X");
   feeds.push_back(ml_value);
 
@@ -1319,7 +1305,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   auto run_test = [&](int run_num) {
     // prepare outputs
     std::vector<std::string> output_names;
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
     output_names.push_back("Y");
 
     fetches.resize(output_names.size());
@@ -1342,6 +1328,75 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   run_test(run_number++);
   run_test(run_number++);
 }
+
+// This test validates the RegisterTransformer API
+// It creates and registers a dummy transformer and after session initialize
+// validates that this transformer was called regardless of the graph optimization level set.
+TEST(InferenceSessionTests, TestRegisterTransformers) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = static_cast<TransformerLevel>(i);
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+
+    // Create and register dummy graph transformer
+    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
+    session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
+
+    session_object.Load(model_uri);
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+
+    // Validate transformer was called after Session.Initialize
+    ASSERT_TRUE(dummy_transformer->IsTransformerInvoked());
+  }
+}
+
+// This test validates session initialize is successful when all the pre-defined
+// L1 and L2 transformers are enabled.
+TEST(InferenceSessionTests, TestL1AndL2Transformers) {
+  // Models which cover all transformers.
+  std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
+                                              "testdata/transform/abs-id-max.onnx",
+                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/matmul_add_fusion/2Input/model.onnx",
+                                              "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
+                                              "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
+
+  for (const auto& model_uri : test_model_uris) {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
+    so.graph_optimization_level = TransformerLevel::Level2;
+    InferenceSession session_object{so, &DefaultLoggingManager()};
+    ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+    ASSERT_TRUE(session_object.Initialize().IsOK());
+  }
+}
+
+#ifdef USE_CUDA
+
+TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  SessionOptions so;
+  so.enable_sequential_execution = false;
+  so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
+  InferenceSession session_object{so};
+
+  CUDAExecutionProviderInfo epi;
+  epi.device_id = 0;
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+
+  ASSERT_TRUE(session_object.Load(model_uri).IsOK());
+
+  auto status = session_object.Initialize();
+
+  ASSERT_TRUE(!status.IsOK());
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

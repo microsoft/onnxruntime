@@ -7,15 +7,25 @@
 
 namespace onnxruntime {
 
-// Rewrite rule that eliminates the identity node.
+/**
+@Class EliminateIdentity
+
+Rewrite rule that eliminates the identity node.
+
+It is attempted to be triggered only on nodes with op type "Identity".
+*/
 class EliminateIdentity : public RewriteRule {
  public:
-  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity", "Eliminate identity node") {}
+  EliminateIdentity() noexcept : RewriteRule("EliminateIdentity") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Identity"};
+  }
 
  private:
-  bool SatisfyCondition(const Node& node) override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) const override;
 
-  Status Apply(Graph& graph, Node& node, bool& modified, bool& deleted) override;
-};
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const override;
+};  // namespace onnxruntime
 
 }  // namespace onnxruntime

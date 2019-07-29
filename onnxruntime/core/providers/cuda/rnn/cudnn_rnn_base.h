@@ -11,41 +11,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-class CudnnDropout {
- public:
-  CudnnDropout() : dropout_desc_(nullptr) {
-  }
-
-  Status Set(const cudnnHandle_t& cudnnHandle, float dropout = 0.0f, unsigned long long seed = 1) {
-    CUDNN_RETURN_IF_ERROR(cudnnCreateDropoutDescriptor(&dropout_desc_));
-    size_t stateSize;
-    void* states;
-    CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));
-
-    CUDA_CALL(cudaMalloc(&states, stateSize));
-
-    CUDNN_RETURN_IF_ERROR(cudnnSetDropoutDescriptor(dropout_desc_,
-                                                    cudnnHandle,
-                                                    dropout,
-                                                    states,
-                                                    stateSize,
-                                                    seed));
-
-    return Status::OK();
-  }
-
-  ~CudnnDropout() {
-    if (dropout_desc_ != nullptr) {
-      cudnnDestroyDropoutDescriptor(dropout_desc_);
-    }
-  }
-
-  operator cudnnDropoutDescriptor_t() const {
-    return dropout_desc_;
-  }
-
- private:
-  cudnnDropoutDescriptor_t dropout_desc_;
+enum RNN_Input_Index {
+  X = 0,
+  W = 1,
+  R = 2,
+  B = 3,
+  sequence_lens = 4,
+  initial_h = 5,
+  initial_c = 6
 };
 
 class CudnnRNN {
@@ -153,18 +126,13 @@ class CudnnRnnBase : public CudaKernel {
   // optional
   std::string direction_;
   CudnnFilterDescriptor w_desc_cache_;
+  CudnnDropout cudnn_dropout_desc_;
+  CudnnFilterDescriptor filter_desc_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
+  IAllocatorUniquePtr<void> state_buffer_;
+  size_t state_size_;
 
-  enum Input_Index {
-    X = 0,
-    W = 1,
-    R = 2,
-    B = 3,
-    sequence_lens = 4,
-    initial_h = 5,
-    initial_c = 6
-  };
   enum Output_Index {
     Y = 0,
     Y_h = 1,

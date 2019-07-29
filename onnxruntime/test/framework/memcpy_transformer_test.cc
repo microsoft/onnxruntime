@@ -68,9 +68,13 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
   }
   EXPECT_TRUE(false) << "Copy node expected but not found";
 }
+#ifdef USE_CUDA
 
 TEST(TransformerTest, MemcpyTransformerTest) {
-  auto model = std::make_shared<onnxruntime::Model>("test");
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 7;
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                                                    domain_to_version);
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -95,9 +99,14 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  auto cpu_execution_provider = TestCPUExecutionProvider();
+  KernelRegistryManager kernel_registry_manager;
+  ExecutionProviders execution_providers;
+  execution_providers.Add(onnxruntime::kCudaExecutionProvider,
+                          std::make_unique<CUDAExecutionProvider>(CUDAExecutionProviderInfo()));
+  execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                          std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
   KernelRegistryManager test_registry_manager;
-  test_registry_manager.RegisterKernelRegistry(cpu_execution_provider->GetKernelRegistry());
+  test_registry_manager.RegisterKernels(execution_providers);
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
@@ -116,7 +125,10 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 }
 
 TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
-  auto model = std::make_shared<onnxruntime::Model>("test");
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 7;
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                                                    domain_to_version);
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -133,7 +145,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   node1.SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
   auto& node2 = graph.AddNode("node2", "MatMul", "cpu operator1", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
   node2.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  auto& node3 = graph.AddNode("node3", "Clip", "gpu operator2", ArgMap{&o2_def}, ArgMap{&o3_def});
+  auto& node3 = graph.AddNode("node3", "Abs", "gpu operator2", ArgMap{&o2_def}, ArgMap{&o3_def});
   node3.SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
   auto& node4 = graph.AddNode("node4", "MatMul", "cpu operator2", ArgMap{&o2_def, &o2_def}, ArgMap{&o4_def});
   node4.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
@@ -141,9 +153,14 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  auto cpu_execution_provider = TestCPUExecutionProvider();
+  KernelRegistryManager kernel_registry_manager;
+  ExecutionProviders execution_providers;
+  execution_providers.Add(onnxruntime::kCudaExecutionProvider,
+                          std::make_unique<CUDAExecutionProvider>(CUDAExecutionProviderInfo()));
+  execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                          std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
   KernelRegistryManager test_registry_manager;
-  test_registry_manager.RegisterKernelRegistry(cpu_execution_provider->GetKernelRegistry());
+  test_registry_manager.RegisterKernels(execution_providers);
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
@@ -160,6 +177,113 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   ExpectSame(node2, node4, 0);
   ExpectSame(node2, node4, 1);
 }
+TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
+  // In this test, we are going to create a subgraph consuming an implicit input
+  // which is an initializer in the outer scope, and this implicit input to the subgraph
+  // is consumed by nodes on multiple devices
+  TensorProto value_tensor;
+  value_tensor.add_dims(1);
+  value_tensor.add_float_data(1.f);
+  value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  TypeProto tensor_float_type;
+  tensor_float_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  TypeProto tensor_bool_type;
+  tensor_bool_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+
+  onnxruntime::NodeArg i1_def("I1", &tensor_bool_type),
+      o1_def("O1", &tensor_float_type),
+      o2_def("O2", &tensor_float_type);
+
+  // main graph
+  // this will only contain one 'If' node
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 7;
+  auto model = std::make_shared<onnxruntime::Model>("test",
+                                                    false,
+                                                    ModelMetaData(),
+                                                    IOnnxRuntimeOpSchemaRegistryList(),
+                                                    domain_to_version);
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TensorProto parent_constant(value_tensor);
+  parent_constant.set_name("parent_constant");
+  graph.AddInitializedTensor(parent_constant);
+
+  // subgraph
+  // this will contain 2 'Add' nodes - one on CPU and one of GPU
+  // one of the inputs to the 'Add' nodes is an implicit input to the subgraph
+  // which is an initializer in the main graph
+  std::unordered_map<std::string, int> subgraph_domain_to_version;
+  subgraph_domain_to_version[kOnnxDomain] = 7;
+  auto sub_model = std::make_shared<onnxruntime::Model>("test_subgraph",
+                                                        false,
+                                                        ModelMetaData(),
+                                                        IOnnxRuntimeOpSchemaRegistryList(),
+                                                        subgraph_domain_to_version);
+  onnxruntime::Graph& subgraph = sub_model->MainGraph();
+
+  TensorProto local_constant(value_tensor);
+  local_constant.set_name("local_constant");
+  subgraph.AddInitializedTensor(local_constant);
+
+  subgraph.AddOuterScopeNodeArg("parent_constant");
+  subgraph.AddNode("node1", "Add", "operator1",
+                   ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type),
+                          &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)},
+                   ArgMap{&o1_def});
+
+  subgraph.AddNode("node2", "Add", "operator2",
+                   ArgMap{&subgraph.GetOrCreateNodeArg("local_constant", &tensor_float_type),
+                          &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)},
+                   ArgMap{&o2_def});
+
+  auto status = subgraph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // main graph continued
+  // create the 'If' node
+  auto& if_node = graph.AddNode("node3", "If", "cpu operator2", ArgMap{&i1_def}, ArgMap{&o1_def, &o2_def});
+  if_node.AddAttribute("then_branch", {subgraph.ToGraphProto()});
+  if_node.AddAttribute("else_branch", {subgraph.ToGraphProto()});
+
+  onnxruntime::Graph* subgraph_1 = if_node.GetMutableGraphAttribute("then_branch");
+  for (auto& node : subgraph_1->Nodes()) {
+    if (node.Name() == "node2") {
+      // only this node is on GPU
+      node.SetExecutionProviderType(onnxruntime::kCudaExecutionProvider);
+    } else {
+      node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+    }
+  }
+
+  onnxruntime::Graph* subgraph_2 = if_node.GetMutableGraphAttribute("else_branch");
+  for (auto& node : subgraph_2->Nodes()) {
+    node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  }
+
+  status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  KernelRegistryManager kernel_registry_manager;
+  ExecutionProviders execution_providers;
+  execution_providers.Add(onnxruntime::kCudaExecutionProvider,
+                          std::make_unique<CUDAExecutionProvider>(CUDAExecutionProviderInfo()));
+  execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                          std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
+  KernelRegistryManager test_registry_manager;
+  test_registry_manager.RegisterKernels(execution_providers);
+
+  MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_TRUE(modified);
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

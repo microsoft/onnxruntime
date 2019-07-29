@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 namespace contrib {

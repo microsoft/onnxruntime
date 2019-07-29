@@ -8,6 +8,9 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because TensorRT only supports "nearest" mode Upsample
+// and limited data types. Those tests will fallback to other EPs
+
 TEST(UpsampleOpTest, UpsampleOpNearestTest) {
   OpTester test("Upsample");
 
@@ -67,7 +70,7 @@ TEST(UpsampleOpTest, UpsampleOpNearestTest_int32) {
       7, 7, 7, 9, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: nvinfer1::query::Ports<nvinfer1::query::AbstractTensor>&): Assertion `!formats.empty()' failed
 }
 
 TEST(UpsampleOpTest, UpsampleOpNearestTest_uint8) {
@@ -167,10 +170,9 @@ TEST(UpsampleOpTest, UpsampleOpNearest222XTest) {
       3.0f, 3.0f, 5.0f, 5.0f,
       3.0f, 3.0f, 5.0f, 5.0f,
       7.0f, 7.0f, 9.0f, 9.0f,
-      7.0f, 7.0f, 9.0f, 9.0f
-  };
+      7.0f, 7.0f, 9.0f, 9.0f};
 
-  test.AddOutput<float>("Y", {N*2, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N * 2, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
   test.Run();
 }
 
@@ -205,6 +207,32 @@ TEST(UpsampleOpTest, UpsampleOpNearest15XTest) {
   test.Run();
 }
 
+TEST(UpsampleOpTest, UpsampleOpNearestTest_NoScale) {
+  OpTester test("Upsample");
+
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("scales", scales);
+
+  const int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 3.0f,
+                          3.0f, 5.0f,
+
+                          3.0f, 5.0f,
+                          7.0f, 9.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+
+  std::vector<float> Y = {1.0f, 3.0f,
+                          3.0f, 5.0f,
+
+                          3.0f, 5.0f,
+                          7.0f, 9.0f};
+
+  test.AddOutput<float>("Y", {N, C, H, W}, Y);
+  test.Run();
+}
+
 TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
   OpTester test("Upsample");
 
@@ -233,7 +261,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
       7, 7, 9, 9};
 
   test.AddOutput<int32_t>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: nvinfer1::query::Ports<nvinfer1::query::AbstractTensor>&): Assertion `!formats.empty()' failed
 }
 
 TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
@@ -267,34 +295,29 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
   test.Run();
 }
 
-TEST(UpsampleOpTest, UpsampleOpBilinearTest2) {
+TEST(UpsampleOpTest, UpsampleOpBilinearTest_NoScale) {
   OpTester test("Upsample");
 
-  std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
   test.AddAttribute("mode", "linear");
   test.AddAttribute("scales", scales);
 
   const int64_t N = 2, C = 1, H = 2, W = 2;
   std::vector<float> X = {1.0f, 3.0f,
-                          4.0f, 8.0f,
+                          3.0f, 5.0f,
 
-                          6.0f, 2.0f,
-                          7.0f, 11.0f};
+                          3.0f, 5.0f,
+                          7.0f, 9.0f};
 
   test.AddInput<float>("X", {N, C, H, W}, X);
 
-  std::vector<float> Y = {
-      1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.0f, 3.0f, 3.0f,
-      2.5f, 3.25f, 4.0f, 4.75f, 5.5f, 5.5f, 5.5f, 5.5f,
-      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f,
-      4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f,
+  std::vector<float> Y = {1.0f, 3.0f,
+                          3.0f, 5.0f,
 
-      6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 2.0f, 2.0f, 2.0f,
-      6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f,
-      7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f,
-      7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
+                          3.0f, 5.0f,
+                          7.0f, 9.0f};
 
-  test.AddOutput<float>("Y", {N, C, (int64_t)(H * scales[2]), (int64_t)(W * scales[3])}, Y);
+  test.AddOutput<float>("Y", {N, C, H, W}, Y);
   test.Run();
 }
 

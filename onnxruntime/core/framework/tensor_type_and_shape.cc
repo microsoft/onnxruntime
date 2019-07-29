@@ -23,8 +23,11 @@ using onnxruntime::Tensor;
     return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-ORT_API(OrtTensorTypeAndShapeInfo*, OrtCreateTensorTypeAndShapeInfo) {
-  return new OrtTensorTypeAndShapeInfo();
+ORT_API_STATUS_IMPL(OrtCreateTensorTypeAndShapeInfo, _Out_ OrtTensorTypeAndShapeInfo** out) {
+  API_IMPL_BEGIN
+  *out = new OrtTensorTypeAndShapeInfo();
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtReleaseTensorTypeAndShapeInfo, _Frees_ptr_opt_ OrtTensorTypeAndShapeInfo* ptr) {
@@ -38,27 +41,31 @@ ORT_API_STATUS_IMPL(OrtSetTensorElementType, _In_ OrtTensorTypeAndShapeInfo* thi
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSetDims, OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
+ORT_API_STATUS_IMPL(OrtSetDimensions, OrtTensorTypeAndShapeInfo* this_ptr, _In_ const int64_t* dim_values, size_t dim_count) {
   API_IMPL_BEGIN
   this_ptr->shape = onnxruntime::TensorShape(dim_values, dim_count);
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API(enum ONNXTensorElementDataType, OrtGetTensorElementType, _In_ const struct OrtTensorTypeAndShapeInfo* info) {
-  return info->type;
+ORT_API_STATUS_IMPL(OrtGetTensorElementType, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ ONNXTensorElementDataType* out) {
+  *out = info->type;
+  return nullptr;
 }
 
-ORT_API(size_t, OrtGetNumOfDimensions, _In_ const struct OrtTensorTypeAndShapeInfo* info) {
-  return info->shape.NumDimensions();
+ORT_API_STATUS_IMPL(OrtGetDimensionsCount, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out) {
+  *out = info->shape.NumDimensions();
+  return nullptr;
 }
 
-ORT_API(void, OrtGetDimensions, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
+ORT_API_STATUS_IMPL(OrtGetDimensions, _In_ const struct OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
   info->shape.CopyDims(dim_values, dim_values_length);
+  return nullptr;
 }
 
-ORT_API(int64_t, OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* this_ptr) {
-  return this_ptr->shape.Size();
+ORT_API_STATUS_IMPL(OrtGetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
+  *out = static_cast<size_t>(this_ptr->shape.Size());
+  return nullptr;
 }
 
 struct OrtValue;
@@ -100,54 +107,21 @@ ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   return type;
 }
 
-const onnxruntime::DataTypeImpl* TensorElementDataTypeToMLDataType(ONNXTensorElementDataType type) {
-  switch (type) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      return onnxruntime::DataTypeImpl::GetType<float>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      return onnxruntime::DataTypeImpl::GetType<uint8_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-      return onnxruntime::DataTypeImpl::GetType<int8_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-      return onnxruntime::DataTypeImpl::GetType<uint16_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-      return onnxruntime::DataTypeImpl::GetType<int16_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-      return onnxruntime::DataTypeImpl::GetType<int32_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      return onnxruntime::DataTypeImpl::GetType<int64_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
-      return onnxruntime::DataTypeImpl::GetType<std::string>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-      return onnxruntime::DataTypeImpl::GetType<bool>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-      return onnxruntime::DataTypeImpl::GetType<MLFloat16>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-      return onnxruntime::DataTypeImpl::GetType<BFloat16>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-      return onnxruntime::DataTypeImpl::GetType<double>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-      return onnxruntime::DataTypeImpl::GetType<uint32_t>();
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-      return onnxruntime::DataTypeImpl::GetType<uint64_t>();
-    default:
-      return nullptr;
-  }
-}
-
-OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
+OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape,
+                                 const onnxruntime::DataTypeImpl* tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
   ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(tensor_data_type);
   if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
-    return OrtCreateStatus(ORT_FAIL, "Not implemented");
+    return OrtCreateStatus(ORT_NOT_IMPLEMENTED, "Not implemented");
   }
-  OrtTensorTypeAndShapeInfo* ret = OrtCreateTensorTypeAndShapeInfo();
-  auto status = OrtSetTensorElementType(ret, type);
-  if (status != nullptr) {
+  OrtTensorTypeAndShapeInfo* ret;
+  if (auto* status = OrtCreateTensorTypeAndShapeInfo(&ret))
+    return status;
+  if (auto* status = OrtSetTensorElementType(ret, type)) {
     OrtReleaseTensorTypeAndShapeInfo(ret);
     return status;
   }
   if (shape != nullptr) {
-    status = OrtSetDims(ret, shape->GetDims().data(), shape->GetDims().size());
+    auto* status = OrtSetDimensions(ret, shape->GetDims().data(), shape->GetDims().size());
     if (status != nullptr) {
       OrtReleaseTensorTypeAndShapeInfo(ret);
       return status;
@@ -157,31 +131,24 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape* shape, const on
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGetTensorShapeAndType, _In_ const OrtValue* value,
+ORT_API_STATUS_IMPL(OrtGetTensorTypeAndShape, _In_ const OrtValue* v,
                     _Out_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
-  auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
   const onnxruntime::Tensor& tensor = v->Get<onnxruntime::Tensor>();
   return GetTensorShapeAndType(&tensor.Shape(), tensor.DataType(), out);
   API_IMPL_END
 }
 
-ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value) {
-  try {
-    auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
-    onnxruntime::MLDataType type = v->Type();
-    OrtTypeInfo* out;
-    OrtStatus* ptr = OrtTypeInfo::FromDataTypeImpl(type, nullptr, nullptr, &out);
-    if (ptr != nullptr) {
-      OrtReleaseStatus(ptr);
-      return ONNX_TYPE_UNKNOWN;
-    }
-    ONNXType ret = out->type;
-    OrtReleaseTypeInfo(out);
-    return ret;
-  } catch (std::exception&) {
-    return ONNX_TYPE_UNKNOWN;
-  }
+ORT_API_STATUS_IMPL(OrtGetValueType, _In_ const OrtValue* v, _Out_ ONNXType* out) {
+  API_IMPL_BEGIN
+  onnxruntime::MLDataType type = v->Type();
+  OrtTypeInfo* type_info;
+  if (auto status = OrtTypeInfo::FromDataTypeImpl(type, nullptr, nullptr, &type_info))
+    return status;
+  *out = type_info->type;
+  OrtReleaseTypeInfo(type_info);
+  return nullptr;
+  API_IMPL_END
 }
 
 /**
@@ -189,8 +156,7 @@ ORT_API(enum ONNXType, OrtGetValueType, _In_ const OrtValue* value) {
  * \param value
  * \return The returned value should be freed by OrtReleaseTypeInfo after use
  */
-ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* value, struct OrtTypeInfo** out) {
-  auto v = reinterpret_cast<const ::onnxruntime::MLValue*>(value);
+ORT_API_STATUS_IMPL(OrtGetTypeInfo, _In_ const OrtValue* v, struct OrtTypeInfo** out) {
   onnxruntime::MLDataType type = v->Type();
   if (type == nullptr) {
     *out = nullptr;

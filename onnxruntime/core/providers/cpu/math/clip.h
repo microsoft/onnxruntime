@@ -18,7 +18,7 @@ class Clip final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    const Tensor* X = ctx->Input<Tensor>(0);
+    const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
     EigenVectorMap<T>(Y->template MutableData<T>(), Y->Shape().Size()) =
         ConstEigenVectorMap<T>(X->template Data<T>(), X->Shape().Size())

@@ -184,11 +184,11 @@ OpKernel* CreateOptionalOpKernel(const OpKernelInfo& kernel_info) {
   return new OptionalOpKernel<float>(kernel_info);
 }
 
-static const std::string MUL_MODEL_URI = "testdata/mul_1.pb";
-static const std::string FOO_MODEL_URI = "testdata/foo_1.pb";
-static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.pb";
+static const std::string MUL_MODEL_URI = "testdata/mul_1.onnx";
+static const std::string FOO_MODEL_URI = "testdata/foo_1.onnx";
+static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.onnx";
 
-static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.pb";
+static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.onnx";
 
 void RunSession(InferenceSession& session_object,
                 RunOptions& run_options,
@@ -197,7 +197,7 @@ void RunSession(InferenceSession& session_object,
                 std::vector<int64_t>& dims_y,
                 std::vector<float>& values_y) {
   // prepare inputs
-  MLValue ml_value;
+  OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
@@ -205,7 +205,7 @@ void RunSession(InferenceSession& session_object,
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("Y");
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
 
   // Now run
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);

@@ -20,8 +20,6 @@
 using namespace std;
 using namespace ONNX_NAMESPACE;
 
-using namespace onnx;
-
 namespace onnxruntime {
 namespace test {
 
@@ -48,7 +46,7 @@ TEST(OptimizerTest, Basic) {
 
     initializer_tensor[i].set_name(inputs[i]->Name());
     initializer_tensor[i].add_dims(tensor_dim);
-    initializer_tensor[i].set_data_type(onnx::TensorProto_DataType_INT32);
+    initializer_tensor[i].set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
     for (int j = 0; j < tensor_dim; j++) {
       initializer_tensor[i].add_int32_data((i + 1) * j);
     }
@@ -76,9 +74,10 @@ TEST(OptimizerTest, Basic) {
 
     OpKernelContext op_kernel_context(&frame, kernel, logger);
 
-    kernel->Compute(&op_kernel_context);
+    auto st = kernel->Compute(&op_kernel_context);
+    ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
     frame.GetOutputs(fetches);
     auto& tensor = fetches[0].Get<Tensor>();
     const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);

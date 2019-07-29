@@ -29,54 +29,75 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
 
   // initialize session options if needed
-  OrtSessionOptions* session_option = OrtCreateSessionOptions();
-  OrtSetSessionThreadPoolSize(session_option, 1);
+  OrtSessionOptions* session_options;
+  CHECK_STATUS(OrtCreateSessionOptions(&session_options));
+  OrtSetSessionThreadPoolSize(session_options, 1);
+
+  // Sets graph optimization level
+  // Available levels are
+  // 0 -> To disable all optimizations
+  // 1 -> To enable basic optimizations (Such as redundant node removals)
+  // 2 -> To enable all optimizations (Includes level 1 + more complex optimizations like node fusions)
+  OrtSetSessionGraphOptimizationLevel(session_options, 1);
+
+  // Optionally add more execution providers via session_options
+  // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:
+  // OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
 
   //*************************************************************************
   // create session and load model into memory
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
   OrtSession* session;
+#ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
-  CHECK_STATUS(OrtCreateSession(env, model_path, session_option, &session));
+#else
+  const char* model_path = "squeezenet.onnx";
+#endif
+
+  printf("Using Onnxruntime C API\n");
+  CHECK_STATUS(OrtCreateSession(env, model_path, session_options, &session));
 
   //*************************************************************************
   // print model input layer (node names, types, shape etc.)
   size_t num_input_nodes;
   OrtStatus* status;
   OrtAllocator* allocator;
-  OrtCreateDefaultAllocator(&allocator);
+  CHECK_STATUS(OrtCreateDefaultAllocator(&allocator));
 
   // print number of model input nodes
   status = OrtSessionGetInputCount(session, &num_input_nodes);
   std::vector<const char*> input_node_names(num_input_nodes);
-  std::vector<size_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
-                                        // Otherwise need vector<vector<>>
+  std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
+                                         // Otherwise need vector<vector<>>
 
   printf("Number of inputs = %zu\n", num_input_nodes);
 
   // iterate over all input nodes
-  for (int i = 0; i < num_input_nodes; i++) {
+  for (size_t i = 0; i < num_input_nodes; i++) {
     // print input node names
     char* input_name;
     status = OrtSessionGetInputName(session, i, allocator, &input_name);
-    printf("Input %d : name=%s\n", i, input_name);
+    printf("Input %zu : name=%s\n", i, input_name);
     input_node_names[i] = input_name;
 
     // print input node types
     OrtTypeInfo* typeinfo;
     status = OrtSessionGetInputTypeInfo(session, i, &typeinfo);
-    const OrtTensorTypeAndShapeInfo* tensor_info = OrtCastTypeInfoToTensorInfo(typeinfo);
-    ONNXTensorElementDataType type = OrtGetTensorElementType(tensor_info);
-    printf("Input %d : type=%d\n", i, type);
+    const OrtTensorTypeAndShapeInfo* tensor_info;
+    CHECK_STATUS(OrtCastTypeInfoToTensorInfo(typeinfo, &tensor_info));
+    ONNXTensorElementDataType type;
+    CHECK_STATUS(OrtGetTensorElementType(tensor_info, &type));
+    printf("Input %zu : type=%d\n", i, type);
 
     // print input shapes/dims
-    size_t num_dims = OrtGetNumOfDimensions(tensor_info);
-    printf("Input %d : num_dims=%zu\n", i, num_dims);
+    size_t num_dims;
+    CHECK_STATUS(OrtGetDimensionsCount(tensor_info, &num_dims));
+    printf("Input %zu : num_dims=%zu\n", i, num_dims);
     input_node_dims.resize(num_dims);
     OrtGetDimensions(tensor_info, (int64_t*)input_node_dims.data(), num_dims);
-    for (int j = 0; j < num_dims; j++)
-      printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
+    for (size_t j = 0; j < num_dims; j++)
+      printf("Input %zu : dim %zu=%jd\n", i, j, input_node_dims[j]);
 
     OrtReleaseTypeInfo(typeinfo);
   }
@@ -107,7 +128,7 @@ int main(int argc, char* argv[]) {
   std::vector<const char*> output_node_names = {"softmaxout_1"};
 
   // initialize input data with values in [0.0, 1.0]
-  for (unsigned int i = 0; i < input_tensor_size; i++)
+  for (size_t i = 0; i < input_tensor_size; i++)
     input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
   // create input tensor object from data values
@@ -115,17 +136,20 @@ int main(int argc, char* argv[]) {
   CHECK_STATUS(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
   OrtValue* input_tensor = NULL;
   CHECK_STATUS(OrtCreateTensorWithDataAsOrtValue(allocator_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_node_dims.data(), 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor));
-  assert(OrtIsTensor(input_tensor));
+  int is_tensor;
+  CHECK_STATUS(OrtIsTensor(input_tensor, &is_tensor));
+  assert(is_tensor);
   OrtReleaseAllocatorInfo(allocator_info);
 
   // score model & input tensor, get back output tensor
   OrtValue* output_tensor = NULL;
   CHECK_STATUS(OrtRun(session, NULL, input_node_names.data(), (const OrtValue* const*)&input_tensor, 1, output_node_names.data(), 1, &output_tensor));
-  assert(OrtIsTensor(output_tensor));
+  CHECK_STATUS(OrtIsTensor(output_tensor, &is_tensor));
+  assert(is_tensor);
 
   // Get pointer to output tensor float values
   float* floatarr;
-  OrtGetTensorMutableData(output_tensor, (void**)&floatarr);
+  CHECK_STATUS(OrtGetTensorMutableData(output_tensor, (void**)&floatarr));
   assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes
@@ -142,6 +166,7 @@ int main(int argc, char* argv[]) {
   OrtReleaseValue(output_tensor);
   OrtReleaseValue(input_tensor);
   OrtReleaseSession(session);
+  OrtReleaseSessionOptions(session_options);
   OrtReleaseEnv(env);
   printf("Done!\n");
   return 0;

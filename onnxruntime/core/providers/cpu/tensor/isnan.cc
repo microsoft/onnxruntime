@@ -5,7 +5,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "Eigen/src/Core/arch/CUDA/Half.h"
+#include "Eigen/src/Core/arch/GPU/Half.h"
 
 namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN
@@ -24,7 +24,7 @@ ADD_TYPED_ISNAN_OP(MLFloat16);
 
 template <>
 Status IsNaN<float>::Compute(OpKernelContext* context) const {
-  const Tensor* X_ptr = context->Input<Tensor>(0);
+  const auto* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
   }
@@ -39,7 +39,7 @@ Status IsNaN<float>::Compute(OpKernelContext* context) const {
 
 template <>
 Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
-  const Tensor* X_ptr = context->Input<Tensor>(0);
+  const auto* X_ptr = context->Input<Tensor>(0);
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
   }

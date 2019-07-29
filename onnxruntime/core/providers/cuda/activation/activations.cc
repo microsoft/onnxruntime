@@ -23,14 +23,12 @@ namespace cuda {
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
     UnaryElementwisePreparation p;                                                                         \
     UnaryElementwise::Prepare(context, &p);                                                                \
-    CudaAsyncBuffer<Ctx##x> func_ctx(this, 0, MakeFuncCtx());                                              \
-    if (!std::is_same<CtxNull, Ctx##x>::value)                                                             \
-      ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                                                   \
+    CudaAsyncBuffer<Ctx##x> func_ctx(this, 0, MakeFuncCtx(), 1);                                           \
+    if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                  \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \
-        func_ctx.GpuPtr(),                                                                                 \
-        p.output_tensor->Shape().Size());                                                                  \
+        func_ctx.GpuPtr(), p.output_tensor->Shape().Size());                                               \
                                                                                                            \
     return Status::OK();                                                                                   \
   }
@@ -44,19 +42,16 @@ namespace cuda {
   UNARY_ACTIVATION_OP_TYPED(name, ver, float)     \
   UNARY_ACTIVATION_OP_TYPED(name, ver, double)
 
-UNARY_ACTIVATION_OP_HFD(Affine, 1);
 UNARY_ACTIVATION_OP_HFD(Elu, 6);
 UNARY_ACTIVATION_OP_HFD(HardSigmoid, 6);
 UNARY_ACTIVATION_OP_HFD(LeakyRelu, 6);
-UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1);
 UNARY_ACTIVATION_OP_HFD(Relu, 6);
-UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1);
 UNARY_ACTIVATION_OP_HFD(Selu, 6);
 UNARY_ACTIVATION_OP_HFD(Sigmoid, 6);
 UNARY_ACTIVATION_OP_HFD(Softplus, 1);
 UNARY_ACTIVATION_OP_HFD(Softsign, 1);
 UNARY_ACTIVATION_OP_HFD(Tanh, 6);
-UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 1);
+UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
 
 }  // namespace cuda
 }  // namespace onnxruntime

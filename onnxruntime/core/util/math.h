@@ -1,8 +1,4 @@
 /**
-* Derived from caffe2, need copyright announcement here.
-*/
-
-/**
 * Copyright (c) 2016-present, Facebook, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,7 +32,6 @@ extern "C" {
 #endif
 
 #include "core/common/common.h"
-#include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -47,108 +42,24 @@ enum StorageOrder {
   NCHW = 2,
 };
 
-#define FLOAT_TYPE DataTypeImpl::GetType<float>()
-
 namespace math {
 
 template <typename T, class Provider>
 void Exp(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
-void Log(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void Cos(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void Sin(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void SinCos(int N, const T* x, T* ys, T* yc, Provider* provider);
-template <typename T, class Provider>
-void Abs(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void Sqrt(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
-void InvSqrt(int N, const T* x, T* y, Provider* provider);
-template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
-
-template <typename T, class Provider>
-void Not(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
-#define DECLARE_BINARY_OP_BINARY_RESULT(name)                                  \
-  template <typename T, class Provider>                                        \
-  void name(const int N, const T* a, const T* b, bool* y, Provider* provider); \
-  template <typename T, class Provider>                                        \
-  void name##ToRow(                                                            \
-      const int M,                                                             \
-      const int N,                                                             \
-      const T* a,                                                              \
-      const T* b,                                                              \
-      bool* y,                                                                 \
-      Provider* provider);
-
-DECLARE_BINARY_OP_BINARY_RESULT(LT);
-DECLARE_BINARY_OP_BINARY_RESULT(LE);
-DECLARE_BINARY_OP_BINARY_RESULT(GT);
-DECLARE_BINARY_OP_BINARY_RESULT(GE);
-
-DECLARE_BINARY_OP_BINARY_RESULT(And);
-DECLARE_BINARY_OP_BINARY_RESULT(Or);
-DECLARE_BINARY_OP_BINARY_RESULT(Xor);
-
-#undef DECLARE_BINARY_OP_BINARY_RESULT
-
-#define DECLARE_BINARY_OP(name)                                             \
-  template <typename T, class Provider>                                     \
-  void name(const int N, const T* a, const T* b, T* y, Provider* provider); \
-  template <typename T, class Provider>                                     \
-  void name##ToRow(                                                         \
-      const int M,                                                          \
-      const int N,                                                          \
-      const T* a,                                                           \
-      const T* b,                                                           \
-      T* y,                                                                 \
-      Provider* provider);                                                  \
-  template <typename T, class Provider>                                     \
-  void name##ToRow(                                                         \
-      const int M, const int N, const T* x, T* y, Provider* provider);      \
-  template <typename T, class Provider>                                     \
-  void name##ToCol(                                                         \
-      const int M, const int N, const T* x, T* y, Provider* provider);
+#define DECLARE_BINARY_OP(name)                                                     \
+  template <typename T, class Provider>                                             \
+  void name(int N, const T* a, const T* b, T* y, Provider* provider);
 
 DECLARE_BINARY_OP(Add);
-DECLARE_BINARY_OP(Sub);
 DECLARE_BINARY_OP(Mul);
-DECLARE_BINARY_OP(Div);
 
 #undef DECLARE_BINARY_OP
-
-template <typename T, class Provider>
-void ReduceMin(
-    int N,
-    const T* x,
-    T* y,
-    Tensor* scratch_ptr,
-    Provider* provider);
-template <typename T, class Provider>
-void ReduceMax(
-    int N,
-    const T* x,
-    T* y,
-    Tensor* scratch_ptr,
-    Provider* provider);
-
-// Adds batch sub-tensors elementwise to output. Stripe is the stripe length
-// and N is the number of elements to add (size of Y).
-template <typename T, class Provider>
-void AddStripedBatch(
-    int N,
-    const T* first,
-    T* y,
-    int stripe,
-    int batch,
-    Provider* provider);
 
 // Compute the row-wise max of a N*D matrix X, and write it to a N
 // dimensional vector y.
@@ -156,24 +67,14 @@ template <typename T, class Provider>
 void RowwiseMax(int N, int D, const T* x, T* y,
                 Provider* provider);
 
-// Compute the column-wise max of a N*D matrix X, and write it to a D
-// dimensional vector y.
-template <typename T, class Provider>
-void ColwiseMax(int N, int D, const T* x, T* y,
-                Provider* provider);
-
-// Elemwise maximum of vector x and vector y. z[i] = max(x[i], y[i])
-template <typename T, class Provider>
-void ElemwiseMax(int N, const T* x, const T* y, T* z, Provider* provider);
-
-// Elemwise maximum of vector x and scalar alpha. y[i] = max(x[i], alpha)
-template <typename T, class Provider>
-void Maximum(
+template <typename T>
+void MatMul(
+    int M,
     int N,
-    float alpha,
-    const T* x,
-    T* y,
-    Provider* provider);
+    int K,
+    const T* A,
+    const T* B,
+    T* C);
 
 // Decaf gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -189,10 +90,7 @@ void Gemm(
     const T* B,
     float beta,
     T* C,
-    Provider* provider,
-    //Caffe2 use this type to control on GPU, what presicion do we want to do the calculation
-    //But not sure is this a good design for us. Keep it here for now.
-    MLDataType math_type = FLOAT_TYPE);
+    Provider* provider);
 
 // We also provide a gemm that has explicit lda, ldb and ldc specified.
 // In most cases you probably want to use the function above, though.
@@ -213,27 +111,6 @@ void GemmEx(
     int ldc,
     Provider* provider);
 
-// GemmBatched provides a simple abstraction into library routines
-template <typename T, class Provider>
-void GemmBatched(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    int A_size,
-    int A_batches,
-    int B_size,
-    int B_batches,
-    int M,
-    int N,
-    int K,
-    float alpha,
-    const T* A,
-    const T* B,
-    float beta,
-    T* C,
-    Provider* provider,
-    Tensor* scratch = nullptr,
-    MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
-
 // Gemv always takes in a M*N matrix A, and depending on whether we set TransA
 // to Trans, the output is:
 // CblasNoTrans: x is an N dim vector and y is an M dim vector.
@@ -248,65 +125,10 @@ void Gemv(
     const T* x,
     float beta,
     T* y,
-    Provider* provider,
-    MLDataType math_type = DataTypeImpl::FLOAT_TYPE);
+    Provider* provider);
+
 template <typename T, class Provider>
 void Set(int64_t N, T alpha, T* X, Provider* provider);
-
-template <typename T, class Provider>
-void RandUniform(int n, T a, T b, T* r,
-                 Provider* provider);
-
-template <typename T, class Provider>
-void RandUniformUnique(
-    size_t n,
-    T a,
-    T b,
-    T* r,
-    size_t m,
-    const T* avoid,
-    Provider* provider);
-
-template <typename T, class Provider>
-void RandGaussian(
-    int n,
-    T mean,
-    T std,
-    T* r,
-    Provider* provider);
-
-// Dot matrix of vector a and b, and writes the result to a single value y.
-template <typename T, class Provider>
-void Dot(int N, const T* a, const T* b, T* y, Provider* provider);
-
-// Sum of vector x, and writes the result to a single value y.
-template <typename T, class Provider>
-void Sum(int N, const T* x, T* y, Provider* provider,
-         Tensor* scratch_ptr = nullptr);
-
-// Sum of squares of vector x, and writes the result to a single value y.
-template <typename T, class Provider>
-void SumSqr(
-    int N,
-    const T* x,
-    T* y,
-    Provider* provider,
-    Tensor* scratch_ptr = nullptr);
-
-// Select does index selection of the rows a N*D matrix x, and gives the N
-// dimensional vector y that contains the selected data.
-template <typename T, class Provider>
-void Select(int N, int D, const T* x, const int* idx, T* y,
-            Provider* provider);
-
-template <typename T, class Provider>
-void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
-
-// Different from the Scale function above, if alpha is passed in
-// as a pointer, we will assume that it lives on the correct execution provider,
-// for example on GPU.
-template <typename T, class Provider>
-void Scale(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
@@ -316,15 +138,6 @@ void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
 // for example on GPU.
 template <typename T, class Provider>
 void Axpy(int N, const float* alpha, const T* x, T* y, Provider* provider);
-
-template <typename T, class Provider>
-void Axpby(
-    int N,
-    float alpha,
-    const T* x,
-    T b,
-    T* y,
-    Provider* provider);
 
 template <typename T, class Provider, int order>
 struct Im2colNd {
@@ -347,26 +160,15 @@ struct Im2colNd {
 
 template <typename T, class Provider>
 struct Im2colNd<T, Provider, StorageOrder::NCHW> {
-  void operator()(
-      const T* data_img,
-      const int64_t* im_shape,
-      const int64_t* col_shape,
-      const int64_t /*img_size*/,
-      const int64_t /*col_size*/,
-      const int64_t* kernel_shape,
-      const int64_t* stride,
-      const int64_t* dilation,
-      const int64_t* pad,
-      const int64_t N,
-      T* data_col,
-      Provider* /*provider*/,
-      bool accumulate_output = false,
-      T padding_value = 0) {
+  void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
+                  int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
+                  const int64_t* pad, int64_t N, T* data_col, Provider* /*provider*/, bool accumulate_output = false,
+                  T padding_value = 0) {
     int64_t kernel_size = 1;
     for (int64_t i = 0; i < N; ++i) {
       kernel_size *= kernel_shape[i];
     }
-    const int64_t channels_col = col_shape[0];
+    int64_t channels_col = col_shape[0];
     std::vector<int64_t> d_offset(N, 0);
     std::vector<int64_t> d_iter(N, 0);
     for (int64_t c_col = 0; c_col < channels_col; ++c_col) {
@@ -385,9 +187,8 @@ struct Im2colNd<T, Provider, StorageOrder::NCHW> {
         int64_t index_im = c_col / kernel_size;
         bool is_padding = false;
         for (int64_t d_i = 0; d_i < N; ++d_i) {
-          const int64_t d = d_iter[d_i];
-          const int64_t d_im =
-              d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
+          int64_t d = d_iter[d_i];
+          int64_t d_im = d * stride[d_i] - pad[d_i] + d_offset[d_i] * dilation[d_i];
           is_padding |= d_im < 0 || d_im >= im_shape[d_i + 1];
           index_col *= col_shape[d_i + 1];
           index_col += d;
@@ -407,7 +208,7 @@ struct Im2colNd<T, Provider, StorageOrder::NCHW> {
         // like counting.
         incremented = false;
         for (int64_t d_i = N - 1; d_i >= 0; --d_i) {
-          const int64_t d_max = col_shape[d_i + 1];
+          int64_t d_max = col_shape[d_i + 1];
           ORT_ENFORCE(d_iter[d_i] < d_max);
           if (d_iter[d_i] == d_max - 1) {
             d_iter[d_i] = 0;
@@ -498,8 +299,6 @@ void CopyMatrix(
 
 template <typename T, class Provider>
 void CopyVector(int N, const T* A, T* B, Provider* provider);
-
-uint32_t randomNumberSeed();
 
 // Function uses casting from int64_t to uint64_t to compare if value of
 // parameter a is greater or equal to zero and lower than value of

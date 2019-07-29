@@ -18,10 +18,10 @@ class TransformerMemcpyImpl {
   bool ModifyGraph(const KernelRegistryManager& schema_registries);
 
  private:
-  void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries);
+  void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed);
   void BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries);
   void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
-  void ProcessInitializers();
+  bool ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
@@ -52,20 +52,36 @@ class TransformerMemcpyImpl {
   std::string provider_;
 };
 
+/** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer. 
+@param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
+*/
+static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
+  const onnx::TensorProto* initializer = nullptr;
+  if (graph.GetInitializedTensor(name, initializer)) {
+    return initializer;
+  } else if (check_outer_scope && graph.IsSubgraph()) {
+    return GetInitializer(*graph.ParentGraph(), name, check_outer_scope);
+  }
+  return initializer;
+}
+
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   for (auto& provider : provider_types_) {
     if (provider != onnxruntime::kCpuExecutionProvider &&
         provider != onnxruntime::kMklDnnExecutionProvider &&
+        provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
-        provider != onnxruntime::kTRTExecutionProvider) {
+        provider != onnxruntime::kTensorrtExecutionProvider &&
+        provider != onnxruntime::kOpenVINOExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
-      modified = copy_impl.ModifyGraph(registry_manager_);
+      auto current_modified = copy_impl.ModifyGraph(registry_manager_);
+      modified = modified || current_modified;
     }
   }
 
-  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximise efficiency.
+  // TODO: We probably need to do the recursion inline when processing the main graph in order to maximize efficiency.
   // e.g. data on GPU prior to an 'If' node. The 'If' must run on CPU, but if the subgraph is GPU based it could
   // consume the data from GPU and we shouldn't insert a memcpy from GPU to CPU prior to the If node, and one from
   // CPU back to GPU when beginning execution of the subgraph. To do that requires inspecting the subgraph (and any
@@ -107,14 +123,16 @@ This transformer does not currently optimize copies between, e.g., two different
 
 bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_registries) {
   bool modified = false;
+  InitializedTensorSet initializers_consumed;
   // find defs that require copy
   for (auto& node : graph_.Nodes()) {
-    //don't need to do node placement here now, onnxruntime will do it according to registered kernels.
-    ProcessDefs(node, kernel_registries);
+    //as we process the defs, collect all the initializers consumed at the current graph level
+    ProcessDefs(node, kernel_registries, initializers_consumed);
   }
 
   // for initializers shared by different providers, create dups
-  ProcessInitializers();
+  if (ProcessInitializers(kernel_registries, initializers_consumed))
+    modified = true;
 
   for (auto arg : graph_.GetInputs())
     BuildDefsMapping(arg, kernel_registries);
@@ -148,23 +166,29 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   return modified;
 }
 
-void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries) {
+void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed) {
   if (node.GetExecutionProviderType() == provider_) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
     kernel_registries.SearchKernelRegistry(node, &kci);
 
-    ORT_ENFORCE(onnxruntime::Node::ForEachWithIndex(
-                    node.InputDefs(),
-                    [this, &kci](const onnxruntime::NodeArg& arg, size_t index) {
-                      if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(index)))
-                        non_provider_input_defs_.insert(&arg);
-                      else
-                        provider_input_defs_.insert(&arg);
-                      return Status::OK();
-                    })
-                    .IsOK());
+    auto status = onnxruntime::Node::ForEachWithIndex(
+        node.InputDefs(),
+        [this, &kci, &initializers_consumed](const onnxruntime::NodeArg& arg, size_t index) {
+          // check if this NodeArg is an initializer defined in current outer graph level
+          const auto* initializer_tensor_proto =
+              GetInitializer(graph_, arg.Name(), true);
+          if (initializer_tensor_proto != nullptr)
+            initializers_consumed[arg.Name()] = initializer_tensor_proto;
+          if (kci && kci->kernel_def->IsInputOnCpu(index))
+            non_provider_input_defs_.insert(&arg);
+          else
+            provider_input_defs_.insert(&arg);
+          return Status::OK();
+        });
+
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
     // we don't need to handle implicit input here as provider_ is never kCpuExecutionProvider, all control flow
     // nodes are CPU based, and only control flow nodes have implicit inputs.
@@ -175,15 +199,15 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
       if (!arg->Exists())
         continue;
 
-      if (kci && MemTypeOnCpuExplicitly(kci->kernel_def->OutputMemoryType(i)))
+      if (kci && kci->kernel_def->IsOutputOnCpu(i))
         non_provider_output_defs_.insert(arg);
       else
         provider_output_defs_.insert(arg);
     }
   } else {
     // TODO: copy between devices? i.e. multiple GPUs
-    if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider &&
-        !node.GetExecutionProviderType().empty()) {
+    if (node.GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider && node.GetExecutionProviderType() != onnxruntime::kTensorrtExecutionProvider &&
+        node.GetExecutionProviderType() != onnxruntime::kNGraphExecutionProvider && !node.GetExecutionProviderType().empty()) {
       ORT_THROW("Execution type '", node.GetExecutionProviderType(), "' doesn't support memcpy ");
     }
 
@@ -206,25 +230,26 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
 
 //for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
 void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries) {
-  for (auto it = graph_.Nodes().begin(); it != graph_.Nodes().end(); it++) {
-    if (it->OpType() == "MemcpyFromHost" || it->OpType() == "MemcpyToHost")
-      continue;
-    auto input_it = std::find(it->MutableInputDefs().begin(), it->MutableInputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
-    auto output_it = std::find(it->MutableOutputDefs().begin(), it->MutableOutputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
-    int arg_input_index = input_it != it->MutableInputDefs().end() ? static_cast<int>(input_it - it->MutableInputDefs().begin()) : -1;
-    int arg_output_index = output_it != it->MutableOutputDefs().end() ? static_cast<int>(output_it - it->MutableOutputDefs().begin()) : -1;
+  for (auto& it : graph_.Nodes()) {
+    if (it.OpType() == "MemcpyFromHost" || it.OpType() == "MemcpyToHost") continue;
+    auto input_it =
+        std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
+    auto output_it =
+        std::find(it.MutableOutputDefs().begin(), it.MutableOutputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
+    int arg_input_index =
+        input_it != it.MutableInputDefs().end() ? static_cast<int>(input_it - it.MutableInputDefs().begin()) : -1;
+    int arg_output_index =
+        output_it != it.MutableOutputDefs().end() ? static_cast<int>(output_it - it.MutableOutputDefs().begin()) : -1;
     if (arg_input_index == -1 && arg_output_index == -1)
       continue;
-    if (it->GetExecutionProviderType() == provider_) {
+    if (it.GetExecutionProviderType() == provider_) {
       const KernelCreateInfo* kci = nullptr;
-      kernel_registries.SearchKernelRegistry(*it, &kci);
+      kernel_registries.SearchKernelRegistry(it, &kci);
       if (arg_input_index != -1) {
-        if (!kci || !MemTypeOnCpuExplicitly(kci->kernel_def->InputMemoryType(arg_input_index)))
-          provider_input_nodes_[arg].insert(&*it);
+        if (!kci || !kci->kernel_def->IsInputOnCpu(arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
       if (arg_output_index != -1) {
-        if (!kci || !MemTypeOnCpuExplicitly(kci->kernel_def->OutputMemoryType(arg_output_index)))
-          provider_output_nodes_[arg].insert(&*it);
+        if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) provider_output_nodes_[arg].insert(&it);
       }
     }
   }
@@ -271,9 +296,9 @@ static const onnxruntime::NodeArg* FindNodeArg(const NodeArgSetType& def_set, co
 // We duplicate any initializer that is used by both provider nodes and non-provider nodes
 // to ensure that provider nodes and non-provider nodes don't share initializers, as they
 // need to stay in different memory locations.
-void TransformerMemcpyImpl::ProcessInitializers() {
+bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed) {
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
-  for (const auto& pair : graph_.GetAllInitializedTensors()) {
+  for (const auto& pair : initializers_consumed) {
     const auto& name = pair.first;
     const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
     const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
@@ -281,10 +306,15 @@ void TransformerMemcpyImpl::ProcessInitializers() {
       std::string new_def_name = graph_.GenerateNodeArgName(name);
       auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
 
-      const TensorProto* tensor_proto = nullptr;
-      bool found = graph_.GetInitializedTensor(name, tensor_proto);
-      ORT_ENFORCE(found, "Failed to get initialized tensor ", name);
-
+      // We make a copy of the initializer that is to be consumed by the provider Node so that
+      // session state initializer can copy it over to the provider device during its operation
+      // TODO: The copy being made is possibly redundant if this occurs in a subgraph
+      // When multiple subgraphs consume the same initializer as an implicit input,
+      // multiple copies of the initializer will be made into the provider device
+      // This should not directly affect runtime performance as the copies occur during initialization
+      // but overuse of the provider device's memory is definitely inefficient
+      // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
+      const TensorProto* tensor_proto = pair.second;
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
       graph_.AddInitializedTensor(new_tensor_proto);
@@ -294,8 +324,34 @@ void TransformerMemcpyImpl::ProcessInitializers() {
   }
 
   for (auto p_node : provider_nodes_) {
-    p_node->ReplaceDefs(replacements);
+    // make a copy of replacement map as the node may exclude mapping for InputDefs with MemTypeOnCpuExplicitly
+    auto dup_replacements = replacements;
+
+    const KernelCreateInfo* kci = nullptr;
+    auto status = kernel_registries.SearchKernelRegistry(*p_node, &kci);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    if (kci == nullptr) continue;
+    if (kci->kernel_def == nullptr) continue;
+    onnxruntime::Node::ForEachWithIndex(p_node->InputDefs(),
+                                        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+                                          if (kci->kernel_def->IsInputOnCpu(index)) dup_replacements.erase(&arg);
+                                          return Status::OK();
+                                        });
+
+    // normally initializers are only inputs, but things may change with ops like assign
+    onnxruntime::Node::ForEachWithIndex(p_node->OutputDefs(),
+                                        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+                                          if (kci->kernel_def->IsOutputOnCpu(index)) {
+                                            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
+                                          }
+                                          return Status::OK();
+                                        });
+
+    p_node->ReplaceDefs(dup_replacements);
   }
+
+  // This denotes a modification to the graph
+  return !replacements.empty();
 }
 
 }  // namespace onnxruntime

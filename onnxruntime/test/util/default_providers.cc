@@ -11,14 +11,33 @@ namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(int device_id, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_TRT();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
 
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
   return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
+}
+
+std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
+#ifdef USE_TENSORRT
+  return CreateExecutionProviderFactory_Tensorrt()->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
+#ifdef USE_OPENVINO
+  return CreateExecutionProviderFactory_OpenVINO("CPU")->CreateProvider();
+#else
+  return nullptr;
+#endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
@@ -34,6 +53,14 @@ std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_a
   return CreateExecutionProviderFactory_Mkldnn(enable_arena ? 1 : 0)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider() {
+#ifdef USE_NGRAPH
+  return CreateExecutionProviderFactory_NGraph("CPU")->CreateProvider();
+#else
   return nullptr;
 #endif
 }
@@ -54,9 +81,9 @@ std::unique_ptr<IExecutionProvider> DefaultBrainSliceExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultTRTExecutionProvider() {
-#ifdef USE_TRT
-  return CreateExecutionProviderFactory_TRT()->CreateProvider();
+std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
+#ifdef USE_NNAPI
+  return CreateExecutionProviderFactory_Nnapi()->CreateProvider();
 #else
   return nullptr;
 #endif

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-file(GLOB onnxruntime_optimizer_srcs
+file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
     )

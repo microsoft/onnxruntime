@@ -3,6 +3,7 @@
 
 #include "core/graph/model.h"
 #include <memory>
+#include "core/common/logging/logging.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -13,7 +14,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "core/util/protobuf_parsing_utils.h"
 
 #include "gsl/pointers"
 #include "gsl/gsl_util"
@@ -42,7 +43,7 @@ Model::Model(const std::string& graph_name,
   }
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
-  for (auto schema_collection : local_registries) {
+  for (const auto& schema_collection : local_registries) {
     schema_registry->RegisterRegistry(schema_collection);
   }
 
@@ -53,7 +54,7 @@ Model::Model(const std::string& graph_name,
     p_domain_to_version = &domain_to_version_static;
   }
 
-  for (auto domain : *p_domain_to_version) {
+  for (const auto& domain : *p_domain_to_version) {
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
     opset_id_proto->set_domain(domain.first);
     opset_id_proto->set_version(domain.second);
@@ -97,18 +98,32 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
   if (local_registries != nullptr) {
-    for (auto schema_collection : *local_registries) {
+    for (const auto& schema_collection : *local_registries) {
       schema_registry->RegisterRegistry(schema_collection);
     }
   }
 
   std::unordered_map<std::string, int> domain_to_version;
   for (auto& opSet : model_proto_->opset_import()) {
-    domain_to_version[opSet.domain()] = gsl::narrow_cast<int>(opSet.version());
+    const auto& domain = opSet.domain();
+    const auto version = opSet.version();
+    // empty domain and 'ai.onnx' are equivalent
+    if ((domain.empty() || domain == "ai.onnx") && version < 7) {
+      // TODO: Check if we can upgrade all the current opset 6 models that are being tested
+      // in CI to opset 7 or above
+      LOGS_DEFAULT(WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
+                               "with opset version 7 or above for opset domain 'ai.onnx'. "
+                               "Please upgrade your model to opset 7 or higher. "
+                               "For now, this opset "
+                            <<  version
+                            << " model may run depending upon legacy support "
+                               "of some older opset version operators.";
+    }
+    domain_to_version[domain] = gsl::narrow_cast<int>(version);
   }
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
-  for (auto domain : domain_map) {
+  for (const auto& domain : domain_map) {
     if (domain_to_version.find(domain.first) == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
@@ -207,7 +222,8 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
-  const bool result = p_model_proto->ParseFromIstream(&model_istream);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
   }
@@ -343,15 +359,34 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
 
 using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
+using ::google::protobuf::io::ZeroCopyInputStream;
 
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
+
   std::unique_ptr<ModelProto> model_proto = std::make_unique<ModelProto>();
-  if (!model_proto->ParseFromFileDescriptor(fd)) {
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  FileInputStream fs(fd);
+  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
+#else
+  // CNTK uses ORT as a submodule in order to use its GraphIR code.
+  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
+  // This code block is needed to support CNTK and any other
+  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
+  FileInputStream fs(fd);
+  CodedInputStream cis(&fs);
+
+  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
+  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
+  if (!model_proto->ParseFromCodedStream(&cis)) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+#endif
   p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
@@ -367,11 +402,11 @@ Status Model::Save(Model& model, int p_fd) {
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToProto();
-  const bool result = model_proto.SerializeToFileDescriptor(p_fd);
+  google::protobuf::io::FileOutputStream output(p_fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();
-  } else {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
   }
+  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
 }
 }  // namespace onnxruntime

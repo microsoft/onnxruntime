@@ -7,25 +7,37 @@
 
 namespace onnxruntime {
 namespace cuda {
-
-#define REGISTER_TYPED_SLICE(NAME, TIND, DYNAMIC)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
-      NAME,                                                                               \
+#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                \
+      Slice,                                                                              \
       kOnnxDomain,                                                                        \
-      1,                                                                                  \
+      1, 9,                                                                               \
+      TIND,                                                                               \
+      kCudaExecutionProvider,                                                             \
+      KernelDefBuilder().TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
+                         TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
+      Slice<TIND,false>);
+
+REGISTER_VERSIONED_TYPED_SLICE(int32_t) 
+REGISTER_VERSIONED_TYPED_SLICE(int64_t)
+
+#define REGISTER_V10_TYPED_SLICE(TIND)                                                    \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                          \
+      Slice,                                                                              \
+      kOnnxDomain,                                                                        \
+      10,                                                                                 \
       TIND,                                                                               \
       kCudaExecutionProvider,                                                             \
       KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).                          \
                          InputMemoryType<OrtMemTypeCPUInput>(2).                          \
                          InputMemoryType<OrtMemTypeCPUInput>(3).                          \
+                         InputMemoryType<OrtMemTypeCPUInput>(4).                          \
                          TypeConstraint("T",    DataTypeImpl::AllFixedSizeTensorTypes()). \
                          TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()),     \
-      Slice<TIND,DYNAMIC>);
+      Slice<TIND,true>);
 
-REGISTER_TYPED_SLICE(Slice,        int32_t, false) 
-REGISTER_TYPED_SLICE(Slice,        int64_t, false) 
-REGISTER_TYPED_SLICE(DynamicSlice, int32_t, true ) 
-REGISTER_TYPED_SLICE(DynamicSlice, int64_t, true )
+REGISTER_V10_TYPED_SLICE(int32_t) 
+REGISTER_V10_TYPED_SLICE(int64_t)
 
 template<typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
@@ -36,17 +48,18 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   // Initialize the starts & ends to the actual tensor shape
   const size_t dimension_count = input_dimensions.size();
   std::vector<int64_t> starts(dimension_count, 0);
+  std::vector<int64_t> steps(dimension_count, 1);
   std::vector<int64_t> output_dims(input_dimensions);
 
   if (dynamic) {
-    std::vector<int64_t> input_starts, input_ends, input_axes;
-    FillVectorsFromInput<Tind>(ctx, input_starts, input_ends, input_axes);
+    std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
+    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                        dimension_count, input_dimensions, starts, output_dims));
+                        input_steps, input_dimensions, starts, steps, output_dims));
 
   } else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_, 
-	                    dimension_count, input_dimensions, starts, output_dims));
+	                    input_dimensions, starts, output_dims));
   }
 
   TensorShape output_shape(output_dims);
@@ -55,13 +68,20 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   if (output_size == 0) {
     return Status::OK();
   }
-  int device_id = 0;
+  int device_id = GetDeviceId();
   CudaAsyncBuffer<int64_t> starts_buffer(this, device_id, dimension_count);
   gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
   for (int i = 0; i < dimension_count; ++i) {
     starts_buffer_span[i] = starts[i];
   }
   starts_buffer.CopyToGpu();
+
+  CudaAsyncBuffer<int64_t> steps_buffer(this, device_id, dimension_count);
+  gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
+  for (int i = 0; i < dimension_count; ++i) {
+    steps_buffer_span[i] = steps[i];
+  }
+  steps_buffer.CopyToGpu();
 
   CudaAsyncBuffer<int64_t> input_strides(this, device_id, dimension_count);
   ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
@@ -81,6 +101,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
                               gsl::narrow_cast<int32_t>(dimension_count),
                               starts_buffer.GpuPtr(),
+                              steps_buffer.GpuPtr(),
                               input_strides.GpuPtr(),
                               div_strides.GpuPtr(),
                               input_tensor->DataRaw(),

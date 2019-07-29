@@ -269,22 +269,6 @@ class Mean_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
-class Affine final : public OpKernel {
- public:
-  Affine(const OpKernelInfo& info) : OpKernel(info) {
-    // Either model-supplied or default values should be returned for alpha and beta
-    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  float alpha_;
-  float beta_;
-};
-
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
@@ -302,19 +286,6 @@ class Expand_8 final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Scale final : public OpKernel {
- public:
-  Scale(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  float scale_;
 };
 
 template <typename T>
@@ -405,9 +376,9 @@ struct Broadcaster {
     // Scalars are a special case, as it's always a broadcast
     size_t index = 0;
     if (dimension_count_min == 0) {
-      if (shape1.size() == 0)  // Shape1 is a scalar
+      if (shape1.empty())  // Shape1 is a scalar
       {
-        if (shape2.size() == 0)  // Two scalars?
+        if (shape2.empty())  // Two scalars?
         {
           iterator1_.Init(1, 1);
           iterator2_.Init(1, 1);
@@ -552,7 +523,8 @@ struct TBroadcastOutput {
 template <typename T>
 struct TensorAllocator {
   TensorAllocator(OpKernelContext& context) {
-    ORT_ENFORCE(context.GetTempSpaceAllocator(&allocator_).IsOK());
+    auto status = context.GetTempSpaceAllocator(&allocator_);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {

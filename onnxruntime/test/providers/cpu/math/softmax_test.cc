@@ -13,6 +13,7 @@ static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<float>& expected_vals,
                     const std::vector<int64_t>& dimensions,
                     int64_t axis = 1,
+                    bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& error_msg = "") {
   OpTester test("Softmax");
@@ -23,7 +24,11 @@ static void RunTest(const std::vector<float>& x_vals,
 
   test.AddInput<float>("X", dimensions, x_vals);
   test.AddOutput<float>("Y", dimensions, expected_vals);
-  test.Run(expect_result, error_msg);
+  std::unordered_set<std::string> excluded_providers;
+  if (!is_tensorrt_supported) {
+    excluded_providers.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(expect_result, error_msg, excluded_providers);
 }
 
 TEST(SoftmaxOperator, Simple) {
@@ -92,7 +97,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);// Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -118,7 +123,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1, false);
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis2) {
@@ -182,7 +187,7 @@ TEST(SoftmaxOperator, InvalidAxis) {
   RunTest(x_vals,
           expected_vals,
           dimensions,
-          /* invalid axis */ -10,
+          /* invalid axis */ -10, false,
           OpTester::ExpectResult::kExpectFailure,
           "-10 is not in valid range [-2,1]");
 }

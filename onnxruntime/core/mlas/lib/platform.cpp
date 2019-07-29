@@ -23,6 +23,41 @@ Abstract:
 
 MLAS_PLATFORM MlasPlatform;
 
+#ifdef MLAS_TARGET_AMD64_IX86
+
+//
+// Reads the processor extended control register to determine platform
+// capabilities.
+//
+
+#if !defined(_XCR_XFEATURE_ENABLED_MASK)
+#define _XCR_XFEATURE_ENABLED_MASK 0
+#endif
+
+inline
+uint64_t
+MlasReadExtendedControlRegister(
+    unsigned int ext_ctrl_reg
+    )
+{
+#if defined(_WIN32)
+    return _xgetbv(ext_ctrl_reg);
+#else
+    uint32_t eax, edx;
+
+    __asm__
+    (
+        "xgetbv"
+        : "=a" (eax), "=d" (edx)
+        : "c" (ext_ctrl_reg)
+    );
+
+    return ((uint64_t)edx << 32) | eax;
+#endif
+}
+
+#endif
+
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
     )
@@ -53,8 +88,18 @@ Return Value:
     this->KernelAddRoutine = MlasSgemmKernelAddSse;
 #if defined(MLAS_TARGET_AMD64)
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
+    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelSse;
+    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelSse;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->NchwcBlockSize = 8;
+    this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif
 
     //
@@ -74,11 +119,7 @@ Return Value:
         // Check if the operating system supports saving SSE and AVX states.
         //
 
-#if defined(_WIN32)
-        uint64_t xcr0 = _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
-#else
-        uint64_t xcr0 = xgetbv(_XCR_XFEATURE_ENABLED_MASK);
-#endif
+        uint64_t xcr0 = MlasReadExtendedControlRegister(_XCR_XFEATURE_ENABLED_MASK);
 
         if ((xcr0 & 0x6) == 0x6) {
 
@@ -88,6 +129,19 @@ Return Value:
             this->KernelAddRoutine = MlasSgemmKernelAddAvx;
 
 #else
+
+            this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
+            this->KernelAddRoutine = MlasSgemmKernelAddAvx;
+            this->KernelM1Routine = MlasSgemmKernelM1Avx;
+            this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
+            this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
+            this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx;
+            this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx;
+            this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx;
+            this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx;
+            this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx;
 
             //
             // Check if the processor supports AVX512F (and the operating
@@ -104,25 +158,33 @@ Return Value:
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+
                     this->KernelZeroRoutine = MlasSgemmKernelZeroAvx512F;
                     this->KernelAddRoutine = MlasSgemmKernelAddAvx512F;
+                    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
+                    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelAvx512F;
+                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
+                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
+                    this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
+
                 } else {
+
                     this->KernelZeroRoutine = MlasSgemmKernelZeroFma3;
                     this->KernelAddRoutine = MlasSgemmKernelAddFma3;
+                    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelFma3;
+                    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
+                    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
+                    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 }
 
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
-
-            } else {
-
-                this->KernelZeroRoutine = MlasSgemmKernelZeroAvx;
-                this->KernelAddRoutine = MlasSgemmKernelAddAvx;
+                this->ErfKernelRoutine = MlasErfKernelFma3;
             }
-
-            this->KernelM1Routine = MlasSgemmKernelM1Avx;
-            this->KernelM1TransposeBRoutine = MlasSgemmKernelM1TransposeBAvx;
-            this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Avx;
 
 #endif
 
@@ -149,4 +211,34 @@ Return Value:
 
 #endif
 
+}
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    )
+/*++
+
+Routine Description:
+
+    This routine returns the preferred byte alignment for buffers that are used
+    with this library. Buffers that are not bytes aligned to this value will
+    function, but will not achieve best performance.
+
+Arguments:
+
+    None.
+
+Return Value:
+
+    Returns the preferred byte alignment for buffers.
+
+--*/
+{
+#if defined(MLAS_TARGET_AMD64)
+    return MlasPlatform.PreferredBufferAlignment;
+#else
+    return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+#endif
 }

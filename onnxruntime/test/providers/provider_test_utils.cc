@@ -35,6 +35,42 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, con
 }
 
 template <>
+void Check<double>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+  auto& expected_tensor = expected_data.data_.Get<Tensor>();
+  auto* expected = expected_tensor.template Data<double>();
+  auto* output = output_tensor.template Data<double>();
+  auto size = output_tensor.Shape().Size();
+
+  bool has_abs_err = expected_data.absolute_error_.has_value();
+  bool has_rel_err = expected_data.relative_error_.has_value();
+
+  double threshold = 0.001;
+#ifdef USE_CUDA
+  threshold = 0.005;
+#endif
+
+  for (int i = 0; i < size; ++i) {
+    if (std::isinf(expected[i])) {  // Test infinity for equality
+      EXPECT_EQ(expected[i], output[i]);
+    } else if (std::isnan(expected[i])) {
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i << " to be NaN";
+    } else {
+      if (!has_abs_err && !has_rel_err) {
+        // the default for existing tests
+        EXPECT_NEAR(expected[i], output[i], threshold) << "provider_type: " << provider_type;
+      } else {
+        if (has_abs_err) {
+          EXPECT_NEAR(expected[i], output[i], expected_data.absolute_error_.value()) << "provider_type: " << provider_type;
+        }
+        if (has_rel_err) {
+          EXPECT_NEAR(expected[i], output[i], expected_data.relative_error_.value() * std::abs(expected[i])) << "provider_type: " << provider_type;
+        }
+      }
+    }
+  }
+}
+
+template <>
 void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<float>();
@@ -50,10 +86,10 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 #endif
 
   for (int i = 0; i < size; ++i) {
-    if (std::isinf(expected[i])){  // Test infinity for equality
+    if (std::isinf(expected[i])) {  // Test infinity for equality
       EXPECT_EQ(expected[i], output[i]);
     } else if (std::isnan(expected[i])) {
-      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i  << " to be NaN";
+      EXPECT_TRUE(std::isnan(output[i])) << "Expected output " << i << " to be NaN";
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -126,23 +162,26 @@ void Check(const OpTester::Data& expected_data, const T& run_output, const std::
 }
 
 template <typename Type>
-void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, MLValue& mlvalue, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValue& ort_value,
+                   const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
-    Check<Type>(expected_data, mlvalue.Get<Type>(), provider_type);
+    Check<Type>(expected_data, ort_value.Get<Type>(), provider_type);
   else
     ORT_THROW("OpTester:Check() not implemented for output tensor type of ", type);
 }
 
 template <typename Type, typename Next, typename... Types>
-void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, MLValue& mlvalue, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValue& ort_value,
+                   const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>())
-    Check<Type>(expected_data, mlvalue.Get<Type>(), provider_type);
+    Check<Type>(expected_data, ort_value.Get<Type>(), provider_type);
   else
-    CheckDispatch<Next, Types...>(type, expected_data, mlvalue, provider_type);
+    CheckDispatch<Next, Types...>(type, expected_data, ort_value, provider_type);
 }
 
-void Check(const OpTester::Data& expected_data, MLValue& mlvalue, const std::string& provider_type) {
-  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, mlvalue, provider_type);
+void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
+  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
+                                                               provider_type);
 }
 
 void DebugTrap() {
@@ -162,14 +201,14 @@ OpTester::~OpTester() {
 #endif
 }
 
-void OpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
+void OpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                        std::vector<std::string>& output_names) {
   for (auto& output : output_data_) {
     if (output.def_.Exists())
       output_names.push_back(output.def_.Name());
   }
 
-  for (auto i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     if (std::find(initializer_index_.begin(), initializer_index_.end(), i) == initializer_index_.end() && input_data_[i].def_.Exists()) {
       feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
     }
@@ -244,7 +283,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (auto i = 0; i < input_data_.size(); ++i) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 
@@ -265,17 +304,18 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   return p_model;
 }
 
-void OpTester::ExecuteModel(Model& model,
-                            InferenceSession& session_object,
-                            ExpectResult expect_result,
-                            const std::string& expected_failure_string,
-                            const RunOptions* run_options,
-                            std::unordered_map<std::string, MLValue> feeds,
-                            std::vector<std::string> output_names,
+void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
+                            const std::string& expected_failure_string, const RunOptions* run_options,
+                            std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
                             const std::string& provider_type) {
-  std::stringstream s1;
-  model.ToProto().SerializeToOstream(&s1);
-  auto status = session_object.Load(s1);
+  std::string s1;
+  const bool rc = model.ToProto().SerializeToString(&s1);
+  if (!rc) {
+    LOGS_DEFAULT(ERROR) << "Failed to serialize proto to string";
+    return;
+  }
+  std::stringstream sstr(s1);
+  auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
@@ -301,16 +341,19 @@ void OpTester::ExecuteModel(Model& model,
   default_run_options.run_tag = op_;
   default_run_options.run_log_verbosity_level = 1;
 
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
   status = session_object.Run(run_options ? *run_options : default_run_options, feeds, output_names, &fetches);
   if (status.IsOK()) {
-    EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess);
+    EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess) << "Expected failure but Run was successful";
     if (expect_result == ExpectResult::kExpectFailure) {
       return;
     }
   } else {
     if (expect_result == ExpectResult::kExpectFailure) {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
+      if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
+        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      }
     } else {
       LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -322,9 +365,8 @@ void OpTester::ExecuteModel(Model& model,
   // Todo: support check output with map/sequence/....
   size_t idx = 0;
   for (auto& expected_data : output_data_) {
-    MLValue& mlvalue = fetches[idx];
-    if (mlvalue.Fence())
-      mlvalue.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+    OrtValue& ort_value = fetches[idx];
+    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
 
     if (expected_data.def_.Exists()) {  // optional outputs won't exist
       if (expected_data.data_.IsTensor()) {
@@ -332,18 +374,19 @@ void OpTester::ExecuteModel(Model& model,
         if (add_shape_to_tensor_data_) {
           auto out_shape_proto = expected_data.def_.Shape();
           EXPECT_TRUE(out_shape_proto != nullptr);
-          auto inferred_dims = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+          const auto& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+          const auto& inferred_dims = tensor_shape.GetDims();
           const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
           EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
-          for (int d = 0; d < inferred_dims.size(); ++d) {
+          for (size_t d = 0; d < inferred_dims.size(); ++d) {
             // check equal unless the input involved a symbolic dimension
             if (inferred_dims[d] != -1)
               EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
           }
         }
-        Check(expected_data, mlvalue.Get<Tensor>(), provider_type);
+        Check(expected_data, ort_value.Get<Tensor>(), provider_type);
       } else {
-        Check(expected_data, mlvalue, provider_type);
+        Check(expected_data, ort_value, provider_type);
       }
       ++idx;
 
@@ -358,7 +401,8 @@ void OpTester::Run(ExpectResult expect_result,
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
-                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
+                   bool sequential_execution) {
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -393,7 +437,7 @@ void OpTester::Run(ExpectResult expect_result,
     }
 
     // Hookup the inputs and outputs
-    std::unordered_map<std::string, MLValue> feeds;
+    std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
 
@@ -401,13 +445,17 @@ void OpTester::Run(ExpectResult expect_result,
     SessionOptions so;
     so.session_logid = op_;
     so.session_log_verbosity_level = 1;
+    so.enable_sequential_execution = sequential_execution;
 
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kMklDnnExecutionProvider,
+        kNGraphExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
+        kTensorrtExecutionProvider,
+        kOpenVINOExecutionProvider,
     };
 
     bool has_run = false;
@@ -442,10 +490,18 @@ void OpTester::Run(ExpectResult expect_result,
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
           execution_provider = DefaultMkldnnExecutionProvider();
+        else if (provider_type == onnxruntime::kNGraphExecutionProvider)
+          execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
           execution_provider = DefaultBrainSliceExecutionProvider();
+        else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+          execution_provider = DefaultTensorrtExecutionProvider();
+        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+          execution_provider = DefaultOpenVINOExecutionProvider();
+        else if (provider_type == onnxruntime::kNnapiExecutionProvider)
+          execution_provider = DefaultNnapiExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -459,11 +515,21 @@ void OpTester::Run(ExpectResult expect_result,
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
+          if (provider_type == onnxruntime::kNGraphExecutionProvider || provider_type == onnxruntime::kTensorrtExecutionProvider || provider_type == onnxruntime::kOpenVINOExecutionProvider)
+            continue;
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
           if (!kci) {
             valid = false;
-            break;
+            for (auto& custom_session_registry : custom_session_registries_) {
+              if (custom_session_registry->GetKernelRegistry()->TryFindKernel(node, execution_provider->Type())) {
+                valid = true;
+                break;
+              }
+            }
+
+            if (!valid)
+              break;
           }
         }
 

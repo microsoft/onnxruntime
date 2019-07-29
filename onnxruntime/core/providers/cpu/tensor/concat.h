@@ -21,11 +21,14 @@ class ConcatBase {
   struct Prepare {
     struct InputInfo {
       const Tensor* tensor;
+      size_t num_elements;
       int64_t axis_pitch;
     };
     std::vector<InputInfo> inputs;
+    int64_t output_num_elements;
     int64_t output_axis_pitch;
     Tensor* output_tensor;
+    uint64_t axis;
   };
 
   Status PrepareForCompute(OpKernelContext* ctx, int input_count, Prepare& p) const;

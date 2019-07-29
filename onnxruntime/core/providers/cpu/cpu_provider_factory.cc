@@ -10,7 +10,7 @@ namespace onnxruntime {
 
 struct CpuProviderFactory : IExecutionProviderFactory {
   CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {}
-  ~CpuProviderFactory() override {}
+  ~CpuProviderFactory() override = default;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
@@ -35,5 +35,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessio
 }
 
 ORT_API_STATUS_IMPL(OrtCreateCpuAllocatorInfo, enum OrtAllocatorType type, enum OrtMemType mem_type, _Out_ OrtAllocatorInfo** out) {
-  return OrtCreateAllocatorInfo(onnxruntime::CPU, type, 0, mem_type, out);
+  *out = new OrtAllocatorInfo(onnxruntime::CPU, type, OrtDevice(), 0, mem_type);
+  return nullptr;
 }

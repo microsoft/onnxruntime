@@ -40,7 +40,7 @@ class BufferDeleter {
   AllocatorPtr alloc_;
 };
 
-typedef std::unique_ptr<void, BufferDeleter> BufferUniquePtr;
+using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
 using BufferNakedPtr = void*;
 //TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__
@@ -170,7 +170,7 @@ class Tensor final {
   /**
   The number of bytes of data.
   */
-  size_t Size() const {
+  size_t SizeInBytes() const {
     size_t ret;
     int64_t l = shape_.Size();
     if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {

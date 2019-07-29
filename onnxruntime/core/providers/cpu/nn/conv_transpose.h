@@ -45,17 +45,12 @@ class ConvTransposeBase : public ConvBase {
     std::vector<int64_t> strides;
   };
 
-  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p) const;
+  Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p, bool dynamic_padding = false) const;
 
-  void ComputePadsAndOutputShape(
-      const TensorShape input_shape,
-      const int64_t output_channel,
-      const std::vector<int64_t>& kernel_shape,
-      const std::vector<int64_t>& strides,
-      const std::vector<int64_t>& dilations,
-      const std::vector<int64_t>& output_padding,
-      std::vector<int64_t>* pads,
-      std::vector<int64_t>* output_shape) const;
+  void ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel,
+                                 const std::vector<int64_t>& kernel_shape, const std::vector<int64_t>& strides,
+                                 const std::vector<int64_t>& dilations, const std::vector<int64_t>& output_padding,
+                                 std::vector<int64_t>* pads, std::vector<int64_t>* output_shape) const;
 
   const std::vector<int64_t> output_padding_;
   const std::vector<int64_t> output_shape_;
@@ -67,6 +62,9 @@ class ConvTranspose : public OpKernel, public ConvTransposeBase {
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), ConvTransposeBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
+
+ protected:
+  Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 };
 
 }  // namespace onnxruntime

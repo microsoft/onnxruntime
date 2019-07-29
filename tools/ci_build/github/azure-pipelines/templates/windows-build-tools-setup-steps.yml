@@ -5,6 +5,10 @@ parameters:
   buildArch: amd64
   setVcvars: false
 steps:
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 4.9
+      inputs:
+        versionSpec: 4.9.4
     - task: NuGetCommand@2
       displayName: 'NuGet restore'
       inputs:
@@ -12,18 +16,27 @@ steps:
         feedsToUse: config
         nugetConfigPath: '$(Build.SourcesDirectory)\csharp\Nuget.CSharp.config'
         restoreDirectory: '$(Build.SourcesDirectory)\csharp'
-    - task: UniversalPackages@0
+    # - task: UniversalPackages@0
+    #   displayName: 'Download python'
+    #   inputs:
+    #     command: download
+    #     vstsFeed: '$(System.TeamProject)'
+    #     vstsFeedPackage: 'miniconda3_win64'
+    #     vstsPackageVersion: '4.5.11'
+    #     downloadDirectory: '$(Build.BinariesDirectory)\python'
+
+    # Temporary bypass of artifacts permission issue
+    - task: PowerShell@2
       displayName: 'Download python'
       inputs:
-        command: download
-        vstsFeed: '$(System.TeamProject)'
-        vstsFeedPackage: 'miniconda3_win64'
-        vstsPackageVersion: '4.5.11'
-        downloadDirectory: '$(Build.BinariesDirectory)\python'
+        targetType: 'inline'
+        script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
     - task: CmdLine@1
       displayName: 'Run python installer'
       inputs:
-        filename: '$(Build.BinariesDirectory)\python\installer.exe'
+        filename: '$(Build.BinariesDirectory)\installer.exe'
         arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
       timeoutInMinutes: 10
     - task: BatchScript@1
@@ -45,6 +58,26 @@ steps:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
     
+    - task: PowerShell@2
+      displayName: 'Download OpenCppCoverage installer'
+      continueOnError: true
+      inputs:
+        targetType: 'inline'
+        script: '
+          New-Item -Path "$(Build.BinariesDirectory)\installer" -ItemType "directory"
+
+          New-Item -Path "$(Build.BinariesDirectory)\installer\opencppcoverage" -ItemType "directory"
+
+          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe https://onnxruntimeinstaller.blob.core.windows.net/opencppcovergae-installer/OpenCppCoverageSetup-x64-0.9.7.0.exe
+          '
+
+    - task: CmdLine@1
+      continueOnError: true
+      displayName: 'Run OpenCPPCoverage installer'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe'
+        arguments: '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$(Build.BinariesDirectory)\OpenCppCoverage"'
+
     - task: BatchScript@1
       displayName: 'Setup VS2017 env vars'
       inputs:

@@ -7,15 +7,25 @@
 
 namespace onnxruntime {
 
-// Rewrite rule that eliminates a slice operator if it is redundant (does not lead to data reduction).
+/**
+@Class EliminateSlice
+
+Rewrite rule that eliminates a slice operator if it is redundant (does not lead to data reduction).
+
+It is attempted to be triggered only on nodes with op type "Slice".
+*/
 class EliminateSlice : public RewriteRule {
  public:
-  EliminateSlice() noexcept : RewriteRule("EliminateSlice", "Eliminate slice node") {}
+  EliminateSlice() noexcept : RewriteRule("EliminateSlice") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Slice"};
+  }
 
  private:
-  bool SatisfyCondition(const Node& node) override;
+  bool SatisfyCondition(const Graph& graph, const Node& node) const override;
 
-  Status Apply(Graph& graph, Node& node, bool& modified, bool& removed) override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const override;
 };
 
 }  // namespace onnxruntime

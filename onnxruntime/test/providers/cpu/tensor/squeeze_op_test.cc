@@ -7,12 +7,32 @@
 namespace onnxruntime {
 namespace test {
 
+// Some of the tests can't run on TensorrtExecutionProvider because axis=0 is not supported
+// or there are unsupported data types. Those tests will fallback to other EPs.
+
 TEST(SqueezeOpTest, Squeeze_1) {
   OpTester test("Squeeze");
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddInput<float>("data", {1, 3, 4, 5}, std::vector<float>(60, 1.0f));
   test.AddOutput<float>("squeezed", {3, 4, 5}, std::vector<float>(60, 1.0f));
   test.Run();
+}
+
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_1) {
+  OpTester test("Squeeze");
+  test.AddInput<float>("data", {1, 1, 4, 1}, std::vector<float>(4, 1.0f));
+  test.AddOutput<float>("squeezed", {4}, std::vector<float>(4, 1.0f));
+  // TensorRT doesn't seem to support missing 'axes'
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kTensorrtExecutionProvider});
+}
+
+TEST(SqueezeOpTest, Squeeze_Empty_Axes_2) {
+  OpTester test("Squeeze");
+  // nothing to "squeeze" out in the input shape
+  test.AddInput<float>("data", {2, 4}, std::vector<float>(8, 1.0f));
+  test.AddOutput<float>("squeezed", {2, 4}, std::vector<float>(8, 1.0f));
+  // TensorRT doesn't seem to support missing 'axes'
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(SqueezeOpTest, Squeeze_1_int32) {
@@ -72,7 +92,7 @@ TEST(SqueezeOpTest, BadAxes) {
   test.AddOutput<float>("squeezed", {3, 4, 5}, std::vector<float>(60, 1.0f));
 
   // Expect failure.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3", {kTensorrtExecutionProvider});
 }
 }  // namespace test
 }  // namespace onnxruntime

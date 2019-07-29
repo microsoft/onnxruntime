@@ -34,9 +34,6 @@ Abstract:
 #include <cpuid.h>
 #include <immintrin.h>
 #endif
-#if defined(__x86_64__)
-#include "x86_64/xgetbv.h"
-#endif
 #endif
 
 //
@@ -47,6 +44,16 @@ Abstract:
 #define MLAS_DECLSPEC_ALIGN(variable, alignment) DECLSPEC_ALIGN(alignment) variable
 #else
 #define MLAS_DECLSPEC_ALIGN(variable, alignment) variable __attribute__ ((aligned(alignment)))
+#endif
+
+//
+// Macro to force inline expansion of a function.
+//
+
+#if defined(_MSC_VER)
+#define MLAS_FORCEINLINE __forceinline
+#else
+#define MLAS_FORCEINLINE __attribute__ ((always_inline)) inline
 #endif
 
 //
@@ -79,13 +86,14 @@ Abstract:
 // Select the threading model.
 //
 
+#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#include "core/platform/threadpool.h"
+#endif
+
 #if defined(_OPENMP)
 #include <omp.h>
-#define MLAS_USE_OPENMP
-#define MLAS_HAS_THREADING_SUPPORT
 #elif defined(_WIN32)
 #define MLAS_USE_WIN32_THREADPOOL
-#define MLAS_HAS_THREADING_SUPPORT
 #endif
 
 //
@@ -158,39 +166,119 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 
 typedef
 void
-(MLASCALL MLAS_LOGISTIC_KERNEL_ROUTINE)(
+(MLASCALL MLAS_CONV_FLOAT_KERNEL)(
     const float* Input,
+    const float* Filter,
     float* Output,
-    size_t N
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
     );
 
-typedef MLAS_LOGISTIC_KERNEL_ROUTINE* PMLAS_LOGISTIC_KERNEL_ROUTINE;
+typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
 
 typedef
 void
-(MLASCALL MLAS_TANH_KERNEL_ROUTINE)(
+(MLASCALL MLAS_CONV_DEPTHWISE_FLOAT_KERNEL)(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    const float* Bias,
+    unsigned Flags
+    );
+
+typedef MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_CONV_POINTWISE_FLOAT_KERNEL)(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidth,
+    size_t InputChannels,
+    size_t FilterCount,
+    size_t InputStride,
+    size_t FilterStride,
+    size_t OutputStride,
+    size_t OutputCount,
+    const float* Bias,
+    unsigned Flags
+    );
+
+typedef MLAS_CONV_POINTWISE_FLOAT_KERNEL* PMLAS_CONV_POINTWISE_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_POOL_FLOAT_KERNEL)(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t InputStride,
+    size_t ActualKernelSize,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad
+    );
+
+typedef MLAS_POOL_FLOAT_KERNEL* PMLAS_POOL_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_ELEMENTWISE_KERNEL_ROUTINE)(
     const float* Input,
     float* Output,
     size_t N
     );
 
-typedef MLAS_TANH_KERNEL_ROUTINE* PMLAS_TANH_KERNEL_ROUTINE;
+typedef MLAS_ELEMENTWISE_KERNEL_ROUTINE* PMLAS_ELEMENTWISE_KERNEL_ROUTINE;
 
 extern "C" {
 
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
-    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAdd;
 #if defined(MLAS_TARGET_AMD64_IX86)
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroSse;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddSse;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroAvx;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddAvx;
-#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroFma3;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddFma3;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZeroAvx512F;
     MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAddAvx512F;
+#endif
+#else
+    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelZero;
+    MLAS_SGEMM_KERNEL_ROUTINE MlasSgemmKernelAdd;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -203,14 +291,69 @@ extern "C" {
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
 #endif
 
-    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernel;
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_TANH_KERNEL_ROUTINE MlasLogisticKernelFma3;
-    MLAS_TANH_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelSse;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelSse;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelSse;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelSse;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelFma3;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelFma3;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelFma3;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelAvx512F;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelAvx512F;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelAvx512F;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelAvx512F;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelSse;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelAvx512F;
+#else
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernel;
+#endif
+
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernel;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasLogisticKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasTanhKernelFma3;
+    MLAS_ELEMENTWISE_KERNEL_ROUTINE MlasErfKernelFma3;
 #endif
 
 }
+
+//
+// Define the default preferred byte alignment for buffers.
+//
+// MLAS_TARGET_AMD64_IX86: The typical architecture uses AVX instructions
+// accessing 256-bit vectors. MLAS_TARGET_AMD64 returns a larger value if the
+// platform supports 512-bit vectors to ensure that vectors are not split.
+//
+// MLAS_TARGET_ARM64: The kernels use "load pair" instructions to access 128-bit
+// vectors, so this value keeps both vectors in the same cache line.
+//
+// MLAS_TARGET_ARM: Using 16 for a single 128-bit vector may be sufficient for
+// this architecture, but the ONNX Runtime has historically used this larger
+// value.
+//
+
+#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
 
 //
 // Define the target number of per-thread multiplies before using another
@@ -218,10 +361,10 @@ extern "C" {
 //
 // The number is derived from performance results running SGEMM across a
 // range of workloads and observing the ideal number of threads to complete
-// that workload. See EvaluateThreadingPerformance() in the unit test.
+// that workload.
 //
 
-#if defined(MLAS_USE_OPENMP)
+#if defined(_OPENMP)
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #else
 #if defined(MLAS_TARGET_AMD64)
@@ -269,27 +412,21 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1Routine;
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
-    PMLAS_LOGISTIC_KERNEL_ROUTINE LogisticKernelRoutine;
-    PMLAS_TANH_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
+    PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
+    PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
+    PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
+    PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE LogisticKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE TanhKernelRoutine;
+    PMLAS_ELEMENTWISE_KERNEL_ROUTINE ErfKernelRoutine;
+    uint32_t NchwcBlockSize;
+    uint32_t PreferredBufferAlignment;
 #endif
 
 #if defined(MLAS_USE_WIN32_THREADPOOL)
     int32_t MaximumThreadCount;
 #endif
-
-    int32_t
-    GetMaximumThreadCount(
-        void
-        )
-    {
-#if defined(MLAS_USE_OPENMP)
-        return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
-#elif defined(MLAS_USE_WIN32_THREADPOOL)
-        return MaximumThreadCount;
-#else
-        return 1;
-#endif
-    }
 };
 
 extern MLAS_PLATFORM MlasPlatform;
@@ -311,8 +448,32 @@ void
 MlasExecuteThreaded(
     PMLAS_THREADED_ROUTINE ThreadedRoutine,
     void* Context,
-    int32_t Iterations
+    int32_t Iterations,
+    MLAS_THREADPOOL* ThreadPool
     );
+
+inline
+int32_t
+MlasGetMaximumThreadCount(
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+#ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+#else
+    if (ThreadPool != nullptr) {
+        return ThreadPool->NumThreads();
+    }
+#endif
+
+#if defined(MLAS_USE_WIN32_THREADPOOL)
+    return MlasPlatform.MaximumThreadCount;
+#elif _OPENMP
+    return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
+#else
+    return 1;
+#endif
+}
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
@@ -339,6 +500,9 @@ MlasExecuteThreaded(
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_AMD64_IX86)
 #define MLAS_SSE2_INTRINSICS
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
+#define MLAS_SSE41_INTRINSICS
+#endif
 #if defined(__AVX__)
 #define MLAS_AVX_INTRINSICS
 #endif
@@ -563,6 +727,75 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vminq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vcgtq_f32(Vector1, Vector2));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cmpgt_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_and_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_or_ps(Vector1, Vector2);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vandq_u32(vmvnq_u32(vreinterpretq_u32_f32(VectorNot)), vreinterpretq_u32_f32(Vector)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_andnot_ps(VectorNot, Vector);
+#endif
+}
+
+inline
+MLAS_FLOAT32X4
+MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(Vector1), vreinterpretq_u32_f32(Vector2)));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_xor_ps(Vector1, Vector2);
+#endif
+}
+
+// calc 2^int(N)
+inline
+MLAS_FLOAT32X4
+MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    int32x4_t emm0 = vaddq_s32(vcvtq_s32_f32(Vector), vdupq_n_s32(0x7f));
+    return vreinterpretq_f32_s32(vshlq_n_s32(emm0, 23));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    __m128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
+    return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
 #endif
 }
 

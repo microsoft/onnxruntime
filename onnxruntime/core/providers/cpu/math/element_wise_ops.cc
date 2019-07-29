@@ -3,6 +3,10 @@
 
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
+#include "core/util/math.h"
+#include "core/mlas/inc/mlas.h"
+
+#include <cmath>
 
 namespace onnxruntime {
 
@@ -12,6 +16,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Add<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Add,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Add<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Add,
@@ -33,6 +44,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sub<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Sub,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sub<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sub,
@@ -82,6 +100,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Div<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Div,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Div<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Div,
@@ -155,23 +180,47 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Reciprocal<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sqrt,
     6,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sqrt<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Sqrt,
+    6,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sqrt<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Pow,
     7,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Pow<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Pow,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Pow<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Exp,
     6,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Exp<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Exp,
+    6,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Exp<double>);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Log,
@@ -209,11 +258,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Max_6<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Max,
     8,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Max_8<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Max,
+    8,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Max_8<double>);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Not,
@@ -288,6 +345,13 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
     Equal<int64_t>);
 
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Equal,
+    11,
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Equal<float>);
+
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Mean,
     6, 7,
@@ -299,18 +363,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     8,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Mean_8<float>);
-
-ONNX_CPU_OPERATOR_KERNEL(
-    Affine,
-    1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Affine<float>);
-
-ONNX_CPU_OPERATOR_KERNEL(
-    Scale,
-    1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Scale<float>);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Erf,
@@ -384,43 +436,43 @@ Status Reciprocal<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Sqrt<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Sqrt<T>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
 
-  EigenMap<float>(Y) = EigenMap<float>(X).cwiseSqrt();
+  EigenMap<T>(Y) = EigenMap<T>(X).cwiseSqrt();
 
   return Status::OK();
 }
 
-template <>
-Status Pow<float>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status Pow<T>::Compute(OpKernelContext* context) const {
   const Tensor& Y = *context->Input<Tensor>(1);
-  std::function<void(EigenVectorMap<float>, ConstEigenVectorMap<float>, float)> input1scalar =
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = Eigen::pow(input0.array(), input1); };
+  std::function<void(EigenVectorMap<T>, ConstEigenVectorMap<T>, T)> input1scalar =
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = Eigen::pow(input0.array(), input1); };
   if (Y.Shape().Size() == 1) {
-    float value = *Y.Data<float>();
+    T value = *Y.Data<T>();
     if (value == 2.0) {
-      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::square(input0.array()); };
+      input1scalar = [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T) { output = Eigen::square(input0.array()); };
     } else if (value == 3.0) {
-      input1scalar = [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float) { output = Eigen::cube(input0.array()); };
+      input1scalar = [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T) { output = Eigen::cube(input0.array()); };
     }
   }
 
-  return BroadcastTwo<float, float>(
+  return BroadcastTwo<T, T>(
       *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0, input1.array()); },
+      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = Eigen::pow(input0, input1.array()); },
       input1scalar,
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = Eigen::pow(input0.array(), input1.array()); });
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = Eigen::pow(input0.array(), input1.array()); });
 }
 
-template <>
-Status Exp<float>::Compute(OpKernelContext* ctx) const {
+template <typename T>
+Status Exp<T>::Compute(OpKernelContext* ctx) const {
   auto& X = *ctx->Input<Tensor>(0);
   auto& Y = *ctx->Output(0, X.Shape());
 
-  EigenMap<float>(Y) = EigenMap<float>(X).array().exp();
+  EigenMap<T>(Y) = EigenMap<T>(X).array().exp();
 
   return Status::OK();
 }
@@ -514,13 +566,13 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Max_8<float>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<float, float>(
+template <typename T>
+Status Max_8<T>::Compute(OpKernelContext* context) const {
+  return BroadcastVariadic<T, T>(
       Node(), *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input1.array().max(input0); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array().max(input1); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0.array().max(input1.array()); });
+      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
 }
 
 Status Not::Compute(OpKernelContext* context) const {
@@ -660,14 +712,6 @@ Status Mean_8<float>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-template <>
-Status Affine<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-  MakeEigenArrayMap<float>(Y) = alpha_ * MakeEigenArrayMap<float>(X) + beta_;
-  return Status::OK();
-}
-
 template <typename T>
 class Sin final : public OpKernel {
  public:
@@ -677,16 +721,24 @@ class Sin final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).sin();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).sin();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Sin,
     7,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Sin<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Sin,
+    7,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Sin<double>);
 
 template <typename T>
 class Cos final : public OpKernel {
@@ -982,7 +1034,7 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(tensor_shape.Shape().GetDims().size() == 1, "Shape must be 1 dimensional as it's tensor data is a shape");
 
   // Turn the shape tensor data into an actual shape
-  const int64_t* p_shape = tensor_shape.template Data<int64_t>();
+  const auto* p_shape = tensor_shape.template Data<int64_t>();
   std::vector<int64_t> shape{p_shape, p_shape + tensor_shape.Shape().Size()};
 
   TBroadcasterExpand<T> bc(*context->Input<Tensor>(0), shape);
@@ -1001,12 +1053,12 @@ Status Expand_8<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REG_EXPAND_KERNEL(TYPE)                                                     \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                   \
-      Expand,                                                                       \
-      8,                                                                            \
-      TYPE,                                                                         \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()),  \
+#define REG_EXPAND_KERNEL(TYPE)                                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      Expand,                                                                      \
+      8,                                                                           \
+      TYPE,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       Expand_8<TYPE>);
 
 REG_EXPAND_KERNEL(float)
@@ -1023,22 +1075,237 @@ REG_EXPAND_KERNEL(bool)
 REG_EXPAND_KERNEL(MLFloat16)
 
 template <>
-Status Scale<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-  EigenMap<float>(Y) = scale_ * EigenMap<float>(X);
-  return Status::OK();
-}
-
-template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
   auto X_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(X_ptr != nullptr);
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
-  EigenMap<float>(Y) = EigenMap<float>(X).array().erf();
+
+  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
 
   return Status::OK();
 }
+
+class Mod final : public OpKernel {
+ public:
+  Mod(const OpKernelInfo& info) : OpKernel(info) {
+    int64_t fmod = 0;
+    Status s = info.GetAttr<int64_t>("fmod", &fmod);
+    if (s.IsOK()) {
+      ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
+      fmod_ = (fmod == 1);
+    }
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool fmod_{false};
+};
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Mod,
+    10,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<int16_t>(),
+                                            DataTypeImpl::GetTensorType<uint16_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>(),
+                                            DataTypeImpl::GetTensorType<MLFloat16>()}),
+    Mod);
+
+namespace mod_internal {
+
+template <class T>
+void BroadCastFMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
+  TBroadcaster<T, T> mod_broadcaster{X, Y};
+  Tensor* const output = context->Output(0, mod_broadcaster.GetOutputShape());
+  ORT_ENFORCE(output, "failed to get first output!");
+  TBroadcastOutput<T> mod_broadcast_output{
+      mod_broadcaster.GetSpanSize(), *output};
+
+  BroadcastLoopSpan(
+      mod_broadcaster, mod_broadcast_output,
+      [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
+        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+                       [X](auto y) {
+                         return static_cast<T>(std::fmod(X, y));
+                       });
+      },
+      [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [Y](auto x) {
+                         return static_cast<T>(std::fmod(x, Y));
+                       });
+      },
+      [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
+        std::transform(
+            X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+            [](auto x, auto y) {
+              return static_cast<T>(std::fmod(x, y));
+            });
+      });
+}
+
+template <class T>
+inline T Modulus(T x, T y) {
+  auto res = x % y;
+  if ((res < 0 && y > 0) || (res > 0 && y < 0)) {
+    res += y;
+  }
+  return static_cast<T>(res);
+}
+
+template <class T>
+void BroadCastMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
+  TBroadcaster<T, T> mod_broadcaster{X, Y};
+  Tensor* const output = context->Output(0, mod_broadcaster.GetOutputShape());
+  ORT_ENFORCE(output, "failed to get first output!");
+  TBroadcastOutput<T> mod_broadcast_output{
+      mod_broadcaster.GetSpanSize(), *output};
+
+  // static_cast below are necessary when small types such as
+  // int16_t and int8_t are converted to integers to perform remainder
+  // operation. This cast is safe with respect to data loss.
+  BroadcastLoopSpan(
+      mod_broadcaster, mod_broadcast_output,
+      [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
+        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+                       [X](auto y) {
+                         return Modulus(X, y);
+                       });
+      },
+      [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [Y](auto x) {
+                         return Modulus(x, Y);
+                       });
+      },
+      [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
+        std::transform(
+            X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+            [](auto x, auto y) {
+              return Modulus(x, y);
+            });
+      });
+}
+
+void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
+  TBroadcaster<MLFloat16, MLFloat16> mod_broadcaster{X, Y};
+  Tensor* const output = context->Output(0, mod_broadcaster.GetOutputShape());
+  ORT_ENFORCE(output, "failed to get first output!");
+  TBroadcastOutput<MLFloat16> mod_broadcast_output{
+      mod_broadcaster.GetSpanSize(), *output};
+
+  BroadcastLoopSpan(
+      mod_broadcaster, mod_broadcast_output,
+      [](gsl::span<MLFloat16> output, const MLFloat16& X, gsl::span<const MLFloat16> Y) {
+        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+                       [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
+                         return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
+                       });
+      },
+      [](gsl::span<MLFloat16> output, gsl::span<const MLFloat16> X, const MLFloat16& Y) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
+                         return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
+                       });
+      },
+      [](gsl::span<MLFloat16> output, gsl::span<const MLFloat16> X, gsl::span<const MLFloat16> Y) {
+        std::transform(
+            X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+            [](const MLFloat16& x, const MLFloat16& y) {
+              auto x_fl = math::halfToFloat(x.val);
+              auto y_fl = math::halfToFloat(y.val);
+              return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
+            });
+      });
+}
+
+}  // namespace mod_internal
+
+Status Mod::Compute(OpKernelContext* context) const {
+  Status s;
+
+  const auto& X = *context->Input<Tensor>(0);
+  const auto& Y = *context->Input<Tensor>(1);
+
+  auto dtype = X.DataType();
+  if (dtype != Y.DataType()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "X and Y input types do not match: ",
+                           dtype, " vs ", Y.DataType());
+  }
+
+  using namespace mod_internal;
+
+  if (dtype == DataTypeImpl::GetType<float>()) {
+    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+    BroadCastFMod<float>(X, Y, context);
+  } else if (dtype == DataTypeImpl::GetType<double>()) {
+    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+    BroadCastFMod<double>(X, Y, context);
+  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
+    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+    BroadCastMFloat16FMod(X, Y, context);
+  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
+    if (fmod_) {
+      BroadCastFMod<uint8_t>(X, Y, context);
+    } else {
+      BroadCastMod<uint8_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
+    if (fmod_) {
+      BroadCastFMod<int8_t>(X, Y, context);
+    } else {
+      BroadCastMod<int8_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
+    if (fmod_) {
+      BroadCastFMod<uint16_t>(X, Y, context);
+    } else {
+      BroadCastMod<uint16_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
+    if (fmod_) {
+      BroadCastFMod<int16_t>(X, Y, context);
+    } else {
+      BroadCastMod<int16_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
+    if (fmod_) {
+      BroadCastFMod<uint32_t>(X, Y, context);
+    } else {
+      BroadCastMod<uint32_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
+    if (fmod_) {
+      BroadCastFMod<int32_t>(X, Y, context);
+    } else {
+      BroadCastMod<int32_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
+    if (fmod_) {
+      BroadCastFMod<uint64_t>(X, Y, context);
+    } else {
+      BroadCastMod<uint64_t>(X, Y, context);
+    }
+  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+    if (fmod_) {
+      BroadCastFMod<int64_t>(X, Y, context);
+    } else {
+      BroadCastMod<int64_t>(X, Y, context);
+    }
+  } else {
+    ORT_ENFORCE(false, "Unsupported data type", dtype);
+  }
+
+  return s;
+}  // namespace onnxruntime
 
 }  // namespace onnxruntime

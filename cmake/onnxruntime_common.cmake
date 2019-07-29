@@ -4,6 +4,7 @@
 set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/common/*.h"
     "${ONNXRUNTIME_INCLUDE_DIR}/core/common/logging/*.h"
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.h"
@@ -29,24 +30,34 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
     )
+
+    if (onnxruntime_USE_SYSLOG)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.cc"
+        )
+    endif()
 endif()
 
-file(GLOB onnxruntime_common_src ${onnxruntime_common_src_patterns})
+file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
+    ${onnxruntime_common_src_patterns}
+    )
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
 
-if(NOT WIN32)
-	target_link_libraries(onnxruntime_common dl)
-endif()
-onnxruntime_add_include_to_target(onnxruntime_common gsl date)
-target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+onnxruntime_add_include_to_target(onnxruntime_common gsl date_interface)
+target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
+        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 if(onnxruntime_USE_NSYNC)
     target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC)
 endif()
-#threadpool uses eigen
-add_dependencies(onnxruntime_common eigen)
+if(onnxruntime_USE_EIGEN_THREADPOOL)
+    target_include_directories(onnxruntime_common PRIVATE ${eigen_INCLUDE_DIRS})
+    target_compile_definitions(onnxruntime_common PUBLIC USE_EIGEN_THREADPOOL)
+    add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
+endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
@@ -55,4 +66,19 @@ set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 if(WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
     set_target_properties(onnxruntime_common PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+endif()
+
+# check if we need to link against librt on Linux
+include(CheckLibraryExists)
+include(CheckFunctionExists)
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+  check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
+
+  if (NOT HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES time.h)
+    check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES)
+  else()
+    target_link_libraries(onnxruntime_common rt)
+  endif()
 endif()
