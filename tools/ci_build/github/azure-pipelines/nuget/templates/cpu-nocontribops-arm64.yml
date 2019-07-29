@@ -51,8 +51,6 @@ jobs:
     NuPackScript: |
      mkdir $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      cd $(Build.BinariesDirectory)\arm64
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.lib $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll $(Build.BinariesDirectory)\arm64\runtimes\win10-arm\native
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      zip -r win10-arm.zip runtimes
