@@ -303,7 +303,7 @@ namespace Microsoft.ML.OnnxRuntime
             OnnxValueType valueType;
             unsafe
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtOnnxTypeFromTypeInfo(typeInfo, new IntPtr(&valueType)));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(typeInfo, new IntPtr(&valueType)));
             }
             if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
