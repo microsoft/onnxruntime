@@ -101,47 +101,6 @@ jobs:
   condition: succeeded()
   steps:  
 
-  # - task: PowerShell@2
-  #   displayName: 'Download python'
-  #   inputs:
-  #     targetType: 'inline'
-  #     script: 'Invoke-WebRequest -OutFile installer.exe  https://onnxruntimeinstaller.blob.core.windows.net/conda-installer/installer.exe'
-  #     workingDirectory: '$(Build.BinariesDirectory)'
-
-  # - task: CmdLine@1
-  #   displayName: 'Run python installer'
-  #   inputs:
-  #     filename: '$(Build.BinariesDirectory)\installer.exe'
-  #     arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
-  #   timeoutInMinutes: 10
-  # - task: CmdLine@1
-  #   displayName: 'Install conda modules'
-  #   inputs:
-  #     filename: '$(Build.BinariesDirectory)\packages\python\scripts\conda.exe'
-  #     arguments: 'install -q --insecure -y mysql-connector-python'
-  #   timeoutInMinutes: 10
-
-  # - task: CmdLine@2
-  #   displayName: 'Post binary sizes to the dashboard database using command line'
-  #   inputs:
-  #     script: |
-  #       echo checking env var for MYSQL password
-  #       set DASHBOARD_MYSQL_ORT_PASSWORD
-  #       echo %DASHBOARD_MYSQL_ORT_PASSWORD%
-  #       echo variable[dashboard-mysql-ort-password] = $(dashboard-mysql-ort-password)
-
-  #       echo checking all env
-  #       set
-
-  #       echo changing directory to artifact download path
-  #       echo os,arch,build_config,size > binary_size_data.txt
-  #       echo win,x64,openmp,3276987 >> binary_size_data.txt
-  #       echo calling python script to post to database
-  #       $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{ parameters.gitCommitHash }} --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId) 
-  #   env: 
-  #     DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
-
-  # - template: ../../templates/clean-agent-build-directory-step.yml
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
@@ -206,6 +165,7 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
+  condition: (and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -215,13 +175,13 @@ jobs:
   - template: ../../templates/set-version-number-variables-step.yml
   - template: upload-binary-sizes-from-nuget-package.yml
     parameters:
-      nugetArtifactName: 'drop-signed-nuget'
+#      nugetArtifactName: 'drop-signed-nuget'
       downloadPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
   - task: AzureFileCopy@3
     displayName: 'Copy Signed NuGet Package to Blob Store'
-    condition: ${{ parameters.DoEsrp }}
+    condition: (ne(variables['IsReleaseBuild']), 'true') # rlease build has a different package naming scheme
     inputs:
       SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
       azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'

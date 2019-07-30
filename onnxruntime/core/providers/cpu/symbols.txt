@@ -51,7 +51,7 @@ OrtGetValueCount
 OrtGetValueType
 OrtGetVersionString
 OrtIsTensor
-OrtOnnxTypeFromTypeInfo
+OrtGetOnnxTypeFromTypeInfo
 OrtReleaseAllocator
 OrtReleaseAllocatorInfo
 OrtReleaseCustomOpDomain
@@ -69,7 +69,8 @@ OrtRunOptionsGetRunLogVerbosityLevel
 OrtRunOptionsGetRunTag
 OrtRunOptionsSetRunLogVerbosityLevel
 OrtRunOptionsSetRunTag
-OrtRunOptionsSetTerminate
+OrtRunOptionsEnableTerminate
+OrtRunOptionsDisableTerminate
 OrtSessionGetInputCount
 OrtSessionGetInputName
 OrtSessionGetInputTypeInfo

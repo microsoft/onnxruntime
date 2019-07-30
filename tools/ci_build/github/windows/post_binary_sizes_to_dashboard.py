@@ -39,7 +39,6 @@ def get_binary_sizes(size_data_file):
                 else:
                     tablerow[headers[i]] = linedata[i]
             binary_size.append(tablerow)
-    print(binary_size)        
     return binary_size
 
 
@@ -64,7 +63,6 @@ def write_to_db(binary_size_data, args):
 
         #insert current records
         for row in binary_size_data:
-            print (row)
             insert_query = ('INSERT INTO onnxruntime.binary_size '
                 '(build_time, build_project, build_id, commit_id, os, arch, build_config, size) '
                 'VALUES (Now(), "%s", "%s", "%s", "%s", "%s", "%s", %d) '
@@ -83,15 +81,14 @@ def write_to_db(binary_size_data, args):
                 args.build_id,
                 row['size']
             )
-            print (insert_query)
             cursor.execute(insert_query) 
 
         cnx.commit()
 
         # # Use below for debugging:
-        cursor.execute('select * from onnxruntime.binary_size')
-        for r in cursor:
-            print(r)
+        # cursor.execute('select * from onnxruntime.binary_size')
+        # for r in cursor:
+        #     print(r)
             
         cursor.close()
         cnx.close()
@@ -103,7 +100,6 @@ def write_to_db(binary_size_data, args):
 if __name__ == "__main__":
     try:
         args = parse_arguments()
-        print(args)
         binary_size_data = get_binary_sizes(args.size_data_file)
         write_to_db(binary_size_data, args)
     except BaseException as e:
