@@ -183,9 +183,11 @@ jobs:
     displayName: 'Copy Signed NuGet Package to Blob Store'
     condition: (ne(variables['IsReleaseBuild']), 'true') # rlease build has a different package naming scheme
     inputs:
-      SourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-      azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
-      Destination: AzureBlob
-      storage: ortpackages
+      Source: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      AzureConnectionType: 'Azure Resource Manager'
+      #azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+      AzureRMSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+      DestinationType: AzureBlob
+      RMStorageAccount: ortpackages
       ContainerName: ortpackages
 
