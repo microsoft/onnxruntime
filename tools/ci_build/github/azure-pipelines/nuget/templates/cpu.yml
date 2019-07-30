@@ -165,7 +165,7 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
-  condition: (and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -181,7 +181,7 @@ jobs:
 
   - task: AzureFileCopy@3
     displayName: 'Copy Signed NuGet Package to Blob Store'
-    condition: (ne(variables['IsReleaseBuild']), 'true') # rlease build has a different package naming scheme
+    condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
     inputs:
       Source: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
       AzureConnectionType: 'Azure Resource Manager'
