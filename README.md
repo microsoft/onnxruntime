@@ -19,7 +19,9 @@
 **Getting Started**
 * [Getting ONNX Models](#getting-onnx-models)
 * [Deploying ONNX Runtime](#deploying-onnx-runtime)
-* [Examples and Tutorials](#examples-and-tutorials)
+* [Performance Tuning](#performance-tuning)
+
+**[Examples and Tutorials](#examples-and-tutorials)**
 
 **More Info**
 * [Technical Design Details](#technical-design-details)
@@ -43,18 +45,18 @@ In addition to DNN models, ONNX Runtime fully supports the [ONNX-ML profile](htt
 ONNX Runtime supports both CPU and GPU. Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
 
 Currently ONNX Runtime supports the following accelerators:
-* CPU
-  * MLAS (Microsoft Linear Algebra Subprograms)
-  * MKL-DNN
-  * MKL-ML
-  * [Intel nGraph](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/nGraph-ExecutionProvider.md)
-* GPU
-  * CUDA
-  * [TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md)
+* MLAS (Microsoft Linear Algebra Subprograms)
+* [MKL-DNN](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/MKL-DNN-Subgraphs.md)
+* MKL-ML
+* [Intel nGraph](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/nGraph-ExecutionProvider.md)
+* CUDA
+* [TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md)
+* [OpenVINO](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md)
 
-Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md).
+Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](https://github.com/Microsoft/onnxruntime/blob/master/BUILD.md). Find Dockerfiles [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles).
 
 We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
+
 
 ### Cross Platform
 [API documentation and package installation](https://github.com/microsoft/onnxruntime#installation)
@@ -115,8 +117,12 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 
 **ONNX Runtime Server (beta)** is a hosted application for serving ONNX models using ONNX Runtime, providing a REST API for prediction. Usage details can be found [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md), and image installation instructions are [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#onnx-runtime-server-preview).
 
-## Examples and Tutorials
-### Python
+## Performance Tuning
+ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Perf_Tuning.md).
+
+
+# Examples and Tutorials
+## Python
 * [Basic Inferencing Sample](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
 * [Inferencing (Resnet50)](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/resnet50_modelzoo_onnxruntime_inference.ipynb)
 * [Inferencing samples](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem/inference_demos) using [ONNX-Ecosystem Docker image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
@@ -132,11 +138,11 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 * [FER+ on Azure Kubernetes Service with TensorRT](https://github.com/microsoft/onnxruntime/blob/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb)
 
 
-### C#
+## C#
 * [Inferencing Tutorial](https://github.com/microsoft/onnxruntime/blob/master/docs/CSharp_API.md#getting-started)
 
 
-### C/C++
+## C/C++
 * [Basic Inferencing (SqueezeNet) - C](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 * [Basic Inferencing (SqueezeNet) - C++](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
 * [Inferencing (MNIST) - C++](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx/MNIST)
@@ -152,6 +158,7 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 * [Add a new graph
 transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
+
 
 # Contribute
 We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
