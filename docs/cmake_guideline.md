@@ -21,7 +21,7 @@ Use PRIVATE if you don't know which to use. If you don't understand why it's is 
 
 This rule also applies to "target\_include\_directories".
 
-# Library order matters
+# Static library order matters
 First, you should know, when you link static libraries to an executable(or share library) target, the order matters a lot.
 Let's say, if A and B are static libraries, C is an exe.      
 - A depends B.
