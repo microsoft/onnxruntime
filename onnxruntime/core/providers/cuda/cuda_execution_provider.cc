@@ -64,10 +64,6 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
-  // create streams, default is nullptr
-  streams_[kCudaStreamDefault] = nullptr;
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
 
   DeviceAllocatorRegistrationInfo default_allocator_info(
       {OrtMemTypeDefault, [](int id) { return std::make_unique<CUDAAllocator>(id); }, std::numeric_limits<size_t>::max()});
@@ -93,9 +89,6 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
     CUDA_CALL_THROW(cudaEventDestroy(e));
     it = deferred_release_cpu_ptr_.erase(it);
   }
-  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
-  CUDA_CALL_THROW(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
-
   ReleasePerThreadStuffs();
 }
 
