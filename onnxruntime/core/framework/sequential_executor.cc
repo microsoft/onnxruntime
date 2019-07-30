@@ -27,12 +27,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
-  bool f_profiler_enabled = session_state.Profiler().FEnabled();
+  const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     tp = session_state.Profiler().StartTime();
   }
 
@@ -65,7 +65,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger,
                                               p_op_kernel->Node().ImplicitInputDefs(), terminate_flag_);
     // TODO: log kernel outputs?
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
     }
 
@@ -104,7 +104,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
 #endif
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_before",
                                                      sync_time_begin,
@@ -128,7 +128,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       return Status(compute_status.Category(), compute_status.Code(), msg_string);
     }
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_kernel_time",
                                                      kernel_begin_time,
@@ -159,7 +159,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
-    if (f_profiler_enabled) {
+    if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_after",
                                                      sync_time_begin,
@@ -199,7 +199,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
   }
 
-  if (f_profiler_enabled) {
+  if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
