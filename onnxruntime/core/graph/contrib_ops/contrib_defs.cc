@@ -1360,10 +1360,20 @@ Example 4:
                 output_counts = [1, 2, 2, 1]
               )DOC");
 
+  static const char* reduction_doc =
+      "Type of reduction to apply to loss: none, sum, mean(default). "
+      "'none': the output is the loss for each sample in the batch."
+      "'sum': the output will be summed. "
+      "'mean': the sum of the output will be divided by the batch_size.";
+
   // TODO: push this to ONNX
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
       .Input(0, "logits", "Unscaled log probabilities, N-D input of shape (-1, num_classes).", "T")
       .Input(1, "label", "The onehot label is N-D input with the same shape as logits.", "T")
       .Output(0, "Y", "loss.", "T")
@@ -1377,6 +1387,10 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "probability", "normalized exponential probabilities, N-D input of shape (-1, num_classes).", "T")
       .Input(2, "label", "The onehot label is N-D input with the same shape as logits.", "T")
@@ -1492,6 +1506,10 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
       .Input(0, "logits", "Unscaled log probabilities, (N+1)-D input of shape (-1, num_classes).", "T")
       .Input(1, "label",
              "label is N-D input whose shape should match that of logits. "
@@ -1512,6 +1530,10 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropyGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
       .Input(0, "dY", "gradient of Y", "T")
       .Input(1, "probability", "normalized exponential probabilities, (N+1)-D input of shape (batch_size).", "T")
       .Input(2, "label",
@@ -1877,36 +1899,29 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-      { // nodes: {outputs, op, inputs, attributes}
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
-        {
-          {"X_1"},
-          "Mul",
-          {"X", "multiplier"},
-        },
-        {
-          {"X_2"},
-          "Div",
-          {"X", "sqrt_two" }
-        },
-        {
-          {"X_3"},
-          "Erf",
-          {"X_2"}
-        },
-        {
-          {"X_4"},
-          "Add",
-          {"X_3", "one"}
-        },
-        {
-          {"Y"},
-          "Mul",
-          {"X_1", "X_4"}
-        },
-      }));
+          {
+              // nodes: {outputs, op, inputs, attributes}
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
+              {
+                  {"X_1"},
+                  "Mul",
+                  {"X", "multiplier"},
+              },
+              {{"X_2"},
+               "Div",
+               {"X", "sqrt_two"}},
+              {{"X_3"},
+               "Erf",
+               {"X_2"}},
+              {{"X_4"},
+               "Add",
+               {"X_3", "one"}},
+              {{"Y"},
+               "Mul",
+               {"X_1", "X_4"}},
+          }));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGradient)
       .SetDomain(kOnnxDomain)
@@ -1922,87 +1937,60 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-      { // nodes: {outputs, op, inputs, attributes}
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
-        ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("two_sqrt_pi", 1.128379225730896f),
-        {
-          {"X_1"},
-          "Mul",
-          {"X", "multiplier"},
-        },
-        {
-          {"X_2"},
-          "Div",
-          {"X", "sqrt_two" }
-        },
-        {
-          {"X_3"},
-          "Erf",
-          {"X_2"}
-        },
-        {
-          {"X_4"},
-          "Add",
-          {"X_3", "one"}
-        },
-        {
-          {"X_5_grad"},
-          "Mul",
-          {"dY", "X_4"}
-        },
-        {
-          {"X_6_grad"},
-          "Mul",
-          {"X_5_grad", "multiplier"}
-        },
-        {
-          {"X_7"},
-          "Mul",
-          {"X_2", "X_2"}
-        },
-        {
-          {"X_8"},
-          "Neg",
-          {"X_7"}
-        },
-        {
-          {"X_9"},
-          "Exp",
-          {"X_8"}
-        },
-        {
-          {"X_10_grad"},
-          "Mul",
-          {"two_sqrt_pi", "X_9"}
-        },
-        {
-          {"X_11_grad"},
-          "Mul",
-          {"dY", "X_1"}
-        },
-        {
-          {"X_12_grad"},
-          "Mul",
-          {"X_11_grad", "X_10_grad"}
-        },
-        {
-          {"X_13"},
-          "Div",
-          {"one", "sqrt_two" }
-        },
-        {
-          {"X_14_grad"},
-          "Mul",
-          {"X_12_grad", "X_13"}
-        },
-        {
-          {"dX"},
-          "Sum",
-          {"X_14_grad", "X_6_grad"}
-        },
-      }));
+          {
+              // nodes: {outputs, op, inputs, attributes}
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("sqrt_two", 1.4142135381698608f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("multiplier", 0.5f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("one", 1.0f),
+              ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("two_sqrt_pi", 1.128379225730896f),
+              {
+                  {"X_1"},
+                  "Mul",
+                  {"X", "multiplier"},
+              },
+              {{"X_2"},
+               "Div",
+               {"X", "sqrt_two"}},
+              {{"X_3"},
+               "Erf",
+               {"X_2"}},
+              {{"X_4"},
+               "Add",
+               {"X_3", "one"}},
+              {{"X_5_grad"},
+               "Mul",
+               {"dY", "X_4"}},
+              {{"X_6_grad"},
+               "Mul",
+               {"X_5_grad", "multiplier"}},
+              {{"X_7"},
+               "Mul",
+               {"X_2", "X_2"}},
+              {{"X_8"},
+               "Neg",
+               {"X_7"}},
+              {{"X_9"},
+               "Exp",
+               {"X_8"}},
+              {{"X_10_grad"},
+               "Mul",
+               {"two_sqrt_pi", "X_9"}},
+              {{"X_11_grad"},
+               "Mul",
+               {"dY", "X_1"}},
+              {{"X_12_grad"},
+               "Mul",
+               {"X_11_grad", "X_10_grad"}},
+              {{"X_13"},
+               "Div",
+               {"one", "sqrt_two"}},
+              {{"X_14_grad"},
+               "Mul",
+               {"X_12_grad", "X_13"}},
+              {{"dX"},
+               "Sum",
+               {"X_14_grad", "X_6_grad"}},
+          }));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)

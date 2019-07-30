@@ -4,15 +4,27 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include "contrib_ops/cpu/reduction_type.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
-class SoftmaxCrossEntropy final : public OpKernel {
+class LossBase : public OpKernel {
  public:
-  explicit SoftmaxCrossEntropy(const OpKernelInfo& info) : OpKernel(info) {
+  explicit LossBase(const OpKernelInfo& info) : OpKernel(info) {
+    std::string reduction;
+    ORT_ENFORCE(info.GetAttr<std::string>("reduction", &reduction).IsOK());
+    reduction_ = StringToReductionType(reduction);
   }
+
+ protected:
+  ReductionType reduction_;
+};
+
+template <typename T>
+class SoftmaxCrossEntropy final : public LossBase {
+ public:
+  explicit SoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -21,9 +33,9 @@ class SoftmaxCrossEntropy final : public OpKernel {
 };
 
 template <typename T>
-class SoftmaxCrossEntropyGrad final : public OpKernel {
+class SoftmaxCrossEntropyGrad final : public LossBase {
  public:
-  explicit SoftmaxCrossEntropyGrad(const OpKernelInfo& info) : OpKernel(info) {
+  explicit SoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -33,9 +45,9 @@ class SoftmaxCrossEntropyGrad final : public OpKernel {
 };
 
 template <typename T>
-class SparseSoftmaxCrossEntropy final : public OpKernel {
+class SparseSoftmaxCrossEntropy final : public LossBase {
  public:
-  explicit SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : OpKernel(info) {
+  explicit SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -45,9 +57,9 @@ class SparseSoftmaxCrossEntropy final : public OpKernel {
 };
 
 template <typename T>
-class SparseSoftmaxCrossEntropyGrad final : public OpKernel {
+class SparseSoftmaxCrossEntropyGrad final : public LossBase {
  public:
-  explicit SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : OpKernel(info) {
+  explicit SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

@@ -821,7 +821,7 @@ TEST(GradientCheckerTest, SqueezeGrad) {
                                           {MakeAttribute("axes", axes)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
-  
+
   {
     TensorShape x_shape({1, 2, 1, 3, 1});
     TensorShape y_shape({1, 2, 3, 1});
@@ -875,6 +875,72 @@ TEST(OptimizerTest, SGDTest) {
   test.AddInput<float>("G", {3}, {4, 5, 6});
   test.AddOutput<float>("W_New", {3}, {-1.f, -0.5f, 0.f});
   test.Run();
+}
+
+void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"SoftmaxCrossEntropy"};
+
+  std::vector<std::vector<float>> x_datas(2);
+  GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
+
+  gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}},
+                                        {{1}, {input_shape, false}}, &max_error, x_datas,
+                                        {MakeAttribute("reduction", reduction)});
+  EXPECT_IS_TINY(max_error);
+}
+TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
+  TestSoftmaxCrossEntropyGrad({5, 11}, "mean");
+  TestSoftmaxCrossEntropyGrad({5, 11}, "sum");
+  TestSoftmaxCrossEntropyGrad({2, 3, 2, 11}, "mean");
+  TestSoftmaxCrossEntropyGrad({2, 3, 2, 11}, "sum");
+}
+
+void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std::string& reduction) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"SparseSoftmaxCrossEntropy"};
+
+  const int64_t D = 7;
+  std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x) * 5.0f, 7.0f); };
+  std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
+
+  // without weigth
+  {
+    TensorShape logit_shape(index_shape);
+    logit_shape.emplace_back(D);
+
+    TensorInfo x_info({logit_shape});
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
+                                          {{1}, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction)});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // with weight
+  {
+    TensorShape logit_shape(index_shape);
+    logit_shape.emplace_back(D);
+
+    TensorInfo x_info({logit_shape});
+    TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo weight_info(index_shape, false, &transformer_weight);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
+                                          {{1}, {logit_shape, false}}, &max_error,
+                                          {MakeAttribute("reduction", reduction)});
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
+  TestSparseSoftmaxCrossEntropyGrad({5}, "mean");
+  TestSparseSoftmaxCrossEntropyGrad({5}, "sum");
+  TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "mean");
+  TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
 }
 
 #ifdef USE_CUDA
@@ -1125,103 +1191,6 @@ TEST(GradientCheckerTest, GatherNDGrad_int32_indice_unique_float_data_axis_2) {
   EXPECT_IS_TINY(max_error);
 }
 
-TEST(GradientCheckerTest, SoftmaxCrossEntropyGrad) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"SoftmaxCrossEntropy"};
-  const int64_t D = 11;
-
-  {
-    const TensorShape N({5});
-    TensorShape input_shape(N);
-    input_shape.emplace_back(D);
-
-    std::vector<std::vector<float>> x_datas(2);
-    GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
-
-    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}},
-                                          {{1}, {input_shape, false}}, &max_error, x_datas);
-    EXPECT_IS_TINY(max_error);
-  }
-
-  {
-    const TensorShape N({2, 3, 2});
-    TensorShape input_shape(N);
-    input_shape.emplace_back(D);
-
-    std::vector<std::vector<float>> x_datas(2);
-    GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
-
-    gradient_checker.ComputeGradientError(op_def, {input_shape, {input_shape, false}},
-                                          {{1}, {input_shape, false}}, &max_error, x_datas);
-    EXPECT_IS_TINY(max_error);
-  }
-}
-
-TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
-  float max_error;
-  GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"SparseSoftmaxCrossEntropy"};
-
-  const TensorShape N_1d({5});
-  const TensorShape N_3d({2, 3, 2});
-  const int64_t D = 7;
-  std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x) * 5.0f, 7.0f); };
-  std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
-
-  // 1D label without weigth
-  {
-    TensorShape logit_shape(N_1d);
-    logit_shape.emplace_back(D);
-
-    TensorInfo x_info({logit_shape});
-    TensorInfo index_info(N_1d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
-
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}, {logit_shape, false}}, &max_error);
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // 1D label with weight
-  {
-    TensorShape logit_shape(N_1d);
-    logit_shape.emplace_back(D);
-
-    TensorInfo x_info({logit_shape});
-    TensorInfo index_info(N_1d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
-    TensorInfo weight_info(N_1d, false, &transformer_weight);
-
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
-                                          {{1}, {logit_shape, false}}, &max_error);
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // 3D label without weight
-  {
-    TensorShape logit_shape(N_3d);
-    logit_shape.emplace_back(D);
-
-    TensorInfo x_info({logit_shape});
-    TensorInfo index_info(N_3d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
-
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{1}, {logit_shape, false}}, &max_error);
-    EXPECT_IS_TINY(max_error);
-  }
-
-  // 3D label with weight
-  {
-    TensorShape logit_shape(N_3d);
-    logit_shape.emplace_back(D);
-
-    TensorInfo x_info({logit_shape});
-    TensorInfo index_info(N_3d, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
-    TensorInfo weight_info(N_3d, false, &transformer_weight);
-
-    gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
-                                          {{1}, {logit_shape, false}}, &max_error);
-    EXPECT_IS_TINY(max_error);
-  }
-}
-
 TEST(OptimizerTest, AdamOptimizerTest) {
   OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain, false);
   test.AddInput<float>("ETA", {}, {0.5f});
@@ -1239,16 +1208,15 @@ TEST(OptimizerTest, AdamOptimizerTest) {
   test.Run();
 }
 
-
 static void TestLayerNormGradient(const std::vector<int64_t>& X_dims,
-                   const std::vector<int64_t>& scale_dims,
-                   const std::vector<int64_t>& B_dims,
-                   const std::vector<int64_t>& Y_dims,
-                   const std::vector<int64_t>& mean_dims,
-                   const std::vector<int64_t>& var_dims,
-                   optional<float> epsilon,
-                   int64_t axis = -1,
-                   int64_t keep_dims = 1) {
+                                  const std::vector<int64_t>& scale_dims,
+                                  const std::vector<int64_t>& B_dims,
+                                  const std::vector<int64_t>& Y_dims,
+                                  const std::vector<int64_t>& mean_dims,
+                                  const std::vector<int64_t>& var_dims,
+                                  optional<float> epsilon,
+                                  int64_t axis = -1,
+                                  int64_t keep_dims = 1) {
   OpTester test("LayerNormalization", 9, onnxruntime::kOnnxDomain, false);
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);

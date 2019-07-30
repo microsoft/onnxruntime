@@ -95,7 +95,12 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
   // Sum over batches and classes
   math::Sum<float, CPUMathUtil>(nd, mul.data(), loss_data, nullptr);
-  *loss_data *= -1;
+
+  if (reduction_ == ReductionType::MEAN) {
+    *loss_data /= -n;
+  } else if (reduction_ == ReductionType::SUM) {
+    *loss_data *= -1;
+  }
 
   return Status::OK();
 }
@@ -119,6 +124,8 @@ Status SoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const {
 
   ORT_ENFORCE(label_shape == probability_shape, "The shape of probability and label is not identical");
 
+  int64_t N = probability_shape.SizeToDimension(probability_shape.NumDimensions() - 1);
+  const int n = gsl::narrow_cast<int>(N);
   const int nd = gsl::narrow_cast<int>(probability_shape.Size());
 
   Tensor* d_logit = context->Output(0, probability_shape);
@@ -132,8 +139,15 @@ Status SoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const {
   // backprop: prob - label
   math::Sub<float, CPUMathUtil>(nd, probability_data, label_data, d_logit_data, nullptr);
 
+  float dY_scaled;
+  if (reduction_ == ReductionType::MEAN) {
+    dY_scaled = *dY_data / n;
+  } else if (reduction_ == ReductionType::SUM) {
+    dY_scaled = *dY_data;
+  }
+
   // d_logit = dY * backprop, dY is a scalar
-  math::Scale<float, CPUMathUtil>(nd, dY_data, d_logit_data, d_logit_data, nullptr);
+  math::Scale<float, CPUMathUtil>(nd, &dY_scaled, d_logit_data, d_logit_data, nullptr);
 
   return Status::OK();
 }
@@ -195,15 +209,27 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
     for (int i = 0; i < n; i++) {
       loss_sample[i] = (log_sum_exp[i] - shifted_logit[i * d + label_data[i]]) * weight_data[i];
     }
+
+    // Sum loss over n samples
+    math::Sum<float, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
+
+    // Average sum_loss over sum_weights
+    if (reduction_ == ReductionType::MEAN) {
+      float sum_weight;
+      math::Sum<float, CPUMathUtil>(n, weight_data, &sum_weight, nullptr);
+      *loss_data /= sum_weight;
+    }
   } else {
     for (int i = 0; i < n; i++) {
       loss_sample[i] = log_sum_exp[i] - shifted_logit[i * d + label_data[i]];
     }
+    // Sum loss over n samples
+    math::Sum<float, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
+
+    if (reduction_ == ReductionType::MEAN) {
+      *loss_data /= n;
+    }
   }
-
-  // Sum over batches
-  math::Sum<float, CPUMathUtil>(n, loss_sample.data(), loss_data, nullptr);
-
   return Status::OK();
 }
 
@@ -247,20 +273,33 @@ Status SparseSoftmaxCrossEntropyGrad<T>::Compute(OpKernelContext* context) const
     const TensorShape weight_shape{weight.Shape()};
     ORT_ENFORCE(weight_shape == label_shape, "The shape of weight and label is different");
     const float* weight_data = weight.template Data<float>();
+
+    float dY_scaled = *dY_data;
+    if (reduction_ == ReductionType::MEAN) {
+      float sum_weight;
+      math::Sum<float, CPUMathUtil>(n, weight_data, &sum_weight, nullptr);
+      dY_scaled = *dY_data / sum_weight;
+    }
+
     for (int i = 0; i < n; i++) {
       int64_t label_sample = label_data[i];
-      float weight_smaple = weight_data[i] * (*dY_data);
+      float weight_smaple = weight_data[i] * dY_scaled;
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
         d_logit_data[index] = (probability_data[index] - (label_sample == j)) * weight_smaple;
       }
     }
   } else {
+    float dY_scaled = *dY_data;
+    if (reduction_ == ReductionType::MEAN) {
+      dY_scaled = *dY_data / n;
+    }
+
     for (int i = 0; i < n; i++) {
       int64_t label_sample = label_data[i];
       for (int j = 0; j < d; j++) {
         int index = i * d + j;
-        d_logit_data[index] = (probability_data[index] - (label_sample == j)) * (*dY_data);
+        d_logit_data[index] = (probability_data[index] - (label_sample == j)) * dY_scaled;
       }
     }
   }

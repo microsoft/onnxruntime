@@ -131,7 +131,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                     ArgDef("scattered_lm_weights")},  // Inputs
                                    {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),
                                     ArgDef("probability_lm", prediction_arg->TypeAsProto())},  // Outputs
-                                   NodeAttributes(),
+                                   {MakeAttribute("reduction", "mean")},
                                    "Masked_LM_Loss"));
 
     graph_defs.AddGraphOutputs({});
@@ -151,7 +151,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                     ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
                                    {ArgDef(nsp_loss, GetLossTypeProto(graph_defs)),
                                     ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},  // Outputs
-                                   NodeAttributes(),
+                                   {MakeAttribute("reduction", "mean")},
                                    "Next_Sentence_Loss"));
   }
 
@@ -173,8 +173,8 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   // SummaryScalar
   {
     new_nodes.emplace_back(NodeDef("SummaryScalar",
-                                   {ArgDef(mlm_loss)},         // Inputs
-                                   {ArgDef(summary_mlm_loss)}, // Outputs
+                                   {ArgDef(mlm_loss)},          // Inputs
+                                   {ArgDef(summary_mlm_loss)},  // Outputs
                                    {MakeAttribute("tags", std::vector<std::string>{summary_mlm_loss})},
                                    summary_mlm_loss));
   }
@@ -182,8 +182,8 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   // SummaryScalar
   {
     new_nodes.emplace_back(NodeDef("SummaryScalar",
-                                   {ArgDef(nsp_loss)},         // Inputs
-                                   {ArgDef(summary_nsp_loss)}, // Outputs
+                                   {ArgDef(nsp_loss)},          // Inputs
+                                   {ArgDef(summary_nsp_loss)},  // Outputs
                                    {MakeAttribute("tags", std::vector<std::string>{summary_nsp_loss})},
                                    summary_nsp_loss));
   }
@@ -191,8 +191,8 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   // SummaryScalar
   {
     new_nodes.emplace_back(NodeDef("SummaryScalar",
-                                   {ArgDef(total_loss)},         // Inputs
-                                   {ArgDef(summary_total_loss)}, // Outputs
+                                   {ArgDef(total_loss)},          // Inputs
+                                   {ArgDef(summary_total_loss)},  // Outputs
                                    {MakeAttribute("tags", std::vector<std::string>{summary_total_loss})},
                                    summary_total_loss));
   }
@@ -200,12 +200,13 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   // SummaryMerge
   {
     new_nodes.emplace_back(NodeDef("SummaryMerge",
-                                   {                             // Inputs
+                                   {
+                                       // Inputs
                                        ArgDef(summary_mlm_loss),
                                        ArgDef(summary_nsp_loss),
                                        ArgDef(summary_total_loss),
                                    },
-                                   {ArgDef(summary_loss)},       // Outputs
+                                   {ArgDef(summary_loss)},  // Outputs
                                    NodeAttributes(),
                                    summary_loss));
   }

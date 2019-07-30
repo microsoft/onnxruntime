@@ -3,6 +3,7 @@
 
 #pragma once
 #include "softmax.h"
+#include "contrib_ops/cpu/reduction_type.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
 
 namespace onnxruntime {
@@ -12,6 +13,7 @@ template <typename T>
 void SoftMaxCrossEntropyImpl(
     const T* prob,
     const T* label,
+    size_t normalize_factor,
     T* output_data,
     size_t count);
 
@@ -20,6 +22,7 @@ void SoftMaxCrossEntropyGradImpl(
     const T* dY,
     const T* prob,
     const T* label,
+    size_t normalize_factor,
     T* output_data,
     size_t count);
 
@@ -28,6 +31,7 @@ void SparseSoftmaxCrossEntropyImpl(
     const T* prob,
     const Tin* label,
     const T* weight,
+    const T* normalize_factor,
     T* output_data,
     size_t count,
     size_t label_depth);
@@ -38,41 +42,58 @@ void SparseSoftmaxCrossEntropyGradImpl(
     const T* prob,
     const Tin* label,
     const T* weight,
+    const T* normalize_factor,
     T* output_data,
     size_t count,
     size_t label_depth);
 
-template <typename T>
-class SoftmaxCrossEntropy final : public ReduceKernel<true> {
+class LossBase : public ReduceKernel<true> {
  public:
-  SoftmaxCrossEntropy(const OpKernelInfo& info) : ReduceKernel<true>(info, std::make_unique<int64_t>(0)) {
+  explicit LossBase(const OpKernelInfo& info)
+      : ReduceKernel<true>(info, /*keep_dims_override*/ std::make_unique<int64_t>(0)) {
+    std::string reduction;
+    ORT_ENFORCE(info.GetAttr<std::string>("reduction", &reduction).IsOK());
+    reduction_ = StringToReductionType(reduction);
+
+    // TODO: implement reduction type of NONE
+    ORT_ENFORCE(reduction_ != ReductionType::NONE, "Loss with reduction 'none' is not implemented.");
+  }
+
+ protected:
+  ReductionType reduction_;
+};
+
+template <typename T>
+class SoftmaxCrossEntropy final : public LossBase {
+ public:
+  SoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class SoftmaxCrossEntropyGrad final : public CudaKernel {
+class SoftmaxCrossEntropyGrad final : public LossBase {
  public:
-  SoftmaxCrossEntropyGrad(const OpKernelInfo& info) : CudaKernel{info} {
+  SoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T, typename Tin>
-class SparseSoftmaxCrossEntropy final : public ReduceKernel<true> {
+class SparseSoftmaxCrossEntropy final : public LossBase {
  public:
-  SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : ReduceKernel<true>(info, std::make_unique<int64_t>(0)) {
+  SparseSoftmaxCrossEntropy(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T, typename Tin>
-class SparseSoftmaxCrossEntropyGrad final : public CudaKernel {
+class SparseSoftmaxCrossEntropyGrad final : public LossBase {
  public:
-  SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : CudaKernel{info} {
+  SparseSoftmaxCrossEntropyGrad(const OpKernelInfo& info) : LossBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

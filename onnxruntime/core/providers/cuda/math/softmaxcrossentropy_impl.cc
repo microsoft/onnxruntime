@@ -15,15 +15,16 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Class<T>);
 
-#define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, version)                     \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                                \
-      Class,                                                                        \
-      kOnnxDomain,                                                                  \
-      version,                                                                      \
-      T, Tin,                                                                       \
-      kCudaExecutionProvider,                                                       \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-                        .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()), \
+#define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, version)       \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                  \
+      Class,                                                          \
+      kOnnxDomain,                                                    \
+      version,                                                        \
+      T, Tin,                                                         \
+      kCudaExecutionProvider,                                         \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()), \
       Class<T, Tin>);
 
 template <typename T>
@@ -52,11 +53,17 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
                                               CudnnHandle(),
                                               1 /*axis default*/));
 
+  size_t normalize_factor = N;
+  if (reduction_ == ReductionType::SUM) {
+    normalize_factor = static_cast<size_t>(1);
+  }
+
   // calculate (label - log(softmax)) for each element
   IAllocatorUniquePtr<T> temp_X = GetScratchBuffer<T>(N * D);
   SoftMaxCrossEntropyImpl(
       probability_data,  // softmax result
       label_data,        // label
+      normalize_factor,  // normalize_factor
       temp_X.get(),      // -(label * log(softmax))
       N * D);
 
@@ -84,6 +91,7 @@ Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape label_shape{label.Shape()};
   ORT_ENFORCE(label_shape == probability_shape, "The shape in probability and label is not identical");
 
+  int64_t N = probability_shape.SizeToDimension(probability_shape.NumDimensions() - 1);
   int64_t ND = probability_shape.Size();
 
   Tensor* d_logits = ctx->Output(0, probability_shape);
@@ -91,12 +99,19 @@ Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const T* dY_data = dY.template Data<T>();
   const T* probability_data = probability.template Data<T>();
   const T* label_data = label.template Data<T>();
+
+  size_t normalize_factor = N;
+  if (reduction_ == ReductionType::SUM) {
+    normalize_factor = static_cast<size_t>(1);
+  }
+
   T* d_logits_data = d_logits->template MutableData<T>();
 
   SoftMaxCrossEntropyGradImpl(
       dY_data,           // Dy
       probability_data,  // pi
       label_data,        // Label
+      normalize_factor,  // normalize_factor
       d_logits_data,     // gradient
       ND);
 
@@ -146,7 +161,33 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     weight_data = weight.template Data<T>();
   }
 
-  SparseSoftmaxCrossEntropyImpl(probability_data, label_data, weight_data, tmp_loss_sample.get(), N, D);
+  auto normalize_factor_data = GetScratchBuffer<T>(1);
+  if (reduction_ == ReductionType::SUM) {
+    const T normalize_factor = static_cast<T>(1);
+    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+  } else if (reduction_ == ReductionType::MEAN) {
+    if (weight_data == nullptr) {
+      const T normalize_factor = static_cast<T>(N);
+      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    } else {
+      std::vector<int64_t> output_dims(1, 1);
+      ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+          weight_data,
+          TensorShape({N}),
+          normalize_factor_data.get(),
+          TensorShape({}),
+          CUDNN_REDUCE_TENSOR_ADD,
+          output_dims);
+    }
+  }
+
+  SparseSoftmaxCrossEntropyImpl(probability_data,
+                                label_data,
+                                weight_data,
+                                normalize_factor_data.get(),
+                                tmp_loss_sample.get(),
+                                N,
+                                D);
 
   // ReduceSum on loss_per_sample
   std::vector<int64_t> output_dims(1, 1);
@@ -193,7 +234,34 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
     weight_data = weight.template Data<T>();
   }
 
-  SparseSoftmaxCrossEntropyGradImpl(dY_data, probability_data, label_data, weight_data, d_logit_data, N, D);
+  auto normalize_factor_data = GetScratchBuffer<T>(1);
+  if (reduction_ == ReductionType::SUM) {
+    const T normalize_factor = static_cast<T>(1);
+    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+  } else if (reduction_ == ReductionType::MEAN) {
+    if (weight_data == nullptr) {
+      const T normalize_factor = static_cast<T>(N);
+      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    } else {
+      std::vector<int64_t> output_dims(1, 1);
+      ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+          weight_data,
+          TensorShape({N}),
+          normalize_factor_data.get(),
+          TensorShape({}),
+          CUDNN_REDUCE_TENSOR_ADD,
+          output_dims);
+    }
+  }
+
+  SparseSoftmaxCrossEntropyGradImpl(dY_data,
+                                    probability_data,
+                                    label_data,
+                                    weight_data,
+                                    normalize_factor_data.get(),
+                                    d_logit_data,
+                                    N,
+                                    D);
 
   return Status::OK();
 }
