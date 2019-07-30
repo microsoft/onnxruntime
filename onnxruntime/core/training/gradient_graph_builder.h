@@ -46,9 +46,10 @@ class GradientGraphBuilder {
     @param graph The forward computation graph
     @param y_node_arg_names_ Set of name for NodeArgs whose initial gradients will be provided
     @param x_node_arg_names_ Set of name for NodeArgs that need the gradients
-    @param opt_info could be empty, the optimizers used by each weight in weights_to_train, 1-1 mapping to x_node_arg_names.
+    @param opt_info The optimizers used by each weight, 1-1 mapping to x_node_arg_names.
+        If empty, optimizers will not be added to the graph.
 
-    @remarks Given initial graidents at 'y_node_args' w.r.t some loss function L,
+    @remarks Given initial gradients at 'y_node_args' w.r.t some loss function L,
     the backward graph computes the partial derivative of 'L' w.r.t the 'x_node_args'
     **/
   GradientGraphBuilder(Graph* graph,

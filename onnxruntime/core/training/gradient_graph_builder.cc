@@ -31,8 +31,8 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
       opt_info_(opt_info) {
-  auto rule_based_graph_transformer = 
-    std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
+  auto rule_based_graph_transformer =
+      std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
 
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
@@ -230,15 +230,15 @@ Status GradientGraphBuilder::Build() {
       const string& weight_name = x_node_arg->Name();
 
       auto opt_info_it = opt_info_.find(weight_name);
-      if (opt_info_it == opt_info_.end()) {
-        ORT_THROW("Weight ", weight_name, " is not found in the optimizier info map.");
-      }
+      ORT_RETURN_IF_NOT(opt_info_it != opt_info_.end(),
+                        "Weight ", weight_name, " is not found in the optimizer info map.");
+
       const auto& opt_info = opt_info_it->second;
       auto opt_builder = OptimizerBuilderRegistry::GetInstance().MakeUnique(opt_info.name_);
 
-      opt_builder->Build({x_node_arg},
-                         opt_info,
-                         gradient_graph_defs);
+      ORT_RETURN_IF_ERROR(opt_builder->Build({x_node_arg},
+                                             opt_info,
+                                             gradient_graph_defs));
     }
   }
 
