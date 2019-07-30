@@ -276,8 +276,8 @@ void NchwcTransformerImpl::ConvPoolShapeInference(const Node& node,
     // Maintain the spatial dimension from the NCHWc input if the implicit or
     // explicit padding results in the same symbolic dimension before applying
     // the stride. When the stride is 2, then the actual output dimensions is
-    // half the/ original value and the effect of this is accumulated into the
-    // shift count for the spatial dimension.
+    // half the original value. Track the number of times the symbolic dimension
+    // has been halved in the shifts field.
     if (padding + 1 == kernel || auto_pad_same_shape) {
       output_shape.dims_[kNchwcBatchChannelDims + i] = input_shape.dims_[kNchwcBatchChannelDims + i];
       output_shape.shifts_[i] = input_shape.shifts_[i] + static_cast<size_t>(stride) - 1;
