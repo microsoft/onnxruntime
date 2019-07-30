@@ -60,59 +60,6 @@ Status SinGrad<T>::Compute(OpKernelContext* context) const {
 }
 
 ONNX_CPU_OPERATOR_KERNEL(
-    MulGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    MulGrad<float>);
-
-template <typename T>
-Status MulGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dZ = *context->Input<Tensor>(0);
-  auto& X = *context->Input<Tensor>(1);
-  auto& Y = *context->Input<Tensor>(2);
-
-  auto& dX = *context->Output(0, X.Shape());
-  auto& dY = *context->Output(1, Y.Shape());
-
-  MakeEigenArrayMap<float>(dX) = MakeEigenArrayMap<float>(dZ) * MakeEigenArrayMap<float>(Y);
-  MakeEigenArrayMap<float>(dY) = MakeEigenArrayMap<float>(dZ) * MakeEigenArrayMap<float>(X);
-
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    FlattenGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    FlattenGrad<float>);
-
-template <typename T>
-Status FlattenGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dZ = *context->Input<Tensor>(0);
-  auto& dA = *context->Output(0, dZ.Shape());
-
-  // unimplemented
-  MakeEigenArrayMap<float>(dA) = MakeEigenArrayMap<float>(dZ);
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    UnsqueezeGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    UnsqueezeGrad<float>);
-
-template <typename T>
-Status UnsqueezeGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dZ = *context->Input<Tensor>(0);
-  auto& dA = *context->Output(0, dZ.Shape());
-
-  // unimplemented
-  MakeEigenArrayMap<float>(dA) = MakeEigenArrayMap<float>(dZ);
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
     ReluGrad,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -127,87 +74,6 @@ Status ReluGrad<T>::Compute(OpKernelContext* context) const {
   EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size()) =
       (ConstEigenVectorArrayMap<float>(X.template Data<T>(), X.Shape().Size()) > T(0))
           .select(ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size()), T(0));
-
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    MatMulGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    MatMulGrad<float>);
-
-// impl supports 2D matrix only
-template <typename T>
-Status MatMulGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dz = *context->Input<Tensor>(0);
-  auto& x = *context->Input<Tensor>(1);
-  auto& y = *context->Input<Tensor>(2);
-
-  // dx = dz * transpose(y)
-  auto rows = dz.Shape().GetDims()[0];
-  auto cols = y.Shape().GetDims()[0];
-
-  std::vector<int64_t> dxDims{rows, cols};
-  Tensor* dx = context->Output(0, dxDims);
-
-  if (dx) {
-    math::Gemm<float, CPUMathUtil>(
-        CblasNoTrans,
-        CblasTrans,
-        rows,
-        cols,
-        dz.Shape().GetDims()[1],
-        /* alpha */ 1.0f,
-        dz.template Data<float>(),
-        y.template Data<float>(),
-        /* beta */ 0.0f,
-        dx->template MutableData<float>(),
-        &CPUMathUtil::Instance());
-  }
-  // dy = transpose(x) * y
-  rows = x.Shape().GetDims()[1];
-  cols = dz.Shape().GetDims()[1];
-
-  std::vector<int64_t> dyDims{rows, cols};
-  Tensor* dy = context->Output(1, TensorShape(dyDims));
-
-  if (dy) {
-    math::Gemm<float, CPUMathUtil>(
-        CblasTrans,
-        CblasNoTrans,
-        rows,
-        cols,
-        dz.Shape().GetDims()[0],
-        /* alpha */ 1.0f,
-        x.template Data<float>(),
-        dz.template Data<float>(),
-        /* beta */ 0.0f,
-        dy->template MutableData<float>(),
-        &CPUMathUtil::Instance());
-  }
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    SubGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    SubGrad<float>);
-
-template <typename T>
-Status SubGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dZ = *context->Input<Tensor>(0);
-
-  if (!output_tensor_shapes_[0].empty()) {
-    auto dX1 = context->Output(0, TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]));
-    MakeEigenArrayMap<float>(dX1) = MakeEigenArrayMap<float>(dZ);
-  }
-
-  if (!output_tensor_shapes_[1].empty()) {
-    auto dX2 = context->Output(1, TensorShape::ReinterpretBaseType(output_tensor_shapes_[1]));
-    MakeEigenArrayMap<float>(dX2) = -1 * MakeEigenArrayMap<float>(dZ);
-  }
 
   return Status::OK();
 }
@@ -234,29 +100,6 @@ Status PowGrad<T>::Compute(OpKernelContext* context) const {
   // df/da =  w^a * ln w
   // this is not implemented yet . needs ln
 
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    ReduceMeanGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    ReduceMeanGrad<float>);
-
-// This impl will only work for 1-D tensor input (x), with Do not keepDims option
-template <typename T>
-Status ReduceMeanGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dy = *context->Input<Tensor>(0);
-
-  if (!output_tensor_shapes_[0].empty()) {
-    auto dx_shape = TensorShape::ReinterpretBaseType(output_tensor_shapes_[0]);
-    auto dx = context->Output(0, dx_shape);
-
-    float value = dy.Data<float>()[0] / dx_shape.Size();  //only one value expected for this case since we support 1-D input only
-
-    auto out = gsl::make_span(dx->template MutableData<T>(), dx->Shape().Size());
-    std::for_each(out.begin(), out.end(), [&value](T& v) { v = static_cast<T>(value); });
-  }
   return Status::OK();
 }
 

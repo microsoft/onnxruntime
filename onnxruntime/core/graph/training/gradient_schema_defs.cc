@@ -13,50 +13,15 @@ void RegisterGradientSchemas() {
       .NumOutputs(1)
       .Reference("Sin");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(MulGrad)
-      .NumInputs(2, 3)
-      .NumOutputs(1, 2)
-      .Reference("Mul");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(FlattenGrad)
-      .NumInputs(1)
-      .NumOutputs(1)
-      .Reference("Flatten");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(UnsqueezeGrad)
-      .NumInputs(1)
-      .NumOutputs(1)
-      .Reference("Unsqueeze");
-
   ONNX_GRADIENT_OPERATOR_SCHEMA(ReluGrad)
       .NumInputs(2)
       .NumOutputs(1)
       .Reference("Relu");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(AddGrad)
-      .NumInputs(1)
-      .NumOutputs(1, 2)
-      .Reference("Add");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(MatMulGrad)
-      .NumInputs(2, 3)
-      .NumOutputs(1, 2)
-      .Reference("MatMul");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(SubGrad)
-      .NumInputs(1)
-      .NumOutputs(1, 2)
-      .Reference("Sub");
-
   ONNX_GRADIENT_OPERATOR_SCHEMA(PowGrad)
       .NumInputs(3)
       .NumOutputs(1, 2)
       .Reference("Pow");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(ReduceMeanGrad)
-      .NumInputs(1)
-      .NumOutputs(1)
-      .Reference("ReduceMean");
 
   ONNX_GRADIENT_OPERATOR_SCHEMA(SigmoidGrad)
       .NumInputs(2)
