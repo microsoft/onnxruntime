@@ -390,7 +390,7 @@ class Node {
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
 
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), need_fence_check_(false) {}
+  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph) {}
 
   void Init(const std::string& name,
             const std::string& op_type,
@@ -453,7 +453,7 @@ class Node {
   std::string execution_provider_type_;
 
   // Needs Fence Check or Not.
-  bool need_fence_check_;
+  bool need_fence_check_ = false;
 
   // Map from attribute name to attribute.
   // This allows attribute adding and removing.
