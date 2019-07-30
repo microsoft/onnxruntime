@@ -165,7 +165,8 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
-  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  #condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: ${{ parameters.DoEsrp }}
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
