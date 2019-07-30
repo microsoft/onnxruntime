@@ -189,6 +189,7 @@ jobs:
       #azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
       AzureRMSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
       DestinationType: AzureBlob
+      Destination: azureBlob
       RMStorageAccount: ortpackages
       ContainerName: ortpackages
 
