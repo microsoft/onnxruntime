@@ -294,7 +294,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
 
     std::unordered_set<std::string> cuda_flaky_tests = {
-        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
+        "fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2", "mlperf_ssd_mobilenet_300"};
 
 #if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
     //Minimize mem consumption
