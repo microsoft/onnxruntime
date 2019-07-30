@@ -100,12 +100,14 @@ jobs:
   - MacOS_CI_Dev
   condition: succeeded()
   steps:  
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
     continueOnError: true
+
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Win-x86'
@@ -150,4 +152,25 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
+
 - template: test_all_os.yml
+
+- job: Publish_NuGet_Package_And_Report
+  variables:
+  - group: Dashboard_MySQL_Secret
+  condition: ${{ parameters.DoEsrp }}
+  pool: 
+    name: Hosted Windows 2019 with VS2019
+    demands: azureps
+  dependsOn:
+  - NuGet_Test_Win
+  - NuGet_Test_Linux
+  - NuGet_Test_MacOS
+  steps:
+
+  - template: ../../templates/set-version-number-variables-step.yml
+  - template: upload-binary-sizes-from-nuget-package.yml
+    parameters:
+      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
+
+
