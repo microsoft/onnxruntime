@@ -1,7 +1,5 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 #include "core/providers/cpu/math/hardmax.h"
+#include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 
@@ -13,8 +11,10 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   const TensorShape& input_shape = X->Shape();
   const auto* Xdata = X->template Data<float>();
 
-  size_t tmpN = input_shape.SizeToDimension(axis_);
-  size_t tmpD = input_shape.SizeFromDimension(axis_);
+  const int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
+
+  size_t tmpN = input_shape.SizeToDimension(axis);
+  size_t tmpD = input_shape.SizeFromDimension(axis);
 
   // Math::RowwiseMax expects int N and D.
   if (tmpN * tmpD > INT32_MAX || tmpN > INT32_MAX || tmpD > INT32_MAX) {
