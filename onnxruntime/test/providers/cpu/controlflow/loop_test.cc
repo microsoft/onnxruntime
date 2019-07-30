@@ -11,6 +11,7 @@
 
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/framework/test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -571,6 +572,62 @@ TEST(Loop, InfiniteLoopTermination) {
 
   // done with the thread
   terminator_thread.join();
+}
+
+// Regression test that a subgraph input overrides an outer scope value of the same name.
+// Replicate issue from https://github.com/onnx/onnx/issues/2082
+TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
+  SessionOptions so;
+  so.session_logid = "SubgraphInputShadowsOuterScopeValue";
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status st;
+  ASSERT_TRUE((st = session_object.Load("testdata/subgraph_input_shadows_outer_scope_value.onnx")).IsOK()) << st;
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+  // prepare inputs
+  std::vector<int64_t> scalar = {1};
+  std::vector<float> a = {3.f}, b = {6.f};
+  std::vector<int64_t> trip_count = {10};
+  std::vector<bool> keep_going = {true};
+
+  NameMLValMap feeds;
+  OrtValue ml_value;
+
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, a, &ml_value);
+  feeds.insert(std::make_pair("a", ml_value));
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, b, &ml_value);
+  feeds.insert(std::make_pair("b", ml_value));
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, trip_count, &ml_value);
+  feeds.insert(std::make_pair("max_trip_count", ml_value));
+  CreateMLValue<bool>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), scalar, keep_going, &ml_value);
+  feeds.insert(std::make_pair("keep_going_inp", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names{"b", "user_defined_vals"};
+  std::vector<OrtValue> fetches;
+
+  // Now run
+  onnxruntime::RunOptions run_options;
+  st = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(st.IsOK()) << st;
+  ASSERT_EQ(2, fetches.size());
+
+  // prepare expected outputs
+  float expected_value_b = 6.f;
+  std::vector<int64_t> expected_dims_user_defined_vals = {2, 1};
+  std::vector<float> expected_user_defined_vals = {-6.f, 12.f};
+
+  auto& b_out = fetches[0].Get<Tensor>();
+  TensorShape expected_shape(scalar);
+  ASSERT_EQ(expected_shape, b_out.Shape());
+  ASSERT_EQ(b_out.DataAsSpan<float>()[0], expected_value_b);
+
+  auto user_defined_vals_out = fetches[1].Get<Tensor>().DataAsSpan<float>();
+  ASSERT_EQ(expected_user_defined_vals.size(), static_cast<size_t>(user_defined_vals_out.size()));
+  for (size_t i = 0, end = expected_user_defined_vals.size(); i < end; ++i) {
+    ASSERT_THAT(user_defined_vals_out[i], testing::FloatEq(expected_user_defined_vals[i]));
+  }
 }
 
 #ifdef USE_CUDA

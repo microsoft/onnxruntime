@@ -992,7 +992,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
         if (resolve_context_.output_args.end() == output_arg_iter) {
           // No such output_arg matching this input_arg.
           // This input arg should be fed when running evaluation.
-          
+
           // See if it's present in the outer scope. If so it will be 'fed' by the execution frame
           // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
           // be linked correctly at that level.
