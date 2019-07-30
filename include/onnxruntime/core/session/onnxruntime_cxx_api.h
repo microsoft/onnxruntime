@@ -123,7 +123,8 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
-  RunOptions& SetTerminate(bool flag);
+  RunOptions& EnableTerminate();
+  RunOptions& DisableTerminate();
 };
 
 struct SessionOptions : Base<OrtSessionOptions> {
