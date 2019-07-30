@@ -11,12 +11,14 @@
 [ONNX](https://onnx.ai) is an interoperable format for machine learning models supported by various ML and DNN frameworks and tools. The universal format makes it easier to interoperate between frameworks and maximize the reach of hardware optimization investments.
 
 ***
+**[Key Features](#key-features)**
+
 **Setup**
 * [Installation](#installation)
 * [APIs and Official Binaries](#apis-and-official-builds)
 * [Building from Source](#building-from-source)
 
-**Getting Started**
+**Usage**
 * [Getting ONNX Models](#getting-onnx-models)
 * [Deploying ONNX Runtime](#deploying-onnx-runtime)
 * [Performance Tuning](#performance-tuning)
@@ -31,8 +33,8 @@
 
 **[License](#license)**
 ***
-## Key Features
-### Run any ONNX model
+# Key Features
+## Run any ONNX model
 ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See version compatibility details [here](https://github.com/microsoft/onnxruntime/blob/master/docs/Versioning.md).
 
 *Note: Some operators not supported in the current ONNX version may be available as a [Contrib Operator](https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md)*
@@ -41,7 +43,7 @@ ONNX Runtime provides comprehensive support of the ONNX spec and can be used to 
 
 In addition to DNN models, ONNX Runtime fully supports the [ONNX-ML profile](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) of the ONNX spec for traditional ML scenarios.
 
-### High Performance
+## High Performance
 ONNX Runtime supports both CPU and GPU. Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
 
 Currently ONNX Runtime supports the following accelerators:
@@ -58,12 +60,12 @@ Not all variations are supported in the [official release builds](#apis-and-offi
 We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
 
-### Cross Platform
+## Cross Platform
 [API documentation and package installation](https://github.com/microsoft/onnxruntime#installation)
 
 ONNX Runtime is available for Linux, Windows, Mac with Python, C#, and C APIs, with more to come!
 If you have specific scenarios that are not currently supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
-
+***
 # Installation
 **Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
 
@@ -98,11 +100,14 @@ system.
     `locale-gen en_US.UTF-8`
     `update-locale LANG=en_US.UTF-8`
   * Follow similar procedure to configure other locales on other platforms.
-  
+
 ## Building from Source
 If additional build flavors are needed, please find instructions on building from source at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/faxu-doc-updates/tools/ci_build/github/linux/docker) to help you get started.
+
+***
+# Usage
 
 ## Getting ONNX Models
 * The [ONNX Model Zoo](https://github.com/onnx/models) has popular ready-to-use pre-trained models.
@@ -120,7 +125,7 @@ ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Mac
 ## Performance Tuning
 ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Perf_Tuning.md).
 
-
+***
 # Examples and Tutorials
 ## Python
 * [Basic Inferencing Sample](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/inference_demos/simple_onnxruntime_inference.ipynb)
@@ -147,7 +152,7 @@ ONNX Runtime is open and extensible, supporting a broad set of configurations an
 * [Basic Inferencing (SqueezeNet) - C++](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
 * [Inferencing (MNIST) - C++](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx/MNIST)
 
-
+***
 # Technical Design Details
 * [High level architectural design](docs/HighLevelDesign.md)
 * [Versioning](docs/Versioning.md)
@@ -159,7 +164,7 @@ ONNX Runtime is open and extensible, supporting a broad set of configurations an
 transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
 
-
+***
 # Contribute
 We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
 
@@ -170,6 +175,6 @@ For any feedback or to report a bug, please file a [GitHub Issue](https://github
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
+***
 # License
 [MIT License](LICENSE)
