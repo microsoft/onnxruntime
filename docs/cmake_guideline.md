@@ -8,7 +8,7 @@ If you want to change some setting, please try to scope down the impact to be lo
 - Prefer target\_compile\_options to add\_compile\_options
 - Don't touch the global flags like CMAKE\_CXX\_FLAGS
 
-For example, to add a macro definition to one vc project, you should use target\_compile\_options, not the add\_compile\_options.
+For example, to add a macro definition to one vc project, you should use target\_compile\_definitions, not the add\_definitions.
 
 # Don't omit the PRIVATE/PUBLIC/INTERFACE keyword
 The PRIVATE keyword in the following line of code is optional:
