@@ -177,19 +177,20 @@ jobs:
   - template: upload-binary-sizes-from-nuget-package.yml
     parameters:
 #      nugetArtifactName: 'drop-signed-nuget'
-      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
       gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
 
   - task: AzureFileCopy@3
     displayName: 'Copy Signed NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # rlease build has a different package naming scheme
     inputs:
-      Source: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
-      AzureConnectionType: 'Azure Resource Manager'
-      #azureSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
-      AzureRMSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
-      DestinationType: AzureBlob
-      Destination: azureBlob
-      RMStorageAccount: ortpackages
-      ContainerName: ortpackages
+      #Source: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(OnnxRuntimeVersion)-dev-$(OnnxRuntimeGitCommitHashShort).nupkg'
+      #AzureConnectionType: 'Azure Resource Manager'
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      #AzureRMSubscription: 'AI Infra Build (00c06639-6ee4-454e-8058-8d8b1703bd87)'
+      #DestinationType: AzureBlob
+      destination: azureBlob
+      storage: ortpackages
+      containerName: ortpackages
 
