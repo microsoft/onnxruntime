@@ -15,6 +15,7 @@ if(NOT WIN32)
 endif()
 
 set(CppCommon_STATIC_CRT ON CACHE BOOL "" FORCE)
+set(BoostCommon_HEADER_ONLY ON CACHE BOOL "" FORCE)
 
 include(CppCommon)
 include(BoostCommon)
