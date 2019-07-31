@@ -9,6 +9,13 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
+// Todo: use graph_utils::NodeArgIsConstant once the Constant change (e.g. represented as an initalier only)
+// in master is merged. We can do this way purely because Gelu subgraphs in
+// BERT does not have inputs connected directly.
+bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
+  const onnx::TensorProto* initializer = nullptr;
+  return graph.GetInitializedTensor(node_arg.Name(), initializer);
+}
 
 static void IsInputConstant(const Graph& graph, const Node& node, std::tuple<bool, NodeArg*, NodeArg*>& ret) {
   const auto& inputs = node.InputDefs();
@@ -16,7 +23,7 @@ static void IsInputConstant(const Graph& graph, const Node& node, std::tuple<boo
   NodeArg* gelu_non_const_input = nullptr;
   NodeArg* gelu_const_input = nullptr;
   for (auto& i : inputs) {
-    if (graph_utils::NodeArgIsConstant(graph, *i)) {
+    if (NodeArgIsConstant(graph, *i)) {
       // Todo: check the constant for example be sqrt(2.0) or 1
       found_constant = true;
       gelu_const_input = const_cast<NodeArg*>(i);
@@ -97,7 +104,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
         break;
       }
     }
-    if(mul2_node == nullptr) {
+    if (mul2_node == nullptr) {
       continue;
     }
 
@@ -139,7 +146,9 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
   }
 
   for (auto& tensor_name : removed_initializers) {
-    graph.RemoveInitializedTensor(tensor_name);
+    if (graph.GetConsumerNodes(tensor_name).empty()) {
+      graph.RemoveInitializedTensor(tensor_name);
+    }
   }
 
   if (!removed_nodes.empty() || !removed_initializers.empty()) {

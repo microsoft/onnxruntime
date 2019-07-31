@@ -554,9 +554,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
                 {GO(0)},
                 {GI(0)},
                 {MakeAttribute("axes", axes_values)}));
-  // if axes attribute not provided for squeeze
+    // if axes attribute not provided for squeeze
   } else {
-	result.push_back(
+    result.push_back(
         NodeDef("Shape",
                 {I(0)},
                 {IA("I0_shape")}));
@@ -815,7 +815,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
   return std::vector<NodeDef>{
-      NodeDef("GeluGradient",
+      NodeDef("GeluGrad",
               {GO(0), I(0)},
               {GI(0)})};
 }

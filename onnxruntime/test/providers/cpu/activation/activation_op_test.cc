@@ -20,7 +20,6 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
   std::vector<int64_t> dims{(int64_t)input_vals.size()};
 
-
   std::vector<float> expected_vals;
   for (const auto& iv : input_vals)
     expected_vals.push_back(expected_func(iv));
@@ -36,11 +35,11 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
 
 //Disabled because of accuracy issues for MYRIAD FP16 and VAD_R
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_R)
-    int relu = strcmp(szOp, "Relu");
-    int leaky = strcmp(szOp, "LeakyRelu");
-    if(relu == 0 || leaky == 0){
-        excluded_providers.insert(kOpenVINOExecutionProvider);
-    }
+  int relu = strcmp(szOp, "Relu");
+  int leaky = strcmp(szOp, "LeakyRelu");
+  if (relu == 0 || leaky == 0) {
+    excluded_providers.insert(kOpenVINOExecutionProvider);
+  }
 #endif
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
@@ -108,10 +107,11 @@ TEST(ActivationOpTest, LeakyRelu) {
 
 TEST(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;
-  TestUnaryElementwiseOp("ThresholdedRelu",
-                         input_vals,
-                         [alpha](float x) { return (x >= alpha) ? x : 0; },
-                         {{"alpha", alpha}}, true, 10);
+  TestUnaryElementwiseOp(
+      "ThresholdedRelu",
+      input_vals,
+      [alpha](float x) { return (x >= alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 10);
 }
 
 TEST(ActivationOpTest, Selu) {
@@ -193,21 +193,29 @@ TEST(ActivationOpTest, PRelu_MultiChannel) {
 }
 
 TEST(ActivationOpTest, Softplus) {
-  TestUnaryElementwiseOp("Softplus",
-                         input_vals,
-                         [](float x) {
-                           if (x > 0)
-                             return x + logf(expf(-x) + 1);
-                           else
-                             return logf(expf(x) + 1);
-                         },
-                         {}, false);
+  TestUnaryElementwiseOp(
+      "Softplus",
+      input_vals,
+      [](float x) {
+        if (x > 0)
+          return x + logf(expf(-x) + 1);
+        else
+          return logf(expf(x) + 1);
+      },
+      {}, false);
 }
 
 TEST(ActivationOpTest, Softsign) {
   TestUnaryElementwiseOp("Softsign",
                          no_inf_input_vals,
                          [](float x) { return x / (1 + std::abs(x)); });
+}
+
+TEST(ActivationOpTest, Gelu) {
+  TestUnaryElementwiseOp(
+      "Gelu",
+      input_vals,
+      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {}, false, 9);
 }
 
 }  // namespace test

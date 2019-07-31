@@ -1923,14 +1923,14 @@ Example 4:
                {"X_1", "X_4"}},
           }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("GeluGrad")
       .AllowUncheckedAttributes()
-      .Input(1, "X", "The input tensor. ", "T")
       .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",

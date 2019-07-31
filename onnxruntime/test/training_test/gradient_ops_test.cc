@@ -943,6 +943,10 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
 }
 
+TEST(GradientCheckerTest, GeluGrad) {
+  UnaryOpGradientTest("Gelu");
+}
+
 #ifdef USE_CUDA
 
 TEST(GradientCheckerTest, GatherGrad) {

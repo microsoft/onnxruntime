@@ -6,11 +6,14 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 
 #define EIGEN_X ConstEigenVectorArrayMap<T>(X->template Data<T>(), X->Shape().Size())
 #define EIGEN_X_VAR(var) ConstEigenVectorArrayMap<T> var(X->template Data<T>(), X->Shape().Size())
+#define EIGEN_DY ConstEigenVectorArrayMap<T>(dY->template Data<T>(), dY->Shape().Size())
+#define EIGEN_DY_VAR(var) ConstEigenVectorArrayMap<T> var(dY->template Data<T>(), dY->Shape().Size())
 #define EIGEN_Y EigenVectorArrayMap<T>(Y->template MutableData<T>(), Y->Shape().Size())
 #define EIGEN_Y_VAR(var) EigenVectorArrayMap<T> var(Y->template MutableData<T>(), Y->Shape().Size())
 
@@ -188,5 +191,43 @@ class ThresholdedRelu final : public OpKernel {
  private:
   const float alpha_;
 };
+
+// Currently added for training purposed Op are put in contrib namespace.
+// Todo: we need unify a place to manage all Ops added for training.
+namespace contrib {
+
+template <typename T>
+class Gelu : public OpKernel {
+ public:
+  Gelu(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    const auto* X = context->Input<Tensor>(0);
+    Tensor* Y = context->Output(0, X->Shape());
+    EIGEN_X_VAR(xm);
+    EIGEN_Y = xm * 0.5f * ((xm * static_cast<float>(M_SQRT1_2)).erf() + 1.0f);
+    return Status::OK();
+  }
+};
+
+template <typename T>
+class GeluGrad final : public OpKernel {
+ public:
+  GeluGrad(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    const auto* dY = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(1);
+    Tensor* Y = context->Output(0, X->Shape());
+    EIGEN_X_VAR(xm);
+    EIGEN_DY_VAR(dy);
+    constexpr T kAlpha = static_cast<float>(M_2_SQRTPI) * static_cast<float>(M_SQRT1_2) * 0.5f;
+    EIGEN_Y = dy * (0.5f * ((xm * static_cast<float>(M_SQRT1_2)).erf() + 1.0f) +
+                    xm * kAlpha * (-0.5f * xm * xm).exp());
+
+    return Status::OK();
+  }
+};
+}  // namespace contrib
 
 }  // namespace onnxruntime

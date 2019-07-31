@@ -174,6 +174,18 @@ __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
 
+template <typename T>
+__device__ __inline__ T _Normcdf(T a);
+
+template <>
+__device__ __inline__ float _Normcdf(float a) { return normcdff(a); }
+
+template <>
+__device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
+
+template <>
+__device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 
