@@ -3,6 +3,7 @@
 #include "core/framework/execution_provider.h"
 
 #include "core/graph/graph_viewer.h"
+#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/op_kernel.h"
@@ -17,13 +18,10 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }
 }  // namespace
 
-//AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-//  auto iter = allocators_.find(MakeKey(id, mem_type));
-//  if (iter != allocators_.end()) {
-//    return iter->second;
-//  }
-//  return nullptr;
-//}
+AllocatorPtr IExecutionProvider::GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const {
+  // TODO: add implementation.
+  return nullptr;
+}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,

@@ -61,6 +61,10 @@ struct OrtDevice {
     return ostr.str();
   }
 
+  static int MakeKey(const OrtDevice& device) {
+    return device.Type() << 24 | device.MemType() << 16 | device.Id();
+  }
+
  private:
   // Device type.
   DeviceType device_type;

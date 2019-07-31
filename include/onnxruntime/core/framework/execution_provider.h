@@ -19,6 +19,7 @@ namespace onnxruntime {
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
+class AllocatorManager;
 
 /**
    Logical device representation.
@@ -45,18 +46,9 @@ class IExecutionProvider {
   virtual ~IExecutionProvider() = default;
 
   ///**
-  //   Get all IAllocators for <*this> execution provider.
-  //*/
-  //const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
-  //  return allocator_list_;
-  //}
-
-  ///**
   // * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
   // */
-  //virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
-  AllocatorPtr GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const;
-
+  virtual AllocatorPtr GetAllocator(const AllocatorManager& allocator_mgr, int device_id, OrtMemType mem_type) const;
 
   /**
      Get execution provider's capability for the specified <graph>.
@@ -126,7 +118,7 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd();
 
-//  void InsertAllocator(AllocatorPtr allocator);
+  //  void InsertAllocator(AllocatorPtr allocator);
 
   /**
   Given a list of fused_node, return create_state/compute/release_state func for each node.
@@ -146,10 +138,5 @@ class IExecutionProvider {
 
  private:
   const std::string type_;
-  //AllocatorMap allocators_;
-
-  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
-  // contains the same instances as allocators_
-  //std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
 };
 }  // namespace onnxruntime

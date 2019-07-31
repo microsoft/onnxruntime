@@ -21,15 +21,12 @@ AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id
   return device_allocator;
 }
 
-namespace {
-//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
-inline int MakeKey(int id, OrtMemType mem_type) {
-  return id << 2 | (mem_type + 2);
+const std::vector<gsl::not_null<const IAllocator*>>& AllocatorManager::GetAllocators() const {
+  return allocator_list_;
 }
-}  // namespace
 
-AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
-  auto iter = allocators_.find(MakeKey(id, mem_type));
+AllocatorPtr AllocatorManager::GetAllocator(const OrtDevice& device) const {
+  auto iter = allocators_.find(OrtDevice::MakeKey(device));
   if (iter != allocators_.end()) {
     return iter->second;
   }
@@ -38,7 +35,7 @@ AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
 
 void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
   const OrtAllocatorInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
+  const int key = OrtDevice::MakeKey(info.device);
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {
     ORT_THROW("duplicated allocator");

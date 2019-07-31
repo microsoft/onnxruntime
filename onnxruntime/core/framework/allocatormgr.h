@@ -27,29 +27,16 @@ class AllocatorManager {
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
-    return allocator_list_;
-  }
+  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const;
 
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
-  AllocatorPtr GetAllocator(const std::string& execution_provider_type, int device_id, OrtMemType mem_type) const;
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
-  /*AllocatorPtr GetAllocator(const OrtAllocatorInfo& allocator_info) const {
-    auto exec_provider = Get(allocator_info);
-    if (exec_provider == nullptr) {
-      return nullptr;
-    }
-
-    return exec_provider->GetAllocator(allocator_info.id, allocator_info.mem_type);
-  }*/
-
-  /*OrtAllocatorInfo GetDefaultCpuAllocatorInfo() const {
-    return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
-  }*/
+  OrtAllocatorInfo GetDefaultCpuAllocatorInfo() const {
+    return GetAllocator(OrtDevice())->Info();
+  }
 
   void InsertAllocator(AllocatorPtr allocator);
 
