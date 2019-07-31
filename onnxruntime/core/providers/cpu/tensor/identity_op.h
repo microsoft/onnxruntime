@@ -53,7 +53,7 @@ class IdentityOp final : public OpKernel {
         void* mask_data = mask->MutableDataRaw();
         // In 'test'/'inference' mode, there are no input values dropped out
         // so fill the buffer with 0/false
-        memset(mask_data, 0, shape.Size() * mask->DataType()->Size());
+        memset(mask_data, 0, mask->SizeInBytes());
       }
     }
 

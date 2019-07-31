@@ -40,7 +40,7 @@ class IdentityOp final : public CudaKernel {
         void* mask_data = mask->MutableDataRaw();
         // In 'test'/'inference' mode, there are no input values dropped out
         // so fill the buffer with 0/false
-        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, shape.Size() * mask->DataType()->Size()));
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->SizeInBytes()));
       }
     }
 
