@@ -21,7 +21,7 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
-# openvino version tag: 2018_R5, 2019_R1 (Default is 2018_R5)
+# openvino version tag: 2018_R5, 2019_R1.1 (Default is 2019_R1.1)
 v) OPENVINO_VERSION=${OPTARG};;
 esac
 done
@@ -79,7 +79,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
     set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ]; then
     RUNTIME=
 else
     RUNTIME="--runtime=nvidia"

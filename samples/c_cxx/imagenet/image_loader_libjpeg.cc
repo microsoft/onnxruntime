@@ -14,7 +14,7 @@ bool CreateImageLoader(void** out) {
 
 void ReleaseImageLoader(void*) {}
 
-OrtStatus* LoadImageFromFileAndCrop(void* , const ORTCHAR_T* filename, double central_crop_fraction, float** out,
+OrtStatus* LoadImageFromFileAndCrop(void*, const ORTCHAR_T* filename, double central_crop_fraction, float** out,
                                     int* out_width, int* out_height) {
   const int channels_ = 3;
   UncompressFlags flags;
@@ -59,6 +59,9 @@ OrtStatus* LoadImageFromFileAndCrop(void* , const ORTCHAR_T* filename, double ce
   int bbox_w_size = width - bbox_w_start * 2;
   const size_t ele_count = bbox_h_size * bbox_w_size * channels;
   float* float_file_data = (float*)malloc(ele_count * sizeof(float));
+  if (float_file_data == nullptr) {
+    return OrtCreateStatus(ORT_FAIL, "out of memory");
+  }
 
   {
     auto p = decompressed_image.get() + (bbox_h_start * width + bbox_w_start) * channels;

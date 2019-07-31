@@ -12,7 +12,7 @@ ORT_API_STATUS_IMPL(OrtCreateRunOptions, OrtRunOptions** out) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* options, unsigned int value) {
+ORT_API_STATUS_IMPL(OrtRunOptionsSetRunLogVerbosityLevel, _In_ OrtRunOptions* options, int value) {
   options->run_log_verbosity_level = value;
   return nullptr;
 }
@@ -23,17 +23,22 @@ ORT_API_STATUS_IMPL(OrtRunOptionsSetRunTag, _In_ OrtRunOptions* options, _In_ co
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogVerbosityLevel, _In_ OrtRunOptions* options, unsigned int* out) {
+ORT_API_STATUS_IMPL(OrtRunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, int* out) {
   *out = options->run_log_verbosity_level;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsGetRunTag, _In_ OrtRunOptions* options, const char** out) {
+ORT_API_STATUS_IMPL(OrtRunOptionsGetRunTag, _In_ const OrtRunOptions* options, const char** out) {
   *out = options->run_tag.c_str();
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtRunOptionsSetTerminate, _In_ OrtRunOptions* options, bool value) {
-  options->terminate = value;
+ORT_API_STATUS_IMPL(OrtRunOptionsEnableTerminate, _Inout_ OrtRunOptions* options) {
+  options->terminate = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtRunOptionsDisableTerminate, _Inout_ OrtRunOptions* options) {
+  options->terminate = false;
   return nullptr;
 }

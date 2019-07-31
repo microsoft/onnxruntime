@@ -18,14 +18,17 @@ class AsyncRingBuffer {
     (*(RunnableTask*)data)(pci);
   }
 
-  template <typename T=float>
+  template <typename T = float>
   static size_t CalcItemSize(const std::vector<int64_t>& tensor_shape) {
     int64_t r = 1;
     for (int64_t i : tensor_shape) r *= i;
     return static_cast<size_t>(r) * sizeof(T);
   }
 
-  enum class BufferState { EMPTY, FILLING, FULL, TAKEN };
+  enum class BufferState { EMPTY,
+                           FILLING,
+                           FULL,
+                           TAKEN };
   const size_t batch_size_;
   using InputType = typename InputIterator::value_type;
   DataProcessing* p_;
@@ -75,8 +78,8 @@ class AsyncRingBuffer {
           input_task_id_for_buffers_(capacity),
           buffer_(item_size_in_bytes * capacity) {}
 
-    size_t GetId(const uint8_t* p) const { return (p - buffer_.data()) / item_size_in_bytes_; }
-
+    size_t GetId(_In_ const uint8_t* p) const { return (p - buffer_.data()) / item_size_in_bytes_; }
+    size_t GetItemSizeInBytes() const { return item_size_in_bytes_; }
     bool CompareAndSet(size_t i, BufferState old, BufferState new_state) {
       if (buffer_state[i] != old) return false;
       buffer_state[i] = new_state;
@@ -105,7 +108,7 @@ class AsyncRingBuffer {
       return true;
     }
 
-    bool TakeAllRemain(_Out_ uint8_t** begin, std::vector<InputType>& task_id_list) {
+    _Success_(return ) bool TakeAllRemain(_Out_ uint8_t** begin, std::vector<InputType>& task_id_list) {
       auto iter =
           std::find_if(buffer_state.begin(), buffer_state.end(), [](BufferState s) { return s == BufferState::FULL; });
       if (iter == buffer_state.end()) return false;
@@ -175,9 +178,9 @@ class AsyncRingBuffer {
       std::vector<InputType> task_id_list;
       buffer_id = tensor_id * batch_size_;
       if (buffer_.TakeRange(buffer_id, buffer_id + batch_size_, task_id_list)) {
-        queue_.Put(tensor_id, [&task_id_list](QueueItem& i){
-			i.taskid_list = task_id_list;
-		});
+        queue_.Put(tensor_id, [&task_id_list](QueueItem& i) {
+          i.taskid_list = task_id_list;
+        });
         input_tensor = queue_.Take();
       }
     }
@@ -203,7 +206,7 @@ class AsyncRingBuffer {
     }
   }
 
-  void Fail(_Inout_opt_ ONNXRUNTIME_CALLBACK_INSTANCE pci, const char* errmsg) {    
+  void Fail(_Inout_opt_ ONNXRUNTIME_CALLBACK_INSTANCE pci, const char* errmsg) {
     threadpool_.SetFailBit(pci, errmsg);
   }
 
@@ -221,9 +224,9 @@ class AsyncRingBuffer {
         input_end_(input_end) {
     OrtAllocatorInfo* allocator_info;
     ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &allocator_info));
-    uint8_t* output_data = buffer_.Begin();     
+    uint8_t* output_data = buffer_.Begin();
     std::vector<int64_t> input_shape = p_->GetOutputShape(batch_size_);
-	size_t off = CalcItemSize(input_shape);
+    size_t off = CalcItemSize(input_shape);
     queue_.Init([allocator_info, off, &output_data, &input_shape](QueueItem& e) {
       ORT_THROW_ON_ERROR(OrtCreateTensorWithDataAsOrtValue(allocator_info, output_data, off, input_shape.data(),
                                                            input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
@@ -255,7 +258,6 @@ class AsyncRingBuffer {
     OrtReleaseValue(input_tensor);
   }
 
- 
   /**
    * call this function when a download task is just finished or any buffer became FREE.
    * \return 0 EOF. No more download task to schedule
@@ -276,15 +278,12 @@ class AsyncRingBuffer {
         uint8_t* d = dest;
         delete this;
         try {
-          (*r->p_)(&s, d);
+          (*r->p_)(&s, d, r->buffer_.GetItemSizeInBytes());
           r->OnDownloadFinished(pci, d);
         } catch (const std::exception& ex) {
-		  fprintf(stderr, "%s\n", ex.what());
+          fprintf(stderr, "%s\n", ex.what());
           r->Fail(pci, ex.what());
-#ifdef _WIN32
-        
-#endif
-		}
+        }
       }
     };
 

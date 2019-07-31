@@ -10,7 +10,7 @@ import threading
 
 
 class TestInferenceSession(unittest.TestCase):
-    
+
     def get_name(self, name):
         if os.path.exists(name):
             return name
@@ -22,14 +22,17 @@ class TestInferenceSession(unittest.TestCase):
         res = os.path.join(data, name)
         if os.path.exists(res):
             return res
-        raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+        raise FileNotFoundError(
+            "Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
 
     def run_model(self, session_object, run_options):
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = session_object.get_inputs()[0].name
         res = session_object.run([], {input_name: x}, run_options=run_options)
-        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        output_expected = np.array(
+            [[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
@@ -43,8 +46,10 @@ class TestInferenceSession(unittest.TestCase):
         output_shape = sess.get_outputs()[0].shape
         self.assertEqual(output_shape, [3, 2])
         res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        output_expected = np.array(
+            [[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModelFromBytes(self):
         with open(self.get_name("mul_1.onnx"), "rb") as f:
@@ -60,8 +65,10 @@ class TestInferenceSession(unittest.TestCase):
         output_shape = sess.get_outputs()[0].shape
         self.assertEqual(output_shape, [3, 2])
         res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        output_expected = np.array(
+            [[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel2(self):
         sess = onnxrt.InferenceSession(self.get_name("matmul_1.onnx"))
@@ -76,19 +83,21 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_shape, [3, 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModelMultipleThreads(self):
         so = onnxrt.SessionOptions()
         so.session_log_verbosity_level = 1
         so.session_logid = "MultiThreadsTest"
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        sess = onnxrt.InferenceSession(
+            self.get_name("mul_1.onnx"), sess_options=so)
         ro1 = onnxrt.RunOptions()
-        ro1.run_tag =  "thread1"
-        t1 = threading.Thread(target=self.run_model, args = (sess, ro1))
+        ro1.run_tag = "thread1"
+        t1 = threading.Thread(target=self.run_model, args=(sess, ro1))
         ro2 = onnxrt.RunOptions()
         ro2.run_tag = "thread2"
-        t2 = threading.Thread(target=self.run_model, args = (sess, ro2))
+        t2 = threading.Thread(target=self.run_model, args=(sess, ro2))
         t1.start()
         t2.start()
         t1.join()
@@ -105,15 +114,16 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_name, "X")
         input_shape = sess.get_inputs()[0].shape
         # Input X has an unknown dimension.
-        self.assertEqual(input_shape, [None, 2])
+        self.assertEqual(input_shape, ['None', 2])
         output_name = sess.get_outputs()[0].name
         self.assertEqual(output_name, "Y")
         output_shape = sess.get_outputs()[0].shape
         # Output X has an unknown dimension.
-        self.assertEqual(output_shape, [None, 1])
+        self.assertEqual(output_shape, ['None', 1])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testBooleanInputs(self):
         sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"))
@@ -121,7 +131,7 @@ class TestInferenceSession(unittest.TestCase):
         b = np.array([[True, False], [True, False]], dtype=np.bool)
 
         # input1:0 is first in the protobuf, and input:0 is second
-        # and we maintain the original order. 
+        # and we maintain the original order.
         a_name = sess.get_inputs()[0].name
         self.assertEqual(a_name, "input1:0")
         a_shape = sess.get_inputs()[0].shape
@@ -143,13 +153,15 @@ class TestInferenceSession(unittest.TestCase):
         output_type = sess.get_outputs()[0].type
         self.assertEqual(output_type, 'tensor(bool)')
 
-        output_expected = np.array([[True, False], [False, False]], dtype=np.bool)
+        output_expected = np.array(
+            [[True, False], [False, False]], dtype=np.bool)
         res = sess.run([output_name], {a_name: a, b_name: b})
         np.testing.assert_equal(output_expected, res[0])
 
     def testStringInput1(self):
         sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
-        x = np.array(['this', 'is', 'identity', 'test'], dtype=np.str).reshape((2,2))
+        x = np.array(['this', 'is', 'identity', 'test'],
+                     dtype=np.str).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -170,7 +182,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def testStringInput2(self):
         sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
-        x = np.array(['Olá', '你好', '여보세요', 'hello'], dtype=np.unicode).reshape((2,2))
+        x = np.array(['Olá', '你好', '여보세요', 'hello'],
+                     dtype=np.unicode).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -188,10 +201,10 @@ class TestInferenceSession(unittest.TestCase):
 
         res = sess.run([output_name], {x_name: x})
         np.testing.assert_equal(x, res[0])
-        
+
     def testInputBytes(self):
         sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
-        x = np.array([b'this', b'is', b'identity', b'test']).reshape((2,2))
+        x = np.array([b'this', b'is', b'identity', b'test']).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -208,11 +221,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, 'tensor(string)')
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0].astype('|S8'))        
+        np.testing.assert_equal(x, res[0].astype('|S8'))
 
     def testInputObject(self):
         sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
-        x = np.array(['this', 'is', 'identity', 'test'], object).reshape((2,2))
+        x = np.array(['this', 'is', 'identity', 'test'],
+                     object).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -229,11 +243,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, 'tensor(string)')
 
         res = sess.run([output_name], {x_name: x})
-        np.testing.assert_equal(x, res[0])        
+        np.testing.assert_equal(x, res[0])
 
     def testInputVoid(self):
         sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
-        x = np.array([b'this', b'is', b'identity', b'test'], np.void).reshape((2,2))
+        x = np.array([b'this', b'is', b'identity', b'test'],
+                     np.void).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "input:0")
@@ -250,14 +265,14 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, 'tensor(string)')
 
         res = sess.run([output_name], {x_name: x})
-        
+
         expr = np.array([['this\x00\x00\x00\x00', 'is\x00\x00\x00\x00\x00\x00'],
                          ['identity', 'test\x00\x00\x00\x00']], dtype=object)
         np.testing.assert_equal(expr, res[0])
 
     def testConvAutoPad(self):
         sess = onnxrt.InferenceSession(self.get_name("conv_autopad.onnx"))
-        x = np.array(25 * [1.0], dtype=np.float32).reshape((1,1,5,5))
+        x = np.array(25 * [1.0], dtype=np.float32).reshape((1, 1, 5, 5))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "Input4")
@@ -282,8 +297,10 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0])
 
     def testZipMapStringFloat(self):
-        sess = onnxrt.InferenceSession(self.get_name("zipmap_stringfloat.onnx"))
-        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2,3))
+        sess = onnxrt.InferenceSession(
+            self.get_name("zipmap_stringfloat.onnx"))
+        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0],
+                     dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "X")
@@ -302,7 +319,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def testZipMapInt64Float(self):
         sess = onnxrt.InferenceSession(self.get_name("zipmap_int64float.onnx"))
-        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2,3))
+        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0],
+                     dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "X")
@@ -314,7 +332,8 @@ class TestInferenceSession(unittest.TestCase):
         output_type = sess.get_outputs()[0].type
         self.assertEqual(output_type, 'seq(map(int64,tensor(float)))')
 
-        output_expected = [{10: 1.0, 20: 0.0, 30: 3.0}, {10: 44.0, 20: 23.0, 30: 11.0}]
+        output_expected = [{10: 1.0, 20: 0.0, 30: 3.0},
+                           {10: 44.0, 20: 23.0, 30: 11.0}]
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
@@ -340,7 +359,8 @@ class TestInferenceSession(unittest.TestCase):
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()
         so.enable_profiling = True
-        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"), sess_options=so)
+        sess = onnxrt.InferenceSession(
+            self.get_name("mul_1.onnx"), sess_options=so)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run([], {'X': x})
         profile_file = sess.end_profiling()
@@ -355,7 +375,8 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(']' in lines[8])
 
     def testDictVectorizer(self):
-        sess = onnxrt.InferenceSession(self.get_name("pipeline_vectorize.onnx"))
+        sess = onnxrt.InferenceSession(
+            self.get_name("pipeline_vectorize.onnx"))
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "float_input")
         input_type = str(sess.get_inputs()[0].type)
@@ -368,35 +389,40 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(float)")
         output_shape = sess.get_outputs()[0].shape
         self.assertEqual(output_shape, [1, 1])
-        
+
         # Python type
         x = {0: 25.0, 1: 5.13, 2: 0.0, 3: 0.453, 4: 5.966}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-        
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
+
         xwrong = x.copy()
         xwrong["a"] = 5.6
         try:
             res = sess.run([output_name], {input_name: xwrong})
         except RuntimeError as e:
-            self.assertIn("Unexpected key type  <class 'str'>, it cannot be linked to C type int64_t", str(e))
+            self.assertIn(
+                "Unexpected key type  <class 'str'>, it cannot be linked to C type int64_t", str(e))
 
         # numpy type
         x = {np.int64(k): np.float32(v) for k, v in x.items()}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-        
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
+
         x = {np.int64(k): np.float64(v) for k, v in x.items()}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-        
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
+
         x = {np.int32(k): np.float64(v) for k, v in x.items()}
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testLabelEncoder(self):
         sess = onnxrt.InferenceSession(self.get_name("LabelEncoder.onnx"))
@@ -412,50 +438,54 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_type, "tensor(int64)")
         output_shape = sess.get_outputs()[0].shape
         self.assertEqual(output_shape, [1, 1])
-        
+
         # Array
         x = np.array([['4']])
         res = sess.run([output_name], {input_name: x})
         output_expected = np.array([[3]], dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
         # Python type
-        x = np.array(['4'])
+        x = np.array(['4'], ndmin=2)
         res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([3], dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        output_expected = np.array([3], ndmin=2, dtype=np.int64)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        x = np.array(['4'], dtype=np.object)
+        x = np.array(['4'], ndmin=2, dtype=np.object)
         res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([3], dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+        output_expected = np.array([3], ndmin=2, dtype=np.int64)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def test_run_model_mlnet(self):
         sess = onnxrt.InferenceSession(self.get_name("mlnet_encoder.onnx"))
         names = [_.name for _ in sess.get_outputs()]
         self.assertEqual(['C00', 'C12'], names)
-        c0 = np.array([5.], dtype=np.float32).reshape(1, 1);
-        
+        c0 = np.array([5.], dtype=np.float32).reshape(1, 1)
+
         c1 = np.array([b'A\0A\0', b"B\0B\0", b"C\0C\0"], np.void).reshape(1, 3)
         res = sess.run(None, {'C0': c0, 'C1': c1})
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 2)
-        self.assertEqual(list(mat.ravel()), 
+        self.assertEqual(list(mat.ravel()),
                          list(np.array([[[0., 0., 0., 0.], [1., 0., 0., 0.], [0., 0., 1., 0.]]]).ravel()))
-        
-        # In memory, the size of each element is fixed and equal to the 
+
+        # In memory, the size of each element is fixed and equal to the
         # longest element. We cannot use bytes because numpy is trimming
         # every final 0 for strings and bytes before creating the array
         # (to save space). It does not have this behaviour for void
         # but as a result, numpy does not know anymore the size
         # of each element, they all have the same size.
-        c1 = np.array([b'A\0A\0\0', b"B\0B\0", b"C\0C\0"], np.void).reshape(1, 3)
+        c1 = np.array([b'A\0A\0\0', b"B\0B\0", b"C\0C\0"],
+                      np.void).reshape(1, 3)
         res = sess.run(None, {'C0': c0, 'C1': c1})
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 0)
 
-        
+
 if __name__ == '__main__':
     unittest.main()

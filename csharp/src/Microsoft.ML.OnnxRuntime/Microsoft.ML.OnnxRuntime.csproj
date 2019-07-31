@@ -46,6 +46,18 @@
           CopyToOutputDirectory="Never"
           Visible="false"
     />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
+          PackagePath="\build\native\include"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
+          PackagePath="\build\native\include"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"

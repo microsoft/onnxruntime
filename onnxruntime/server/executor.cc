@@ -120,7 +120,7 @@ protobufutil::Status Executor::Predict(const std::string& model_name,
   }
 
   Ort::RunOptions run_options{};
-  run_options.SetRunLogVerbosityLevel(static_cast<unsigned int>(env_->GetLogSeverity()));
+  run_options.SetRunLogVerbosityLevel(static_cast<int>(env_->GetLogSeverity()));
   run_options.SetRunTag(request_id_.c_str());
 
   // Prepare the output names

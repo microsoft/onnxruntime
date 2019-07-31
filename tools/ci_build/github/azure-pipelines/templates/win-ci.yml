@@ -13,10 +13,12 @@ parameters:
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
+  AgentPool: 'Win-CPU'
 
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
+  pool: ${{ parameters.AgentPool }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
@@ -31,6 +33,14 @@ jobs:
         EnvSetupScript: ${{ parameters.EnvSetupScript }}
         buildArch: ${{ parameters.BuildArch }}
         setVcvars: ${{ parameters.SetVcvars }}
+
+    # Copy CUDA props files if needed
+    - ${{ if eq(parameters['CudaVersion'], '10.0') }}:
+      - task: PowerShell@1
+        displayName: 'Set CUDA path'
+        inputs:
+          scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+          arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion ${{ parameters.CudaVersion }}'
 
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
@@ -164,6 +174,15 @@ jobs:
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    # Remove CUDA props files after build
+    - ${{ if eq(parameters['CudaVersion'], '10.0') }}:
+      - task: PowerShell@1
+        displayName: 'Clean up CUDA props files'
+        inputs:
+          scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+          arguments: '-CudaVersion ${{ parameters.CudaVersion }}'
+
 
     # Compliance tasks require logs from Debug Build
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:

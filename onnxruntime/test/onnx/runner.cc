@@ -362,7 +362,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     output_names[i] = output_name;
     default_allocator->Free(output_name);
   }
-  if (feeds.size() > std::numeric_limits<int>::max()) {
+  if (feeds.size() > static_cast<unsigned int>(std::numeric_limits<int>::max())) {
     ORT_THROW("length overflow");
   }
   std::vector<const char*> input_names(feeds.size());

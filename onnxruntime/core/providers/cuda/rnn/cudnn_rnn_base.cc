@@ -83,7 +83,9 @@ Status CudnnRnnBase<T>::SetCudnnRnnDesc() {
     reverse_ = true;
   }
 
-  cudnn_dropout_desc_.Set(CudnnHandle());
+  cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size_);
+  state_buffer_ = GetScratchBuffer<void>(state_size_);
+  cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size_);
   ORT_RETURN_IF_ERROR(rnn_desc_.Set(CudnnHandle(), hidden_size_, num_layers_, cudnn_dropout_desc_,
                                             cudnn_direction, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
 
@@ -207,18 +209,19 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   IAllocatorUniquePtr<T> x_reversed_data;
-  T* x_data = const_cast<T*>(X->template Data<T>());
+  const T* x_data = X->template Data<T>();
   if (reverse_) {
     // reverse input data
     x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size);
     ReverseBySequence(gsl::narrow_cast<int32_t>(seq_length),
                       gsl::narrow_cast<int32_t>(batch_size),
                       gsl::narrow_cast<int32_t>(input_size),
-                      reinterpret_cast<CudaT*>(x_data),
+                      reinterpret_cast<const CudaT*>(x_data),
                       reinterpret_cast<CudaT*>(x_reversed_data.get()),
                       seq_length * batch_size * input_size);
-    x_data = x_reversed_data.get();
   }
+
+  const T* x_data_input = reverse_ ? x_reversed_data.get() : x_data;
 
   const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->template Data<T>();
   const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->template Data<T>();
@@ -248,7 +251,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                    rnn_desc_,
                                                    gsl::narrow_cast<int>(seq_length),
                                                    x_desc.data(),
-                                                   x_data,
+                                                   x_data_input,
                                                    hx_desc,
                                                    hx_data,
                                                    cx_desc,
@@ -272,7 +275,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
                                                      rnn_desc_,
                                                      x_desc,
-                                                     x_data,
+                                                     x_data_input,
                                                      hx_desc,
                                                      hx_data,
                                                      cx_desc,
