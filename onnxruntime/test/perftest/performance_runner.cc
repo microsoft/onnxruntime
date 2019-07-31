@@ -136,33 +136,35 @@ Status PerformanceRunner::ForkJoinRepeat() {
   // Adding trivially simple parallelization to the repeated times test will simply perform
   // m instances of n parallel invocations with a synchronized join after each invocation.
   // TODO: When the thread pool implementation is done, redo if it has join semantics.
-  auto tpool = GetDefaultThreadPool(Env::Default());
+  // auto tpool = GetDefaultThreadPool(Env::Default());
+  auto tpool = std::make_unique<DefaultThreadPoolType>(performance_test_config_.run_config.concurrent_session_runs);
   std::atomic<int> counter = {0};
   std::mutex m;
   std::condition_variable cv;
 
-  for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
-    // Fork
-    counter.load(std::memory_order_seq_cst);
-    for (size_t i = 0; i != performance_test_config_.run_config.concurrent_session_runs; ++i) {
-      counter++;
-      tpool->Schedule([this, &counter, &m, &cv]() {
-        // session_->ThreadSafeRun();
+  // Fork
+  counter.load(std::memory_order_seq_cst);
+  for (size_t i = 0; i != performance_test_config_.run_config.concurrent_session_runs; ++i) {
+    counter++;
+    tpool->Schedule([this, &counter, &m, &cv]() {
+      // session_->ThreadSafeRun();
+      for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
         auto status = RunOneIteration<false>();
         if (!status.IsOK())
           std::cerr << status.ErrorMessage();
+      }
 
-        // Simplified version of Eigen::Barrier
-        std::lock_guard<std::mutex> lg(m);
-        counter--;
-        cv.notify_all();
-      });
-    }
-
-    //Join
-    std::unique_lock<std::mutex> lock(m);
-    cv.wait(lock, [&counter]() { return counter == 0; });
+      // Simplified version of Eigen::Barrier
+      std::lock_guard<std::mutex> lg(m);
+      counter--;
+      cv.notify_all();
+    });
   }
+
+  //Join
+  std::unique_lock<std::mutex> lock(m);
+  cv.wait(lock, [&counter]() { return counter == 0; });
+
   return Status::OK();
 }
 

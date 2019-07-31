@@ -15,7 +15,9 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 
-#define CONCURRENCY_VISUALIZER
+// to create a build with these enabled run the build script with
+//   --cmake_extra_defines onnxruntime_ENABLE_CONCURRENCY_VISUALIZER=ON
+// #define CONCURRENCY_VISUALIZER
 #ifdef CONCURRENCY_VISUALIZER
 #include <cvmarkersobj.h>
 using namespace Concurrency;
@@ -55,9 +57,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
-  const char* series_name = "MainGraph";
+  char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
   if (graph_viewer->IsSubgraph()) {
-    series_name = graph_viewer->ParentNode()->Name().c_str();
+    auto s = graph_viewer->ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+    std::copy(s.cbegin(), s.cend(), series_name);
   }
 
   diagnostic::marker_series series(series_name);

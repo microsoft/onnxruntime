@@ -21,6 +21,9 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
+if (onnxruntime_ENABLE_CONCURRENCY_VISUALIZER)
+  target_compile_definitions(onnxruntime_framework PRIVATE CONCURRENCY_VISUALIZER)
+endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 if (WIN32)
