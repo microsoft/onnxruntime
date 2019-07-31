@@ -5,12 +5,12 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "mkldnn_execution_provider.h"
 #include "core/framework/allocator.h"
-#include "core/framework/kernel_registry.h"
-#include "mkldnn_fwd.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/kernel_registry.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_func_kernel.h"
+#include "mkldnn_execution_provider.h"
+#include "mkldnn_fwd.h"
 
 namespace onnxruntime {
 
