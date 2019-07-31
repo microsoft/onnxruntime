@@ -19,14 +19,13 @@ PredictionServiceImpl::PredictionServiceImpl(const std::shared_ptr<onnxruntime::
   auto end = std::chrono::high_resolution_clock::now();
   if (!status.ok()) {
     // Record error on prometheus
-    MetricRegistry::get().totalErrors->Add({
-      {"type", "gRPC"},                     
+    (*MetricRegistry::get().totalGRPCErrors)->Add({
       {"errorCode", std::to_string(static_cast<unsigned>(status.error_code()))},
     }).Increment();
     return ::grpc::Status(::grpc::StatusCode(status.error_code()), status.error_message());
   }
   // See above, currently only support one model so hardcoded
-  MetricRegistry::get().inferenceTimer->Add({{"name", "default"}, {"version", "1"}},
+  (*MetricRegistry::get().inferenceTimer)->Add({{"name", "default"}, {"version", "1"}},
       MetricRegistry::buckets()).
       // Casting for MS
       Observe(std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count());

@@ -23,15 +23,17 @@ struct MetricRegistry {
   // The three metrics we're currently recording
   // Inference Time (model and version can be handled by labels so you can)
   // aggregate total onnxruntime server performance if desired
-  prometheus::Family<prometheus::Histogram>* inferenceTimer = nullptr;
+  std::shared_ptr<prometheus::Family<prometheus::Histogram>*> inferenceTimer;
   // Total number of HTTP requests split by path, this includes pinging the metric
   // endpoint and the health checker
-  prometheus::Family<prometheus::Counter>* totalHTTPRequests = nullptr;
+  std::shared_ptr<prometheus::Family<prometheus::Counter>*> totalHTTPRequests;
   // Total number of gRPC requests received by the server
-  prometheus::Family<prometheus::Counter>* totalGRPCRequests = nullptr;
-  // Total number of erronious requests, includes error code and potentially message
+  std::shared_ptr<prometheus::Family<prometheus::Counter>*> totalGRPCRequests;
+  // Total number of erroneous HTTP requests, includes error code and
   // for more in-depth analysis e.g bad inputs, protobuffer errors
-  prometheus::Family<prometheus::Counter>* totalErrors = nullptr;
+  std::shared_ptr<prometheus::Family<prometheus::Counter>*> totalHTTPErrors;
+  // Total number of erroneous gRPC requests, including error code
+  std::shared_ptr<prometheus::Family<prometheus::Counter>*> totalGRPCErrors;
 
 private:
   MetricRegistry() {
@@ -41,25 +43,40 @@ private:
     // This is purely runtime/model performance so json/protobuf serde
     // shouldn't be considered, actual API Server performance can be done
     // through network tracing
-    inferenceTimer = &prometheus::BuildHistogram().
-      Name("onnx_runtime_model_inference_time").
-      Help("How long it took to perform inference").
-      Register(registry);
+    inferenceTimer = std::make_shared<prometheus::Family<prometheus::Histogram>*>(
+      &prometheus::BuildHistogram().
+        Name("ortserver_model_inference_time_milliseconds").
+        Help("How long it took to perform inference").
+        Register(registry)
+    );
     
-    totalHTTPRequests = &prometheus::BuildCounter().
-      Name("onnx_runtime_total_http_requests").
-      Help("How many requests over HTTP the onnxruntime server has received").
-      Register(registry);
+    totalHTTPRequests = std::make_shared<prometheus::Family<prometheus::Counter>*>(
+      &prometheus::BuildCounter().
+        Name("ortserver_http_requests_total").
+        Help("How many requests over HTTP the onnxruntime server has received").
+        Register(registry)
+    );
 
-    totalGRPCRequests = &prometheus::BuildCounter().
-      Name("onnx_runtime_total_grpc_requests").
-      Help("How many requests over gRPC the onnxruntime server has received").
-      Register(registry);
+    totalGRPCRequests = std::make_shared<prometheus::Family<prometheus::Counter>*>(
+      &prometheus::BuildCounter().
+        Name("ortserver_grpc_requests_total").
+        Help("How many requests over gRPC the onnxruntime server has received").
+        Register(registry)
+    );
 
-    totalErrors = &prometheus::BuildCounter().
-      Name("onnx_runtime_total_errors").
-      Help("How many bad requests or errors the server has handled").
-      Register(registry);
+    totalHTTPErrors = std::make_shared<prometheus::Family<prometheus::Counter>*>(
+      &prometheus::BuildCounter().
+        Name("ortserver_http_errors_total").
+        Help("How many bad requests or errors the server has handled over HTTP").
+        Register(registry)
+    );
+    
+    totalGRPCErrors = std::make_shared<prometheus::Family<prometheus::Counter>*>(
+      &prometheus::BuildCounter().
+        Name("ortserver_grpc_errors_total").
+        Help("How many bad requests or errors the server has handled over gRPC").
+        Register(registry)
+    );
   }
 
 

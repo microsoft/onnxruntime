@@ -25,10 +25,9 @@ namespace protobufutil = google::protobuf::util;
     }                                                                                            \
     auto json_error_message = CreateJsonError(http_error_code, (message));                       \
     logger->debug(json_error_message);                                                           \
-    MetricRegistry::get().totalErrors->Add({                                                     \
+    (*MetricRegistry::get().totalHTTPErrors)->Add({                                                     \
       {"path", (context).request.target().to_string()},                                          \
       {"errorCode", std::to_string(static_cast<unsigned>(http_error_code))},                     \
-      {"type", "HTTP"},                                                                          \
     }).Increment();                                                                              \
     (context).response.result(http_error_code);                                                  \
     (context).response.body() = json_error_message;                                              \
@@ -81,7 +80,7 @@ void Predict(const std::string& name,
   }
 
   // Don't log failed requests as that will potentially skew results
-  MetricRegistry::get().inferenceTimer->Add({{"name", name}, {"version", version}},
+  (*MetricRegistry::get().inferenceTimer)->Add({{"name", name}, {"version", version}},
       // Note: Need to specify quantiles each time, cannot add to the family
       // see: https://github.com/jupp0r/prometheus-cpp/issues/53#issuecomment-295151744
       MetricRegistry::buckets()).
