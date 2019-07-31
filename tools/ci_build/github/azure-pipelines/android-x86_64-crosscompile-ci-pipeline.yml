@@ -1,0 +1,10 @@
+jobs:
+- job: Android_CI
+  pool: 
+    vmImage: 'macOS-10.14'
+  steps:
+    - script: echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'ndk-bundle'
+      displayName: Install Android NDK
+    - script: tools/ci_build/build.py --android --build_dir build --android_ndk $ANDROID_HOME/ndk-bundle --skip_submodule_sync --enable_onnx_tests --parallel --use_openmp 
+      displayName: Build and Test on Android Emulator
+
